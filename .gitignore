@@ -53,8 +53,9 @@ __pycache__/
 *.gz.part_*
 **/catalog_*.db
 **/catalog_index.db
-Hathoro Website/
-Amazon_DS_Hunting/
+Hathoro Website/B0*/
+Hathoro Website/*.log
+Hathoro Website/*.pyc
 amazon_delete_modal.html
 page_source_tmp.html
 

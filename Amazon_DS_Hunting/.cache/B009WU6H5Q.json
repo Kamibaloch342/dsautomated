@@ -1,0 +1,93 @@
+[
+  {
+    "is_pinned": true,
+    "seller_name": "Amazon.com",
+    "item_price": "$13.99",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery Thursday, September 10",
+    "total_price": "$13.99",
+    "ships_from": "Amazon.com",
+    "rating_info": "",
+    "condition": "New",
+    "unit_price": "$0.11 per fluid ounce",
+    "seller_link": ""
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Solutions by Staples",
+    "item_price": "$21.73",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery September 11 - 14",
+    "total_price": "$21.73",
+    "ships_from": "Solutions by Staples",
+    "rating_info": "Seller rating is 4.5 out of 5 stars (6443 ratings) 85% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "$0.17 per fluid ounce",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A1OAVDFUSMKWS&isAmazonFulfilled=0&asin=B009WU6H5Q&ref_=olp_merch_name_1"
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "The Best USA Deals",
+    "item_price": "$22.60",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery Wednesday, September 23",
+    "total_price": "$22.60",
+    "ships_from": "The Best USA Deals",
+    "rating_info": "Seller rating is 3 out of 5 stars (869 ratings) 44% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "$0.18 per fluid ounce",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A1O9ISL5QH6ULE&isAmazonFulfilled=0&asin=B009WU6H5Q&ref_=olp_merch_name_2"
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Brand Authorized",
+    "item_price": "$27.99",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery September 10 - 14",
+    "total_price": "$27.99",
+    "ships_from": "Brand Authorized",
+    "rating_info": "Seller rating is 4 out of 5 stars (1835 ratings) 72% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "$0.22 per fluid ounce",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A2SNKU6L90R8M0&isAmazonFulfilled=0&asin=B009WU6H5Q&ref_=olp_merch_name_3"
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Country Basics",
+    "item_price": "$30.26",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery September 10 - 11",
+    "total_price": "$30.26",
+    "ships_from": "Country Basics",
+    "rating_info": "Seller rating is 4.5 out of 5 stars (63 ratings) 97% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "$0.24 per fluid ounce",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A1F0I4W1SSL1G2&isAmazonFulfilled=0&asin=B009WU6H5Q&ref_=olp_merch_name_4"
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Rancho Supply",
+    "item_price": "$30.26",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery September 11 - 14",
+    "total_price": "$30.26",
+    "ships_from": "Rancho Supply",
+    "rating_info": "Seller rating is 5 out of 5 stars (536 ratings) 99% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "$0.24 per fluid ounce",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A1C9KMZOAZ6RIY&isAmazonFulfilled=0&asin=B009WU6H5Q&ref_=olp_merch_name_5"
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "PrimeMFG",
+    "item_price": "$30.26",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery September 11 - 14",
+    "total_price": "$30.26",
+    "ships_from": "PrimeMFG",
+    "rating_info": "Seller rating is 5 out of 5 stars (144 ratings) 100% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "$0.24 per fluid ounce",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A18I2CT4HR9PN1&isAmazonFulfilled=0&asin=B009WU6H5Q&ref_=olp_merch_name_6"
+  }
+]

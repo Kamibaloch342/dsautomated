@@ -1,0 +1,229 @@
+[
+  {
+    "asin": "B008QDV2JG",
+    "status": "Completed",
+    "reason": "Already Finalized"
+  },
+  {
+    "asin": "B0CQ33FCVN",
+    "status": "Processed",
+    "images": 8,
+    "videos": 4,
+    "title": "Valvoline Restore & Protect Full Synthetic 5W-30 M"
+  },
+  {
+    "asin": "B08K99GJXJ",
+    "status": "Completed",
+    "reason": "Already Finalized"
+  },
+  {
+    "asin": "B000BOYCN6",
+    "status": "Completed",
+    "reason": "Already Finalized"
+  },
+  {
+    "asin": "B00826LJYU",
+    "status": "Completed",
+    "reason": "Already Finalized"
+  },
+  {
+    "asin": "B0FP5NSCTF",
+    "status": "Discarded",
+    "reason": "Size/Volume Discrepancy: Amazon='1qt' vs Zoro='12oz'"
+  },
+  {
+    "asin": "B0CQ2ZR67X",
+    "status": "Processed",
+    "images": 8,
+    "videos": 4,
+    "title": "Valvoline Restore & Protect Full Synthetic 0W-20 M"
+  },
+  {
+    "asin": "B0033QQ4U8",
+    "status": "Processed",
+    "images": 8,
+    "videos": 3,
+    "title": "Zerex Dex-Cool 50/50 Ready-to-Use Antifreeze Coola"
+  },
+  {
+    "asin": "B08KB2XYTP",
+    "status": "Completed",
+    "reason": "Already Finalized"
+  },
+  {
+    "asin": "B00F9R91T0",
+    "status": "Discarded",
+    "reason": "Size/Volume Discrepancy: Amazon='12oz' vs Zoro='1qt'"
+  },
+  {
+    "asin": "B0033QQ50M",
+    "status": "Processed",
+    "images": 7,
+    "videos": 1,
+    "title": "Valvoline Multi-Vehicle 50/50 Ready-to-Use Antifre"
+  },
+  {
+    "asin": "B002ZSI9O4",
+    "status": "Completed",
+    "reason": "Already Finalized"
+  },
+  {
+    "asin": "B01N4TIRMC",
+    "status": "Processed",
+    "images": 8,
+    "videos": 1,
+    "title": "Valvoline\u2122 Full Synthetic High Mileage with MaxLif"
+  },
+  {
+    "asin": "B000CQ6L82",
+    "status": "Processed",
+    "images": 8,
+    "videos": 2,
+    "title": "Valvoline Advanced Full Synthetic SAE 10W-30 Motor"
+  },
+  {
+    "asin": "B0049J0F2G",
+    "status": "Processed",
+    "images": 8,
+    "videos": 2,
+    "title": "Valvoline ATF 4 Full Synthetic Automatic Transmiss"
+  },
+  {
+    "asin": "B00PHN6CEI",
+    "status": "Processed",
+    "images": 8,
+    "videos": 1,
+    "title": "Valvoline 4-Stroke ATV UTV 10W-40 Motor Oil 1 Quar"
+  },
+  {
+    "asin": "B00GSIXI9S",
+    "status": "Processed",
+    "images": 8,
+    "videos": 2,
+    "title": "Valvoline Advanced Full Synthetic SAE 10W-30 Motor"
+  },
+  {
+    "asin": "B007IBSDJY",
+    "status": "Processed",
+    "images": 7,
+    "videos": 1,
+    "title": "Valvoline European Vehicle Full Synthetic SAE 5W-4"
+  },
+  {
+    "asin": "B0033QNZZ0",
+    "status": "Processed",
+    "images": 8,
+    "videos": 3,
+    "title": "Zerex G05 Antifreeze Coolant Concentrate 1 Gallon"
+  },
+  {
+    "asin": "B001OV61KW",
+    "status": "Processed",
+    "images": 8,
+    "videos": 2,
+    "title": "Valvoline Daily Protection 80W-90 Gear Oil 1 Quart"
+  },
+  {
+    "asin": "B0033QNZWS",
+    "status": "Processed",
+    "images": 8,
+    "videos": 3,
+    "title": "Zerex Dex-Cool Antifreeze Coolant Concentrate 1 Ga"
+  },
+  {
+    "asin": "B074G5NL3T",
+    "status": "Processed",
+    "images": 8,
+    "videos": 1,
+    "title": "Valvoline Carb, Choke & Throttle Body Cleaner, 13 "
+  },
+  {
+    "asin": "B008QDXADW",
+    "status": "Processed",
+    "images": 8,
+    "videos": 1,
+    "title": "Valvoline High Mileage with MaxLife Technology SAE"
+  },
+  {
+    "asin": "B00GDH5J6O",
+    "status": "Processed",
+    "images": 7,
+    "videos": 1,
+    "title": "Valvoline High Mileage with MaxLife Technology 10W"
+  },
+  {
+    "asin": "B01M1N0LRD",
+    "status": "Processed",
+    "images": 8,
+    "videos": 1,
+    "title": "Valvoline MaxLife High Mileage Full Synthetic 5W-2"
+  },
+  {
+    "asin": "B00GDH5M1G",
+    "status": "Processed",
+    "images": 7,
+    "videos": 0,
+    "title": "Valvoline High Mileage with MaxLife Technology 5W-"
+  },
+  {
+    "asin": "B003VSKQ34",
+    "status": "Processed",
+    "images": 8,
+    "videos": 4,
+    "title": "Valvoline MaxLife Power Steering Fluid, 32 oz"
+  },
+  {
+    "asin": "B0033QQ4VW",
+    "status": "Processed",
+    "images": 7,
+    "videos": 3,
+    "title": "Zerex ZX G05 50/50 AFC 6/1 GA"
+  },
+  {
+    "asin": "B005XOOFEK",
+    "status": "Processed",
+    "images": 7,
+    "videos": 1,
+    "title": "Valvoline Daily Protection Non-Detergent SAE 30 Co"
+  },
+  {
+    "asin": "B000CQ4DIM",
+    "status": "Processed",
+    "images": 3,
+    "videos": 0,
+    "title": "Valvoline Multi-Vehicle High Temperature Red Greas"
+  },
+  {
+    "asin": "B00DILVVJW",
+    "status": "Discarded",
+    "reason": "Multi-Pack Mismatch: Amazon=6x vs Zoro=Each"
+  },
+  {
+    "asin": "B01B1XL7RY",
+    "status": "Processed",
+    "images": 8,
+    "videos": 1,
+    "title": "Valvoline MaxLife High Mileage Full Synthetic 5W-3"
+  },
+  {
+    "asin": "B00C70TMLE",
+    "status": "Processed",
+    "images": 8,
+    "videos": 1,
+    "title": "Valvoline 4-Stroke Motorcycle 10W-40 Motor Oil 1 Q"
+  },
+  {
+    "asin": "B01MURBV9M",
+    "status": "Processed",
+    "images": 8,
+    "videos": 1,
+    "title": "Valvoline Full Synthetic High Mileage with MaxLife"
+  },
+  {
+    "asin": "B000GAN3I0",
+    "status": "Processed",
+    "images": 4,
+    "videos": 3,
+    "title": "Valvoline - VV986 Moly-Fortified Gray Full Synthet"
+  }
+]

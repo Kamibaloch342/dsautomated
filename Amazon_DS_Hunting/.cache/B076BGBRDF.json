@@ -1,0 +1,67 @@
+[
+  {
+    "is_pinned": true,
+    "seller_name": "Amazon.com",
+    "item_price": "$9.95",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery Friday, September 11",
+    "total_price": "$9.95",
+    "ships_from": "Amazon.com",
+    "rating_info": "",
+    "condition": "New",
+    "unit_price": "",
+    "seller_link": ""
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Cherokee Truck Equipment",
+    "item_price": "$9.79",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery September 11 - 15",
+    "total_price": "$9.79",
+    "ships_from": "Cherokee Truck Equipment",
+    "rating_info": "Seller rating is 4 out of 5 stars (623 ratings) 78% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A3BAK3ISEUJO6I&isAmazonFulfilled=0&asin=B076BGBRDF&ref_=olp_merch_name_1"
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Crimp Supply Inc",
+    "item_price": "$10.78",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery Friday, September 11",
+    "total_price": "$10.78",
+    "ships_from": "Amazon.com",
+    "rating_info": "Seller rating is 4.5 out of 5 stars (25878 ratings) 86% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A6AY1HFZHO49U&isAmazonFulfilled=1&asin=B076BGBRDF&ref_=olp_merch_name_2"
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Twin Star Parts",
+    "item_price": "$12.29",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery Tuesday, September 15",
+    "total_price": "$12.29",
+    "ships_from": "Twin Star Parts",
+    "rating_info": "Seller rating is 4.5 out of 5 stars (283 ratings) 90% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A3ITH0G4IHMTDR&isAmazonFulfilled=0&asin=B076BGBRDF&ref_=olp_merch_name_4"
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Hardware & Garden Supplies",
+    "item_price": "$18.54",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery September 11 - 15",
+    "total_price": "$18.54",
+    "ships_from": "Hardware & Garden Supplies",
+    "rating_info": "Seller rating is 4 out of 5 stars (8283 ratings) 74% positive over last 12 months",
+    "condition": "New",
+    "unit_price": "",
+    "seller_link": "https://www.amazon.com/gp/aag/main?ie=UTF8&seller=A29YHE8OKANI0B&isAmazonFulfilled=0&asin=B076BGBRDF&ref_=olp_merch_name_5"
+  }
+]

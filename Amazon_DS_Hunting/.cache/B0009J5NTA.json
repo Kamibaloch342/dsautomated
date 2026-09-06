@@ -1,0 +1,28 @@
+[
+  {
+    "is_pinned": true,
+    "seller_name": "Amazon.com",
+    "item_price": "$13.79",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery Friday, September 11",
+    "total_price": "$13.79",
+    "ships_from": "Amazon.com",
+    "rating_info": "",
+    "condition": "New",
+    "unit_price": "",
+    "seller_link": ""
+  },
+  {
+    "is_pinned": false,
+    "seller_name": "Amazon Resale",
+    "item_price": "$10.49",
+    "shipping_cost": "FREE",
+    "shipping_time": "FREE delivery September 12 - 14",
+    "total_price": "$10.49",
+    "ships_from": "Amazon.com",
+    "rating_info": "",
+    "condition": "Used - Very Good",
+    "unit_price": "",
+    "seller_link": "https://www.amazon.com/Warehouse-Deals/b?ie=UTF8&node=10158976011"
+  }
+]
