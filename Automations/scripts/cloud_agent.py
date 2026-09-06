@@ -429,8 +429,10 @@ class Agent:
                 subprocess.Popen([pyw if os.path.exists(pyw) else PY, gui], cwd=AUTO, env=env,
                                  creationflags=getattr(subprocess, "DETACHED_PROCESS", 0))
             else:
+                # keep the GUI's own stdout/stderr (Tk callback tracebacks live there)
+                logf = open(os.path.join(DATA, "launcher_stdout.log"), "a", encoding="utf-8")
                 subprocess.Popen([PY, gui], cwd=AUTO, env=env, start_new_session=True,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                 stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
             for _ in range(40):
                 time.sleep(0.5)
                 if launcher_state().get("alive"):
