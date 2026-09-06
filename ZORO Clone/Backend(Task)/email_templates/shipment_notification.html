@@ -1,0 +1,223 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Your {{ store_name }} Order Has Shipped!</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style type="text/css">
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
+    * { font-family: 'Montserrat', Helvetica, Arial, sans-serif !important; }
+    body {
+      margin: 0; padding: 0; background-color: #F0F4F5;
+      font-family: 'Montserrat', Helvetica, Arial, sans-serif !important;
+      color: #112629; -webkit-font-smoothing: antialiased;
+    }
+    table { border-collapse: collapse; }
+    img { border: 0; outline: none; text-decoration: none; }
+    .btn-cta:hover { background-color: #B85F26 !important; }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F0F4F5; font-family: 'Montserrat', Helvetica, Arial, sans-serif;">
+  <center style="width: 100%; table-layout: fixed; background-color: #F0F4F5; padding: 24px 0 48px 0;">
+    <div style="max-width: 600px; margin: 0 auto;">
+      <!-- TOP BANNER -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #19454B; border-radius: 12px 12px 0 0; overflow: hidden;">
+        <tr>
+          <td align="center" style="padding: 10px 16px; font-size: 11px; font-weight: 700; color: #FFFFFF; letter-spacing: 0.8px; text-transform: uppercase;">
+            📦 Your Order Has Shipped &bull; Live Tracking Available
+          </td>
+        </tr>
+      </table>
+
+      <!-- MAIN CONTAINER -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #FFFFFF; border-left: 1px solid #D1DDE0; border-right: 1px solid #D1DDE0; box-shadow: 0 4px 24px rgba(25,69,75,0.06);">
+        <!-- HEADER -->
+        <tr>
+          <td style="padding: 24px 32px 20px 32px; border-bottom: 1px solid #EDF2F4;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="vertical-align: middle;">
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="vertical-align: middle; padding-right: 10px;">
+                        <!-- Geometric Cube Logo Mark -->
+                        <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #19454B 0%, #0E282C 100%); border-radius: 8px; text-align: center; line-height: 32px; color: #D4773B; font-weight: 900; font-size: 18px; box-shadow: 0 2px 6px rgba(25,69,75,0.2);">
+                          ⬢
+                        </div>
+                      </td>
+                      <td style="vertical-align: middle;">
+                        <span style="font-size: 24px; font-weight: 900; color: #19454B; letter-spacing: -0.5px;">EKUIP<span style="color: #D4773B;">T</span></span>
+                        <div style="font-size: 10px; font-weight: 600; color: #586B6E; letter-spacing: 0.2px;">Industrial Supply</div>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td align="right" style="vertical-align: middle;">
+                  <span style="display: inline-block; background-color: #EEF5F6; color: #19454B; font-size: 12px; font-weight: 800; padding: 6px 14px; border-radius: 20px; border: 1px solid #D1DDE0;">
+                    ORDER #{{ order_number or ('EQ' ~ order.order_id) }}
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- HERO BANNER -->
+        <tr>
+          <td style="padding: 36px 32px 28px 32px; text-align: center; background-color: #FAFDFD; border-bottom: 1px solid #EDF2F4;">
+            <div style="font-size: 24px; font-weight: 900; color: #19454B; margin-bottom: 8px; letter-spacing: -0.3px;">
+              Great news! Your package is on the way.
+            </div>
+            <div style="font-size: 13px; font-weight: 500; color: #586B6E; line-height: 1.5; max-width: 480px; margin: 0 auto 28px auto;">
+              Dispatched via <strong style="color: #112629;">{{ order.carrier or 'FedEx Express' }}</strong> to <strong style="color: #112629;">{{ order.ship_city }}, {{ order.ship_state }}</strong>.
+            </div>
+
+            <!-- 3-STEP PROGRESS STEPPER -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 420px; margin: 0 auto;">
+              <tr>
+                <!-- Step 1: Confirmed -->
+                <td align="center" style="width: 32px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #19454B; color: #FFFFFF; font-size: 13px; font-weight: 800; line-height: 32px; text-align: center;">
+                    ✓
+                  </div>
+                </td>
+                <!-- Connecting Line 1 -->
+                <td style="padding: 0 4px; vertical-align: middle;">
+                  <div style="height: 4px; background-color: #19454B; border-radius: 2px;"></div>
+                </td>
+                <!-- Step 2: In Transit (ACTIVE) -->
+                <td align="center" style="width: 36px;">
+                  <div style="width: 36px; height: 36px; border-radius: 50%; background-color: #D4773B; color: #FFFFFF; font-size: 14px; font-weight: 900; line-height: 36px; text-align: center; box-shadow: 0 0 12px rgba(212,119,59,0.35);">
+                    ▶
+                  </div>
+                </td>
+                <!-- Connecting Line 2 -->
+                <td style="padding: 0 4px; vertical-align: middle;">
+                  <div style="height: 4px; background-color: #E2E8F0; border-radius: 2px;"></div>
+                </td>
+                <!-- Step 3: Delivered -->
+                <td align="center" style="width: 32px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #E2E8F0; color: #94A5A7; font-size: 12px; font-weight: 800; line-height: 32px; text-align: center;">
+                    3
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td align="center" style="padding-top: 6px;">
+                  <div style="font-size: 11px; font-weight: 700; color: #19454B;">Confirmed</div>
+                </td>
+                <td></td>
+                <td align="center" style="padding-top: 6px;">
+                  <div style="font-size: 11px; font-weight: 800; color: #D4773B;">In Transit</div>
+                </td>
+                <td></td>
+                <td align="center" style="padding-top: 6px;">
+                  <div style="font-size: 11px; font-weight: 600; color: #94A5A7;">Delivered</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- TRACKING CARD -->
+        <tr>
+          <td style="padding: 32px 32px 24px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #FAF3EE; border: 1px solid #F0DFD3; border-radius: 12px; padding: 24px; text-align: center;">
+              <tr>
+                <td align="center">
+                  <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #964C14; letter-spacing: 1px; margin-bottom: 6px;">
+                    CARRIER TRACKING NUMBER
+                  </div>
+                  <div style="font-size: 22px; font-weight: 900; color: #964C14; letter-spacing: 1.5px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; margin: 4px 0 16px 0;">
+                    {{ order.tracking_number or 'FEDEX-99882736412' }}
+                  </div>
+                  <a href="{{ tracking_url }}" class="btn-cta" style="display: inline-block; background-color: #D4773B; color: #FFFFFF !important; font-size: 13px; font-weight: 800; text-decoration: none; padding: 13px 36px; border-radius: 6px; letter-spacing: 0.5px; text-transform: uppercase; box-shadow: 0 4px 14px rgba(212,119,59,0.25);">
+                    TRACK PACKAGE ONLINE &rarr;
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- PACKAGE CONTENTS -->
+        <tr>
+          <td style="padding: 0 32px 24px 32px;">
+            <div style="font-size: 15px; font-weight: 800; color: #19454B; padding-bottom: 8px; border-bottom: 2px solid #19454B;">
+              Package Contents ({{ order.items|length }} item{% if order.items|length != 1 %}s{% endif %})
+            </div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top: 12px;">
+              {% for item in items or order.items %}
+              <tr>
+                <td style="padding: 14px 0; border-bottom: 1px solid #EDF2F4; vertical-align: top;">
+                  <table cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      {% if item.image_url %}
+                      <td style="width: 52px; padding-right: 12px; vertical-align: top;">
+                        <img src="{{ item.image_url }}" alt="{{ item.title }}" width="48" height="48" style="object-fit: contain; border: 1px solid #E2E8F0; border-radius: 4px; display: block; background-color: #FFFFFF;">
+                      </td>
+                      {% endif %}
+                      <td style="vertical-align: top;">
+                        <div style="font-size: 13px; font-weight: 700; color: #112629; line-height: 1.4; margin-bottom: 4px;">
+                          {{ item.title }}
+                        </div>
+                        <div style="font-size: 11px; font-weight: 600; color: #586B6E;">
+                          {{ code_label }}: <span style="font-weight: 700; color: #19454B;">{{ item.eq_code or item.zoro_code }}</span>
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+                <td align="center" style="padding: 14px 12px; border-bottom: 1px solid #EDF2F4; vertical-align: top; width: 70px;">
+                  <span style="display: inline-block; background-color: #F4F8F9; color: #112629; font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 4px; border: 1px solid #E2E8F0;">
+                    Qty {{ item.quantity }}
+                  </span>
+                </td>
+                <td align="right" style="padding: 14px 0; border-bottom: 1px solid #EDF2F4; vertical-align: top; width: 80px; font-size: 13px; font-weight: 800; color: #19454B;">
+                  ${{ "%.2f"|format(item.line_total if item.line_total else (item.unit_price * item.quantity)) }}
+                </td>
+              </tr>
+              {% endfor %}
+            </table>
+          </td>
+        </tr>
+
+        <!-- SHIPPING DESTINATION CARD -->
+        <tr>
+          <td style="padding: 0 32px 32px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #F8FAFB; border: 1px solid #E2E8F0; border-radius: 8px; padding: 16px 20px;">
+              <tr>
+                <td style="vertical-align: top;">
+                  <div style="font-size: 10px; font-weight: 800; color: #586B6E; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px;">
+                    DELIVERING TO:
+                  </div>
+                  <div style="font-size: 12px; font-weight: 600; color: #112629; line-height: 1.5;">
+                    {{ ship_name or (order.ship_first_name ~ ' ' ~ order.ship_last_name) }} &bull; {{ ship_address1 or order.ship_address1 }}{% if ship_address2 or order.ship_address2 %}, {{ ship_address2 or order.ship_address2 }}{% endif %}, {{ ship_city or order.ship_city }}, {{ ship_state or order.ship_state }} {{ ship_zip or order.ship_zip }}
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- FOOTER -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #19454B; border-radius: 0 0 12px 12px; overflow: hidden;">
+        <tr>
+          <td align="center" style="padding: 24px 24px; color: #FFFFFF; font-size: 11px;">
+            <div style="margin-bottom: 8px; font-weight: 600;">
+              Need help? <a href="{{ site_url }}/contact" style="color: #FFFFFF; text-decoration: underline; font-weight: 700;">Contact Support</a> &bull; Call: (855) 666-4649
+            </div>
+            <div style="color: #A3B8BA; font-size: 10px;">
+              &copy; {{ year }} {{ store_name }} Industrial Supply, Inc. All rights reserved.
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </center>
+</body>
+</html>

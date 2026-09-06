@@ -1,0 +1,200 @@
+/* ════════════════════════════════════════════════════════════════════
+   Account area — profile, orders, returns, cases, Net 30, API keys
+   Only classes NOT covered by the shared design system live here.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── order history ──────────────────────────────────────────────── */
+
+.order-items-cell {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--z-gray);
+}
+
+.order-thread-row td { background: var(--z-bg-soft) !important; }
+
+.order-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  padding: 2px 0;
+}
+.order-thread__tracking {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--z-ink);
+}
+.order-thread__tracking svg { color: var(--z-blue); }
+.order-thread__email {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.order-thread__subject { flex: 1; min-width: 180px; }
+.order-thread__date { color: var(--z-gray-light); font-size: 12px; white-space: nowrap; }
+.order-thread__report {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* ── support cases ──────────────────────────────────────────────── */
+
+.case-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.case-card__subject { font-size: 15.5px; font-weight: 700; margin-right: auto; }
+.case-card__date { font-size: 12.5px; color: var(--z-gray-light); white-space: nowrap; }
+
+.case-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+.case-msg {
+  background: var(--z-bg-soft);
+  border: 1px solid var(--z-line-soft);
+  border-radius: var(--z-radius);
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.case-msg--admin {
+  background: var(--z-blue-soft);
+  border-color: #c7dade;
+}
+.case-msg__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.case-msg__sender { font-size: 12.5px; font-weight: 700; }
+.case-msg--admin .case-msg__sender { color: var(--z-blue); }
+.case-msg__time { font-size: 11.5px; color: var(--z-gray-light); white-space: nowrap; }
+.case-msg__body { white-space: pre-wrap; line-height: 1.5; }
+
+.case-reply { display: flex; flex-direction: column; gap: 10px; }
+.case-reply .z-btn { align-self: flex-end; }
+.case-closed-note { font-size: 13.5px; color: var(--z-gray); }
+
+/* ── Net 30 ─────────────────────────────────────────────────────── */
+
+.net30-benefits {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 18px;
+  font-size: 14px;
+}
+.net30-benefits li { display: flex; align-items: flex-start; gap: 9px; }
+.net30-benefits svg { color: var(--z-success); flex-shrink: 0; margin-top: 2px; }
+
+.net30-applyrow { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.net30-applyrow .z-field { flex: 1; min-width: 220px; margin-bottom: 0; }
+
+.net30-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.net30-stat .l {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--z-gray);
+  font-weight: 500;
+  display: block;
+  margin-bottom: 4px;
+}
+.net30-stat .v { font-size: 20px; font-weight: 700; }
+.net30-stat .v--big { font-size: 26px; color: var(--z-success); }
+
+/* simple CSS credit meter (used vs limit) */
+.credit-meter__bar {
+  height: 10px;
+  background: var(--z-bg);
+  border: 1px solid var(--z-line-soft);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.credit-meter__fill {
+  height: 100%;
+  background: var(--z-blue);
+  border-radius: 6px 0 0 6px;
+  transition: width 0.3s ease;
+}
+.credit-meter__fill.is-high { background: var(--z-warning); }
+.credit-meter__note { font-size: 12.5px; color: var(--z-gray); margin-top: 6px; }
+
+/* ── API keys ───────────────────────────────────────────────────── */
+
+.key-reveal {
+  background: var(--z-warning-soft);
+  border: 1px solid #efd9a9;
+  border-radius: var(--z-radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.key-reveal__label { font-size: 13.5px; font-weight: 500; color: #7c5209; }
+.key-reveal__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+.key-reveal__row code {
+  flex: 1;
+  min-width: 220px;
+  background: #fff;
+  border: 1px solid var(--z-line);
+  border-radius: var(--z-radius);
+  padding: 8px 10px;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.key-create {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0 18px;
+}
+.key-create .z-input { flex: 1; min-width: 200px; max-width: 340px; }
+
+.api-snippet { margin-top: 22px; }
+.api-snippet h4 { font-size: 14px; margin-bottom: 8px; }
+.api-snippet pre {
+  background: #0c313e;
+  color: #d8e6ea;
+  border-radius: var(--z-radius);
+  padding: 14px 16px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  overflow-x: auto;
+}
+
+/* ── responsive ─────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .order-items-cell { max-width: 200px; }
+  .net30-stat .v { font-size: 17px; }
+  .net30-stat .v--big { font-size: 21px; }
+  .key-create .z-input { max-width: none; }
+  .case-reply .z-btn { align-self: stretch; }
+}

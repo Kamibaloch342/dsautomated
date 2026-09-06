@@ -1,0 +1,455 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Thank You for Your Order - {{ store_name }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <!--[if mso]>
+  <style type="text/css">
+    body, table, td, p, a, span, h1, h2, h3 { font-family: Arial, sans-serif !important; }
+  </style>
+  <![endif]-->
+  <style type="text/css">
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
+    body {
+      margin: 0; padding: 0; width: 100% !important; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%;
+      background-color: #EAEFF0; font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #112629; line-height: 1.4;
+    }
+    table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    td { font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    img { border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; -ms-interpolation-mode: bicubic; }
+    a { color: #19454B; text-decoration: none; }
+    .btn-orange:hover { background-color: #783B0E !important; }
+    .btn-outline:hover { background-color: #EEF5F6 !important; }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #EAEFF0; font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #EAEFF0; padding: 20px 0 40px 0;">
+    <tr>
+      <td align="center">
+        <!-- 620px EMAIL CONTAINER -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 620px; background-color: #FFFFFF; border: 1px solid #D1DDE0; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+          
+          <!-- 1. TOP NOTICE BAR -->
+          <tr>
+            <td align="center" style="background-color: #19454B; color: #FFFFFF; font-size: 11px; font-weight: 700; padding: 10px 16px; letter-spacing: 0.5px; text-transform: uppercase;">
+              Most Orders Delivered in 1 - 2 Business Days.*
+            </td>
+          </tr>
+
+          <!-- 2. BRAND HEADER -->
+          <tr>
+            <td style="padding: 18px 24px 14px 24px; border-bottom: 1px solid #E2E8F0;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <table cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="vertical-align: middle; padding-right: 10px;">
+                          <!-- Crisp Inline Vector Logo -->
+                          <svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/1999/xhtml">
+                            <path d="M24 3L42 13.5V34.5L24 45L6 34.5V13.5L24 3Z" fill="#19454B" />
+                            <path d="M24 5.5L39 14.2L24 23L9 14.2L24 5.5Z" fill="#964C14" />
+                            <path d="M24 23L39 14.2V33L24 42V23Z" fill="#0E282C" opacity="0.95" />
+                            <path d="M9 14.2L24 23V42L9 33V14.2Z" fill="#1E545B" />
+                            <circle cx="24" cy="23" r="5.5" fill="#FAF3EE" />
+                            <circle cx="24" cy="23" r="2.8" fill="#964C14" />
+                          </svg>
+                        </td>
+                        <td style="vertical-align: middle;">
+                          <div style="font-size: 26px; font-weight: 900; color: #19454B; letter-spacing: -0.5px; line-height: 1;">
+                            EKUIP<span style="color: #964C14;">T</span>
+                          </div>
+                          <div style="font-size: 10px; font-weight: 600; color: #586B6E; letter-spacing: 0.3px; margin-top: 2px;">
+                            Industrial Supply &bull; Tools &bull; Equipment
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td align="right" style="vertical-align: middle; font-size: 12px; font-weight: 700;">
+                    <a href="{{ site_url }}/account" style="color: #19454B; text-decoration: none; margin-right: 16px;">👤 My Account</a>
+                    <a href="{{ site_url }}/search?deals=1" style="color: #964C14; text-decoration: none;">🏷️ Deals</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 3. SUB-NAVIGATION CATEGORY BAR -->
+          <tr>
+            <td style="background-color: #F8FAFB; border-bottom: 1px solid #E2E8F0; padding: 9px 16px; text-align: center; font-size: 11px; font-weight: 600; color: #586B6E;">
+              <a href="{{ site_url }}/search?cat=hand-tools" style="color: #586B6E; text-decoration: none; margin: 0 6px;">Hand Tools</a> &bull;
+              <a href="{{ site_url }}/search?cat=plumbing" style="color: #586B6E; text-decoration: none; margin: 0 6px;">Plumbing</a> &bull;
+              <a href="{{ site_url }}/search?cat=power-transmission" style="color: #586B6E; text-decoration: none; margin: 0 6px;">Power Transmission</a> &bull;
+              <a href="{{ site_url }}/search?cat=electrical" style="color: #586B6E; text-decoration: none; margin: 0 6px;">Electrical Supplies</a> &bull;
+              <a href="{{ site_url }}/search" style="color: #19454B; font-weight: 700; text-decoration: none; margin-left: 6px;">📦 Shop all categories</a>
+            </td>
+          </tr>
+
+          <!-- 4. HERO SECTION -->
+          <tr>
+            <td align="center" style="padding: 36px 24px 28px 24px; text-align: center;">
+              <div style="font-size: 26px; font-weight: 900; color: #19454B; margin-bottom: 6px; letter-spacing: -0.4px;">
+                Thank You for Your Order!
+              </div>
+              <div style="font-size: 13px; font-weight: 500; color: #4A5568; margin-bottom: 26px; line-height: 1.4;">
+                We'll send you an email with tracking information when your order ships.
+              </div>
+
+              <!-- 3-STEP PROGRESS STEPPER (Pixel-aligned table) -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 440px; margin: 0 auto 24px auto;">
+                <tr>
+                  <!-- Step 1: Ordered (Active/Done) -->
+                  <td align="center" style="width: 36px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background-color: #19454B; color: #FFFFFF; font-size: 14px; font-weight: 800; line-height: 36px; text-align: center;">
+                      🛒
+                    </div>
+                  </td>
+                  <!-- Connecting Bar 1 -->
+                  <td style="padding: 0 6px; vertical-align: middle;">
+                    <div style="height: 4px; background-color: #D1DDE0; border-radius: 2px;"></div>
+                  </td>
+                  <!-- Step 2: Ships -->
+                  <td align="center" style="width: 32px;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #CBD5E1; color: #FFFFFF; font-size: 12px; font-weight: 800; line-height: 32px; text-align: center;">
+                    </div>
+                  </td>
+                  <!-- Connecting Bar 2 -->
+                  <td style="padding: 0 6px; vertical-align: middle;">
+                    <div style="height: 4px; background-color: #D1DDE0; border-radius: 2px;"></div>
+                  </td>
+                  <!-- Step 3: Delivery -->
+                  <td align="center" style="width: 32px;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #CBD5E1; color: #FFFFFF; font-size: 12px; font-weight: 800; line-height: 32px; text-align: center;">
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-top: 6px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #19454B;">✓ Ordered</div>
+                    <div style="font-size: 10px; font-weight: 600; color: #718096;">{{ order_date_short or 'Today' }}</div>
+                  </td>
+                  <td></td>
+                  <td align="center" style="padding-top: 6px;">
+                    <div style="font-size: 11px; font-weight: 700; color: #718096;">Ships</div>
+                  </td>
+                  <td></td>
+                  <td align="center" style="padding-top: 6px;">
+                    <div style="font-size: 11px; font-weight: 700; color: #718096;">Delivery</div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- CTA BUTTON -->
+              <table cellpadding="0" cellspacing="0" border="0" style="margin: 6px auto 0 auto;">
+                <tr>
+                  <td align="center" style="background-color: #964C14; border-radius: 4px; box-shadow: 0 2px 6px rgba(150,76,20,0.25);">
+                    <a href="{{ tracking_url }}" class="btn-orange" style="display: block; padding: 13px 36px; font-size: 13px; font-weight: 800; color: #FFFFFF !important; text-decoration: none; text-transform: uppercase; letter-spacing: 0.5px;">
+                      View Order Status
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 5. ORDER DETAILS (2 COLUMNS) -->
+          <tr>
+            <td style="padding: 24px 28px; border-top: 1px solid #E2E8F0;">
+              <div style="font-size: 16px; font-weight: 900; color: #112629; margin-bottom: 14px; padding-bottom: 4px; border-bottom: 2px solid #19454B;">
+                Order Details
+              </div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <!-- Left Column -->
+                  <td style="width: 48%; vertical-align: top; font-size: 12px; line-height: 1.5; color: #2D3748;">
+                    <div style="margin-bottom: 4px;"><strong style="color: #112629;">Order Number:</strong> {{ order_number }}</div>
+                    <div style="margin-bottom: 14px;"><strong style="color: #112629;">PO Number:</strong> {{ po_number or 'HDANK' }}</div>
+                    <div style="margin-bottom: 3px; font-weight: 800; color: #112629; font-size: 11px;">Shipping Address:</div>
+                    <div style="color: #4A5568;">
+                      {{ ship_name }}<br>
+                      {{ ship_address1 }}{% if ship_address2 %}<br>{{ ship_address2 }}{% endif %}<br>
+                      {{ ship_city }}, {{ ship_state }} {{ ship_zip }}
+                    </div>
+                  </td>
+                  <td style="width: 4%;"></td>
+                  <!-- Right Column -->
+                  <td style="width: 48%; vertical-align: top; font-size: 12px; line-height: 1.5; color: #2D3748;">
+                    <div style="margin-bottom: 4px;"><strong style="color: #112629;">Order Date:</strong> {{ order_date }}</div>
+                    <div style="margin-bottom: 14px;">&nbsp;</div>
+                    <div style="margin-bottom: 3px; font-weight: 800; color: #112629; font-size: 11px;">Billing Address:</div>
+                    <div style="color: #4A5568; margin-bottom: 12px;">
+                      {{ bill_name }}<br>
+                      {% if bill_company %}<strong>{{ bill_company }}</strong><br>{% endif %}
+                      {{ bill_address1 }}<br>
+                      {{ bill_city }}, {{ bill_state }} {{ bill_zip }}
+                    </div>
+                    <div style="margin-bottom: 3px; font-weight: 800; color: #112629; font-size: 11px;">Payment Method:</div>
+                    <div style="color: #4A5568;">
+                      {{ payment_method_label }}<br>
+                      Amount: <strong style="color: #19454B;">{{ total_formatted }}</strong>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 6. YOUR ORDER TABLE -->
+          <tr>
+            <td style="padding: 10px 28px 24px 28px;">
+              <div style="font-size: 16px; font-weight: 900; color: #112629; margin-bottom: 10px; padding-bottom: 4px; border-bottom: 2px solid #19454B;">
+                Your Order
+              </div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <thead>
+                  <tr>
+                    <th align="left" style="font-size: 11px; font-weight: 800; color: #4A5568; text-transform: uppercase; padding: 6px 0; border-bottom: 1px solid #E2E8F0;">Item</th>
+                    <th align="right" style="font-size: 11px; font-weight: 800; color: #4A5568; text-transform: uppercase; padding: 6px 10px; border-bottom: 1px solid #E2E8F0; width: 70px;">Unit Price</th>
+                    <th align="center" style="font-size: 11px; font-weight: 800; color: #4A5568; text-transform: uppercase; padding: 6px 10px; border-bottom: 1px solid #E2E8F0; width: 40px;">Qty</th>
+                    <th align="right" style="font-size: 11px; font-weight: 800; color: #4A5568; text-transform: uppercase; padding: 6px 0; border-bottom: 1px solid #E2E8F0; width: 70px;">Total Price</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in items %}
+                  <tr>
+                    <td style="padding: 14px 0; border-bottom: 1px solid #EDF2F7; vertical-align: top;">
+                      <table cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td style="width: 52px; padding-right: 12px; vertical-align: top;">
+                            <img src="{{ item.image_url or 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=100&auto=format&fit=crop&q=60' }}" alt="{{ item.title }}" width="48" height="48" style="object-fit: contain; border: 1px solid #E2E8F0; border-radius: 4px; display: block;">
+                          </td>
+                          <td style="vertical-align: top;">
+                            <div style="font-size: 12px; font-weight: 700; color: #112629; line-height: 1.35; margin-bottom: 3px;">
+                              {{ item.title }}
+                            </div>
+                            <div style="font-size: 11px; font-weight: 600; color: #718096;">
+                              {{ code_label }}: <span style="font-weight: 700; color: #19454B;">{{ item.eq_code or item.zoro_code }}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td align="right" style="padding: 14px 10px; border-bottom: 1px solid #EDF2F7; vertical-align: top; font-size: 12px; font-weight: 600; color: #2D3748;">
+                      ${{ "%.2f"|format(item.unit_price) }}
+                    </td>
+                    <td align="center" style="padding: 14px 10px; border-bottom: 1px solid #EDF2F7; vertical-align: top; font-size: 12px; font-weight: 700; color: #112629;">
+                      {{ item.quantity }}
+                    </td>
+                    <td align="right" style="padding: 14px 0; border-bottom: 1px solid #EDF2F7; vertical-align: top; font-size: 12px; font-weight: 800; color: #19454B;">
+                      ${{ "%.2f"|format(item.line_total) }}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+
+              <!-- TOTALS SUMMARY -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top: 14px;">
+                <tr>
+                  <td style="width: 50%;"></td>
+                  <td style="width: 50%;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="font-size: 12px; line-height: 1.8;">
+                      <tr>
+                        <td style="color: #4A5568; font-weight: 600;">Subtotal</td>
+                        <td align="right" style="font-weight: 600; color: #112629;">{{ subtotal_formatted }}</td>
+                      </tr>
+                      <tr>
+                        <td style="color: #4A5568; font-weight: 600;">Shipping</td>
+                        <td align="right" style="font-weight: 700; color: #19454B;">{{ shipping_formatted }}</td>
+                      </tr>
+                      <tr>
+                        <td style="color: #4A5568; font-weight: 600;">Tax</td>
+                        <td align="right" style="font-weight: 600; color: #112629;">{{ tax_formatted }}</td>
+                      </tr>
+                      <tr style="border-top: 2px solid #19454B;">
+                        <td style="font-size: 14px; font-weight: 900; color: #19454B; padding-top: 6px;">Order Total</td>
+                        <td align="right" style="font-size: 16px; font-weight: 900; color: #19454B; padding-top: 6px;">{{ total_formatted }}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 7. B2B TAX EXEMPT CALLOUT BANNER -->
+          <tr>
+            <td style="padding: 0 28px 24px 28px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F8FAFB; border: 1px solid #D1DDE0; border-radius: 6px; padding: 16px 20px;">
+                <tr>
+                  <td style="width: 50px; vertical-align: middle; padding-right: 14px;">
+                    <div style="width: 44px; height: 44px; background-color: #EEF5F6; border: 1px solid #D1DDE0; border-radius: 6px; text-align: center; line-height: 44px; font-size: 22px;">
+                      🏢
+                    </div>
+                  </td>
+                  <td style="vertical-align: middle;">
+                    <div style="font-size: 14px; font-weight: 800; color: #19454B; margin-bottom: 2px;">
+                      Is your business tax exempt?
+                    </div>
+                    <div style="font-size: 11px; color: #4A5568; line-height: 1.4;">
+                      Shop tax-free with our self-service Tax-Exempt Program.
+                    </div>
+                  </td>
+                  <td align="right" style="vertical-align: middle;">
+                    <a href="{{ site_url }}/account?tab=tax-exempt" class="btn-outline" style="display: inline-block; border: 1.5px solid #19454B; color: #19454B; font-size: 11px; font-weight: 800; padding: 7px 14px; border-radius: 4px; text-decoration: none; white-space: nowrap;">
+                      Add Tax Exemption
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 8. RECOMMENDED PRODUCTS (4 REAL CATALOG PRODUCT CARDS) -->
+          <tr>
+            <td style="padding: 0 28px 24px 28px;">
+              <div style="font-size: 15px; font-weight: 800; color: #112629; margin-bottom: 12px; padding-bottom: 4px; border-bottom: 2px solid #19454B;">
+                Recommended Products
+              </div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <!-- Card 1: 3M Painter's Blue Tape -->
+                  <td style="width: 25%; vertical-align: top; padding: 0 4px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #E2E8F0; border-radius: 6px; background-color: #FFFFFF; padding: 8px;">
+                      <tr>
+                        <td align="center" style="height: 90px; vertical-align: middle;">
+                          <img src="https://www.zoro.com/static/cms/product/full/0ede73d3-04b8-46eb-bfe3-7b12fc9b6706.jpeg" alt="3M Painter's Tape" width="80" height="80" style="object-fit: contain; display: block; margin: 0 auto; border: 0;">
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding-top: 6px;">
+                          <div style="font-size: 10px; font-weight: 800; color: #718096; text-transform: uppercase;">3M</div>
+                          <div style="font-size: 11px; font-weight: 700; color: #112629; height: 32px; overflow: hidden; margin: 2px 0; line-height: 1.3;">Painter's Tape, Blue, 60 yd</div>
+                          <div style="font-size: 12px; font-weight: 800; color: #19454B;">$4.99</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+
+                  <!-- Card 2: 3M Heavy Duty Duct Tape -->
+                  <td style="width: 25%; vertical-align: top; padding: 0 4px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #E2E8F0; border-radius: 6px; background-color: #FFFFFF; padding: 8px;">
+                      <tr>
+                        <td align="center" style="height: 90px; vertical-align: middle;">
+                          <img src="https://www.zoro.com/static/cms/product/full/Z_t4v_hcpEx_.JPG" alt="3M Duct Tape" width="80" height="80" style="object-fit: contain; display: block; margin: 0 auto; border: 0;">
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding-top: 6px;">
+                          <div style="font-size: 10px; font-weight: 800; color: #718096; text-transform: uppercase;">3M</div>
+                          <div style="font-size: 11px; font-weight: 700; color: #112629; height: 32px; overflow: hidden; margin: 2px 0; line-height: 1.3;">Heavy Duty Duct Tape, Black</div>
+                          <div style="font-size: 12px; font-weight: 800; color: #19454B;">$17.25</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+
+                  <!-- Card 3: Return Air Grille -->
+                  <td style="width: 25%; vertical-align: top; padding: 0 4px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #E2E8F0; border-radius: 6px; background-color: #FFFFFF; padding: 8px;">
+                      <tr>
+                        <td align="center" style="height: 90px; vertical-align: middle;">
+                          <img src="https://www.zoro.com/static/cms/product/full/Z15GFufo5oy.JPG" alt="Return Air Grille" width="80" height="80" style="object-fit: contain; display: block; margin: 0 auto; border: 0;">
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding-top: 6px;">
+                          <div style="font-size: 10px; font-weight: 800; color: #718096; text-transform: uppercase;">EKUIPT Select</div>
+                          <div style="font-size: 11px; font-weight: 700; color: #112629; height: 32px; overflow: hidden; margin: 2px 0; line-height: 1.3;">Return Air Grille 14x14 White</div>
+                          <div style="font-size: 12px; font-weight: 800; color: #19454B;">$28.59</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+
+                  <!-- Card 4: 6x6x6 Shipping Box -->
+                  <td style="width: 25%; vertical-align: top; padding: 0 4px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border: 1px solid #E2E8F0; border-radius: 6px; background-color: #FFFFFF; padding: 8px;">
+                      <tr>
+                        <td align="center" style="height: 90px; vertical-align: middle;">
+                          <img src="https://www.zoro.com/static/cms/product/full/Z_p9t-qcpEx-.JPG" alt="Shipping Box" width="80" height="80" style="object-fit: contain; display: block; margin: 0 auto; border: 0;">
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding-top: 6px;">
+                          <div style="font-size: 10px; font-weight: 800; color: #718096; text-transform: uppercase;">EKUIPT Select</div>
+                          <div style="font-size: 11px; font-weight: 700; color: #112629; height: 32px; overflow: hidden; margin: 2px 0; line-height: 1.3;">6x6x6 Shipping Box 32 ECT</div>
+                          <div style="font-size: 12px; font-weight: 800; color: #19454B;">$0.49</div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 9. VALUE PROPOSITIONS -->
+          <tr>
+            <td style="padding: 24px 28px 28px 28px; background-color: #F8FAFB; border-top: 1px solid #E2E8F0;">
+              <div style="text-align: center; font-size: 14px; font-weight: 900; color: #19454B; margin-bottom: 16px;">
+                Here's why customers like you choose us:
+              </div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="width: 33.33%; padding: 0 6px; vertical-align: top;">
+                    <div style="font-size: 22px; margin-bottom: 4px;">⚡</div>
+                    <div style="font-size: 12px; font-weight: 800; color: #19454B; margin-bottom: 2px;">Fast delivery</div>
+                    <div style="font-size: 10px; font-weight: 500; color: #718096; line-height: 1.35; margin-bottom: 4px;">Most orders delivered in 1-2 business days.</div>
+                    <a href="{{ site_url }}/shipping" style="font-size: 10px; font-weight: 700; color: #19454B; text-decoration: underline;">Learn More</a>
+                  </td>
+                  <td align="center" style="width: 33.33%; padding: 0 6px; vertical-align: top;">
+                    <div style="font-size: 22px; margin-bottom: 4px;">💲</div>
+                    <div style="font-size: 12px; font-weight: 800; color: #19454B; margin-bottom: 2px;">Great prices</div>
+                    <div style="font-size: 10px; font-weight: 500; color: #718096; line-height: 1.35; margin-bottom: 4px;">Spend less on the products you use every day.</div>
+                    <a href="{{ site_url }}/search" style="font-size: 10px; font-weight: 700; color: #19454B; text-decoration: underline;">Shop Now</a>
+                  </td>
+                  <td align="center" style="width: 33.33%; padding: 0 6px; vertical-align: top;">
+                    <div style="font-size: 22px; margin-bottom: 4px;">🚚</div>
+                    <div style="font-size: 12px; font-weight: 800; color: #19454B; margin-bottom: 2px;">Free shipping</div>
+                    <div style="font-size: 10px; font-weight: 500; color: #718096; line-height: 1.35; margin-bottom: 4px;">On orders $50+ when you sign in.</div>
+                    <a href="{{ site_url }}/shipping" style="font-size: 10px; font-weight: 700; color: #19454B; text-decoration: underline;">Learn More</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 10. FOOTER -->
+          <tr>
+            <td align="center" style="background-color: #19454B; color: #FFFFFF; padding: 24px; font-size: 11px;">
+              <div style="font-size: 12px; font-weight: 700; margin-bottom: 6px;">Follow Us</div>
+              <div style="margin-bottom: 12px; font-size: 14px; letter-spacing: 4px;">
+                📷 🎥 💼 📘
+              </div>
+              <div style="margin-bottom: 6px;">
+                <a href="{{ site_url }}/contact" style="color: #FFFFFF; text-decoration: underline; font-weight: 700;">Contact Us</a> | Phone: (855) 666-4649 | Fax: (855) 666-4650
+              </div>
+              <div style="color: #A3B8BA; font-size: 10px; line-height: 1.4;">
+                500 W Madison St, Suite 4000 | Chicago, IL 60661 | US<br>
+                &copy; {{ year }} {{ store_name }} Industrial Supply, Inc. All rights reserved.
+              </div>
+            </td>
+          </tr>
+
+          <!-- 11. DISCLAIMER -->
+          <tr>
+            <td style="background-color: #F8FAFB; color: #718096; padding: 14px 24px; font-size: 9px; line-height: 1.4; border-top: 1px solid #E2E8F0;">
+              <strong>* EXCLUSIONS AND DISCLAIMERS</strong><br>
+              Delivery within 2 business days on most orders within the contiguous U.S. when placed by 4pm local time Monday-Friday. Some restrictions apply. Prices listed are subject to correction without notice.<br><br>
+              <a href="{{ site_url }}/terms" style="color: #718096;">Terms & Conditions</a> | <a href="{{ site_url }}/privacy" style="color: #718096;">Privacy Policy</a>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

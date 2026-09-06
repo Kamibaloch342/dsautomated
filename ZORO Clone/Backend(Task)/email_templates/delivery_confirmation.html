@@ -1,0 +1,247 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Delivered: Your {{ store_name }} Order #{{ order_number or ('EQ' ~ order.order_id) }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style type="text/css">
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
+    * { font-family: 'Montserrat', Helvetica, Arial, sans-serif !important; }
+    body {
+      margin: 0; padding: 0; background-color: #EAEFF0;
+      font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #112629; line-height: 1.4;
+    }
+    table { border-collapse: collapse; mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    td { font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    img { border: 0; height: auto; outline: none; text-decoration: none; }
+    a { color: #19454B; text-decoration: none; }
+    .btn-green:hover { background-color: #156637 !important; }
+    .btn-outline:hover { background-color: #FAF3EE !important; }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #EAEFF0; font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #EAEFF0; padding: 20px 0 40px 0;">
+    <tr>
+      <td align="center">
+        <!-- 620px CONTAINER -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 620px; background-color: #FFFFFF; border: 1px solid #D1DDE0; box-shadow: 0 4px 20px rgba(0,0,0,0.06);">
+          
+          <!-- 1. TOP NOTICE BAR -->
+          <tr>
+            <td align="center" style="background-color: #1F8A4D; color: #FFFFFF; font-size: 11px; font-weight: 700; padding: 10px 16px; letter-spacing: 0.5px; text-transform: uppercase;">
+              ✓ Package Delivered Successfully &bull; Invoice Attached
+            </td>
+          </tr>
+
+          <!-- 2. BRAND HEADER -->
+          <tr>
+            <td style="padding: 18px 24px 14px 24px; border-bottom: 1px solid #E2E8F0;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <table cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td style="vertical-align: middle; padding-right: 10px;">
+                          <!-- Crisp Inline Vector Logo -->
+                          <svg width="34" height="34" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/1999/xhtml">
+                            <path d="M24 3L42 13.5V34.5L24 45L6 34.5V13.5L24 3Z" fill="#19454B" />
+                            <path d="M24 5.5L39 14.2L24 23L9 14.2L24 5.5Z" fill="#964C14" />
+                            <path d="M24 23L39 14.2V33L24 42V23Z" fill="#0E282C" opacity="0.95" />
+                            <path d="M9 14.2L24 23V42L9 33V14.2Z" fill="#1E545B" />
+                            <circle cx="24" cy="23" r="5.5" fill="#FAF3EE" />
+                            <circle cx="24" cy="23" r="2.8" fill="#964C14" />
+                          </svg>
+                        </td>
+                        <td style="vertical-align: middle;">
+                          <div style="font-size: 26px; font-weight: 900; color: #19454B; letter-spacing: -0.5px; line-height: 1;">
+                            EKUIP<span style="color: #964C14;">T</span>
+                          </div>
+                          <div style="font-size: 10px; font-weight: 600; color: #586B6E; letter-spacing: 0.3px; margin-top: 2px;">
+                            Industrial Supply &bull; Tools &bull; Equipment
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                  <td align="right" style="vertical-align: middle;">
+                    <span style="display: inline-block; background-color: #EEF8F2; color: #1F8A4D; font-size: 12px; font-weight: 800; padding: 6px 14px; border-radius: 20px; border: 1px solid #D2EBD9;">
+                      ORDER #{{ order_number or ('EQ' ~ order.order_id) }}
+                    </span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 3. HERO DELIVERED BANNER -->
+          <tr>
+            <td align="center" style="padding: 36px 24px 28px 24px; text-align: center; background-color: #EEF8F2; border-bottom: 1px solid #D2EBD9;">
+              <div style="width: 52px; height: 52px; background-color: #1F8A4D; color: #FFFFFF; border-radius: 50%; line-height: 52px; font-size: 26px; font-weight: bold; margin: 0 auto 12px auto; box-shadow: 0 4px 16px rgba(31,138,77,0.25);">
+                ✓
+              </div>
+              <div style="font-size: 26px; font-weight: 900; color: #112629; margin-bottom: 6px; letter-spacing: -0.4px;">
+                Your package has been delivered!
+              </div>
+              <div style="font-size: 13px; font-weight: 500; color: #4A5568; line-height: 1.4; max-width: 480px; margin: 0 auto 24px auto;">
+                Delivered to <strong style="color: #112629;">{{ ship_name or (order.ship_first_name ~ ' ' ~ order.ship_last_name) }}</strong> at <strong style="color: #112629;">{{ ship_address1 or order.ship_address1 }}</strong>.
+              </div>
+
+              <!-- 3-STEP PROGRESS STEPPER (All 3 complete) -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 440px; margin: 0 auto;">
+                <tr>
+                  <!-- Step 1: Confirmed -->
+                  <td align="center" style="width: 32px;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #1F8A4D; color: #FFFFFF; font-size: 13px; font-weight: 800; line-height: 32px; text-align: center;">
+                      ✓
+                    </div>
+                  </td>
+                  <td style="padding: 0 4px; vertical-align: middle;">
+                    <div style="height: 4px; background-color: #1F8A4D; border-radius: 2px;"></div>
+                  </td>
+                  <!-- Step 2: Shipped -->
+                  <td align="center" style="width: 32px;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background-color: #1F8A4D; color: #FFFFFF; font-size: 13px; font-weight: 800; line-height: 32px; text-align: center;">
+                      ✓
+                    </div>
+                  </td>
+                  <td style="padding: 0 4px; vertical-align: middle;">
+                    <div style="height: 4px; background-color: #1F8A4D; border-radius: 2px;"></div>
+                  </td>
+                  <!-- Step 3: Delivered (ACTIVE/DONE) -->
+                  <td align="center" style="width: 36px;">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; background-color: #1F8A4D; color: #FFFFFF; font-size: 14px; font-weight: 900; line-height: 36px; text-align: center; box-shadow: 0 0 12px rgba(31,138,77,0.35);">
+                      ✓
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-top: 6px;">
+                    <div style="font-size: 11px; font-weight: 700; color: #1F8A4D;">Ordered</div>
+                  </td>
+                  <td></td>
+                  <td align="center" style="padding-top: 6px;">
+                    <div style="font-size: 11px; font-weight: 700; color: #1F8A4D;">Shipped</div>
+                  </td>
+                  <td></td>
+                  <td align="center" style="padding-top: 6px;">
+                    <div style="font-size: 11px; font-weight: 800; color: #1F8A4D;">Delivered</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 4. DELIVERY INFO CARD -->
+          <tr>
+            <td style="padding: 24px 28px 18px 28px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F8FAFB; border: 1px solid #D1DDE0; border-radius: 8px; padding: 16px 20px;">
+                <tr>
+                  <td style="vertical-align: top; font-size: 12px; color: #4A5568; line-height: 1.6;">
+                    <strong style="color: #112629;">Carrier:</strong> {{ order.carrier or 'FedEx Ground' }}<br>
+                    <strong style="color: #112629;">Tracking #:</strong> <span style="font-weight: 700; color: #19454B;">{{ order.tracking_number or 'FEDEX-99882736412' }}</span>
+                  </td>
+                  <td align="right" style="vertical-align: top; font-size: 12px; color: #4A5568; line-height: 1.6;">
+                    <strong style="color: #112629;">Delivered On:</strong> {{ date_str }}<br>
+                    <strong style="color: #112629;">Drop-off:</strong> Front Door / Receiving Dock
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 5. DELIVERED ITEMS LIST -->
+          <tr>
+            <td style="padding: 0 28px 24px 28px;">
+              <div style="font-size: 16px; font-weight: 900; color: #112629; margin-bottom: 10px; padding-bottom: 4px; border-bottom: 2px solid #19454B;">
+                Delivered Items ({{ order.items|length }} item{% if order.items|length != 1 %}s{% endif %})
+              </div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tbody>
+                  {% for item in items or order.items %}
+                  <tr>
+                    <td style="padding: 14px 0; border-bottom: 1px solid #EDF2F7; vertical-align: top;">
+                      <table cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          {% if item.image_url %}
+                          <td style="width: 52px; padding-right: 12px; vertical-align: top;">
+                            <img src="{{ item.image_url }}" alt="{{ item.title }}" width="48" height="48" style="object-fit: contain; border: 1px solid #E2E8F0; border-radius: 4px; display: block; background-color: #FFFFFF;">
+                          </td>
+                          {% endif %}
+                          <td style="vertical-align: top;">
+                            <div style="font-size: 12px; font-weight: 700; color: #112629; line-height: 1.35; margin-bottom: 3px;">
+                              {{ item.title }}
+                            </div>
+                            <div style="font-size: 11px; font-weight: 600; color: #718096;">
+                              {{ code_label }}: <span style="font-weight: 700; color: #19454B;">{{ item.eq_code or item.zoro_code }}</span>
+                            </div>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td align="center" style="padding: 14px 10px; border-bottom: 1px solid #EDF2F7; vertical-align: top; width: 60px;">
+                      <span style="display: inline-block; background-color: #F4F8F9; color: #112629; font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 4px; border: 1px solid #E2E8F0;">
+                        Qty {{ item.quantity }}
+                      </span>
+                    </td>
+                    <td align="right" style="padding: 14px 0; border-bottom: 1px solid #EDF2F7; vertical-align: top; width: 70px; font-size: 12px; font-weight: 800; color: #19454B;">
+                      ${{ "%.2f"|format(item.line_total if item.line_total else (item.unit_price * item.quantity)) }}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+
+              <!-- 6. ATTACHED PDF INVOICE CALLOUT BOX -->
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #FAF3EE; border: 1px solid #F0DFD3; border-radius: 6px; padding: 14px 18px; margin-top: 18px;">
+                <tr>
+                  <td style="width: 32px; vertical-align: middle; padding-right: 10px; font-size: 22px;">
+                    📄
+                  </td>
+                  <td style="vertical-align: middle; font-size: 12px; color: #964C14; line-height: 1.4;">
+                    <strong>Official Tax Invoice Attached:</strong><br>
+                    Your commercial PDF tax invoice (<code>EKUIPT-Invoice-{{ order_number }}.pdf</code>) is attached to this email and saved in your account.
+                  </td>
+                </tr>
+              </table>
+
+              <!-- 7. ACTIONS -->
+              <table cellpadding="0" cellspacing="0" border="0" style="margin: 24px auto 0 auto;">
+                <tr>
+                  <td align="center" style="padding: 0 6px;">
+                    <a href="{{ tracking_url }}" class="btn-green" style="display: inline-block; background-color: #19454B; color: #FFFFFF !important; font-size: 12px; font-weight: 800; text-decoration: none; padding: 12px 24px; border-radius: 4px; letter-spacing: 0.5px; text-transform: uppercase;">
+                      View Order Receipt
+                    </a>
+                  </td>
+                  <td align="center" style="padding: 0 6px;">
+                    <a href="{{ site_url }}/returns?order_id={{ order.order_id }}" class="btn-outline" style="display: inline-block; background-color: #FFFFFF; color: #964C14 !important; font-size: 12px; font-weight: 800; text-decoration: none; padding: 11px 24px; border-radius: 4px; border: 1.5px solid #964C14; letter-spacing: 0.5px; text-transform: uppercase;">
+                      Start a Return / RMA
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- 8. FOOTER -->
+          <tr>
+            <td align="center" style="background-color: #19454B; color: #FFFFFF; padding: 24px; font-size: 11px;">
+              <div style="margin-bottom: 6px;">
+                Need help with this delivery? <a href="{{ site_url }}/contact" style="color: #FFFFFF; text-decoration: underline; font-weight: 700;">Contact Support</a> &bull; (855) 666-4649
+              </div>
+              <div style="color: #A3B8BA; font-size: 10px; line-height: 1.4;">
+                500 W Madison St, Suite 4000 | Chicago, IL 60661 | US<br>
+                &copy; {{ year }} {{ store_name }} Industrial Supply, Inc. All rights reserved.
+              </div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

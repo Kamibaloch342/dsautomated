@@ -1,0 +1,126 @@
+/* ════════════════════════════════════════════════════════════════
+   Bulk order pad — page-specific styles.
+   Extends the shared design system in src/index.css.
+   ════════════════════════════════════════════════════════════════ */
+
+.bulk-steps { margin: 2px 0 22px; flex-wrap: wrap; row-gap: 10px; }
+
+/* card head: title + toolbar */
+.bulk-card-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.bulk-card-head .z-card__title { margin-bottom: 0; }
+.bulk-toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── spreadsheet-style row grid ─────────────────────────────────── */
+
+.bulk-grid-wrap {
+  overflow: auto; max-height: 560px;
+  border: 1px solid var(--z-line-soft); border-radius: var(--z-radius);
+}
+.bulk-grid {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-size: 13px; min-width: 1240px;
+}
+.bulk-grid thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--z-bg-soft);
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--z-gray); text-align: left; white-space: nowrap;
+  padding: 9px 8px; border-bottom: 2px solid var(--z-line-soft);
+}
+.bulk-grid td {
+  padding: 5px 5px; border-bottom: 1px solid var(--z-line-soft);
+  vertical-align: middle; background: #fff;
+}
+.bulk-grid tr.is-even td { background: var(--z-bg-soft); }
+.bulk-grid tr.is-error td { background: var(--z-error-soft); }
+
+.bulk-grid__num { width: 34px; text-align: center; color: var(--z-gray-light); font-size: 12px; }
+.bulk-grid__status { width: 36px; text-align: center; }
+.bulk-grid__status .ok { color: var(--z-success); display: inline-flex; vertical-align: middle; }
+.bulk-grid__status .bad { color: var(--z-error); display: inline-flex; vertical-align: middle; }
+
+/* compact cell inputs */
+.bulk-in {
+  width: 100%; height: 32px;
+  border: 1px solid var(--z-line); border-radius: 3px;
+  padding: 0 8px; font-size: 13px; color: var(--z-ink); background: #fff;
+}
+.bulk-in:focus {
+  outline: none; border-color: var(--z-link);
+  box-shadow: 0 0 0 2px rgba(32, 113, 167, 0.18);
+  position: relative; z-index: 1;
+}
+.bulk-in--sku { font-weight: 500; }
+.bulk-in--qty { width: 58px; text-align: center; }
+.bulk-in--state { width: 52px; text-align: center; text-transform: uppercase; }
+
+/* validated product preview */
+.bulk-prod { display: flex; align-items: center; gap: 8px; min-width: 210px; }
+.bulk-prod img {
+  width: 34px; height: 34px; object-fit: contain; flex-shrink: 0;
+  border: 1px solid var(--z-line-soft); border-radius: 3px; background: #fff;
+}
+.bulk-prod__title {
+  font-size: 12.5px; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.bulk-prod__meta { font-size: 12px; color: var(--z-gray); }
+.bulk-prod__meta b { color: var(--z-ink); font-weight: 700; }
+.bulk-prod__empty { font-size: 12px; color: var(--z-gray-light); }
+
+.bulk-remove {
+  background: none; border: none; color: var(--z-gray-light);
+  display: inline-flex; padding: 4px; border-radius: 3px;
+}
+.bulk-remove:hover { color: var(--z-error); background: var(--z-error-soft); }
+
+/* per-row error message under the row */
+.bulk-errmsg td {
+  background: var(--z-error-soft) !important; color: #9c1f1f;
+  font-size: 12.5px; padding: 4px 10px 7px 44px;
+  border-bottom: 1px solid #f3c1c1;
+}
+.bulk-errmsg svg { vertical-align: -2px; margin-right: 5px; }
+
+/* ── summary sidebar ────────────────────────────────────────────── */
+
+.bulk-summary__label {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 13px; font-weight: 700; margin: 4px 0 10px;
+}
+
+.bulk-pay { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.pay-opt {
+  display: flex; gap: 10px; align-items: flex-start;
+  border: 1px solid var(--z-line); border-radius: var(--z-radius);
+  padding: 10px 12px; cursor: pointer; background: #fff;
+}
+.pay-opt input { accent-color: var(--z-blue); margin-top: 3px; flex-shrink: 0; }
+.pay-opt.is-on { border-color: var(--z-blue); background: var(--z-blue-soft); }
+.pay-opt.is-disabled { opacity: 0.62; cursor: not-allowed; }
+.pay-opt__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pay-opt__text .t { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 7px; }
+.pay-opt__text .t svg { color: var(--z-blue); flex-shrink: 0; }
+.pay-opt__text .d { font-size: 12.5px; color: var(--z-gray); line-height: 1.45; }
+
+/* ── notes & results ────────────────────────────────────────────── */
+
+.bulk-note {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: 13px; color: var(--z-gray); line-height: 1.55; margin-top: 14px;
+}
+.bulk-note svg { flex-shrink: 0; margin-top: 2px; color: var(--z-blue); }
+
+.bulk-comms { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--z-gray); margin: 10px 0 16px; }
+.bulk-comms span { display: inline-flex; align-items: center; gap: 7px; }
+.bulk-comms svg { color: var(--z-blue); }
+
+.bulk-results-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+
+@media (max-width: 768px) {
+  .bulk-grid-wrap { max-height: 440px; }
+  .bulk-steps .steps__item { font-size: 12.5px; }
+}

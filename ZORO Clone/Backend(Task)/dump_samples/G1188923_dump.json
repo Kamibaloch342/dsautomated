@@ -1,0 +1,405 @@
+{
+  "vuex-shim": {},
+  "availability": {
+    "isUserStateLoading": false,
+    "isUserZipCodeLoading": false,
+    "currentUserState": null,
+    "currentUserZipCode": null,
+    "userZipManuallySet": false
+  },
+  "notifyMeFlyout": {
+    "isOpen": false
+  },
+  "recommendationsFlyout": {
+    "isOpen": false,
+    "zone": null,
+    "containerId": ""
+  },
+  "builder": {
+    "currentModels": [],
+    "cache": {},
+    "loading": false,
+    "cmsError": false
+  },
+  "globalAlert": {
+    "globalAlert": null,
+    "error": false,
+    "loaded": false
+  },
+  "typeaheadStore": {
+    "typeaheadCache": {},
+    "typeaheadRowsCache": {}
+  },
+  "recommendationsStore": {
+    "categoryRecommendationsCache": {},
+    "productRecommendationsCache": {},
+    "categoryHeaders": null
+  },
+  "dealsStore": {
+    "dealsState": [],
+    "exclusiveOffersState": [],
+    "exclusiveRewardsState": [],
+    "busy": false,
+    "lastFetchedAt": null,
+    "exclusiveCardSeenMap": {}
+  },
+  "loyaltyMembershipStore": {
+    "membership": null,
+    "loadStatus": "initial",
+    "lastFetchedAt": null
+  },
+  "messagingRibbon": {
+    "content": [
+      {
+        "message": "Low prices on everyday needs.",
+        "callToAction": {
+          "text": "Shop Zoro Select",
+          "urlPath": "/b/ZORO%20SELECT/",
+          "analytics": {
+            "eventLabel": "Zoro Select"
+          }
+        }
+      },
+      {
+        "message": "Don't miss these limited time offers.",
+        "callToAction": {
+          "text": "Shop All Deals",
+          "urlPath": "/coupons-promo-codes/",
+          "analytics": {
+            "eventLabel": "Shop All Deals"
+          }
+        }
+      },
+      {
+        "message": "Get 30 days to pay with Net 30.",
+        "callToAction": {
+          "text": "Apply Now",
+          "urlPath": "/net30/",
+          "analytics": {
+            "eventLabel": "Net 30"
+          }
+        }
+      }
+    ],
+    "theme": "white",
+    "error": false
+  },
+  "expectedDateStore": {
+    "state": {
+      "expectedDateCache": null,
+      "analyticsRequired": false,
+      "correlationId": null
+    }
+  },
+  "productStore": {
+    "productDetailsCache": {
+      "G1188923": {
+        "zoroNo": "G1188923",
+        "title": "Cold Shrink Tube, Medium Wall, 2:1 I.D. Shrink Ratio, 0.95 in I.D. Before Shrinking, Gray, 3.19 in",
+        "erpId": "109266",
+        "mfrNo": "8447-3.2",
+        "brand": "3M",
+        "slug": "3m-cold-shrink-tube-medium-wall-21-id-shrink-ratio-095-in-id-before-shrinking-gray-319-in-8447-32",
+        "upc": "00054007094876",
+        "SEOTitleTag": "",
+        "SEOMetaDescription": "",
+        "primaryCategoryPaths": [
+          {
+            "1": "23",
+            "2": "Electrical Supplies",
+            "3": "electrical-supplies"
+          },
+          {
+            "1": "4529",
+            "2": "Cable Management & Conduit",
+            "3": "cable-management-conduit"
+          },
+          {
+            "1": "102308",
+            "2": "Cable Protection and Sleeving",
+            "3": "cable-protection-and-sleeving"
+          },
+          {
+            "1": "4893",
+            "2": "Shrink Tubing",
+            "3": "shrink-tubing"
+          }
+        ],
+        "price": 28.25,
+        "originalPrice": null,
+        "priceUnit": "EA",
+        "minRetailQty": 1,
+        "packageQty": 1,
+        "description": "Cold Shrink Silicon Insulator, Medium Wall, Material Silicone, Flexible, Flame Retardant No, Adhesive Lined No, Shrink Ratio 2:1, Use With Wire Size 1/0 AWG to 3/0 AWG, I.D. Before Shrinking 0.95 in, I.D. After Shrinking 0.48 in, Wall Thickness After Shrinking 0.11 in, Length 3.19 in, Shrink Tubing Properties UV Light-Resistant, Color Gray, Temp. Range -67 Degrees to 500 Degrees F, Package Style Individual Pieces, Dielectric Strength 1,000 V, Max. Temp. Rating 500 Degrees F",
+        "attributes": [
+          {
+            "name": "Item",
+            "value": "Cold Shrink Tube"
+          },
+          {
+            "name": "Shrink Ratio",
+            "value": "2:1"
+          },
+          {
+            "name": "Wall Type",
+            "value": "Medium Wall"
+          },
+          {
+            "name": "Shrink Tubing I.D. Before Shrinking",
+            "value": "0.95 in"
+          },
+          {
+            "name": "Shrink Tubing I.D. After Shrinking",
+            "value": "0.488 in"
+          },
+          {
+            "name": "Material",
+            "value": "Silicone"
+          },
+          {
+            "name": "Color",
+            "value": "Gray"
+          },
+          {
+            "name": "Length",
+            "value": "3.19 in"
+          },
+          {
+            "name": "Use with Wire Size",
+            "value": "1/0 to 3/0 AWG"
+          },
+          {
+            "name": "Temp. Range",
+            "value": "-67\u00c2\u00b0 to 500\u00c2\u00b0F"
+          },
+          {
+            "name": "Min. Shrink Temp.",
+            "value": "None"
+          },
+          {
+            "name": "Max. Voltage",
+            "value": "1,000 V"
+          },
+          {
+            "name": "Shrink Tubing Material Type",
+            "value": "Flexible"
+          },
+          {
+            "name": "Standards",
+            "value": "ANSI C119.1"
+          },
+          {
+            "name": "Features",
+            "value": "Requires No Tools or Heat, Moisture-Tight Seal, Suitable for Direct Buried Applications"
+          },
+          {
+            "name": "Flame Retardant",
+            "value": "No"
+          },
+          {
+            "name": "Adhesive Lined",
+            "value": "No"
+          },
+          {
+            "name": "Tubing Wall Type",
+            "value": "Medium Wall"
+          },
+          {
+            "name": "Use With Wire Size",
+            "value": "1/0 AWG to 3/0 AWG"
+          },
+          {
+            "name": "Wall Thickness After Shrinking",
+            "value": "0.11 in"
+          },
+          {
+            "name": "Max. Temp. Rating",
+            "value": "500  Degrees F"
+          },
+          {
+            "name": "Min. Temp. Rating",
+            "value": "-67  Degrees F"
+          },
+          {
+            "name": "Dielectric Strength",
+            "value": "1,000 V"
+          },
+          {
+            "name": "Package Style",
+            "value": "Individual Pieces"
+          },
+          {
+            "name": "Shrink Tubing Properties",
+            "value": "UV Light-Resistant"
+          },
+          {
+            "name": "Number of Conductors",
+            "value": "1"
+          },
+          {
+            "name": "Conductor Material",
+            "value": "Aluminum, Copper"
+          },
+          {
+            "name": "Model",
+            "value": "Cold-shrink"
+          },
+          {
+            "name": "Voltage",
+            "value": "1 kV"
+          },
+          {
+            "name": "Cable Type",
+            "value": "Power Cable"
+          },
+          {
+            "name": "I.D. After Shrinking",
+            "value": "0.48 in"
+          },
+          {
+            "name": "I.D. Before Shrinking",
+            "value": "0.95 in"
+          },
+          {
+            "name": "Shrink Tube Material Type",
+            "value": "Flexible"
+          },
+          {
+            "name": "Country of Origin (subject to change)",
+            "value": "United States"
+          },
+          {
+            "name": "Package Quantity",
+            "value": "1"
+          }
+        ],
+        "variants": {
+          "attributes": [
+            "Length"
+          ],
+          "label": "3m_4893_429995960e",
+          "products": [
+            {
+              "zoroNo": "G1188923",
+              "title": "Cold Shrink Tube, Medium Wall, 2:1 I.D. Shrink Ratio, 0.95 in I.D. Before Shrinking, Gray, 3.19 in",
+              "erpId": "109266",
+              "mfrNo": "8447-3.2",
+              "brand": "3M",
+              "slug": "3m-cold-shrink-tube-medium-wall-21-id-shrink-ratio-095-in-id-before-shrinking-gray-319-in-8447-32",
+              "price": 28.25,
+              "originalPrice": null,
+              "priceUnit": "EA",
+              "minRetailQty": 1,
+              "attributes": [
+                {
+                  "name": "Length",
+                  "value": "3.19 in"
+                }
+              ],
+              "media": [
+                {
+                  "name": "Z2LC5yfo5oy.JPG",
+                  "type": "image/jpeg"
+                }
+              ],
+              "orderChannel": "Default",
+              "isForcedOutOfStock": false
+            },
+            {
+              "zoroNo": "G0836726",
+              "title": "Cold Shrink Tube, Medium Wall, 2:1 I.D. Shrink Ratio, 0.95 in I.D. Before Shrinking, Gray, 8 in",
+              "erpId": "77455",
+              "mfrNo": "8447-8",
+              "brand": "3M",
+              "slug": "3m-cold-shrink-tube-medium-wall-21-id-shrink-ratio-095-in-id-before-shrinking-gray-8-in-8447-8",
+              "price": 37.95,
+              "originalPrice": null,
+              "priceUnit": "EA",
+              "minRetailQty": 1,
+              "attributes": [
+                {
+                  "name": "Length",
+                  "value": "8 in"
+                }
+              ],
+              "media": [
+                {
+                  "name": "Z2LC5yfo5oy.JPG",
+                  "type": "image/jpeg"
+                }
+              ],
+              "orderChannel": "Default",
+              "isForcedOutOfStock": false
+            }
+          ]
+        },
+        "media": [
+          {
+            "name": "Z2LC5yfo5oy.JPG",
+            "type": "image/jpeg"
+          }
+        ],
+        "restrictedStates": [],
+        "isHazmat": false,
+        "isGraingerSKU": true,
+        "isCircleECompliant": false,
+        "salesStatus": "C3",
+        "isDropShipDirect": false,
+        "leadTime": 1,
+        "isExpeditable": true,
+        "orderChannel": "Default",
+        "isForcedOutOfStock": false,
+        "hasCommercialShippingRestriction": false,
+        "hasFitment": false,
+        "showDisclaimer": false,
+        "isLTL": false
+      }
+    }
+  },
+  "reviewSnippetStore": {
+    "state": {
+      "reviewSnippetCache": {}
+    }
+  },
+  "linkedProducts": {
+    "cache": {},
+    "currentItemPath": "",
+    "isError": false,
+    "map": 0
+  },
+  "TrendingGuides": {
+    "trendingGuides": {},
+    "error": false
+  },
+  "pageNotFoundStore": {
+    "url": ""
+  },
+  "groupMetadataStore": {
+    "groupMetadataCache": {},
+    "groupMetadataError": false
+  },
+  "sticky-atc": {
+    "state": {
+      "stickyVisible": false,
+      "stickyHeight": 0,
+      "atcHeight": 0,
+      "atcDisabled": false
+    }
+  },
+  "promoEligibilityStore": {
+    "busy": false,
+    "promoEligibilityState": {}
+  },
+  "experimentationStore": {
+    "state": {
+      "experimentationCache": {}
+    }
+  },
+  "taxExemption": {
+    "taxExemptionState": {
+      "rawCertificates": [],
+      "loadStatus": "initial",
+      "lastFetchedAtMs": null
+    }
+  }
+}

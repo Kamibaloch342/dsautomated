@@ -1,0 +1,24 @@
+{
+  "_comment": "SINGLE SOURCE OF TRUTH for account/token lists. Every script reads this via utils/accounts_config.py — when you add a new Amazon store, Gmail token, or Zoro inbox, edit ONLY this file. (Hardcoded per-file lists are what caused the 2026-07-01 duplicate-order incident.) earnings_inbox = where this store's 'Sold, ship now' emails land; zoro_preferred = the Zoro inboxes this store usually places from — live-Gmail lookups try archive -> preferred -> ALL inboxes, in that order.",
+  "accounts": {
+    "HOANK":   {"report_port": 9331, "fedex_port": 9332, "sc_port": 9331, "pd_key": "hoank",
+                "earnings_inbox": "qurtdis",
+                "zoro_preferred": ["salesmercentile1", "inhur_llc", "abecomllc02"]},
+    "Hathoro": {"report_port": 9333, "fedex_port": 9334, "sc_port": 9333, "pd_key": "hathoro",
+                "earnings_inbox": "abecomllc26",
+                "zoro_preferred": ["salesmercentile", "wrenchlyllc"]}
+  },
+  "gmail_tokens": ["qurtdis", "abecomllc26", "asad_amazon_us", "inhur_llc", "wrenchlyllc"],
+  "gmail_accounts": ["qurtdis", "abecomllc26", "asad_amazon_us", "inhur_llc", "wrenchlyllc", "abecomllc02"],
+  "zoro_accounts": ["salesmercentile", "salesmercentile1", "abecomllc26", "asad_amazon_us",
+                    "inhur_llc", "wrenchlyllc", "toolzsolutionsllc220", "qurtdis", "abecomllc02",
+                    "kamibaloch342", "kamran_va_342", "kamranwork342", "robstark771",
+                    "salestreendfitinc", "toolzsolutionsllc"],
+  "walmart": {"zoro_port": 9361, "profile_dir": "port_9361",
+              "sc_port": 9362, "sc_profile_dir": "port_9362"},
+  "fedex_api": {
+    "_comment": "Optional official FedEx Developer REST API keys (developer.fedex.com). When set, tracking uses instant REST API with 0% bot blocking.",
+    "client_id": "",
+    "client_secret": ""
+  }
+}

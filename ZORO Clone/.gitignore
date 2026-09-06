@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+
+# Python Virtual Environments & caches
+venv/
+venv*/
+Backend(Task)/.venv/
+Backend(Task)/venv/
+Backend(Task)/venv*/
+__pycache__/
+Backend(Task)/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Large raw database files (tracked via split parts catalog_enrichment.db.gz.part_*)
+Backend(Task)/combined_reports.db
+Backend(Task)/catalog_enrichment.db
+Backend(Task)/catalog_enrichment.db.gz
+Backend(Task)/catalog_index.db
+Backend(Task)/img_cache/
+Backend(Task)/zoro_test.html
+Backend(Task)/*.db-shm
+Backend(Task)/*.db-wal
+
+# Environment & credentials
+.env
+Backend(Task)/.env
+*.local
+.DS_Store
+*.log

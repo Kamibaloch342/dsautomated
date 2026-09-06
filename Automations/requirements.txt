@@ -1,0 +1,14 @@
+# Runtime dependencies for the Automations suite (launcher, placer, tracking,
+# coupons, dashboard, sync scripts). Installed by scripts/windows_bootstrap.py
+# on Windows and usable with plain `pip install -r requirements.txt` anywhere.
+pandas
+openpyxl
+selenium
+webdriver-manager
+requests
+pdfplumber
+tkcalendar
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client

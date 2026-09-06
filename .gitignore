@@ -1,0 +1,66 @@
+.aider*
+
+# ── Secrets — never commit ──────────────────────────────────────────
+**/All_Tokens/
+*token.json
+*token copy.json
+*Credentials.json
+gen-lang-client-*.json
+**/dashboard_password.txt
+**/dashboard_admin_password.txt
+**/seller_central_creds.json
+.env
+.env.*
+
+# ── Databases & data artifacts ──────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.db.bak*
+*.sqlite
+*.xlsx
+*.tsv
+*.zip
+**/TSV Files/
+download_metadata.json
+
+# ── Logs & run output ───────────────────────────────────────────────
+Final_Testing_Logs/
+Automations/data/
+Automations/engine/_dl_hoank/
+Automations/engine/_dl_hathoro/
+*.log
+*.heartbeat
+*.lock
+*.pid
+.tracker_*.lock
+
+# ── Browser profiles (Selenium/UC) ──────────────────────────────────
+.uc_profile*/
+.fedex_*profile/
+**/.uc_profile*/
+**/.fedex_*profile/
+
+# ── Python / system ─────────────────────────────────────────────────
+__pycache__/
+*.pyc
+.venv*/
+.DS_Store
+.claude/settings.local.json
+.claude/worktrees/
+
+# ── nested project artefacts ─────────────────────────────────────────
+*.gz.part_*
+**/catalog_*.db
+**/catalog_index.db
+Hathoro Website/
+Amazon_DS_Hunting/
+amazon_delete_modal.html
+page_source_tmp.html
+
+# virtualenvs / node_modules anywhere (ZORO Clone had two venvs tracked)
+**/venv/
+**/venv_mac/
+**/venv_*/
+**/.venv/
+**/node_modules/

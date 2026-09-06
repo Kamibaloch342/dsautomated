@@ -1,0 +1,23 @@
+version: "3.8"
+
+services:
+  equipt-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: equipt-production
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5001}:5001"
+    environment:
+      - PORT=5001
+      - FLASK_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-equipt-production-jwt-secret-key-64bits-secure-token}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - RESEND_FROM=${RESEND_FROM:-EQUIPT <onboarding@resend.dev>}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@equipt.dev}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin1234}
+      - SITE_URL=${SITE_URL:-http://localhost:5001}
+    volumes:
+      - ./data:/app/Backend(Task)/data
+      - ./zoro_clone.db:/app/Backend(Task)/zoro_clone.db

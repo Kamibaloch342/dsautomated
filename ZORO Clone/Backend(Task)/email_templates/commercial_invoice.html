@@ -1,0 +1,248 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{ store_name }} - Invoice {{ invoice_number }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style type="text/css">
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
+    * { font-family: 'Montserrat', Helvetica, Arial, sans-serif !important; }
+    body {
+      margin: 0; padding: 0; background-color: #FFFFFF;
+      font-family: 'Montserrat', Helvetica, Arial, sans-serif !important;
+      color: #112629; -webkit-font-smoothing: antialiased; font-size: 12px; line-height: 1.4;
+    }
+    .invoice-wrap { max-width: 780px; margin: 0 auto; padding: 32px 36px; }
+    .logo-word { font-size: 26px; font-weight: 900; color: #19454B; letter-spacing: -0.5px; text-decoration: none; }
+    .logo-accent { color: #D4773B; }
+    .logo-tag { font-size: 11px; font-weight: 600; color: #586B6E; margin-top: 2px; }
+    .pay-callout {
+      border: 2px solid #112629; border-radius: 4px; padding: 10px 14px;
+      font-size: 11px; color: #112629; max-width: 300px; float: right; text-align: left;
+    }
+    .invoice-title { font-size: 32px; font-weight: 900; color: #112629; margin: 24px 0 18px 0; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    .meta-table td { vertical-align: top; font-size: 12px; line-height: 1.5; color: #2D3748; }
+    .strip-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .strip-th {
+      background-color: #D1DDE0; color: #112629; font-size: 11px; font-weight: 800;
+      padding: 8px 10px; text-align: left; text-transform: uppercase;
+    }
+    .strip-td {
+      padding: 10px; font-size: 12px; font-weight: 600; color: #112629;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .items-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    .items-th {
+      background-color: #D1DDE0; color: #112629; font-size: 11px; font-weight: 800;
+      padding: 8px 10px; text-align: left; text-transform: uppercase;
+    }
+    .items-td {
+      padding: 10px; font-size: 12px; color: #2D3748; vertical-align: top;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .tracking-box {
+      border: 1px solid #E2E8F0; background-color: #F8FAFB;
+      padding: 8px 12px; font-size: 11px; font-weight: 700; color: #112629; margin-bottom: 24px;
+    }
+    .bottom-table { width: 100%; border-collapse: collapse; }
+    .legal-col { width: 58%; vertical-align: top; padding-right: 24px; font-size: 10px; color: #586B6E; line-height: 1.45; }
+    .totals-col { width: 42%; vertical-align: top; font-size: 12px; color: #112629; }
+    .totals-table { width: 100%; border-collapse: collapse; }
+    .totals-table td { padding: 4px 0; }
+    .total-grand { font-size: 15px; font-weight: 900; color: #19454B; border-top: 2px solid #112629; padding-top: 6px; }
+    
+    @media print {
+      body { background-color: #FFFFFF; }
+      .invoice-wrap { max-width: 100%; padding: 0; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #FFFFFF; font-family: 'Montserrat', Helvetica, Arial, sans-serif;">
+  <div class="invoice-wrap">
+    <!-- PRINT BUTTON (In-Browser Only) -->
+    <div class="no-print" style="margin-bottom: 16px; text-align: right;">
+      <button onclick="window.print()" style="background-color: #19454B; color: #FFFFFF; border: none; padding: 8px 18px; border-radius: 4px; font-size: 12px; font-weight: 800; cursor: pointer; font-family: 'Montserrat', sans-serif;">
+        🖨️ Print / Save as PDF
+      </button>
+    </div>
+
+    <!-- HEADER -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 10px;">
+      <tr>
+        <td style="vertical-align: top;">
+          <table cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="vertical-align: middle; padding-right: 8px;">
+                <div style="width: 28px; height: 28px; background: #19454B; border-radius: 6px; text-align: center; line-height: 28px; color: #D4773B; font-weight: 900; font-size: 16px;">
+                  ⬢
+                </div>
+              </td>
+              <td style="vertical-align: middle;">
+                <span class="logo-word">EKUIP<span class="logo-accent">T</span></span>
+              </td>
+            </tr>
+          </table>
+          <div class="logo-tag">Tools, Equipment and Supplies for Your Business</div>
+        </td>
+        <td align="right" style="vertical-align: top;">
+          <div class="pay-callout">
+            <strong style="font-weight: 800;">Save time and pay online!</strong> Sign in to your account at 
+            <a href="{{ site_url }}/account?tab=net30" style="color: #112629; font-weight: 700; text-decoration: underline;">{{ site_domain or 'www.equipt.dev' }}/invoices</a> to pay your invoice.
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <div class="invoice-title">Invoice</div>
+
+    <!-- 3-COLUMN METADATA -->
+    <table class="meta-table">
+      <tr>
+        <!-- Col 1: Invoice Numbers -->
+        <td style="width: 32%;">
+          <p style="margin: 0 0 4px 0;"><strong style="color: #112629;">Invoice #:</strong> {{ invoice_number }}</p>
+          <p style="margin: 0 0 4px 0;"><strong style="color: #112629;">Invoice Date:</strong> {{ invoice_date or order_date }}</p>
+          <p style="margin: 0 0 4px 0;"><strong style="color: #112629;">Amount Due:</strong> ${{ "%.2f"|format(total) }}</p>
+          <p style="margin: 0;"><strong style="color: #112629;">Due Date:</strong> {{ due_date }}</p>
+        </td>
+        <!-- Col 2: Bill To -->
+        <td style="width: 34%; padding: 0 10px;">
+          <p style="margin: 0 0 2px 0;"><strong style="color: #112629;">Bill To:</strong></p>
+          <p style="margin: 0; color: #2D3748;">
+            {{ bill_name }}<br>
+            {% if bill_company %}<strong style="color: #112629;">{{ bill_company }}</strong><br>{% endif %}
+            {{ bill_address1 }}<br>
+            {% if bill_address2 %}{{ bill_address2 }}<br>{% endif %}
+            {{ bill_phone }}<br>
+            {{ bill_city }} {{ bill_state }} {{ bill_zip }}<br>
+            United States
+          </p>
+        </td>
+        <!-- Col 3: Ship To -->
+        <td style="width: 34%; padding-left: 10px;">
+          <p style="margin: 0 0 2px 0;"><strong style="color: #112629;">Ship To:</strong></p>
+          <p style="margin: 0; color: #2D3748;">
+            {{ ship_name }}<br>
+            {{ ship_address1 }}<br>
+            {% if ship_address2 %}{{ ship_address2 }}<br>{% endif %}
+            {{ ship_phone }}<br>
+            {{ ship_city }} {{ ship_state }} {{ ship_zip }}<br>
+            United States
+          </p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- SUMMARY STRIP TABLE -->
+    <table class="strip-table">
+      <thead>
+        <tr>
+          <th class="strip-th">PO#</th>
+          <th class="strip-th">Terms</th>
+          <th class="strip-th">Order #</th>
+          <th class="strip-th">Customer</th>
+          <th class="strip-th">Shipping Method</th>
+          <th class="strip-th">Ship Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="strip-td"><strong style="color: #112629;">{{ po_number or 'N/A' }}</strong></td>
+          <td class="strip-td">{{ terms or 'Net 30' }}</td>
+          <td class="strip-td"><strong style="color: #112629;">{{ order_number }}</strong></td>
+          <td class="strip-td">{{ customer_number or 'EQCUST1' }}</td>
+          <td class="strip-td">{{ carrier or 'Standard Ground' }}</td>
+          <td class="strip-td">{{ ship_date or order_date }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- ITEMIZED TABLE -->
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th class="items-th" style="width: 18%;">EQ #</th>
+          <th class="items-th" style="width: 50%;">Item</th>
+          <th class="items-th" style="width: 8%; text-align: center;">Qty</th>
+          <th class="items-th" style="width: 12%; text-align: right;">Unit Price</th>
+          <th class="items-th" style="width: 12%; text-align: right;">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="items-td" style="font-family: ui-monospace, monospace !important; font-weight: 700; color: #19454B;">
+            {{ item.eq_code or item.zoro_code }}
+          </td>
+          <td class="items-td">
+            <div style="font-weight: 600; color: #112629;">{{ item.title }}</div>
+          </td>
+          <td class="items-td" style="text-align: center; font-weight: 600;">{{ item.quantity }}</td>
+          <td class="items-td" style="text-align: right; font-weight: 600;">${{ "%.2f"|format(item.unit_price) }}</td>
+          <td class="items-td" style="text-align: right; font-weight: 700; color: #19454B;">${{ "%.2f"|format(item.line_total) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- TRACKING NUMBER ROW -->
+    <div class="tracking-box">
+      Tracking Number(s): <span style="font-weight: 600; color: #2B6CB0;">{{ tracking_number or 'In Transit / Preparing Shipment' }}</span>
+    </div>
+
+    <!-- BOTTOM FINANCIAL & LEGAL -->
+    <table class="bottom-table">
+      <tr>
+        <!-- Left: Payment info & terms -->
+        <td class="legal-col">
+          <p style="margin: 0 0 10px 0; font-size: 11px; font-weight: 700; color: #112629;">
+            Pay with ACH and more at <a href="{{ site_url }}/account?tab=net30" style="color: #19454B; text-decoration: underline;">{{ site_domain or 'www.equipt.dev' }}/invoices</a>.<br>
+            For questions about this invoice please call (855) 666-4649.
+          </p>
+          <p style="margin: 0 0 8px 0;">
+            This purchase is governed exclusively by the {{ store_name }} Terms & Conditions that are in effect at the time of the order, including (a) dispute resolution remedies and (b) certain warranty and damages limitations and disclaimers. The {{ store_name }} Terms & Conditions, which are available at <a href="{{ site_url }}/terms" style="color: #586B6E;">{{ site_domain or 'www.equipt.dev' }}/legal</a>, are incorporated by reference into this Invoice. Product return instructions are available at <a href="{{ site_url }}/returns" style="color: #586B6E;">{{ site_domain or 'www.equipt.dev' }}/shipping</a>.
+          </p>
+          <p style="margin: 0; color: #94A5A7;">
+            These items are sold for domestic consumption in the United States. If exported, purchaser assumes full responsibility for compliance with U.S. export controls.
+          </p>
+        </td>
+
+        <!-- Right: Totals -->
+        <td class="totals-col">
+          <table class="totals-table">
+            <tr>
+              <td style="color: #586B6E; font-weight: 600;">Subtotal</td>
+              <td align="right" style="font-weight: 600;">{{ subtotal_formatted }}</td>
+            </tr>
+            <tr>
+              <td style="color: #586B6E; font-weight: 600;">Shipping Cost</td>
+              <td align="right" style="font-weight: 600;">{{ shipping_formatted }}</td>
+            </tr>
+            <tr>
+              <td style="color: #586B6E; font-weight: 600;">Total Tax (%)</td>
+              <td align="right" style="font-weight: 600;">{{ tax_formatted }}</td>
+            </tr>
+            <tr>
+              <td style="font-weight: 700; color: #112629;">Total Amount</td>
+              <td align="right" style="font-weight: 700;">{{ total_formatted }}</td>
+            </tr>
+            <tr>
+              <td style="color: #586B6E; font-weight: 600;">Amount Paid</td>
+              <td align="right" style="font-weight: 600;">$0.00</td>
+            </tr>
+            <tr class="total-grand">
+              <td>Total</td>
+              <td align="right">{{ total_formatted }}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

@@ -1,0 +1,2874 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Orders</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#eef1f7; --card:#fff; --ink:#101828; --muted:#667085; --line:#e6e9f0;
+    --accent:#3b5bdb; --accsoft:#eef2ff;
+    --green:#067647; --greenbg:#e7f6ec; --red:#b42318; --redbg:#fde7e5;
+    --amber:#b54708; --amberbg:#fff4e5; --purple:#6941c6; --purplebg:#f4f0fe;
+    --grey:#475467; --greybg:#eef1f5; --blue:#1456c4; --bluebg:#e7f0fd;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;display:flex;flex-direction:column;overflow:hidden;
+       font:13px/1.45 'Montserrat',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+  .flexnone{flex:none}
+
+  /* top bar */
+  .top{display:flex;align-items:center;gap:14px;padding:11px 18px;background:var(--card);
+       border-bottom:1px solid var(--line);box-shadow:var(--shadow);z-index:30;flex-wrap:wrap}
+  .brand{font-weight:800;letter-spacing:-.02em;font-size:16px;margin-right:4px}
+  .brand b{color:var(--accent)}
+  .tabs{display:flex;flex-wrap:wrap;gap:4px;background:var(--bg);padding:4px;border-radius:11px}
+  .tab{padding:6px 12px;border-radius:8px;cursor:pointer;font-weight:600;color:var(--muted);transition:.12s;white-space:nowrap}
+  .tab:hover{color:var(--ink)}
+  .tab.on{background:var(--card);color:var(--accent);box-shadow:var(--shadow)}
+  .top input[type=search],.top select{padding:8px 11px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fff;color:var(--ink)}
+  .top input[type=search]{min-width:240px}
+  .top input[type=search]:focus,.top select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accsoft)}
+  .spacer{flex:1}
+  .count{color:var(--muted);font-weight:600;font-size:12px}
+  .ghost{padding:7px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer;font:inherit;font-weight:600;color:var(--muted)}
+  .ghost:hover{border-color:var(--accent);color:var(--accent)}
+  label.chk{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px;cursor:pointer}
+
+  /* KPI boxes */
+  .kpis{display:flex;gap:12px;padding:13px 18px;flex-wrap:wrap;background:transparent}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:12px 16px;min-width:130px;
+       box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--accent);opacity:.9}
+  .kpi.k0::before{background:var(--accent)} .kpi.k1::before{background:var(--green)}
+  .kpi.k2::before{background:var(--purple)} .kpi.k3::before{background:var(--amber)}
+  .kpi.k4::before{background:var(--red)} .kpi.k5::before{background:var(--blue)}
+  .kv-num{font-size:21px;font-weight:800;letter-spacing:-.02em}
+  .kv-lab{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-top:2px}
+
+  /* filter bar */
+  .bar{display:flex;gap:7px;padding:2px 18px 12px;flex-wrap:wrap;align-items:center}
+  .bar .lbl{color:var(--muted);font-weight:600;font-size:12px;margin-right:2px}
+  .chip{padding:6px 13px;border-radius:20px;border:1px solid var(--line);cursor:pointer;font-weight:600;color:var(--muted);background:#fff;font-size:12px;transition:.12s}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chip.issues.on{background:var(--red);border-color:var(--red)}
+
+  /* table */
+  .wrap{flex:1;overflow:auto;margin:0 14px 14px;background:var(--card);border:1px solid var(--line);border-radius:13px;box-shadow:var(--shadow)}
+  table{border-collapse:separate;border-spacing:0;width:100%;font-size:12px;white-space:nowrap}
+  thead th{position:sticky;top:0;background:#f3f5fb;border-bottom:1px solid var(--line);
+           padding:9px 11px;text-align:left;font-weight:700;cursor:pointer;z-index:5;color:#3a4253}
+  thead th:hover{background:#e9edf8}
+  td{padding:7px 11px;border-bottom:1px solid var(--line);max-width:300px;overflow:hidden;text-overflow:ellipsis}
+  tbody tr{cursor:pointer}
+  tbody tr:nth-child(even){background:#fafbfe}
+  tbody tr:hover{background:var(--accsoft)}
+  td.idcol{position:sticky;left:0;background:inherit;font-weight:600;border-right:1px solid var(--line)}
+  tbody tr:hover td.idcol{background:var(--accsoft)}
+  tr.issue td.idcol{box-shadow:inset 3px 0 0 var(--red)}
+  tr.lowmargin td{background:#fff1f0}
+  tr.lowmargin:hover td{background:#ffe0de}
+  tr.lowmargin td.idcol{box-shadow:inset 3px 0 0 #b54708}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-weight:700;font-size:11px}
+  .l-Completed{background:var(--greenbg);color:var(--green)} .l-Loss{background:var(--redbg);color:var(--red)}
+  .l-Incomplete{background:var(--amberbg);color:var(--amber)} .l-Refunded{background:var(--purplebg);color:var(--purple)}
+  .l-Cancelled{background:var(--greybg);color:var(--grey)} .l-Pending{background:var(--bluebg);color:var(--blue)}
+  .rb{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10.5px;font-weight:700;margin-right:3px;background:var(--amberbg);color:var(--amber)}
+  .neg{color:var(--red);font-weight:700} .pos{color:var(--green);font-weight:700}
+  .flagdot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
+  /* row quick-actions (label without opening the drawer) */
+  .actcell{white-space:nowrap;cursor:default}
+  .actcell .qsc{text-decoration:none;color:var(--accent);font-weight:800;font-size:14px;margin-right:7px}
+  .actcell .qsc:hover{color:var(--ink)}
+  .actcell .qflag{width:12px;height:12px;border-radius:50%;display:inline-block;vertical-align:middle;margin-right:3px;cursor:pointer;border:1px solid rgba(0,0,0,.18);transition:transform .1s}
+  .actcell .qflag:hover{transform:scale(1.3)}
+  .actcell .qtag{cursor:pointer;margin-left:4px;font-size:12.5px;opacity:.6}
+  .actcell .qtag:hover{opacity:1}
+  #qmenu{position:fixed;z-index:70;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(16,24,40,.24);padding:5px;min-width:158px;display:none}
+  #qmenu .qmi{padding:6px 11px;border-radius:7px;cursor:pointer;font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap}
+  #qmenu .qmi:hover{background:var(--accsoft);color:var(--accent)}
+  #qmenu .qmi.on{color:var(--accent)}
+  /* tag chips — ONE style everywhere (table cells, tracker, drawer) */
+  .tagchip{display:inline-block;background:var(--accsoft);color:var(--accent);border:0;border-radius:20px;
+           padding:1px 8px;font-size:10.5px;font-weight:700;margin-right:3px;white-space:nowrap;vertical-align:middle}
+  button.tagchip{cursor:pointer;border:1px solid var(--accent);padding:3px 10px;font-size:11px;font-family:inherit;transition:.12s}
+  button.tagchip:hover{background:var(--accent);color:#fff}
+
+  /* drawer */
+  #ov{position:fixed;inset:0;background:rgba(16,24,40,.4);display:none;z-index:50;backdrop-filter:blur(1px)}
+  #dw{position:fixed;top:0;right:0;width:580px;max-width:96vw;height:100%;background:#fff;
+      box-shadow:-12px 0 40px rgba(16,24,40,.22);overflow:auto;padding:20px 22px}
+  #dw h2{margin:0 0 2px;font-size:17px;letter-spacing:-.01em} #dw .sub{color:var(--muted);margin-bottom:14px}
+  .sect{margin:16px 0 6px;font-weight:700;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--line);padding-bottom:5px}
+  .kv{display:grid;grid-template-columns:160px 1fr;gap:4px 12px;font-size:12.5px}
+  .kv b{color:var(--muted);font-weight:600} .kv span{word-break:break-word}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:11px 0}
+  .actions button,.actions select{padding:7px 11px;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;font:inherit}
+  .actions button.save{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  textarea{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px;font:inherit;min-height:56px}
+  .note{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 11px;margin:6px 0;font-size:12.5px}
+  .note small{color:var(--muted)}
+  .close{float:right;cursor:pointer;font-size:24px;color:var(--muted);line-height:1}
+  .close:hover{color:var(--ink)}
+
+  /* insights */
+  #insights,#dhealth,#refunds,#pnl,#bank,#severe,#data,#tracker,#unmapped,#needs_priority,#walmart,#listings,#reminders{flex:1;overflow:auto;padding:0 18px 18px}
+  .igrp{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:13px;overflow:hidden;box-shadow:var(--shadow)}
+  .igrp h3{margin:0;padding:11px 16px;background:#f3f5fb;font-size:13px;display:flex;justify-content:space-between;font-weight:700}
+  .irow{padding:9px 16px;border-top:1px solid var(--line);display:flex;gap:11px;align-items:center}
+  .irow:hover{background:var(--accsoft)}
+  .sev{width:9px;height:9px;border-radius:50%;flex:none}.sev.high{background:var(--red)}.sev.med{background:var(--amber)}
+  .catbadge{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:var(--accsoft);color:var(--accent);flex:none}
+  .irow .msg{flex:1;color:#3a4253}.irow .oid{font-weight:700;cursor:pointer;color:var(--accent);flex:none}
+  .mini{padding:4px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:pointer;font-size:11px;font-weight:600;color:var(--muted)}
+  .mini:hover{border-color:var(--accent);color:var(--accent)}
+  .empty{padding:60px;text-align:center;color:var(--muted);font-size:15px}
+  /* seller-central link + asin link */
+  .sclink{display:inline-block;color:var(--accent);font-weight:600;text-decoration:none;border:1px solid var(--accent);padding:5px 11px;border-radius:8px}
+  .sclink:hover{background:var(--accsoft)}
+  .asinlink{color:var(--accent);cursor:pointer;text-decoration:underline}
+  .asinlink:hover{color:var(--ink)}
+  /* ASIN analysis modal */
+  #aov,#sov,#zov{position:fixed;inset:0;background:rgba(16,24,40,.4);display:none;z-index:60;align-items:flex-start;justify-content:center;overflow:auto;padding:30px;backdrop-filter:blur(1px)}
+  #adw,#sdw,#zdw{background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(16,24,40,.32);padding:20px 24px;width:900px;max-width:96vw}
+  #zdw h2{margin:0 0 2px;font-size:16px}
+  #sdw h2{margin:0 0 2px;font-size:16px}
+  #adw h2{margin:0 0 2px;font-size:16px}
+  .legend{font-size:11px;color:var(--muted);margin:6px 0 4px}
+  .legend .lg{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:middle;margin-right:3px}
+  .states{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+  .strow{display:flex;align-items:center;gap:8px;font-size:12px}
+  .stlab{width:40px;font-weight:700;text-align:right;color:var(--ink)}
+  .stbar{height:15px;background:var(--accent);border-radius:4px;min-width:2px}
+  .stn{color:var(--muted);font-weight:600}
+  .charttip{position:absolute;pointer-events:none;background:#0f1830;color:#fff;font-size:11.5px;line-height:1.5;
+            padding:8px 11px;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.25);z-index:5;min-width:150px}
+  .charttip b{color:#fff} .charttip .ch{color:#fdba74;font-weight:700}
+  .chiptog{display:inline-block;padding:3px 10px;border-radius:20px;border:1px solid var(--line);cursor:pointer;font-size:11px;font-weight:600;margin-right:5px;user-select:none}
+  .chiptog .lg{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:middle;margin-right:4px}
+  .chiptog.off{opacity:.4}
+  /* live Gmail refund / return banner */
+  .alertbox{border-radius:10px;padding:10px 13px;margin:10px 0;font-size:12.5px;border:1px solid}
+  .alertbox b{display:block;margin-bottom:3px;font-weight:700}
+  .alertbox.rf{background:var(--redbg);border-color:var(--red);color:var(--red);animation:pulse 1.6s ease 2}
+  .alertbox.rt{background:var(--amberbg);border-color:var(--amber);color:var(--amber)}
+  /* animations */
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes slideIn{from{transform:translateX(28px);opacity:0}to{transform:translateX(0);opacity:1}}
+  @keyframes popIn{from{transform:scale(.97);opacity:0}to{transform:scale(1);opacity:1}}
+  @keyframes rise{from{transform:translateY(7px);opacity:0}to{transform:translateY(0);opacity:1}}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(180,35,24,0)}50%{box-shadow:0 0 0 4px rgba(180,35,24,.18)}}
+  #ov,#aov{animation:fadeIn .15s ease}
+  #dw{animation:slideIn .22s cubic-bezier(.2,.8,.2,1)}
+  #adw{animation:popIn .2s cubic-bezier(.2,.8,.2,1)}
+  .kpi{transition:transform .15s ease,box-shadow .15s ease;animation:rise .25s ease both}
+  .kpi:hover{transform:translateY(-3px);box-shadow:0 8px 20px rgba(16,24,40,.13)}
+  .igrp{animation:rise .2s ease both}
+  .tab,.chip,.chiptog,.ghost,.sclink,.mini,.asinlink{transition:all .14s ease}
+  tbody tr{transition:background .1s ease}
+  .badge{transition:transform .12s ease}
+  
+  html.restricted-mode .tabs .tab:not([data-tab="placed"]):not([data-tab="listings"]):not([data-tab="tracker"]):not([data-tab="orders"]):not([data-tab="pnl"]) {
+      display: none !important;
+  }
+  html.restricted-mode #chatFab, html.restricted-mode #chatPanel, html.restricted-mode #whoami {
+      display: none !important;
+  }
+</style>
+
+<div class="top flexnone">
+  <span class="brand">DS <b>Orders</b></span>
+  <div class="tabs">
+    <div class="tab on" data-tab="orders">Orders</div>
+    <div class="tab" data-tab="severe" style="color:#b42318">⚠ Severe</div>
+    <div class="tab" data-tab="tracker">📌 Tracker</div>
+    <div class="tab" data-tab="unmapped">🏷️ Unmapped</div>
+    <div class="tab" data-tab="needs_priority">⭐ Needs Priority</div>
+    <div class="tab" data-tab="placed">Placed</div>
+    <div class="tab" data-tab="walmart">🛒 Walmart</div>
+    <div class="tab" data-tab="listings">📦 Listings</div>
+    <div class="tab" data-tab="repricer" style="font-weight:700;color:var(--accent)">🏷️ Repricer</div>
+    <div class="tab" data-tab="unresolved">Unresolved</div>
+    <div class="tab" data-tab="insights">Insights</div>
+    <div class="tab" data-tab="health">Health</div>
+    <div class="tab" data-tab="pnl">P&amp;L</div>
+    <div class="tab" data-tab="bank">Bank reconcile</div>
+    <div class="tab" data-tab="data">Data</div>
+    <div class="tab" data-tab="reminders">⏰ Reminders<span id="remBadge" class="rembadge"></span></div>
+  </div>
+  <input type="search" id="q" placeholder="Search order / WB / SKU / name / comment…">
+  <select id="account"><option value="">All accounts</option></select>
+  <select id="zaccount"><option value="">All Zoro accts</option></select>
+  <select id="profile"><option value="">All profiles</option></select>
+  <select id="dpreset">
+    <option value="all">All dates</option>
+    <option value="today">Today</option>
+    <option value="7">Last 7 days</option>
+    <option value="30">Last 30 days</option>
+    <option value="custom">Custom…</option>
+  </select>
+  <input type="datetime-local" id="dfrom" style="display:none">
+  <input type="datetime-local" id="dto" style="display:none">
+  <select id="datemode" title="Which date the filter uses">
+    <option value="purchase_date">by order date</option>
+    <option value="shipped_email_time">by ship date</option>
+  </select>
+  <span class="spacer"></span>
+  <label class="chk"><input type="checkbox" id="allcols"> all columns</label>
+  <span class="count" id="count"></span>
+  <button class="ghost" id="whoami" title="Your name — shown on your comments">👤</button>
+  <button class="ghost" id="refresh">↻</button>
+</div>
+
+<div class="kpis flexnone" id="kpis"></div>
+<div class="bar flexnone" id="filterbar"></div>
+
+<div class="wrap" id="tablewrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+<div id="insights" style="display:none"></div>
+<div id="dhealth" style="display:none"></div>
+<div id="pnl" style="display:none"></div>
+<div id="bank" style="display:none"></div>
+<div id="severe" style="display:none"></div>
+<div id="tracker" style="display:none"></div>
+<div id="unmapped" style="display:none"></div>
+<div id="needs_priority" style="display:none"></div>
+<div id="walmart" style="display:none"></div>
+<div id="listings" style="display:none"></div>
+<div id="repricer" style="display:none"></div>
+<div id="data" style="display:none"></div>
+<div id="reminders" style="display:none"></div>
+
+<!-- ── Team chat (floating, all tabs) + Reminder Center styles ── -->
+<style>
+  #chatFab{position:fixed;bottom:18px;right:18px;width:52px;height:52px;border-radius:50%;
+    background:var(--accent,#3b5bdb);color:#fff;font-size:23px;display:flex;align-items:center;
+    justify-content:center;cursor:pointer;box-shadow:0 6px 18px rgba(30,50,120,.35);z-index:400;user-select:none}
+  #chatFab:hover{transform:scale(1.06)}
+  #chatBadge{display:none;position:absolute;top:-4px;right:-4px;background:#b42318;color:#fff;
+    border-radius:10px;font-size:10px;font-weight:800;min-width:18px;height:18px;
+    align-items:center;justify-content:center;padding:0 4px;border:2px solid #fff}
+  #chatPanel{display:none;position:fixed;bottom:80px;right:18px;width:370px;height:520px;max-height:74vh;
+    background:#fff;border:1px solid var(--line,#e3e6ee);border-radius:14px;z-index:401;
+    flex-direction:column;box-shadow:0 12px 40px rgba(30,50,120,.28);overflow:hidden}
+  .chathead{padding:10px 14px;font-weight:800;border-bottom:1px solid var(--line,#e3e6ee);
+    display:flex;align-items:center;gap:8px;background:#f7f9fc}
+  .chathead .close{margin-left:auto;cursor:pointer;font-size:16px;color:var(--muted,#667085)}
+  #chatMsgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;padding:10px 12px}
+  .cwho{font-size:10px;color:var(--muted,#667085);margin:7px 4px 1px}
+  .cmsg{max-width:80%;padding:7px 11px;border-radius:12px;font-size:12.5px;line-height:1.45;
+    white-space:pre-wrap;word-break:break-word}
+  .cmsg.me{align-self:flex-end;background:#e7ecfd;border-bottom-right-radius:4px}
+  .cmsg.them{align-self:flex-start;background:#f1f3f7;border-bottom-left-radius:4px}
+  .cmsg img{max-width:235px;max-height:190px;border-radius:8px;display:block;margin-top:4px;cursor:pointer}
+  .chatbar{display:flex;gap:6px;padding:9px;border-top:1px solid var(--line,#e3e6ee);align-items:flex-end}
+  .chatattach{cursor:pointer;font-size:17px;padding:5px 4px}
+  #chatText{flex:1;resize:none;border:1px solid var(--line,#e3e6ee);border-radius:9px;padding:7px 9px;
+    font:inherit;font-size:12.5px;max-height:92px;outline:none}
+  #chatSend{width:36px;height:34px;border:none;border-radius:9px;background:var(--accent,#3b5bdb);
+    color:#fff;font-size:15px;cursor:pointer}
+  #chatPend{padding:5px 12px;font-size:11px;color:var(--muted,#667085);border-top:1px dashed var(--line,#e3e6ee)}
+  .rembadge{display:none;background:#b42318;color:#fff;border-radius:9px;font-size:9.5px;font-weight:800;
+    padding:1px 5px;margin-left:5px;vertical-align:1px}
+  .rembox{max-width:860px;margin:14px auto;padding:0 14px}
+  .remadd{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+  .remadd input{border:1px solid var(--line,#e3e6ee);border-radius:9px;padding:8px 10px;font:inherit;font-size:12.5px}
+  #remTitle{flex:1;min-width:220px}
+  .remrow{display:flex;align-items:center;gap:11px;padding:10px 13px;border:1px solid var(--line,#e3e6ee);
+    border-radius:11px;margin:7px 0;background:#fff}
+  .remrow.done{opacity:.55}
+  .remrow.done .remtitle{text-decoration:line-through}
+  .remchk{width:21px;height:21px;border:2px solid #98a2b3;border-radius:50%;cursor:pointer;flex:none;
+    display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+  .remchk:hover{border-color:var(--green,#067647)}
+  .remchk.on{background:var(--green,#067647);border-color:var(--green,#067647)}
+  .remtitle{font-weight:700;font-size:13px}
+  .remnotes{font-size:11.5px;color:var(--muted,#667085);margin-top:1px;white-space:pre-wrap}
+  .remmeta{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+  .rmchip{font-size:10.5px;background:#f1f3f7;border-radius:7px;padding:2px 7px;color:#475467}
+  .rmchip.due.today{background:#fef0c7;color:#b54708;font-weight:700}
+  .rmchip.due.over{background:#fee4e2;color:#b42318;font-weight:700}
+  .remact{cursor:pointer;font-size:14px;flex:none;opacity:.75}
+  .remact:hover{opacity:1}
+  #toasts{position:fixed;top:14px;right:14px;z-index:600;display:flex;flex-direction:column;gap:8px;max-width:340px}
+  .toast{background:#fff;border:1px solid var(--line,#e3e6ee);border-left:4px solid #b54708;border-radius:10px;
+    padding:10px 14px;font-size:12.5px;box-shadow:0 8px 24px rgba(30,50,120,.25);cursor:pointer;animation:tin .2s ease}
+  @keyframes tin{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+</style>
+<div id="toasts"></div>
+<div id="chatFab" title="Team chat">💬<span id="chatBadge"></span></div>
+<div id="chatPanel">
+  <div class="chathead">💬 Team chat<span class="close" onclick="toggleChat(false)">×</span></div>
+  <div id="chatMsgs"></div>
+  <div id="chatPend" style="display:none"></div>
+  <div class="chatbar">
+    <label class="chatattach" title="Attach photo / file (or paste an image into the box)">📎<input type="file" id="chatFile" style="display:none"></label>
+    <textarea id="chatText" rows="1" placeholder="Message… (Enter to send)"></textarea>
+    <button id="chatSend" title="Send">➤</button>
+  </div>
+</div>
+
+<div id="ov" onclick="if(event.target.id==='ov')closeDw()"><div id="dw"></div></div>
+<div id="aov" onclick="if(event.target.id==='aov')closeAsin()"><div id="adw"></div></div>
+<div id="sov" onclick="if(event.target.id==='sov')closeSov()"><div id="sdw"></div></div>
+<div id="zov" onclick="if(event.target.id==='zov')closeZoro()"><div id="zdw"></div></div>
+
+<script>
+const KEY_COLS = ["amazon_order_id","order_label","tags","account","purchase_date","asin","sku","title",
+ "quantity","earnings","zoro_order_total","profit_dollars","profit_percent","zoro_account_name",
+ "tracking_ids","delivery_status","delivery_date","on_time","return_requested","refund_done",
+ "customer_messaged","ship_name","ship_city","ship_state"];
+// Placed tab leads with placed_at (placement date); purchase_date kept as the Amazon order date.
+const PLACED_COLS = ["placed_at","amazon_order_id","account","profile_name","purchase_date","asin","sku",
+ "alt_used","main_sku","main_sku_status","title",
+ "quantity","earnings","zoro_order_total","zoro_tax","profit_dollars","profit_percent","coupon_used",
+ "wb_order_id","tracking_ids","ship_name","ship_city","ship_state"];
+const MONEY = new Set(["earnings","zoro_order_total","zoro_subtotal","zoro_shipping","zoro_tax",
+ "profit_dollars","net_profit_after_refund","refund_amount","item_price","shipping_price","amazon_fees","coupon_savings"]);
+const DELIV = new Set(["Delivered","AllDelivered"]);
+const INAMES={item_price_change:"Item price changed",zoro_price_change:"Zoro base price changed",
+ wrong_qty:"Wrong quantity",zoro_code_change:"Zoro code changed",low_margin:"Low margin",
+ shipping_change:"Shipping changed",zip_mismatch:"Zip mismatch",undelivered:"Undelivered (past due)",
+ refunded:"Refunded",wb_unmatched:"WB not in placed orders",
+ zoro_deliver_mismatch:"Zoro vs Amazon delivery",low_zoro_stock:"Low Zoro stock",
+ shipped_late:"Shipped late (vs ship-by)",zoro_slow_risk:"Zoro slower than promise (late risk)",
+ earnings_unit_change:"Earnings/unit changed",shipping_amt_change:"Amazon shipping/unit changed",
+ handling_time_change:"Handling time changed",zoro_ship_rule:"Zoro shipping ≠ rule ($50 free / $5.99)",
+ zoro_unit_cost_change:"Zoro unit cost changed"};
+const TODAY=new Date().toISOString().slice(0,10);
+let TAB="orders", LABEL="", ISSUES=false, REASON="", ICAT="", ROWS=[], DATE_FROM="", DATE_TO="";
+let MARGIN_MIN="", MARGIN_MAX="", TAXONLY=false, NOTAX=false, STATEF="", STATES=[], DATECOL="purchase_date";
+let TAGF="", FLAGF="", TAGS_ALL=[];   // tag + flag-color filters (client-side, rows carry tags/flag_color via CRM overlay)
+const RENDER_STEP=400;                 // rows painted per bulk ("Show more" reveals the next bulk)
+let RENDER_CAP=RENDER_STEP;            // current paint depth; reset whenever fresh data loads
+let ALTF=false;   // Placed tab: show only orders placed with the ALTERNATIVE Zoro code (main was OOS)
+function daysAgo(n){const d=new Date();d.setDate(d.getDate()-n);return d.toISOString().slice(0,10);}
+
+const $=s=>document.querySelector(s), api=async(u,o)=>(await fetch(u,o)).json();
+const d5=z=>(""+(z||"")).replace(/\D/g,"").slice(0,5);
+const esc=s=>(""+(s??"")).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+const money=n=>(n<0?"-$":"$")+Math.abs(Math.round(n)).toLocaleString();
+
+function isIssue(o){
+  const p=o.profit_dollars, deliv=DELIV.has(o.delivery_status);
+  if(p!=null&&p<0) return true;
+  if(deliv&&!(o.tracking_ids||"").trim()) return true;
+  if(o.order_label==="Completed"&&(!o.earnings||!o.zoro_order_total)) return true;
+  if(o.refund_done==="Yes") return true;
+  if(o.earnings&&!o.zoro_order_total) return true;
+  const a=d5(o.ship_postal_code), z=d5(o.zoro_buyer_zip);
+  if(a.length===5&&z.length===5&&a!==z) return true;
+  return false;
+}
+function unreason(o){
+  const r=[];
+  if(o.refund_done==="Yes"||o.gmail_refund) r.push("Refunded");
+  if(o.order_label==="Incomplete") r.push("Incomplete");
+  const db=(o.deliver_by_date||"").slice(0,10);
+  if(!DELIV.has(o.delivery_status)&&o.manual_delivered!=="Yes"&&db&&db<TODAY) r.push("Past-due");
+  const a=d5(o.ship_postal_code), z=d5(o.zoro_buyer_zip);
+  if(a.length===5&&z.length===5&&a!==z) r.push("Zip mismatch");
+  return r;
+}
+function fmt(k,v){
+  if(v==null||v==="") return "";
+  if(MONEY.has(k)){const n=+v; if(!isNaN(n))return (n<0?"-$":"$")+Math.abs(n).toFixed(2);}
+  return ""+v;
+}
+function cell(k,v,o){
+  if(k==="order_label") return `<span class="badge l-${esc(v)}">${esc(v)||""}</span>`;
+  if(k==="tags") return tagList(o).map(t=>`<span class="tagchip">${esc(t)}</span>`).join("");
+  if(k==="amazon_order_id"){const f=o.flag_color?`<span class="flagdot" style="background:${esc(o.flag_color)}"></span>`:"";return f+esc(v);}
+  if(k==="asin" && v){const a=(""+v).split(",")[0].trim();return `<span class="asinlink" onclick="event.stopPropagation();openAsin('${esc(a)}')">${esc(v)}</span>`;}
+  if(k==="alt_used") return v==="Yes"?`<span class="badge" style="background:#fef0c7;color:#b54708;border:1px solid #f9dbaf" title="placed with the ALTERNATIVE Zoro code — main SKU (main_sku column) was OOS">🔄 ALT</span>`:"";
+  if(k==="main_sku_status"&&v){const ok=v==="IN_STOCK";
+    return `<span class="badge" style="background:${ok?'#d1fadf':'#fee4e2'};color:${ok?'#067647':'#b42318'}" title="main SKU last checked ${esc(o.main_sku_status_at||'?')}">${ok?'✓ back in stock':esc(v)}</span>`;}
+  if(MONEY.has(k)){const n=+v;const cls=(k==="profit_dollars"&&n<0)?"neg":(k==="profit_dollars"&&n>0?"pos":"");return `<span class="${cls}">${fmt(k,v)}</span>`;}
+  return esc(fmt(k,v));
+}
+
+async function loadFacets(){
+  try{
+    const f=await api("/api/facets");
+    $("#account").innerHTML='<option value="">All accounts</option>'+(f.accounts||[]).map(a=>`<option>${esc(a)}</option>`).join("");
+    $("#zaccount").innerHTML='<option value="">All Zoro accts</option>'+(f.zoro_accounts||[]).map(z=>`<option>${esc(z)}</option>`).join("");
+    $("#profile").innerHTML='<option value="">All profiles</option>'+(f.profiles||[]).map(p=>`<option>${esc(p)}</option>`).join("");
+    STATES=f.states||[];
+    TAGS_ALL=f.tags||[];
+    buildBar();   // re-render the filter bar so the Tag/State dropdowns get their options
+  }catch(e){}
+}
+async function loadOrders(){
+  const p=new URLSearchParams();
+  if(!$("#allcols").checked) p.set("cols","key");   // pruned payload (~2.5x smaller); toggle refetches full
+  if(TAB==="placed") p.set("src","placed");   // Placed = placement log (order_placer_orders), date = placed_at
+  else if(TAB==="unresolved") p.set("flag","unresolved");
+  else if(LABEL) p.set("label",LABEL);
+  if($("#q").value.trim()) p.set("q",$("#q").value.trim());
+  if(TAGF) p.set("tag",TAGF);   // server-side: the 3000-row LIMIT must not hide old tagged orders
+  if($("#account").value) p.set("account",$("#account").value);
+  if($("#zaccount").value) p.set("zoro_account",$("#zaccount").value);
+  if($("#profile").value) p.set("profile",$("#profile").value);
+  if(TAB!=="placed" && DATECOL!=="purchase_date") p.set("datecol",DATECOL);  // filter by ship date
+  if(DATE_FROM) p.set("from",DATE_FROM);
+  if(DATE_TO) p.set("to",DATE_TO);
+  const r=await api("/api/orders?"+p.toString());
+  ROWS=r.orders||[];
+  RENDER_CAP=RENDER_STEP;   // fresh data → start at the first bulk again
+  renderTable();
+}
+function renderKPIs(rows){
+  const sum=k=>rows.reduce((s,o)=>s+(+o[k]||0),0);
+  const earn=sum("earnings"), prof=sum("profit_dollars"), cost=sum("zoro_order_total"), coup=sum("coupon_savings");
+  const mgn=earn?(prof/earn*100).toFixed(1)+"%":"—";
+  let cards;
+  if(TAB==="placed"){const altn=rows.filter(o=>(o.alt_used||"")==="Yes").length;
+    cards=[["Placed",rows.length],["🔄 ALT placed",altn],["Est. earnings",money(earn)],["Est. cost",money(cost)],["Est. profit",money(prof)],["Total margin",mgn],["Coupon saved",money(coup)]];}
+  else if(TAB==="unresolved"){const c=n=>rows.filter(o=>unreason(o).includes(n)).length;
+    cards=[["Unresolved",rows.length],["Refunded",c("Refunded")],["Incomplete",c("Incomplete")],["Past-due",c("Past-due")],["Zip mismatch",c("Zip mismatch")],["At-risk profit",money(prof)]];}
+  else {
+    const se=rows.filter(o=>o.shipped_on_time==="Early").length;
+    const sl=rows.filter(o=>o.shipped_on_time==="Late").length;
+    cards=[["Orders",rows.length],["Earnings",money(earn)],["Profit",money(prof)],["Total margin",mgn],
+           ["Shipped early",se],["Shipped late",sl],["Coupon saved",money(coup)],["Issues",rows.filter(isIssue).length]];
+  }
+  $("#kpis").innerHTML=cards.map(([l,v],i)=>`<div class="kpi k${i%6}"><div class="kv-num">${v}</div><div class="kv-lab">${l}</div></div>`).join("");
+}
+function renderTable(){
+  let rows=ROWS.slice();
+  if(TAB==="placed"&&ALTF) rows=rows.filter(o=>(o.alt_used||"")==="Yes");
+  if(TAB==="unresolved"&&REASON) rows=rows.filter(o=>unreason(o).includes(REASON));
+  if(MARGIN_MIN!=="") rows=rows.filter(o=>o.profit_percent!=null&&o.profit_percent!==""&&+o.profit_percent>=+MARGIN_MIN);
+  if(MARGIN_MAX!=="") rows=rows.filter(o=>o.profit_percent!=null&&o.profit_percent!==""&&+o.profit_percent<=+MARGIN_MAX);
+  if(TAXONLY) rows=rows.filter(o=>(+o.zoro_tax||0)>0);
+  if(NOTAX) rows=rows.filter(o=>(+o.zoro_tax||0)===0);
+  if(STATEF) rows=rows.filter(o=>(o.ship_state||"")===STATEF);
+  if(TAGF) rows=rows.filter(o=>tagList(o).includes(TAGF));
+  if(FLAGF) rows=rows.filter(o=>(o.flag_color||"")===FLAGF);
+  rows=applySort(rows);  // keep the active sort on every render, incl. the 30s live refresh
+  renderKPIs(rows);
+  let base=($("#allcols").checked&&rows[0])?Object.keys(rows[0]).filter(c=>c!=="id"):(TAB==="placed"?PLACED_COLS:KEY_COLS).slice();
+  if (document.documentElement.classList.contains("restricted-mode")) {
+      base = base.filter(c => !["ship_name", "buyer", "ship_to", "zoro_buyer_zip"].includes(c));
+  }
+  // "act" = the leftmost quick-action column (SC link + flag dots + tag menu) so
+  // you can label an order straight from the row without opening the drawer.
+  const head=["act"].concat(TAB==="unresolved"?["why"]:[]).concat(base);
+  $("#tbl thead").innerHTML="<tr>"+head.map(c=>`<th data-c="${c}">${c==="act"?"":c}</th>`).join("")+"</tr>";
+  // Render in BULKS: only the first RENDER_CAP rows go into the DOM (a 3000-row × 25-col table
+  // is what made the page crawl, especially on older machines). KPIs/sort/filters above still
+  // use ALL rows — this only limits what's painted. "Show more" reveals the next bulk.
+  const shown=rows.slice(0,RENDER_CAP);
+  $("#tbl tbody").innerHTML=shown.map(o=>{
+    const iss=isIssue(o)?" issue":"";
+    const lm=(o.profit_percent!=null&&o.profit_percent!==""&&+o.profit_percent<8)?" lowmargin":"";
+    const tds=head.map((c,i)=>{
+      const sticky=i===0?"idcol":"";
+      if(c==="act") return actCell(o,sticky);
+      if(c==="why") return `<td class="${sticky}">${unreason(o).map(x=>`<span class="rb">${x}</span>`).join("")}</td>`;
+      return `<td class="${sticky}" title="${esc(o[c])}">${cell(c,o[c],o)}</td>`;
+    }).join("");
+    return `<tr class="${iss}${lm}" data-id="${esc(o.amazon_order_id)}">${tds}</tr>`;
+  }).join("")+(rows.length>shown.length?
+    `<tr id="showMoreRow"><td colspan="${head.length}" style="text-align:center;padding:10px">
+      <button class="mini" onclick="RENDER_CAP+=RENDER_STEP;renderTable()" style="font-weight:700">
+        ⬇ Show ${Math.min(RENDER_STEP,rows.length-shown.length)} more (${rows.length-shown.length} remaining)</button></td></tr>`:"");
+  $("#count").textContent=rows.length+" orders"+(rows.length>shown.length?` (showing ${shown.length})`:"");
+  document.querySelectorAll("#tbl tbody tr[data-id]").forEach(tr=>tr.onclick=()=>openDw(tr.dataset.id));
+  document.querySelectorAll("#tbl thead th").forEach(th=>th.onclick=()=>sortBy(th.dataset.c));
+}
+// Default: least-profit first, so the orders that need attention sit at the top.
+// Sorting lives in renderTable via applySort, so the 30s live refresh never resets it.
+let sortCol="profit_dollars",sortAsc=true;
+function applySort(rows){
+  if(!sortCol) return rows;
+  const c=sortCol,dir=sortAsc?1:-1;
+  return rows.sort((a,b)=>{
+    let x=a[c],y=b[c];
+    const bx=(x==null||x===""),by=(y==null||y==="");
+    if(bx&&by) return 0;
+    if(bx) return 1;   // blanks always sort last, either direction
+    if(by) return -1;
+    const nx=+x,ny=+y;
+    if(!isNaN(nx)&&!isNaN(ny)){x=nx;y=ny;}else{x=""+x;y=""+y;}
+    return (x<y?-1:x>y?1:0)*dir;
+  });
+}
+function sortBy(c){
+  if(c==="why"||c==="act")return;
+  sortAsc=sortCol===c?!sortAsc:true; sortCol=c;
+  renderTable();
+}
+
+// ── Row quick-actions (label without opening the drawer) ────────────────────
+function actCell(o,sticky){
+  const id=esc(o.amazon_order_id);
+  const fc=o.flag_color||"";
+  const dot=(c,lbl)=>`<span class="qflag" title="${lbl} flag" style="background:${c};${fc===c?'outline:2px solid var(--ink);outline-offset:1px':''}" onclick="event.stopPropagation();quickFlag('${id}','${c}')"></span>`;
+  return `<td class="${sticky} actcell" onclick="event.stopPropagation()">`
+    +`<a class="qsc" href="https://sellercentral.amazon.com/orders-v3/order/${id}" target="_blank" rel="noopener" title="Open in Seller Central">↗</a>`
+    +dot('#b42318','Red')+dot('#eab308','Yellow')+dot('#067647','Green')
+    +`<span class="qtag" title="Add / remove tag" onclick="event.stopPropagation();quickTagMenu('${id}',event)">🏷</span>`
+    +`</td>`;
+}
+async function quickFlag(id,color){
+  const o=ROWS.find(x=>x.amazon_order_id===id);
+  const nc=(o&&o.flag_color===color)?"":color;   // click the same colour again = clear
+  await api("/api/order_update",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({order_id:id,flag_color:nc})});
+  if(o)o.flag_color=nc; renderTable();
+}
+function quickTagMenu(id,ev){
+  ev.stopPropagation();
+  let m=$("#qmenu"); if(!m){m=document.createElement("div");m.id="qmenu";document.body.appendChild(m);}
+  const o=ROWS.find(x=>x.amazon_order_id===id)||{};
+  const cur=tagList(o);
+  m.innerHTML=TAGS_STD.map(t=>`<div class="qmi ${cur.includes(t)?'on':''}" onclick="quickTagSet('${esc(id)}','${esc(t)}')">${cur.includes(t)?'✓ ':'&nbsp;&nbsp;&nbsp;'}${esc(t)}</div>`).join("")
+    +cur.filter(t=>!TAGS_STD.includes(t)).map(t=>`<div class="qmi on" onclick="quickTagSet('${esc(id)}','${esc(t)}')">✓ ${esc(t)}</div>`).join("")
+    +`<div class="qmi" style="border-top:1px solid var(--line)" onclick="quickTagOther('${esc(id)}')">+ Other…</div>`;
+  m.style.display="block";
+  m.style.left=Math.min(ev.clientX,window.innerWidth-170)+"px";
+  m.style.top=Math.min(ev.clientY+6,window.innerHeight-220)+"px";
+}
+function quickTagOther(id){const t=(prompt("Custom tag:")||"").trim(); if(t)quickTagSet(id,t); else closeQuickMenu();}
+async function quickTagSet(id,tag){
+  const o=ROWS.find(x=>x.amazon_order_id===id)||{amazon_order_id:id};
+  const cur=tagList(o);
+  const nxt=cur.includes(tag)?cur.filter(t=>t!==tag):cur.concat([tag]);
+  await api("/api/order_update",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({order_id:id,tags:nxt.join(", ")})});
+  o.tags=nxt.join(", "); renderTable(); closeQuickMenu();
+}
+function closeQuickMenu(){const m=$("#qmenu"); if(m)m.style.display="none";}
+document.addEventListener("click",e=>{const m=$("#qmenu");
+  if(m&&m.style.display==="block"&&!m.contains(e.target))closeQuickMenu();});
+
+const GROUPS=[
+  ["Amazon",["amazon_order_id","merchant_order_id","account","profile_name","order_status","order_label","asin","sku","title","quantity","is_business","item_price","shipping_price","earnings","amazon_fees","shipping_amt","purchase_date","placed_at","ship_by_date","deliver_by_date"]],
+  ["Customer / address",["ship_name","ship_street","ship_city","ship_state","ship_postal_code","ship_country","ship_phone","customer_messaged","customer_message_text","customer_inquiry","feedback_rating","feedback_text"]],
+  ["Zoro / cost",["wb_order_id","zoro_account_name","zoro_sku","zoro_qty","zoro_item_desc","zoro_subtotal","zoro_shipping","zoro_tax","zoro_order_total","coupon_used","coupon_savings","zoro_payment_method","zoro_buyer_zip"]],
+  ["Profit",["profit_dollars","profit_percent","roi_percent","net_profit_after_refund"]],
+  ["Delivery / tracking",["tracking_ids","carrier","tracking_id_uploaded","delivery_status","delivery_date","deliver_by_date","zoro_deliver_by","zoro_stock","ship_by_date","shipped_email_time","shipped_on_time","ship_margin_hrs","on_time","signed_by","left_at","last_scan_location","time_to_ship_hrs","placement_speed","zoro_ship_speed"]],
+  ["Returns / claim",["return_requested","return_reason","refund_done","refund_amount","refund_date","refund_reason","zoro_case_number","zoro_ra_number","zoro_refund_amount"]],
+];
+async function openDw(oid){
+  const r=await api("/api/order/"+encodeURIComponent(oid));
+  const o=r.order||{}; const notes=r.notes||[]; const rets=r.returns||[];
+  window._DWO=o;   // current drawer order (tag toggles read the live tag list from here)
+  // ROI (profit/cost) — the metric your placer/Seller Note uses. Computed here, not stored,
+  // so the placement gate logic is untouched. profit_percent stays gross margin (profit/sale).
+  const _c=+o.zoro_order_total, _p=+o.profit_dollars;
+  if(_c>0 && !isNaN(_p)) o.roi_percent=Math.round(_p/_c*1000)/10;
+  const KLBL={profit_percent:"margin % (profit÷sale)", roi_percent:"ROI % (profit÷cost — placer note)"};
+  // "Copy for boss" text — EXACTLY the seller-note format the placer writes on Amazon after
+  // placing (utils/seller_notes.format_seller_note): Title budgeted to 256 chars, G→K masked
+  // Code (+" - ALT"), TC/T/Earnings/PM/PP and the C-coupon line with the coupon's 3-letter tag.
+  window._copyText=(()=>{
+    const num=v=>(v==null||v==="")?null:(isNaN(+v)?null:+v);
+    const tc=num(o.zoro_order_total), tax=num(o.zoro_tax), earn=num(o.earnings), pm=num(o.profit_dollars);
+    const pp=(tc>0&&pm!=null)?(pm/tc*100):null;   // PP = ROI (profit÷cost) — same as the placer note
+    const L=[`ASIN: ${o.asin||'N/A'}`];
+    const askv=(""+(o.sku||"")).trim();
+    if(askv&&askv!=="N/A"&&askv!=="None") L.push(`SKU: ${askv}`);
+    let origCode=(""+(o.zoro_sku||"")).trim()||"N/A";
+    let codeLine = `Zoro Code Used: ${origCode}`;
+    if((o.alt_used||"")==="Yes") codeLine+=" - ALT";
+    L.push(codeLine);
+    L.push(`Qty: ${(o.quantity!=null&&o.quantity!=="")?o.quantity:'N/A'}`);
+    L.push(`Tracking msg sent: ${o.tracking_id_uploaded?'Yes':'No'}`);
+    L.push(tc!=null?`Total Zoro Cost: $${tc.toFixed(2)}`:`Total Zoro Cost: N/A`);
+    L.push(tax!=null?`Zoro Tax: $${tax.toFixed(2)}`:`Zoro Tax: N/A`);
+    L.push(earn!=null?`Amazon Earnings: $${earn.toFixed(2)}`:`Amazon Earnings: N/A`);
+    L.push(pm!=null?`Profit Margin: $${pm.toFixed(2)}`:`Profit Margin: N/A`);
+    L.push(pp!=null?`Profit Percentage: ${pp.toFixed(1)}%`:`Profit Percentage: N/A`);
+    const cu=(""+(o.coupon_used||"")).trim();
+    if(cu&&cu!=="None"&&cu!=="N/A"){
+      const sfx=(cu.toUpperCase()!=="AUTO_APPLIED")?` - ${cu.slice(0,3).toUpperCase()}`:"";
+      const off=num(o.coupon_savings);
+      L.push(off?`Coupon: Used ( $${off.toFixed(2)} )${sfx}`:`Coupon: Used${sfx}`);
+    }else L.push("Coupon: Not Used");
+    
+    let body=L.join("\n");
+    const title=(""+(o.title||"")).trim();
+    if(title&&title!=="N/A"&&title!=="None"){
+      body=`Title: ${title.slice(0,30)}\n`+body;
+    }
+    body += "\n\nComments: ";
+    return body;
+  })();
+  const grp=GROUPS.map(([t,ks])=>{
+    const items=ks.filter(k=>o[k]!=null&&o[k]!=="").map(k=>`<b>${KLBL[k]||k}</b><span>${esc(fmt(k,o[k]))}</span>`).join("");
+    return items?`<div class="sect">${t}</div><div class="kv">${items}</div>`:"";
+  }).join("");
+  // LIVE Gmail return/refund — shows even if no closing run has touched this order yet
+  const refund=rets.find(x=>x.refund_done==="Yes");
+  const retHtml = rets.length ? `<div class="alertbox ${refund?'rf':'rt'}">
+      <b>${refund?'💸 Refund detected in Gmail — act now':'↩ Return activity in Gmail'}</b>`+
+      rets.slice(0,4).map(x=>`<div>${esc((x.email_timestamp||'').slice(0,16))} — ${x.refund_done==='Yes'?('refund $'+(x.refund_amount||0)+(x.refund_date?(' · '+esc(x.refund_date)):'')):'return requested'} ${esc(x.return_reason||'')}</div>`).join("")+`</div>` : "";
+  // messages + confirmations
+  const msgHtml = `<div class="sect">Messages &amp; confirmations</div><div class="kv">`+
+    [["tracking → Amazon", o.tracking_id_uploaded?("✓ "+o.tracking_id_uploaded):"—"],
+     ["delivery message sent", o.delivered_msg_sent||"—"],
+     ["review requested", o.review_request_sent||o.review_requested||"—"],
+     ["customer messaged us", o.customer_messaged||"—"],
+     ["customer inquiry", o.customer_inquiry||"—"]]
+     .map(([k,v])=>`<b>${k}</b><span>${esc(v)}</span>`).join("")+`</div>`;
+  const aLink = o.asin?`<a class="sclink" style="cursor:pointer" onclick="openAsin('${esc((''+o.asin).split(',')[0])}')">📈 ASIN insights</a>`:"";
+  $("#dw").innerHTML=`
+    <span class="close" onclick="closeDw()">×</span>
+    <h2>${esc(o.amazon_order_id||oid)}</h2>
+    <div class="sub"><span class="badge l-${esc(o.order_label)}">${esc(o.order_label)||""}</span> · ${esc(o.account)} · ${esc(o.title)}</div>
+    <div class="actions"><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(oid)}" target="_blank" rel="noopener">↗ Seller Central</a>${aLink}<button class="sclink" style="cursor:pointer" onclick="copyOrderText(this)">📋 Copy for boss</button></div>
+    ${retHtml}
+    <div class="actions"><span>Flag:</span>
+      ${["#b42318","#eab308","#067647"].map(c=>`<button onclick="act('${oid}',{flag_color:'${c}'})" style="background:${c};width:22px;height:22px;border-radius:50%;padding:0"></button>`).join("")}
+      <button onclick="act('${oid}',{flag_color:''})">clear</button></div>
+    ${tagsRowHtml(oid,o)}
+    <div class="actions"><span>Case:</span>
+      <select onchange="act('${oid}',{case_status:this.value})">
+        ${["","Open","Filed with Zoro","Won","Lost"].map(s=>`<option ${o.case_status===s?"selected":""}>${s}</option>`).join("")}
+      </select>
+      <label class="chk"><input type="checkbox" ${o.manual_delivered==="Yes"?"checked":""} onchange="act('${oid}',{manual_delivered:this.checked?'Yes':''})"> mark delivered</label></div>
+    ${grp}
+    <div id="dwzoro"></div>
+    ${msgHtml}
+    <div class="sect">Comments</div>
+    <div id="notes">${notes.map(n=>`<div class="note">${esc(n.note)}<br><small>${esc(n.author||"me")} · ${esc((n.created_at||"").slice(0,16))}</small></div>`).join("")||'<div style="color:var(--muted);font-size:12px">No comments yet.</div>'}</div>
+    <textarea id="newnote" placeholder="Add a comment / action note…"></textarea>
+    <div class="actions"><button class="save" onclick="addNote('${oid}')">Add comment</button></div>`;
+  $("#ov").style.display="block";
+  renderDwZoro(o);   // async — one compact Zoro-catalog line under "Zoro / cost" (or nothing)
+}
+function closeDw(){$("#ov").style.display="none";}
+function copyOrderText(btn){
+  const t=window._copyText||"";
+  const done=()=>{const o=btn.textContent;btn.textContent="✓ Copied";setTimeout(()=>btn.textContent=o,1500);};
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done).catch(()=>fallbackCopy(t,done));}
+  else fallbackCopy(t,done);
+}
+function fallbackCopy(t,done){
+  const ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";
+  document.body.appendChild(ta);ta.select();try{document.execCommand("copy");done&&done();}catch(e){}document.body.removeChild(ta);
+}
+
+// ── ASIN analysis (charts) ──
+let ASIN_SERIES=[], ASIN_GEO=null, ASIN_VIS={units:1,price:1,profit:1};
+async function openAsin(asin){
+  const r=await api("/api/asin/"+encodeURIComponent(asin));
+  const s=r.series||[], st=r.states||[];
+  ASIN_VIS={units:1,price:1,profit:1};
+  $("#adw").innerHTML=`
+    <span class="close" onclick="closeAsin()">×</span>
+    <h2>${esc(asin)}</h2>
+    <div class="sub">${r.count||0} orders · on-time ${r.on_time||0} / late ${r.late||0}
+      &nbsp;·&nbsp;return ${r.return_rate||0}% (${r.returns||0}) · refund ${r.refund_rate||0}% (${r.refunds||0})
+      &nbsp;·&nbsp;<a class="asinlink" href="https://www.amazon.com/dp/${esc(asin)}" target="_blank" rel="noopener">view on Amazon ↗</a></div>
+    <div class="sect">Units · Zoro price · profit — day by day (hover for detail)</div>
+    <div id="asintogs" style="margin:2px 0 6px">
+      <span class="chiptog" data-s="units"><span class="lg" style="background:#cdd9f5"></span>units</span>
+      <span class="chiptog" data-s="price"><span class="lg" style="background:#3b5bdb"></span>Zoro $/unit</span>
+      <span class="chiptog" data-s="profit"><span class="lg" style="background:#067647"></span>profit/unit</span>
+      <span class="chiptog" style="cursor:default;border-color:transparent"><span class="lg" style="background:#6941c6"></span>price change</span>
+      <span class="chiptog" style="cursor:default;border-color:transparent"><span class="lg" style="background:#b54708"></span>code change</span>
+    </div>
+    ${timeChart(s)}
+    <div class="sect">Changes &amp; notifications — what changed, when</div>
+    ${changeLog(s)}
+    <div id="asinzoro"></div>
+    <div class="sect">Orders by state</div>
+    ${stateChart(st)}
+    <div class="sect">Returns &amp; refunds — reasons</div>
+    <div style="display:flex;gap:32px;flex-wrap:wrap;font-size:12px;margin-bottom:6px">
+      <div style="flex:1;min-width:240px">
+        <div style="font-weight:700;margin-bottom:3px">↩️ Return rate ${r.return_rate||0}% <span style="color:var(--muted);font-weight:500">(${r.returns||0}/${r.count||0})</span></div>
+        ${(r.return_reasons||[]).length?(r.return_reasons).map(x=>`<div style="display:flex;justify-content:space-between;border-top:1px solid var(--bg);padding:2px 0"><span>${esc(x.reason)}</span><b>${x.n}</b></div>`).join(""):`<div style="color:var(--muted)">no reasons recorded</div>`}
+      </div>
+      <div style="flex:1;min-width:240px">
+        <div style="font-weight:700;margin-bottom:3px">💸 Refund rate ${r.refund_rate||0}% <span style="color:var(--muted);font-weight:500">(${r.refunds||0}/${r.count||0})</span></div>
+        ${(r.refund_reasons||[]).length?(r.refund_reasons).map(x=>`<div style="display:flex;justify-content:space-between;border-top:1px solid var(--bg);padding:2px 0"><span>${esc(x.reason)}</span><b>${x.n}</b></div>`).join(""):`<div style="color:var(--muted)">no reasons recorded</div>`}
+      </div>
+    </div>
+    <div class="sect">📷 Customer pictures — <span id="asinPicsCount">checking…</span></div>
+    <div id="asinpics" style="font-size:12px;color:var(--muted)">Looking for pictures customers sent on this ASIN's orders…</div>
+    <div class="sect">Orders of this ASIN (${(r.orders||[]).length})</div>
+    ${asinOrders(r.orders||[])}`;
+  $("#aov").style.display="flex";
+  loadAsinPics(asin);  // async — pulls customer-message images (Gmail-cached) into #asinpics
+  renderAsinZoro(s);   // async — fills #asinzoro when the TSV lookup returns (or leaves it empty)
+  wireAsinHover();
+  document.querySelectorAll("#asintogs .chiptog[data-s]").forEach(c=>c.onclick=()=>{
+    const k=c.dataset.s; ASIN_VIS[k]=!ASIN_VIS[k]; c.classList.toggle("off",!ASIN_VIS[k]);
+    const g=document.querySelector("#asinsvg .g-"+k); if(g) g.style.display=ASIN_VIS[k]?"":"none";
+  });
+}
+function closeAsin(){$("#aov").style.display="none";}
+
+async function loadAsinPics(asin){
+  const el=$("#asinpics"), cnt=$("#asinPicsCount"); if(!el) return;
+  const r=await api("/api/asin_pics?asin="+encodeURIComponent(asin)).catch(()=>null);
+  if(!$("#asinpics")||$("#asinpics")!==el) return;      // drawer re-rendered meanwhile
+  const errNote=(r&&r.errors&&r.errors.length)?`<div style="color:#b42318;font-size:11px;margin-top:4px" title="${esc(r.errors.join("\n"))}">⚠ ${r.errors.length} message(s) could not be fetched from Gmail.</div>`:"";
+  if(!r||!(r.groups||[]).length){
+    if(cnt)cnt.textContent="none";
+    el.innerHTML="No customer pictures on this ASIN's orders."+errNote;
+    return;
+  }
+  if(cnt)cnt.textContent=`${r.total} picture${r.total===1?"":"s"} from ${r.groups.length} message${r.groups.length===1?"":"s"}`;
+  el.innerHTML=`<div style="margin:2px 0 10px">
+      <a href="/api/asin_pics_zip?asin=${encodeURIComponent(asin)}" download
+         style="text-decoration:none;padding:6px 13px;border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-weight:700;font-size:12px">⬇ Download all ${r.total} picture${r.total===1?"":"s"} (zip)</a></div>`+
+    r.groups.map(g=>`<div style="margin-bottom:13px">
+      <div style="margin-bottom:4px"><span class="asinlink" onclick="openZoro('${esc(g.order_id)}')">${esc(g.order_id)}</span>
+        <span style="color:var(--muted)"> · ${esc((g.ts||"").slice(0,16))}${g.customer?(" · "+esc(g.customer)):""} · ${esc(g.account)}</span></div>
+      ${g.subject?`<div style="color:var(--muted);font-size:11px;margin-bottom:5px">${esc(g.subject)}</div>`:""}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${g.images.map(im=>
+        `<a href="${esc(im.url)}" target="_blank" rel="noopener" title="${esc(im.name)} — click for full size">
+           <img src="${esc(im.url)}" loading="lazy" style="height:110px;max-width:210px;object-fit:cover;border-radius:8px;border:1px solid var(--line)"></a>`).join("")}</div>
+    </div>`).join("")+errNote;
+}
+
+function changeLog(s){
+  s=s||[];
+  const ev=[];
+  for(let i=0;i<s.length;i++){
+    const d=s[i], pv=i>0?s[i-1]:null;
+    if(d.price_changed && pv){
+      const o=+pv.zoro_price||0, n=+d.zoro_price||0, pct=o?Math.round((n-o)/o*100):0;
+      ev.push({date:d.date,kind:"price",sev:Math.abs(pct)>=10?"high":"med",
+        txt:`Zoro cost <b>$${o.toFixed(2)} → $${n.toFixed(2)}</b> <b style="color:${n>=o?'var(--red)':'var(--green)'}">${pct>=0?'+':''}${pct}%</b> ${n>=o?'(margin squeeze)':'(cheaper — better margin)'}`});
+    }
+    if(d.code_changed && pv){
+      ev.push({date:d.date,kind:"code",sev:"med",
+        txt:`Zoro code <b>${esc(pv.zoro_code||'—')} → ${esc(d.zoro_code||'—')}</b> (supplier item changed)`});
+    }
+  }
+  if(!ev.length) return '<div class="empty" style="padding:12px">No Zoro price or code changes in this window ✓</div>';
+  ev.reverse();
+  return `<div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">`+
+    ev.map(e=>`<div class="irow"><span class="sev ${e.sev}"></span>
+      <span style="min-width:54px;font-weight:700">${esc((e.date||'').slice(5))}</span>
+      <span class="catbadge" style="background:${e.kind==='price'?'#f3eefe':'#fdf0e6'};color:${e.kind==='price'?'#6941c6':'#b54708'}">${e.kind==='price'?'PRICE':'CODE'}</span>
+      <span class="msg">${e.txt}</span></div>`).join("")+`</div>`;
+}
+function timeChart(s){
+  if(!s.length) return '<div class="empty">No data</div>';
+  ASIN_SERIES=s;
+  const W=860,H=320,padL=48,padR=54,padT=22,padB=42,iw=W-padL-padR,ih=H-padT-padB,n=s.length;
+  const maxU=Math.max(1,...s.map(d=>d.units||0));
+  const maxD=Math.max(1,...s.flatMap(d=>[d.zoro_price||0,d.profit||0]));
+  const X=i=> padL+(n===1?iw/2:iw*i/(n-1));
+  const yU=v=> padT+ih-ih*((v||0)/maxU);
+  const yD=v=> padT+ih-ih*((v||0)/maxD);
+  ASIN_GEO={W,padT,ih,xs:s.map((_,i)=>X(i))};
+  const bw=Math.max(2,Math.min(24,iw/n*0.55));
+  const bars=s.map((d,i)=>`<rect x="${(X(i)-bw/2).toFixed(1)}" y="${yU(d.units).toFixed(1)}" width="${bw.toFixed(1)}" height="${(padT+ih-yU(d.units)).toFixed(1)}" rx="1.5" fill="#cdd9f5"/>`).join("");
+  const polP=s.map((d,i)=>`${X(i).toFixed(1)},${yD(d.zoro_price).toFixed(1)}`).join(" ");
+  const polR=s.map((d,i)=>`${X(i).toFixed(1)},${yD(d.profit).toFixed(1)}`).join(" ");
+  const priceDots=s.map((d,i)=> d.price_changed?`<circle cx="${X(i).toFixed(1)}" cy="${yD(d.zoro_price).toFixed(1)}" r="4.5" fill="#6941c6" stroke="#fff" stroke-width="1.5"/>`:"").join("");
+  const codeMarks=s.map((d,i)=> d.code_changed?`<line x1="${X(i).toFixed(1)}" y1="${padT}" x2="${X(i).toFixed(1)}" y2="${padT+ih}" stroke="#b54708" stroke-width="1.5" stroke-dasharray="4,3"/><text x="${X(i).toFixed(1)}" y="${(padT-4).toFixed(1)}" font-size="8" text-anchor="middle" fill="#b54708" font-weight="700">code</text>`:"").join("");
+  // label each price-change point with the NEW $/unit so the chart reads on its own
+  const priceLabels=s.map((d,i)=> d.price_changed?`<text x="${X(i).toFixed(1)}" y="${(yD(d.zoro_price)-9).toFixed(1)}" font-size="8.5" text-anchor="middle" fill="#6941c6" font-weight="700">$${(d.zoro_price||0).toFixed(2)}</text>`:"").join("");
+  const step=Math.max(1,Math.ceil(n/9));
+  const xl=s.map((d,i)=> i%step===0?`<text x="${X(i).toFixed(1)}" y="${H-16}" font-size="9" text-anchor="middle" fill="#667">${esc((d.date||'').slice(5))}</text>`:"").join("");
+  const grid=`<line x1="${padL}" y1="${padT+ih}" x2="${padL+iw}" y2="${padT+ih}" stroke="#cfd6e4"/>`+
+    [0,.5,1].map(f=>`<line x1="${padL}" y1="${(padT+ih-ih*f).toFixed(1)}" x2="${padL+iw}" y2="${(padT+ih-ih*f).toFixed(1)}" stroke="#eef1f6"/>`).join("");
+  const yax=`<text x="6" y="${padT+8}" font-size="9" fill="#667">${maxU}u</text>
+             <text x="${W-padR+6}" y="${padT+8}" font-size="9" fill="#3b5bdb">$${maxD.toFixed(0)}</text>
+             <text x="${W-padR+6}" y="${padT+ih}" font-size="9" fill="#667">$0</text>`;
+  return `<div style="position:relative">
+    <svg id="asinsvg" viewBox="0 0 ${W} ${H}" width="100%">
+      ${grid}
+      <g class="g-units">${bars}</g>
+      <g class="g-profit"><polyline points="${polR}" fill="none" stroke="#067647" stroke-width="2"/></g>
+      <g class="g-price"><polyline points="${polP}" fill="none" stroke="#3b5bdb" stroke-width="2"/>${priceDots}${priceLabels}</g>
+      ${codeMarks}${xl}${yax}
+      <line id="asinguide" x1="0" y1="${padT}" x2="0" y2="${padT+ih}" stroke="#98a2b3" stroke-dasharray="3,3" style="display:none"/>
+      <rect id="asinhit" x="${padL}" y="${padT}" width="${iw}" height="${ih}" fill="transparent" style="cursor:crosshair"/>
+    </svg>
+    <div id="asintip" class="charttip" style="display:none"></div>
+  </div>`;
+}
+
+function wireAsinHover(){
+  const svg=$("#asinsvg"), hit=$("#asinhit"), tip=$("#asintip"), guide=$("#asinguide");
+  if(!svg||!hit||!ASIN_GEO) return;
+  const wrap=svg.parentElement;
+  hit.addEventListener("mousemove",e=>{
+    const rb=svg.getBoundingClientRect(), sx=(e.clientX-rb.left)/rb.width*ASIN_GEO.W;
+    let bi=0,bd=1e9; ASIN_GEO.xs.forEach((xx,i)=>{const dd=Math.abs(xx-sx);if(dd<bd){bd=dd;bi=i;}});
+    const d=ASIN_SERIES[bi]; if(!d) return;
+    const gx=ASIN_GEO.xs[bi];
+    guide.setAttribute("x1",gx); guide.setAttribute("x2",gx); guide.style.display="";
+    const wr=wrap.getBoundingClientRect(), px=e.clientX-wr.left, py=e.clientY-wr.top;
+    tip.style.display="block";
+    tip.style.left=Math.max(0,Math.min(wrap.clientWidth-172,px+12))+"px";
+    tip.style.top=Math.max(0,py-10)+"px";
+    tip.innerHTML=`<b>${esc(d.date)}</b><br>units: ${d.units}<br>Zoro $/unit: $${(d.zoro_price||0).toFixed(2)}<br>profit/unit: $${(d.profit||0).toFixed(2)}<br>margin: ${d.margin}%<br>code: ${esc(d.zoro_code||'—')}`
+      +(d.code_changed?'<br><span class="ch">⟵ code changed</span>':'')+(d.price_changed?'<br><span class="ch">⚠ price changed</span>':'');
+  });
+  hit.addEventListener("mouseleave",()=>{tip.style.display="none";guide.style.display="none";});
+}
+function asinOrders(rows){
+  if(!rows.length) return '<div class="empty">No orders</div>';
+  const r=rows.slice().reverse().slice(0,80);  // most recent first
+  const head=["date","order","status","qty","item $","zoro $","margin%"];
+  return `<div style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+    <table style="font-size:11.5px;width:100%">
+    <thead><tr>${head.map(h=>`<th style="position:sticky;top:0;background:#f3f5fb;padding:6px 8px;text-align:left">${h}</th>`).join("")}</tr></thead>
+    <tbody>${r.map(o=>`<tr style="cursor:pointer" onclick="closeAsin();openDw('${esc(o.amazon_order_id)}')">
+      <td>${esc((o.purchase_date||'').slice(0,10))}</td>
+      <td style="color:var(--accent);font-weight:600">${esc(o.amazon_order_id)}</td>
+      <td><span class="badge l-${esc(o.order_label)}">${esc(o.order_label||'')}</span></td>
+      <td>${esc(o.quantity!=null?o.quantity:'')}</td>
+      <td>$${(+o.item_price||0).toFixed(2)}</td>
+      <td>$${(+o.zoro_order_total||0).toFixed(2)}</td>
+      <td>${o.profit_percent!=null?esc(o.profit_percent):''}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+function stateChart(st){
+  if(!st.length) return '<div class="empty">No data</div>';
+  const top=st.slice(0,15), max=Math.max(1,...top.map(x=>x.n));
+  return `<div class="states">`+top.map(x=>`<div class="strow"><span class="stlab">${esc(x.state||'?')}</span><span class="stbar" style="width:${Math.round(x.n/max*100)}%"></span><span class="stn">${x.n}</span></div>`).join("")+`</div>`;
+}
+
+function refreshCurrent(){const f={insights:loadInsights,health:loadDataHealth,pnl:()=>(PNL_ACCT==="HOANK"?loadPnlHoank():loadPnl()),bank:loadBank,severe:loadSevere,data:loadData,tracker:loadTracker,unmapped:loadUnmapped,needs_priority:loadNeedsPriority,walmart:loadWalmart,listings:loadListings}[TAB];(f||loadOrders)();}
+function _acctQS(){const a=$("#account").value;return a?("?account="+encodeURIComponent(a)):"";}
+// ── Listings (growth side) ────────────────────────────────────────────────
+var LIST_ACTION="DELETE_NEVER_SOLD";
+function setListAction(a){LIST_ACTION=a;loadListings();}
+// Seller Central inventory, filtered to this listing. Search by ASIN so every
+// SKU on that ASIN shows together (that is how you spot duplicates); fall back
+// to the SKU when the ALR has no ASIN for the row.
+var LIST_LABEL="";                       // "" = all, "__none__" = unlabelled only
+function setListLabel(v){LIST_LABEL=v;loadListings();}
+function filterSkus(){
+  const val = (document.getElementById('skuFilter')||{}).value;
+  const prefix = (val||"").toLowerCase();
+  const trs = document.querySelectorAll("#listings tbody tr");
+  let vis = 0;
+  trs.forEach(tr => {
+    if(tr.cells.length < 2) return;
+    const skuTd = tr.cells[1];
+    if(skuTd){
+      const sku = skuTd.innerText.trim().toLowerCase();
+      if(sku.startsWith(prefix)){
+        tr.style.display = "";
+        if(tr.cells.length > 5) vis++;
+      } else {
+        tr.style.display = "none";
+      }
+    }
+  });
+  const cnt = document.getElementById("listCount");
+  if(cnt) cnt.innerText = vis.toLocaleString();
+}
+const LIST_LABEL_COLORS={Deleted:"#b42318",Kept:"#067647",Inactivated:"#b54708",
+                         Activated:"#067647",Relisted:"#5925dc",Later:"#475467"};
+// Save the operator's own label for a listing. Optimistic: colour the select
+// immediately so rapid labelling down a long list never feels laggy, and only
+// re-fetch the counts once the write lands.
+async function setRowLabel(sel, account, sku){
+  const label=sel.value;
+  sel.style.color=LIST_LABEL_COLORS[label]||"var(--muted)";
+  sel.style.fontWeight=label?"700":"400";
+  try{
+    await fetch("/api/listing_label",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({account,sku,label,by:(window.WHOAMI||"")})});
+    const c=document.querySelector("#listLabelCounts");
+    if(c) refreshLabelCounts();
+  }catch(e){ sel.style.color="#b42318"; sel.title="save failed — "+e; }
+}
+async function refreshLabelCounts(){
+  const a=$("#account").value;
+  const r=await api("/api/listings?limit=1"+(a?"&account="+encodeURIComponent(a):"")).catch(()=>null);
+  if(!r||!r.label_counts) return;
+  const el=document.querySelector("#listLabelCounts");
+  if(el) el.innerHTML=labelCountsHtml(r.label_counts);
+}
+function labelCountsHtml(lc){
+  const parts=Object.entries(lc||{}).filter(([k,v])=>k&&v)
+    .map(([k,v])=>`<span style="color:${LIST_LABEL_COLORS[k]||'var(--muted)'};font-weight:700">${esc(k)} ${v}</span>`);
+  return parts.length?("marked: "+parts.join(" &nbsp;·&nbsp; ")):"nothing marked yet";
+}
+function scInventoryUrl(x){
+  const term=(x.asin||x.sku||"").trim();
+  return "https://sellercentral.amazon.com/myinventory/inventory"
+    +"?fulfilledBy=all&page=1&pageSize=25&searchField=all"
+    +"&searchTerm="+encodeURIComponent(term)
+    +"&sort=date_created_desc&status=all";
+}
+async function loadListings(){
+  // NOT _acctQS(): that returns "?account=…", which would produce a second "?"
+  // here and make the whole account filter silently no-op.
+  const _a=$("#account").value;
+  const r=await api("/api/listings?limit=10000&action="+encodeURIComponent(LIST_ACTION)
+                    +(_a?"&account="+encodeURIComponent(_a):"")
+                    +(LIST_LABEL?"&label="+encodeURIComponent(LIST_LABEL):""))
+                 .catch(()=>({ready:false,error:"could not load"}));
+  const $L=$("#listings");
+  if(!r.ready){
+    $L.innerHTML=`<div style="padding:14px 2px"><div class="sect">📦 Listings</div>
+      <div style="color:var(--muted);padding:14px;font-size:14px">${esc(r.error||"Not computed yet.")}<br><br>
+      Run: <code>../.venv/bin/python scripts/refresh_zoro_and_listings.py</code></div></div>`;
+    return;
+  }
+  const T=r.totals||{}, info=r.info||{}, meta=info.meta||[], st=info.settings||{};
+  const win=st.redundant_days||60;
+  const CARDS=[
+    ["DELETE_NEVER_SOLD","🗑️ Delete — never sold","#b42318",`live >${win}d, never sold a unit`],
+    ["DELETE_DORMANT","🗑️ Delete — dormant","#b54708",`live >${win}d, nothing in ${win}d (but sold before)`],
+    ["MAKE_INACTIVE","🔴 Make inactive","#b42318","live on Amazon, out of stock at Zoro"],
+    ["MAKE_ACTIVE","🟢 Make active","#067647","inactive but back in stock at Zoro"],
+    ["KEEP","✅ Healthy","#475467","selling normally"],
+  ];
+  const cards=CARDS.map(([k,label,col,help])=>`
+    <div onclick="setListAction('${k}')" style="cursor:pointer;flex:1;min-width:150px;background:var(--card);
+         border-radius:11px;box-shadow:var(--shadow);padding:11px 13px;
+         border:2px solid ${LIST_ACTION===k?col:'transparent'}">
+      <div style="font-size:22px;font-weight:800;color:${col}">${(T[k]||0).toLocaleString()}</div>
+      <div style="font-weight:700;font-size:12px;margin-top:2px">${label}</div>
+      <div style="color:var(--muted);font-size:11px;margin-top:3px">${help}</div>
+    </div>`).join("");
+
+  // Freshness: the three inputs that decide whether any of this is trustworthy.
+  const age=r.feed_age_days;
+  const feedBad=(age===null||age===undefined)?false:age>3;
+  const warn=[];
+  if(feedBad) warn.push(`⛔ Zoro feed is <b>${age} days old</b> — stock actions are withheld until it refreshes.`);
+  meta.forEach(m=>{
+    const d=(m.data_end||"").slice(0,10);
+    if(d) warn.push(`${esc(m.account_name)}: order data ends <b>${d}</b>, ALR ${(m.alr_mtime||"?").slice(0,10)}`);
+  });
+
+  const rows=(r.rows||[]).map(x=>`<tr>
+    <td>${esc(x.account||"")}</td>
+    <td><span class="asinlink" title="${esc(x.title||"")}">${esc(x.sku||"")}</span></td>
+    <td>${x.asin?`<a class="sclink" href="https://www.amazon.com/dp/${esc(x.asin)}" target="_blank" rel="noopener">${esc(x.asin)}</a>`:""}</td>
+    <td>${esc(x.status||"")}</td>
+    <td style="text-align:right">${x.price!=null?"$"+Number(x.price).toFixed(2):""}</td>
+    <td style="text-align:right;font-weight:700">${(x.units_ever||0).toLocaleString()}</td>
+    <td style="text-align:right">${(x.units_365d||0).toLocaleString()}</td>
+    <td>${(x.last_sale||"").slice(0,10)}</td>
+    <td>${esc(x.zoro_availability||"—")}</td>
+    <td style="color:var(--muted);font-size:11px">${esc(x.reason||"")}</td>
+    <td><a class="sclink" href="${scInventoryUrl(x)}" target="_blank" rel="noopener">manage ↗</a></td>
+    <td>${x.asin?`<a class="sclink" href="https://sellercentral.amazon.com/orders-v3/search?page=1&q=${esc(x.asin)}&qt=asin&date-range=1704049200000-1788029999000" target="_blank" rel="noopener">orders ↗</a>`:""}</td>
+    <td><select onchange="setRowLabel(this,'${esc(x.account||"")}','${esc((x.sku||"").replace(/'/g,"\\'"))}')"
+        title="${esc(x.op_note||"")}${x.op_at?(' · '+esc(x.op_at)):''}"
+        style="font-size:11px;padding:3px 5px;color:${LIST_LABEL_COLORS[x.op_label]||'var(--muted)'};font-weight:${x.op_label?700:400}">
+      ${[""].concat(r.labels||[]).map(l=>
+        `<option value="${esc(l)}" ${((x.op_label||"")===l)?"selected":""}>${l?esc(l):"— mark —"}</option>`).join("")}
+    </select></td>
+  </tr>`).join("");
+
+  const rel=(r.relist||[]).map(x=>`<tr>
+    <td>${esc(x.account||"")}</td><td>${esc(x.sku||"")}</td>
+    <td>${x.asin?`<a class="sclink" href="https://www.amazon.com/dp/${esc(x.asin)}" target="_blank" rel="noopener">${esc(x.asin)}</a>`:""}</td>
+    <td style="text-align:right;font-weight:700">${(x.units_365d||0).toLocaleString()}</td></tr>`).join("");
+
+  $L.innerHTML=`<div style="padding:14px 2px">
+    <div class="sect">📦 Listings — what to delete, pause, revive &nbsp;<button class="mini" onclick="loadListings()">↻ refresh</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      Read-only analysis — nothing here changes Amazon. Last computed
+      <b>${(info.run_at||"?").slice(0,16).replace("T"," ")}</b>, redundancy window <b>${win} days</b>.
+      ${warn.length?"<br>"+warn.join(" &nbsp;·&nbsp; "):""}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${cards}</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:6px">
+      <span>Showing <b id="listCount">${(r.rows||[]).length.toLocaleString()}</b> of ${(T[LIST_ACTION]||0).toLocaleString()} — biggest sellers first.</span>
+      <input type="text" id="skuFilter" onkeyup="filterSkus()" placeholder="Filter SKUs (e.g. Kam)..." style="font-size:11px;padding:3px 5px;width:140px;border:1px solid #ccc;border-radius:4px;">
+      <span style="flex:1"></span>
+      <span>Mark:</span>
+      <select onchange="setListLabel(this.value)" style="font-size:11px;padding:3px 5px">
+        <option value="" ${LIST_LABEL===""?"selected":""}>all</option>
+        <option value="__none__" ${LIST_LABEL==="__none__"?"selected":""}>unmarked only</option>
+        ${(r.labels||[]).map(l=>`<option value="${esc(l)}" ${LIST_LABEL===l?"selected":""}>${esc(l)}</option>`).join("")}
+      </select>
+      <span id="listLabelCounts">${labelCountsHtml(r.label_counts)}</span>
+    </div>
+    <table style="font-size:12px"><thead><tr>
+      <th>account</th><th>SKU</th><th>ASIN</th><th>status</th><th style="text-align:right">price</th>
+      <th style="text-align:right">units ever</th><th style="text-align:right">1yr</th><th>last sale</th>
+      <th>Zoro stock</th><th>why</th><th></th><th></th><th>mark</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="13" style="color:var(--muted);padding:12px">Nothing in this list.</td></tr>'}</tbody></table>
+    ${rel?`<div class="sect" style="margin-top:18px">♻️ Relist candidates — sold in the last year, no longer listed (${(r.relist||[]).length.toLocaleString()})</div>
+      <table style="font-size:12px"><thead><tr><th>account</th><th>SKU</th><th>ASIN</th>
+      <th style="text-align:right">units 1yr</th></tr></thead><tbody>${rel}</tbody></table>`:""}
+  </div>`;
+}
+async function loadUnmapped(){
+  const r=await api("/api/unmapped"+_acctQS()).catch(()=>({asins:[]}));
+  const A=r.asins||[];
+  const body=A.map((g,i)=>`
+    <div style="background:var(--card);border-radius:11px;box-shadow:var(--shadow);margin-bottom:8px;overflow:hidden">
+      <div onclick="var e=document.getElementById('um_${i}');e.style.display=(e.style.display==='none'?'block':'none')" style="cursor:pointer;padding:11px 15px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-weight:800;font-size:15px">${esc(g.asin)}</span>
+        <span style="background:#b42318;color:#fff;border-radius:20px;padding:2px 11px;font-size:12px;font-weight:800">× ${g.count}</span>
+        <a class="sclink" href="https://www.amazon.com/dp/${esc(g.asin)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">view product ↗</a>
+        <span style="flex:1"></span>
+        <span style="color:var(--muted);font-size:12px">▾ ${g.count} order${g.count>1?'s':''} to label</span>
+      </div>
+      <div id="um_${i}" style="display:none;padding:0 15px 12px">
+        <table style="font-size:12px"><thead><tr><th>order</th><th>buyer</th><th>city/state</th><th>run</th><th>label it</th></tr></thead><tbody>
+        ${g.orders.map(o=>`<tr>
+          <td><span class="asinlink" onclick="openDw('${esc(o.order_id)}')">${esc(o.order_id)}</span></td>
+          <td>${esc(o.buyer||'')}</td><td>${esc(o.city||'')} ${esc(o.state||'')}</td>
+          <td style="color:var(--muted)">${esc(o.run||'')}</td>
+          <td><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(o.order_id)}" target="_blank" rel="noopener">open in Seller Central ↗</a></td></tr>`).join("")}
+        </tbody></table></div>
+    </div>`).join("");
+  $("#unmapped").innerHTML=`<div style="padding:14px 2px">
+    <div class="sect">🏷️ Unmapped ASINs — orders the placer skipped (ASIN not in the verified SKU sheet) &nbsp;<button class="mini" onclick="loadUnmapped()">↻ refresh</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px"><b>${r.total_orders||0}</b> orders across <b>${r.total_asins||0}</b> ASINs need labelling. Click an ASIN to see its orders → open each in Seller Central to map/label it. Refreshes from the placer run logs — resolved ASINs drop off after the next placer run.</div>
+    ${body||'<div style="color:var(--muted);padding:14px;font-size:14px">🎉 No unmapped ASINs — every ordered ASIN is in the verified SKU sheet.</div>'}</div>`;
+}
+async function loadNeedsPriority(){
+  const r=await api("/api/needs_priority"+_acctQS()).catch(()=>({asins:[]}));
+  const A=r.asins||[];
+  const body=A.map((g,i)=>`
+    <div style="background:var(--card);border-radius:11px;box-shadow:var(--shadow);margin-bottom:8px;overflow:hidden">
+      <div onclick="var e=document.getElementById('np_${i}');e.style.display=(e.style.display==='none'?'block':'none')" style="cursor:pointer;padding:11px 15px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-weight:800;font-size:15px">${esc(g.asin)}</span>
+        <span style="background:#b7791f;color:#fff;border-radius:20px;padding:2px 11px;font-size:12px;font-weight:800">× ${g.count}</span>
+        <a class="sclink" href="https://sellercentral.amazon.com/orders-v3/search?fulfillmentType=mfn&orderStatus=unshipped&page=1&q=${esc(g.asin)}&qt=asin" target="_blank" rel="noopener" onclick="event.stopPropagation()">its orders in SC ↗</a>
+        <span style="flex:1"></span>
+        <span style="color:var(--muted);font-size:12px">▾ ${g.count} order${g.count>1?'s':''} to label</span>
+      </div>
+      <div id="np_${i}" style="display:none;padding:0 15px 12px">
+        <table style="font-size:12px"><thead><tr><th>order</th><th>buyer</th><th>city/state</th><th>run</th><th>label it</th></tr></thead><tbody>
+        ${g.orders.map(o=>`<tr>
+          <td><span class="asinlink" onclick="openDw('${esc(o.order_id)}')">${esc(o.order_id)}</span></td>
+          <td>${esc(o.buyer||'')}</td><td>${esc(o.city||'')} ${esc(o.state||'')}</td>
+          <td style="color:var(--muted)">${esc(o.run||'')}</td>
+          <td><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(o.order_id)}" target="_blank" rel="noopener">open in Seller Central ↗</a></td></tr>`).join("")}
+        </tbody></table></div>
+    </div>`).join("");
+  $("#needs_priority").innerHTML=`<div style="padding:14px 2px">
+    <div class="sect">⭐ Needs Priority — unlabelled orders whose ASIN isn't in priority control &nbsp;<button class="mini" onclick="loadNeedsPriority()">↻ refresh</button></div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px"><b>${r.total_orders||0}</b> orders across <b>${r.total_asins||0}</b> ASINs need labelling. The placer skips these (unlabelled + ASIN not in priority control). Click an ASIN to see its orders → open each in Seller Central and label it (or add the ASIN to priority control). Refreshes from the placer run logs — resolved ASINs drop off after the next placer run.</div>
+    ${body||'<div style="color:var(--muted);padding:14px;font-size:14px">🎉 Nothing pending — no unlabelled non-priority orders right now.</div>'}</div>`;
+}
+// ═══════════ 🛒 Walmart orders (walmart_orders — scraped / placed via the launcher's Walmart page) ═══════════
+let WM_STATUS="placed";
+async function loadWalmart(){
+  const p=new URLSearchParams();
+  if(WM_STATUS)p.set("status",WM_STATUS);
+  if($("#q").value.trim())p.set("q",$("#q").value.trim());
+  if(DATE_FROM)p.set("from",DATE_FROM); if(DATE_TO)p.set("to",DATE_TO);
+  window._WM=await api("/api/walmart?"+p.toString()).catch(()=>({orders:[],kpis:{}}));
+  renderWalmart();
+}
+function wmBadge(s){
+  const v=(""+(s||"")).toLowerCase();
+  const map={placed:["greenbg","green"],processing_clicked:["greenbg","green"],pending:["amberbg","amber"],failed:["redbg","red"],scraped:["bluebg","blue"]};
+  const bg=(map[v]||["greybg","grey"])[0], fg=(map[v]||["greybg","grey"])[1];
+  return `<span class="badge" style="background:var(--${bg});color:var(--${fg})">${esc(s||"—")}</span>`;
+}
+function renderWalmart(){
+  const r=window._WM||{}, rows=r.orders||[], k=r.kpis||{};
+  const profNeg=(+k.profit_sum||0)<0;
+  const cards=[["Orders",k.count||0],["Placed",k.placed||0],["Pending / Failed",(k.pending||0)+" / "+(k.failed||0)],
+    ["Earnings",usd(k.earnings_sum||0)],["Zoro cost",usd(k.cost_sum||0)],
+    ["Profit",`<span style="${profNeg?'color:var(--red)':''}">${usd(k.profit_sum||0)}</span>`]];
+  const kpis=`<div class="kpis" style="padding:13px 0">`+cards.map(([l,v],i)=>`<div class="kpi k${i%6}"><div class="kv-num">${v}</div><div class="kv-lab">${l}</div></div>`).join("")+`</div>`;
+  const chip=(v,t)=>`<span class="chip ${WM_STATUS===v?'on':''}" onclick="WM_STATUS='${v}';loadWalmart()">${t}</span>`;
+  const chips=`<div style="display:flex;gap:7px;flex-wrap:wrap;margin:0 0 10px;align-items:center">
+    <span style="color:var(--muted);font-weight:600;font-size:12px">Status:</span>
+    ${chip("","All")}${chip("pending","Pending")}${chip("placed","Placed")}${chip("failed","Failed")}</div>`;
+  const trunc=t=>{t=""+(t||"");return t.length>40?t.slice(0,40)+"…":t;};
+  const body=rows.map(o=>{
+    const wb=(""+(o.wb_order_id||"")).trim();
+    const p=o.profit==null?null:+o.profit;
+    return `<tr style="cursor:${wb?'pointer':'default'}" ${wb?`onclick="openZoro('${esc(wb)}')" title="show Zoro order details"`:""}>
+      <td>${esc((""+(o.order_date||"")).slice(0,10))}</td>
+      <td style="font-weight:600">${esc(o.po_number||"")}</td>
+      <td>${esc(o.order_number||"")}</td>
+      <td>${esc(o.zoro_code||"")}${o.zoro_qty?(" ×"+esc(o.zoro_qty)):""}</td>
+      <td title="${esc(o.title||"")}">${esc(trunc(o.title))}</td>
+      <td style="text-align:right">${o.earnings!=null?usd(o.earnings):""}</td>
+      <td style="text-align:right">${o.zoro_cost!=null?usd(o.zoro_cost):""}</td>
+      <td style="text-align:right" class="${p==null?'':(p<0?'neg':(p>0?'pos':''))}">${p==null?"":usd(p)}</td>
+      <td>${esc(wb)}</td>
+      <td>${wmBadge(o.status)}</td>
+      <td>${esc(o.ship_name||"")}${(o.ship_city||o.ship_state)?(" · "+esc(o.ship_city||"")+", "+esc(o.ship_state||"")):""}</td>
+    </tr>`;}).join("");
+  $("#walmart").innerHTML=`<div style="padding:14px 2px">
+    <div class="sect">🛒 Walmart orders — ${rows.length} shown &nbsp;<button class="mini" onclick="loadWalmart()">↻ refresh</button></div>
+    ${kpis}${chips}
+    <table style="font-size:12px"><thead><tr><th>date</th><th>PO #</th><th>order #</th><th>Zoro code</th><th>title</th><th style="text-align:right">earnings</th><th style="text-align:right">Zoro cost</th><th style="text-align:right">profit</th><th>WB</th><th>status</th><th>ship to</th></tr></thead>
+    <tbody>${body||`<tr><td colspan=11 style="color:var(--muted);padding:16px">No Walmart orders${WM_STATUS?" with this status":""} yet — scrape or add orders from the launcher's Walmart page.</td></tr>`}</tbody></table></div>`;
+}
+let TRK_FLAG="", TRK_TAG="", TRK_GROUP=true;
+async function loadTracker(){
+  window._TRK=await api("/api/tracker").catch(()=>({items:[]}));
+  renderTracker();
+}
+function renderTracker(){
+  const all=(window._TRK&&window._TRK.items)||[];
+  let items=TRK_FLAG?all.filter(x=>(x.flag||"")===TRK_FLAG):all;
+  if(TRK_TAG) items=items.filter(x=>tagList(x).includes(TRK_TAG));
+  const fc=c=>c?`<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${esc(c)};vertical-align:middle"></span>`:'';
+  const flags={"#b42318":"🔴 Red (urgent)","#eab308":"🟡 Yellow","#067647":"🟢 Green"};
+  const cnt=col=>all.filter(x=>(x.flag||"")===col).length;
+  const chip=(col,lbl)=>`<span onclick="TRK_FLAG=(TRK_FLAG==='${col}'?'':'${col}');renderTracker()" style="cursor:pointer;padding:5px 11px;border-radius:8px;font-weight:600;font-size:12px;border:1px solid var(--line);${TRK_FLAG===col?'background:var(--accsoft);border-color:var(--accent)':'background:#fff'}">${lbl}${col?(' ('+cnt(col)+')'):(' ('+all.length+')')}</span>`;
+  // Tag filter chips — every tag in use (standard AND custom), with counts
+  const allTags=[...new Set(all.flatMap(x=>tagList(x)))].sort();
+  const tcnt=t=>all.filter(x=>tagList(x).includes(t)).length;
+  const tchip=t=>`<span onclick="TRK_TAG=(TRK_TAG==='${esc(t)}'?'':'${esc(t)}');renderTracker()" style="cursor:pointer;padding:5px 11px;border-radius:20px;font-weight:600;font-size:12px;border:1px solid ${TRK_TAG===t?'var(--accent)':'var(--line)'};${TRK_TAG===t?'background:var(--accsoft);color:var(--accent)':'background:#fff'}">🏷 ${esc(t)} (${tcnt(t)})</span>`;
+  const tagbar=allTags.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 10px">${allTags.map(tchip).join("")}</div>`:"";
+  // activity time = latest of CRM change (flag/label/tag/status) and last comment; stored as UTC
+  const actTs=x=>{const a=x.updated_at||"",b=x.last_note_at||"";return a>b?a:b;};
+  const actLoc=x=>{const t=actTs(x);return t?new Date(t.replace(" ","T")+"Z"):null;};
+  const dkey=d=>d?(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")):"";
+  const row=x=>{const d=actLoc(x);return `<tr>
+    <td>${fc(x.flag)}</td>
+    <td><span class="asinlink" onclick="openZoro('${esc(x.id)}')">${esc(x.id)}</span></td>
+    <td>${esc(x.account||'')}</td>
+    <td>${esc(x.label||'')}</td>
+    <td>${tagList(x).map(t=>`<span class="tagchip">${esc(t)}</span>`).join("")}</td>
+    <td>${esc(x.case_status||'')}</td>
+    <td>${x.reminder_at?('⏰ '+esc(x.reminder_at.slice(0,10))):''}${x.reminder_note?(' '+esc(x.reminder_note)):''}</td>
+    <td>${x.notes?('💬 '+x.notes):''}${x.last_note?(' · '+esc((''+x.last_note).slice(0,70))):''}</td>
+    <td style="white-space:nowrap;color:var(--muted)">${d?(TRK_GROUP?d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):d.toLocaleDateString([],{day:"2-digit",month:"short"})+" "+d.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})):''}</td>
+  </tr>`;};
+  let body="";
+  if(TRK_GROUP){
+    const groups={};
+    items.forEach(x=>{const k=dkey(actLoc(x));(groups[k]=groups[k]||[]).push(x);});
+    const keys=Object.keys(groups).sort().reverse();   // newest day first; "" (no date) lands last
+    const today=dkey(new Date()), yest=dkey(new Date(Date.now()-864e5));
+    body=keys.map(k=>{
+      const g=groups[k]; g.sort((a,b)=>actTs(a)>actTs(b)?-1:1);
+      const d=k?new Date(k+"T00:00:00"):null;
+      const full=d?d.toLocaleDateString([],{weekday:"short",day:"2-digit",month:"short",year:"numeric"}):"";
+      const nice=!k?"Earlier — no date recorded":(k===today?("Today · "+full):(k===yest?("Yesterday · "+full):full));
+      return `<tr><td colspan=9 style="background:var(--accsoft);font-weight:700;font-size:12px;padding:8px 10px;border-top:2px solid var(--accent)">📅 ${nice} — ${g.length} item${g.length===1?"":"s"}</td></tr>`+g.map(row).join("");
+    }).join("");
+  } else body=items.map(row).join("");
+  const gchip=`<span onclick="TRK_GROUP=!TRK_GROUP;renderTracker()" style="cursor:pointer;padding:5px 11px;border-radius:8px;font-weight:600;font-size:12px;border:1px solid ${TRK_GROUP?'var(--accent)':'var(--line)'};${TRK_GROUP?'background:var(--accsoft);color:var(--accent)':'background:#fff'}">📅 Group by date</span>`;
+  $("#tracker").innerHTML=`<div style="padding:14px 2px">
+    <div class="sect">📌 Tracker / diary — ${items.length} item${items.length===1?'':'s'}${(TRK_FLAG||TRK_TAG)?' (filtered)':''}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 6px">
+      ${chip("","All")} ${chip("#b42318",flags["#b42318"])} ${chip("#eab308",flags["#eab308"])} ${chip("#067647",flags["#067647"])} ${gchip}</div>
+    ${tagbar}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px">${TRK_GROUP?'Grouped by day of last activity (label/flag/tag/status/comment), newest day first.':'Follow-ups (⏰) first.'} Everything you flagged, tagged, set a status/follow-up on, or commented. Click a flag or 🏷 tag chip to filter; click any row to open & update.</div>
+    <table style="font-size:12px"><thead><tr><th></th><th>order / WB</th><th>acct</th><th>label</th><th>tags</th><th>status</th><th>follow-up</th><th>comments</th><th>${TRK_GROUP?'time':'when'}</th></tr></thead>
+    <tbody>${body||'<tr><td colspan=9 style="color:var(--muted);padding:14px">Nothing here — flag, tag, comment, or set a follow-up on any order/WB (via ⚠ Severe or any order drawer).</td></tr>'}</tbody></table></div>`;
+}
+let SEV_FILT="";
+async function loadSevere(){
+  const p=new URLSearchParams();
+  if($("#account").value)p.set("account",$("#account").value);
+  if(DATE_FROM)p.set("from",DATE_FROM); if(DATE_TO)p.set("to",DATE_TO);
+  window._SEV=await api("/api/severe?"+p.toString()).catch(()=>({}));
+  renderSevere();
+}
+function renderSevere(){
+  const r=window._SEV||{};
+  const pc=r.placed_not_captured||{count:0,exposure:0,items:[]};
+  const nr=r.refund_no_return||{count:0,open:0,exposure:0,items:[]};
+  const rl=r.refund_loss||{count:0,open:0,exposure:0,items:[]};
+  const sel=k=>SEV_FILT===k;
+  const card=(k,lbl,big,sub,color)=>`<div onclick="SEV_FILT=(SEV_FILT==='${k}'?'':'${k}');renderSevere()" title="click to filter"
+    style="cursor:pointer;flex:1;min-width:210px;background:var(--card);border-radius:11px;box-shadow:var(--shadow);padding:13px 15px;border-left:5px solid ${color};outline:${sel(k)?'2px solid '+color:'none'}">
+    <div style="font-size:12px;color:var(--muted)">${lbl}</div><div style="font-size:25px;font-weight:800">${big}</div><div style="font-size:13px;color:${color};font-weight:700">${sub}</div></div>`;
+  const opts=["","Open","Resolved","Filed with Zoro","Ignored"];
+  const ball=c=>c?`<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${esc(c)};vertical-align:middle"></span>`:'';
+  const rt=items=>`<table style="font-size:12px"><thead><tr><th></th><th>order</th><th style="text-align:right">refund $</th><th style="text-align:right">net profit</th><th>reason</th><th>ASIN</th><th>resolve</th><th></th></tr></thead><tbody>${(items||[]).map(x=>`<tr style="${x.resolved?'opacity:.4':''}">
+    <td>${x.flag?ball(x.flag):(x.resolved?'✓':'🔴')}</td>
+    <td><span class="asinlink" onclick="openZoro('${esc(x.order_id)}')" title="show Zoro order details">${esc(x.order_id)}</span></td>
+    <td style="text-align:right;font-weight:700">${usd(x.refund_amount)}</td>
+    <td style="text-align:right;color:${(x.net_profit_after_refund||0)<0?'#b42318':'inherit'}">${x.net_profit_after_refund==null?'':usd(x.net_profit_after_refund)}</td>
+    <td>${esc(x.return_reason||'')}</td>
+    <td>${x.asin?`<span class="asinlink" onclick="openAsin('${esc(x.asin)}')">${esc(x.asin)}</span>`:''}</td>
+    <td><select onchange="act('${esc(x.order_id)}',{case_status:this.value})">${opts.map(o=>`<option ${x.case_status===o?'selected':''}>${o}</option>`).join("")}</select></td>
+    <td><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(x.order_id)}" target="_blank" rel="noopener">SC↗</a></td></tr>`).join("")||`<tr><td colspan=8 style="color:var(--muted);padding:10px">none 🎉</td></tr>`}</tbody></table>`;
+  const csv="data:text/csv;charset=utf-8,wb,amount%0A"+(pc.items||[]).map(x=>x.wb+","+x.amount).join("%0A");
+  const show=k=>!SEV_FILT||SEV_FILT===k;
+  const popts=["","Open","Resolved","Filed with Zoro","Ignored"];
+  const placedSec=`<div class="sect">🧾 Zoro orders placed + paid but never captured — May 2026 onwards (${pc.count} open${pc.total?(' / '+pc.total):''}) ${pc.total?`&nbsp;<a class="sclink" href="${csv}" download="placed_not_captured.csv">⬇ CSV</a>`:""}</div>
+    <div style="font-size:11px;color:var(--muted);margin:2px 0 6px">Click a WB for its Zoro receipt. Set a status to resolve (saved). No Amazon order links these — investigate at Zoro (cancel/return) or find the missing order.</div>
+    <table style="font-size:12px;max-width:640px"><thead><tr><th></th><th>WB</th><th style="text-align:right">Zoro $</th><th>resolve</th></tr></thead><tbody>${(pc.items||[]).slice(0,400).map(x=>`<tr style="${x.resolved?'opacity:.4':''}">
+      <td>${x.flag?ball(x.flag):(x.resolved?'✓':'🔴')}</td>
+      <td><span class="asinlink" onclick="openZoro('${esc(x.wb)}')">${esc(x.wb)}</span></td>
+      <td style="text-align:right;font-weight:600">${usd(x.amount)}</td>
+      <td><select onchange="act('${esc(x.wb)}',{case_status:this.value})">${popts.map(o=>`<option ${x.case_status===o?'selected':''}>${o}</option>`).join("")}</select></td></tr>`).join("")||`<tr><td colspan=4 style="color:var(--muted)">none 🎉</td></tr>`}</tbody></table>`;
+  $("#severe").innerHTML=`<div style="padding:14px 2px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">
+      ${card("placed","🧾 Placed but NOT captured",pc.count+" open",usd(pc.exposure)+" untracked","#b42318")}
+      ${card("norr","↩️ Refund, NO return request",nr.open+" open",usd(nr.exposure),"#b42318")}
+      ${card("loss","📉 Refund losses (net&lt;0)",rl.open+" open",usd(rl.exposure)+" lost","#b54708")}
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">${SEV_FILT?`Filtered: <b>${esc(SEV_FILT)}</b> — click the active card again to show all. Click any order/WB for full Zoro details.`:"Click a card to filter · click any order/WB for full Zoro details."}</div>
+    ${show('placed')?placedSec:""}
+    ${show('norr')?`<div class="sect" style="margin-top:20px">↩️ Refunds with NO return request (${nr.count}) — money out, no return filed</div>${rt(nr.items)}`:""}
+    ${show('loss')?`<div class="sect" style="margin-top:20px">📉 Refund losses — net profit after refund is negative (${rl.count})</div>${rt(rl.items)}`:""}
+    <div class="sect" style="margin-top:24px">💸 Refund issues — timing tickets (was its own tab)</div>
+    <div id="refunds"></div>
+  </div>`;
+  loadRefundIssues();   // renders into the nested #refunds div above
+}
+async function openZoro(id){
+  const r=await api("/api/order_zoro?id="+encodeURIComponent(id)).catch(()=>({legs:[]}));
+  const o=r.order,legs=r.legs||[];
+  const fld=(k,v)=>`<span style="color:var(--muted)">${k}:</span> <b>${esc(v==null||v===''?'—':v)}</b>`;
+  const head=`<h2>${esc(r.key)} ${o?'':'<span style="font-size:12px;color:#b42318">· WB not captured in any Amazon order</span>'}</h2>`;
+  let summary="";
+  if(o){const g=fld;summary=`<div class="sub">${esc(o.account)} · ${esc(o.order_status||'')} · label <b>${esc(o.order_label||'')}</b> · ${esc(o.merchant_order_id||'')}</div>
+    ${o.title?`<div style="font-size:13px;font-weight:600;margin:8px 0 2px">${esc(o.title)}</div>`:""}
+    <div class="sect" style="margin-top:6px">Amazon order details</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px 18px;font-size:12px;margin:6px 0">
+      ${g('ASIN',o.asin)} ${g('SKU',o.sku)} ${g('Qty',o.quantity)}
+      ${g('Purchased',o.purchase_date)} ${g('Sold (ship-now)',o.sold_email_time)} ${g('Ship-by',o.ship_by_date)}
+      ${g('Earnings',o.earnings)} ${g('Zoro cost',o.zoro_order_total)} ${g('Profit',o.profit_dollars!=null?('$'+o.profit_dollars+' ('+(o.profit_percent||0)+'%)'):'')}
+      ${g('Refund',o.refund_done==='Yes'?('Yes $'+(o.refund_amount||'')+(o.refund_date?(' '+(''+o.refund_date).slice(0,10)):'')):'No')} ${g('Net after refund',o.net_profit_after_refund)} ${g('Return',o.return_requested==='Yes'?('Yes — '+(o.return_reason||'')):'No')}
+      ${g('Tracking',o.tracking_ids)} ${g('Carrier',o.carrier)} ${g('Delivery',o.delivery_status)}
+      ${g('Deliver-by',o.deliver_by_date)} ${g('Delivered',o.delivery_date)} ${g('On-time',o.on_time)}
+      ${g('Placement spd',o.placement_speed)} ${g('Zoro ship spd',o.zoro_ship_speed)} ${g('Zoro acct',o.zoro_account_name)}
+      ${g('Payment',(o.zoro_payment_method||'')+(o.zoro_payment_card?(' •'+o.zoro_payment_card):''))} ${g('Coupon',o.coupon_savings)} ${g('Buyer zip',o.zoro_buyer_zip||o.ship_postal_code)}
+      ${g('Ship to',o.ship_name)} ${g('City/State',((o.ship_city||'')+' '+(o.ship_state||'')).trim())} ${g('Phone',o.ship_phone)}</div>`;}
+  const rows=legs.map(l=>{const z=l.zoro||{},t=l.tracking||{};return `<tr>
+    <td><b>${esc(l.wb)}</b></td><td>${esc(z.zoro_account_name||z.gmail_account||'—')}</td>
+    <td style="text-align:right">${z.order_total!=null?usd(z.order_total):'—'}</td>
+    <td>${esc(z.payment_method||'')} ${z.payment_card_last4?('•'+esc(z.payment_card_last4)):''}</td>
+    <td>${esc(z.sku||'')}${z.qty?(' ×'+z.qty):''}</td><td>${esc(z.order_date||(z.email_timestamp||'').slice(0,10))}</td>
+    <td>${esc(t.tracking_ids||'')}</td>
+    <td>${l.captured_in?('✓ '+esc(l.captured_in)):'<span style="color:#b42318">✗ not captured</span>'}</td></tr>`;}).join("");
+  const cr=r.crm||{}, notes=r.notes||[];
+  const flags=["#b42318","#eab308","#067647"].map(col=>`<button onclick="zoroAct('${esc(r.key)}',{flag_color:'${col}'})" style="background:${col};width:22px;height:22px;border-radius:50%;padding:0;border:0;cursor:pointer;${cr.flag_color===col?'outline:2px solid #111;outline-offset:1px':''}"></button>`).join("")+` <button onclick="zoroAct('${esc(r.key)}',{flag_color:''})">clear</button>`;
+  const opts=["","Open","Resolved","Filed with Zoro","Won","Lost","Ignored"];
+  const crmBlock=`
+    <div class="sect" style="margin-top:16px">📌 Track / diary — your record for this item</div>
+    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:6px 0">
+      <span style="font-size:12px;color:var(--muted)">Flag:</span> ${flags}
+      <span style="font-size:12px;color:var(--muted);margin-left:8px">Status:</span>
+      <select onchange="zoroAct('${esc(r.key)}',{case_status:this.value})">${opts.map(o=>`<option ${cr.case_status===o?'selected':''}>${o}</option>`).join("")}</select>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <span style="font-size:12px;color:var(--muted)">Follow up:</span>
+      <input id="zrem_date" type="date" value="${esc((cr.reminder_at||'').slice(0,10))}" style="padding:5px;border:1px solid var(--line);border-radius:7px">
+      <input id="zrem_note" placeholder="e.g. contact buyer / file with Zoro later" value="${esc(cr.reminder_note||'')}" style="flex:1;min-width:200px;padding:6px 9px;border:1px solid var(--line);border-radius:7px">
+      <button class="save" onclick="zoroAct('${esc(r.key)}',{reminder_at:$('#zrem_date').value,reminder_note:$('#zrem_note').value})">⏰ Keep track</button>
+    </div>
+    ${cr.reminder_at?`<div style="font-size:12px;color:#b54708;margin-bottom:6px">⏰ Follow up ${esc(cr.reminder_at.slice(0,10))}${cr.reminder_note?(' — '+esc(cr.reminder_note)):''}</div>`:""}
+    <div style="font-size:12px;color:var(--muted);margin:8px 0 3px">Comments (saved for you)</div>
+    <div style="max-height:160px;overflow:auto">${notes.map(n=>`<div class="note">${esc(n.note)}<br><small>${esc(n.author||'me')} · ${esc((n.created_at||'').slice(0,16))}</small></div>`).join("")||'<div style="color:var(--muted);font-size:12px">No comments yet.</div>'}</div>
+    <textarea id="znote" placeholder="Add a comment to yourself (e.g. 'contact later about refund')…"></textarea>
+    <div class="actions"><button class="save" onclick="zoroNote('${esc(r.key)}')">Add comment</button></div>`;
+  $("#zdw").innerHTML=`<span class="close" onclick="closeZoro()">×</span>${head}${summary}
+    <div class="sect">Zoro legs (${legs.length}) — total ${usd(r.zoro_total)}</div>
+    <table style="font-size:12px"><thead><tr><th>WB</th><th>Zoro account</th><th style="text-align:right">cost</th><th>payment</th><th>SKU</th><th>date</th><th>tracking</th><th>captured?</th></tr></thead>
+      <tbody>${rows||'<tr><td colspan=8 style="color:var(--muted)">no Zoro receipt found for this id</td></tr>'}</tbody></table>
+    ${o?`<div class="actions" style="margin-top:10px"><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(r.key)}" target="_blank" rel="noopener">↗ Seller Central</a></div>`:""}
+    ${crmBlock}`;
+  $("#zov").style.display="flex";
+}
+function closeZoro(){$("#zov").style.display="none";}
+async function zoroAct(key,fields){await api("/api/order_update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({order_id:key},fields))});openZoro(key);if(TAB==='severe')loadSevere();if(TAB==='tracker')loadTracker();}
+async function zoroNote(key){const t=$("#znote").value.trim();if(!t)return;await api("/api/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id:key,note:t,author:ensureProfile()})});openZoro(key);}
+let _DFILT={}, _dtmr;
+function dataParams(){
+  const p=new URLSearchParams();
+  if($("#account").value)p.set("account",$("#account").value);
+  if(DATE_FROM)p.set("from",DATE_FROM); if(DATE_TO)p.set("to",DATE_TO);
+  p.set("limit",window._DLIM||300);
+  const s=(window._DQ||"").trim(); if(s)p.set("q",s);
+  for(const c in _DFILT){const v=(_DFILT[c]||"").trim(); if(v)p.set("f_"+c,v);}
+  return p;
+}
+function dataBody(cols,rows){return rows.map(o=>`<tr>${cols.map(c=>{const v=o[c]==null?"":(""+o[c]);const ed=c!=="amazon_order_id";
+  return ed?`<td contenteditable="true" data-oid="${esc(o.amazon_order_id)}" data-col="${esc(c)}" onblur="saveCell(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">${esc(v)}</td>`:`<td style="color:var(--muted);font-weight:600">${esc(v)}</td>`;}).join("")}</tr>`).join("");}
+async function loadData(){
+  const r=await api("/api/raw?"+dataParams().toString()).catch(()=>({columns:[],rows:[]}));
+  const cols=r.columns||[],rows=r.rows||[]; window._DCOLS=cols;
+  // Two sticky rows: the header pins at 0 with a FIXED height, the filter row pins
+  // exactly below it — the old top:30px guess didn't match the real header height,
+  // so the filter row slid under the labels and the headers looked broken.
+  const head=cols.map(c=>`<th style="position:sticky;top:0;height:32px;box-sizing:border-box;background:#f3f5fb;z-index:3;white-space:nowrap;padding:6px 8px;border-bottom:1px solid var(--line)">${esc(c)}</th>`).join("");
+  const filt=cols.map(c=>`<th style="position:sticky;top:32px;background:var(--card);z-index:3;padding:2px 3px;border-bottom:1px solid var(--line)"><input value="${esc(_DFILT[c]||'')}" oninput="_DFILT['${esc(c)}']=this.value;dataFilter()" placeholder="filter" style="width:100%;min-width:64px;font-size:10px;padding:2px 4px;border:1px solid var(--bg);border-radius:5px;font-weight:400"></th>`).join("");
+  const s=(window._DQ||"").trim();
+  $("#data").innerHTML=`<div style="padding:8px 2px">
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <input value="${esc(s)}" placeholder="global search (order / WB / ASIN / SKU / name)" style="padding:7px 10px;border:1px solid var(--bg);border-radius:8px;width:340px"
+        onkeydown="if(event.key==='Enter'){window._DQ=this.value;loadData();}">
+      <select onchange="window._DLIM=this.value;loadData()" style="padding:7px;border:1px solid var(--bg);border-radius:8px">${[300,800,2000].map(n=>`<option ${(window._DLIM||300)==n?'selected':''}>${n} rows</option>`).join("")}</select>
+      <button onclick="_DFILT={};window._DQ='';loadData()" style="padding:7px 12px;border:1px solid var(--bg);border-radius:8px;background:#fff;cursor:pointer">clear filters</button>
+      <span id="data_count" style="font-size:12px;color:var(--muted)">showing ${r.shown||0} of ${r.total||0} · type in any column box to filter (whole table, like SQLite) · click a cell to edit</span>
+    </div>
+    <div style="overflow:auto;max-height:calc(100vh - 210px);border:1px solid var(--bg);border-radius:8px">
+      <table style="font-size:11px;white-space:nowrap"><thead><tr>${head}</tr><tr>${filt}</tr></thead><tbody id="data_body">${dataBody(cols,rows)}</tbody></table></div>
+  </div>`;
+}
+function dataFilter(){clearTimeout(_dtmr);_dtmr=setTimeout(reloadDataBody,300);}
+async function reloadDataBody(){
+  const r=await api("/api/raw?"+dataParams().toString()).catch(()=>({rows:[]}));
+  if($("#data_body"))$("#data_body").innerHTML=dataBody(window._DCOLS||[],r.rows||[]);
+  if($("#data_count"))$("#data_count").textContent=`showing ${r.shown||0} of ${r.total||0} · type in any column box to filter (whole table, like SQLite) · click a cell to edit`;
+}
+async function saveCell(td){
+  const oid=td.dataset.oid,col=td.dataset.col,val=td.textContent.trim();
+  td.style.background="#fff6cc";
+  const r=await api("/api/cell",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id:oid,column:col,value:val})}).catch(()=>({ok:false}));
+  td.style.background=(r&&r.ok)?"#d7f5dd":"#ffd7d7";
+  setTimeout(()=>{td.style.background="";},900);
+}
+function loadBank(){
+  $("#bank").innerHTML=`<div style="padding:16px 2px;max-width:860px">
+    <div style="display:flex;gap:12px;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap">
+      <div><div style="font-size:12px;color:var(--muted)">Account</div>
+        <select id="bank_acct" style="padding:8px 10px;border:1px solid var(--bg);border-radius:8px">
+          <option>Hathoro</option><option>HOANK</option></select></div>
+      <div><div style="font-size:12px;color:var(--muted)">Payoneer activity CSV</div>
+        <input id="bank_file" type="file" accept=".csv,text/csv"></div>
+      <button onclick="runBank()" style="background:var(--accent);color:#fff;border:0;border-radius:9px;padding:9px 18px;font-weight:700;cursor:pointer">Run reconcile</button>
+    </div>
+    <div id="bank_out" style="color:var(--muted);font-size:13px">Upload a Payoneer activity CSV (Zoro card charges) → totals paid/refunded to Zoro, reconciles against the DB, and lists Zoro orders placed but never captured.</div>
+  </div>`;
+}
+async function runBank(){
+  const f=$("#bank_file").files[0];
+  if(!f){alert("Choose a Payoneer CSV first");return;}
+  $("#bank_out").innerHTML="Reconciling… (reading "+esc(f.name)+")";
+  let txt; try{txt=await f.text();}catch(e){$("#bank_out").innerHTML="<span style='color:#b42318'>could not read file</span>";return;}
+  const r=await api("/api/bank_reconcile",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({account:$("#bank_acct").value,csv:txt})}).catch(e=>({ok:false,error:String(e)}));
+  if(!r||!r.ok){$("#bank_out").innerHTML="<span style='color:#b42318'>"+esc((r&&r.error)||"failed")+"</span>";return;}
+  const card=(lbl,val,sub,color)=>`<div style="flex:1;min-width:170px;background:var(--card);border-radius:11px;box-shadow:var(--shadow);padding:12px 14px"><div style="font-size:12px;color:var(--muted)">${lbl}</div><div style="font-size:22px;font-weight:800;color:${color||'inherit'}">${val}</div><div style="font-size:11px;color:var(--muted)">${sub||''}</div></div>`;
+  const within=Math.abs(r.bank_minus_receipts)<=Math.max(50,r.paid*0.02);
+  let csv="data:text/csv;charset=utf-8,wb_order_id,zoro_amount%0A"+(r.uncaptured||[]).map(x=>x.wb+","+x.amount).join("%0A");
+  $("#bank_out").innerHTML=`
+   <div style="font-size:12px;color:var(--muted);margin-bottom:8px">${esc(r.account)} · statement months: ${esc(r.months.join(", ")||'—')}</div>
+   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+     ${card("Paid to Zoro",usd(r.paid),r.charges+" charges")}
+     ${card("Refund from Zoro",usd(r.refund),r.refunds+" credits","#067647")}
+     ${card("Net Zoro spend",usd(r.net))}
+   </div>
+   <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+     ${card("DB receipts captured",usd(r.receipts_sum),r.receipts_n+" orders")}
+     ${card("Bank − receipts",usd(r.bank_minus_receipts),within?"reconciles ✓":"⚠ check",within?"#067647":"#b54708")}
+     ${card("Placed but NOT captured",r.uncaptured_n,usd(r.uncaptured_sum)+" untracked","#b42318")}
+   </div>
+   <div class="sect">Zoro orders placed but never captured (${r.uncaptured_n}) ${r.uncaptured_n?`&nbsp;<a class="sclink" href="${csv}" download="${esc(r.account)}_uncaptured_zoro.csv">⬇ CSV</a>`:""}</div>
+   <table style="font-size:12px;max-width:480px"><thead><tr><th>WB</th><th style="text-align:right">Zoro $</th></tr></thead>
+     <tbody>${(r.uncaptured||[]).slice(0,300).map(x=>`<tr><td>${esc(x.wb)}</td><td style="text-align:right;font-weight:600">${usd(x.amount)}</td></tr>`).join("")||`<tr><td colspan=2 style="color:var(--muted)">none 🎉</td></tr>`}</tbody></table>
+   ${r.uncaptured_n>300?`<div style="font-size:11px;color:var(--muted)">showing top 300 — download CSV for all ${r.uncaptured_n}</div>`:""}`;
+}
+let PNL_SPLITS=[{name:"Imran",pct:75},{name:"Kam",pct:18},{name:"Uncle",pct:3},{name:"Asad",pct:4}];
+const usd=n=>"$"+(Number(n)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+let PNL_ACCT=localStorage.getItem("pnl_acct")||"Hathoro";
+let PNL_SEQ=0;   // render token: a stale in-flight load must never overwrite a newer one
+function pnlAcctBar(){
+  const b=a=>`<button class="mini" onclick="PNL_ACCT='${a}';localStorage.setItem('pnl_acct','${a}');${a==='HOANK'?'loadPnlHoank()':'loadPnl()'}"
+    style="${PNL_ACCT===a?'background:var(--accent);color:#fff;border-color:var(--accent);':''}font-weight:700">${a}</button>`;
+  return `<div style="display:flex;gap:8px;margin:14px 0 4px">${b("Hathoro")}${b("HOANK")}</div>`;}
+async function loadPnl(month){
+  PNL_ACCT="Hathoro";localStorage.setItem("pnl_acct","Hathoro");
+  const _seq=++PNL_SEQ;
+  const r=await api("/api/pnl"+(month?("?month="+encodeURIComponent(month)):"")).catch(()=>({current:null,history:[]}));
+  if(_seq!==PNL_SEQ)return;   // a newer P&L load started while we were fetching
+  const cur=r.current||{month:month||"",payoneer:0,investment:180000,personal:0,amazon:0};
+  if(cur.splits&&cur.splits.length) PNL_SPLITS=cur.splits.map(s=>({name:s.name,pct:s.pct}));
+  const fld=(id,lbl,v)=>`<div><div style="font-size:12px;color:var(--muted);margin-bottom:3px">${lbl}</div>
+    <input id="${id}" type="number" step="0.01" value="${v??0}" oninput="pnlCalc()"
+      style="width:100%;padding:9px 11px;border:1px solid var(--bg);border-radius:9px;font-size:15px;font-weight:600"></div>`;
+  $("#pnl").innerHTML=`<div style="padding:16px 2px;max-width:780px">
+    ${pnlAcctBar()}
+    <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px">
+      <div><div style="font-size:12px;color:var(--muted)">Month</div>
+        <input id="pnl_month" value="${esc(cur.month||'')}" placeholder="2026-06" style="padding:9px 11px;border:1px solid var(--bg);border-radius:9px;font-size:14px"></div>
+      <button class="mini" onclick="loadPnl($('#pnl_month').value.trim())">Load</button>
+      <span style="flex:1"></span>
+      <button onclick="savePnl()" style="background:var(--accent);color:#fff;border:0;border-radius:9px;padding:10px 20px;font-weight:700;cursor:pointer">💾 Save</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      ${fld('pnl_amazon','Amazon Balance',cur.amazon)}
+      ${fld('pnl_payoneer','Payoneer Balance',cur.payoneer)}
+      ${fld('pnl_investment','Investment',cur.investment)}
+      ${fld('pnl_personal','Imran Rajar Personal balance',cur.personal)}
+    </div>
+    <div style="margin-top:18px;padding:16px;background:var(--card);border-radius:12px;box-shadow:var(--shadow)">
+      <div style="font-size:12px;color:var(--muted)">Final Profit = Amazon + Payoneer − Investment − Personal</div>
+      <div id="pnl_final" style="font-size:32px;font-weight:800;color:var(--accent)">$0.00</div>
+    </div>
+    <div class="sect" style="margin-top:18px">Stakeholder split</div>
+    <table style="font-size:13px;max-width:480px"><thead><tr><th>Stakeholder</th><th style="width:90px">%</th><th style="text-align:right">Amount</th></tr></thead>
+      <tbody id="pnl_splits"></tbody></table>
+    <div class="sect" style="margin-top:20px">History</div>
+    <table style="font-size:12px;max-width:560px"><thead><tr><th>month</th><th style="text-align:right">final profit</th><th>updated</th></tr></thead>
+      <tbody>${(r.history||[]).map(h=>`<tr style="cursor:pointer" onclick="loadPnl('${esc(h.month)}')"><td>${esc(h.month)}</td><td style="text-align:right;font-weight:600">${usd(h.final_profit)}</td><td style="color:var(--muted)">${esc((h.updated_at||'').slice(0,16))}</td></tr>`).join("")||`<tr><td colspan=3 style="color:var(--muted);padding:8px">No months saved yet.</td></tr>`}</tbody></table>
+  </div>`;
+  $("#pnl_splits").innerHTML=PNL_SPLITS.map((s,i)=>`<tr>
+    <td>${esc(s.name)}</td>
+    <td><input type="number" step="0.1" value="${s.pct}" oninput="PNL_SPLITS[${i}].pct=parseFloat(this.value)||0;pnlCalc()" style="width:70px;padding:4px 6px;border:1px solid var(--bg);border-radius:6px"></td>
+    <td style="text-align:right;font-weight:700"><span id="pnl_amt_${i}">$0.00</span></td></tr>`).join("")
+    +`<tr style="border-top:2px solid var(--bg)"><td><b>Total</b></td><td><b><span id="pnl_pct_total">0</span>%</b></td><td style="text-align:right"><b><span id="pnl_amt_total">$0.00</span></b></td></tr>`;
+  pnlCalc();
+}
+function pnlCalc(){
+  const g=id=>{const e=$("#"+id);return e?parseFloat(e.value)||0:0;};
+  const final=g('pnl_amazon')+g('pnl_payoneer')-g('pnl_investment')-g('pnl_personal');
+  $("#pnl_final").textContent=usd(final);
+  let pt=0;
+  PNL_SPLITS.forEach((s,i)=>{pt+=(s.pct||0);const el=$("#pnl_amt_"+i);if(el)el.textContent=usd(final*(s.pct||0)/100);});
+  if($("#pnl_pct_total"))$("#pnl_pct_total").textContent=Math.round(pt*10)/10;
+  if($("#pnl_amt_total"))$("#pnl_amt_total").textContent=usd(final*pt/100);
+}
+async function savePnl(){
+  const g=id=>parseFloat($("#"+id).value)||0;
+  const month=$("#pnl_month").value.trim();
+  if(!month){alert("Enter a month like 2026-06");return;}
+  await api("/api/pnl",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({month,amazon:g('pnl_amazon'),payoneer:g('pnl_payoneer'),investment:g('pnl_investment'),personal:g('pnl_personal'),splits:PNL_SPLITS})});
+  loadPnl(month);
+}
+// ═══ HOANK P&L — balance-sheet style ═══
+// Profit = (Amazon + Wise) − (Net30 + Amex) − Personal − Other costs
+async function loadPnlHoank(month){
+  PNL_ACCT="HOANK";localStorage.setItem("pnl_acct","HOANK");
+  const _seq=++PNL_SEQ;
+  const r=await api("/api/pnl_hoank"+(month?("?month="+encodeURIComponent(month)):"")).catch(()=>({current:null,history:[]}));
+  if(_seq!==PNL_SEQ)return;   // a newer P&L load started while we were fetching
+  const cur=r.current||{month:month||"",amazon:0,wise:0,net30:0,amex:0,personal:0,other_costs:0};
+  const fld=(id,lbl,v)=>`<div><div style="font-size:12px;color:var(--muted);margin-bottom:3px">${lbl}</div>
+    <input id="${id}" type="number" step="0.01" value="${v??0}" oninput="pnlHoankCalc()"
+      style="width:100%;padding:9px 11px;border:1px solid var(--bg);border-radius:9px;font-size:15px;font-weight:600"></div>`;
+  $("#pnl").innerHTML=`<div style="padding:16px 2px;max-width:780px">
+    ${pnlAcctBar()}
+    <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:16px">
+      <div><div style="font-size:12px;color:var(--muted)">Month</div>
+        <input id="ph_month" value="${esc(cur.month||'')}" placeholder="2026-08" style="padding:9px 11px;border:1px solid var(--bg);border-radius:9px;font-size:14px"></div>
+      <button class="mini" onclick="loadPnlHoank($('#ph_month').value.trim())">Load</button>
+      <span style="flex:1"></span>
+      <button onclick="savePnlHoank()" style="background:var(--accent);color:#fff;border:0;border-radius:9px;padding:10px 20px;font-weight:700;cursor:pointer">💾 Save</button>
+    </div>
+    <div class="sect">Balances (money you hold)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      ${fld('ph_amazon','Amazon Balance',cur.amazon)}
+      ${fld('ph_wise','Wise Balance',cur.wise)}
+    </div>
+    <div class="sect" style="margin-top:14px">Payables & costs (money going out)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      ${fld('ph_net30','Net30 Payable',cur.net30)}
+      ${fld('ph_amex','Amex Payable',cur.amex)}
+      ${fld('ph_personal','Personal Balance',cur.personal)}
+      ${fld('ph_other','Other total costs',cur.other_costs)}
+    </div>
+    <div style="margin-top:18px;padding:16px;background:var(--card);border-radius:12px;box-shadow:var(--shadow);display:flex;gap:34px;flex-wrap:wrap">
+      <div><div style="font-size:12px;color:var(--muted)">Total Balance = Amazon + Wise</div>
+        <div id="ph_total" style="font-size:22px;font-weight:700">$0.00</div></div>
+      <div><div style="font-size:12px;color:var(--muted)">Profit = Total − (Net30 + Amex) − Personal − Other</div>
+        <div id="ph_final" style="font-size:32px;font-weight:800;color:var(--accent)">$0.00</div></div>
+    </div>
+    <div class="sect" style="margin-top:20px">History</div>
+    <table style="font-size:12px;max-width:640px"><thead><tr><th>month</th><th style="text-align:right">total balance</th><th style="text-align:right">profit</th><th>updated</th></tr></thead>
+      <tbody>${(r.history||[]).map(h=>`<tr style="cursor:pointer" onclick="loadPnlHoank('${esc(h.month)}')"><td>${esc(h.month)}</td><td style="text-align:right">${usd(h.total_balance)}</td><td style="text-align:right;font-weight:600">${usd(h.final_profit)}</td><td style="color:var(--muted)">${esc((h.updated_at||'').slice(0,16))}</td></tr>`).join("")||`<tr><td colspan=4 style="color:var(--muted);padding:8px">No months saved yet.</td></tr>`}</tbody></table>
+  </div>`;
+  pnlHoankCalc();
+}
+function pnlHoankCalc(){
+  const g=id=>{const e=$("#"+id);return e?parseFloat(e.value)||0:0;};
+  const total=g('ph_amazon')+g('ph_wise');
+  const final=total-(g('ph_net30')+g('ph_amex'))-g('ph_personal')-g('ph_other');
+  if($("#ph_total"))$("#ph_total").textContent=usd(total);
+  if($("#ph_final"))$("#ph_final").textContent=usd(final);
+}
+async function savePnlHoank(){
+  const g=id=>parseFloat($("#"+id).value)||0;
+  const month=$("#ph_month").value.trim();
+  if(!month){alert("Enter a month like 2026-08");return;}
+  await api("/api/pnl_hoank",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({month,amazon:g('ph_amazon'),wise:g('ph_wise'),net30:g('ph_net30'),
+      amex:g('ph_amex'),personal:g('ph_personal'),other_costs:g('ph_other')})});
+  loadPnlHoank(month);
+}
+let REFUND_CAT="";
+async function loadRefundIssues(){
+  const p=new URLSearchParams();
+  if($("#account").value)p.set("account",$("#account").value);
+  if(DATE_FROM) p.set("from",DATE_FROM);
+  if(DATE_TO) p.set("to",DATE_TO);
+  const r=await api("/api/refund_issues?"+p.toString()).catch(e=>({summary:[],issues:[],count:0,_err:String(e)}));
+  if(!$("#refunds")) return;   // lives inside the Severe tab now; skip if not rendered
+  const col={no_return_request:"#b42318",instant_auto:"#b54708",delayed:"#6941c6"};
+  const sum=r.summary||[];
+  let cards=`<div style="display:flex;gap:12px;flex-wrap:wrap;padding:14px 2px">`;
+  cards+=sum.map(s=>`<div onclick="REFUND_CAT=(REFUND_CAT==='${s.category}'?'':'${s.category}');renderRefunds()" style="cursor:pointer;flex:1;min-width:200px;background:var(--card);border-radius:11px;box-shadow:var(--shadow);padding:12px 14px;border-left:4px solid ${col[s.category]}">
+      <div style="font-size:12px;color:var(--muted)">${esc(s.label)}</div>
+      <div style="font-size:22px;font-weight:800">${s.open}<span style="font-size:12px;color:var(--muted);font-weight:500"> open / ${s.total}</span></div>
+      <div style="font-size:12px;color:${col[s.category]};font-weight:700">$${(s.exposure||0).toLocaleString()} exposure</div></div>`).join("");
+  cards+=`</div>`;
+  window._REFUNDS=r.issues||[];
+  $("#refunds").innerHTML=cards+`<div style="padding:0 2px 4px;color:var(--muted);font-size:11px">Refund timing from return-auth → refund email. Set a case status to resolve a ticket (resolved drop to the bottom). ${REFUND_CAT?`<b>Filtered: ${esc(REFUND_CAT)}</b> — click the card again to clear.`:""}</div><div id="refundrows"></div>`;
+  renderRefunds();
+}
+function renderRefunds(){
+  const col={no_return_request:"#b42318",instant_auto:"#b54708",delayed:"#6941c6"};
+  let rows=(window._REFUNDS||[]);
+  if(REFUND_CAT) rows=rows.filter(x=>x.category===REFUND_CAT);
+  const opts=["","Open","Resolved","Filed with Zoro","Ignored"];
+  const body=rows.map(x=>`<tr style="${x.resolved?'opacity:.45':''}">
+    <td>${x.flag?`<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${esc(x.flag)};vertical-align:middle"></span>`:`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col[x.category]}"></span>`}</td>
+    <td><span class="asinlink" onclick="openDw('${esc(x.order_id)}')">${esc(x.order_id)}</span></td>
+    <td>${esc(x.category)}</td>
+    <td style="text-align:right;font-weight:700">$${(x.refund_amount||0).toFixed(2)}</td>
+    <td style="text-align:right">${x.days==null?'—':x.days+'d'}</td>
+    <td style="text-align:right;color:${(x.net_profit||0)<0?'#b42318':'inherit'}">${x.net_profit==null?'':'$'+x.net_profit.toFixed(2)}</td>
+    <td>${esc(x.reason||'')}</td>
+    <td>${x.asin?`<span class="asinlink" onclick="openAsin('${esc(x.asin)}')">${esc(x.asin)}</span>`:''}</td>
+    <td><select onchange="act('${esc(x.order_id)}',{case_status:this.value})">${opts.map(o=>`<option ${x.case_status===o?'selected':''}>${o}</option>`).join("")}</select></td>
+    <td><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(x.order_id)}" target="_blank" rel="noopener">SC ↗</a></td>
+  </tr>`).join("");
+  $("#refundrows").innerHTML=`<table style="font-size:12px"><thead><tr>
+    <th></th><th>order</th><th>type</th><th style="text-align:right">refund $</th><th style="text-align:right">days</th><th style="text-align:right">net profit</th><th>reason</th><th>ASIN</th><th>resolve</th><th></th></tr></thead>
+    <tbody>${body||`<tr><td colspan=10 style="padding:14px;color:var(--muted)">No refund issues 🎉</td></tr>`}</tbody></table>`;
+}
+async function loadDataHealth(){
+  const p=new URLSearchParams();
+  if($("#account").value)p.set("account",$("#account").value);
+  if(DATE_FROM) p.set("from",DATE_FROM);
+  if(DATE_TO) p.set("to",DATE_TO);
+  const r=await api("/api/data_health?"+p.toString()).catch(e=>({accounts:[],note:String(e)}));
+  const accts=(r&&r.accounts)||[];
+  const col={green:"#067647",amber:"#b54708",red:"#b42318"};
+  const dot=c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${col[c]||'#888'};margin-right:7px"></span>`;
+  let html='<div style="padding:14px 2px;display:flex;flex-direction:column;gap:14px">';
+  for(const a of accts){
+    const groups={};(a.checks||[]).forEach(c=>{(groups[c.group]=groups[c.group]||[]).push(c);});
+    html+=`<div style="background:var(--card);border-radius:11px;box-shadow:var(--shadow);padding:14px 16px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:10px">${dot(a.verdict)}${esc(a.account)}
+        <span style="color:var(--muted);font-weight:500;font-size:12px"> — ${a.total} orders · ${a.shipped} shipped</span>
+        <span style="float:right;color:${col[a.verdict]};font-weight:700">${a.verdict.toUpperCase()}</span></div>`;
+    for(const g in groups){
+      html+=`<div style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:10px 0 4px">${esc(g)}</div>`;
+      for(const c of groups[g]){
+        const m=c.total?` <span style="color:var(--muted)">/ ${c.total} (${c.pct}%)</span>`:"";
+        html+=`<div style="display:flex;align-items:center;padding:4px 0;font-size:12.5px;border-top:1px solid var(--bg)">
+          ${dot(c.band)}<span style="flex:1">${esc(c.name)}</span>
+          <span style="font-weight:700;color:${col[c.band]};min-width:120px;text-align:right">${c.count}${m}</span>
+          <span style="flex:1;color:var(--muted);font-size:11px;padding-left:14px">${esc(c.hint||"")}</span></div>`;
+      }
+    }
+    html+=`</div>`;
+  }
+  if(r.note) html+=`<div style="color:var(--muted);font-size:11px;padding:2px 4px">${esc(r.note)}</div>`;
+  html+='</div>';
+  $("#dhealth").innerHTML=accts.length?html:`<div style="padding:20px;color:var(--muted)">No data${r.note?": "+esc(r.note):"."}</div>`;
+}
+async function act(oid,fields){
+  await api("/api/order_update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({order_id:oid},fields))});
+  refreshCurrent();
+}
+async function addNote(oid){
+  const t=$("#newnote").value.trim(); if(!t)return;
+  await api("/api/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id:oid,note:t,author:ensureProfile()})});
+  openDw(oid);
+}
+
+// ── Profile name (multi-user over Tailscale — comments carry the author) ────
+let PROFILE=localStorage.getItem("profileName")||"";
+function ensureProfile(){
+  if(!PROFILE){PROFILE=(prompt("Your name (shown on your comments):")||"").trim();
+    if(PROFILE)localStorage.setItem("profileName",PROFILE);}
+  refreshWho(); return PROFILE||"me";
+}
+function refreshWho(){const b=$("#whoami");if(b)b.textContent="👤 "+(PROFILE||"set name");}
+
+// ── Tags (standard set + custom "Other…", stored in order_crm.tags) ─────────
+const TAGS_STD=["Replacement","Reship","Damaged","Wrong Item","Chargeback"];
+function tagList(o){return (""+(o&&o.tags||"")).split(",").map(s=>s.trim()).filter(Boolean);}
+function tagsRowHtml(oid,o){
+  const cur=tagList(o);
+  return `<div class="actions"><span>Tags:</span>`+
+    cur.map(t=>`<button class="tagchip" onclick="toggleTag('${esc(oid)}','${esc(t)}')" title="click to remove">${esc(t)} ×</button>`).join("")+
+    `<select onchange="pickTag('${esc(oid)}',this)"><option value="">+ tag…</option>`+
+    TAGS_STD.filter(t=>!cur.includes(t)).map(t=>`<option>${t}</option>`).join("")+
+    `<option value="__other">Other (custom)…</option></select></div>`;
+}
+function pickTag(oid,sel){const v=sel.value;sel.value="";if(!v)return;
+  if(v==="__other"){const t=(prompt("Custom tag:")||"").trim();if(t)toggleTag(oid,t);}else toggleTag(oid,v);}
+async function toggleTag(oid,tag){
+  const cur=tagList(window._DWO||{});
+  const nxt=cur.includes(tag)?cur.filter(x=>x!==tag):cur.concat([tag]);
+  await api("/api/order_update",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({order_id:oid,tags:nxt.join(", ")})});
+  openDw(oid); if(TAB==="tracker")loadTracker();
+}
+
+// ── Zoro catalog (daily TSV → /api/zoro_tsv) — live availability / lead / price ──
+function _zoroLine(it){
+  const inStock=/in stock/i.test(it.availability||"");
+  const av=`<span style="font-weight:700;color:${inStock?'var(--green)':'var(--red)'}">${esc(it.availability||'?')}</span>`;
+  const rs=(""+(it.restricted_states||"")).trim();
+  return `${av} · ${esc(it.lead_time||'lead ?')} · Zoro $${(+it.sales_price||0).toFixed(2)}`
+    +((+it.min_order_qty||1)>1?` · min qty ${it.min_order_qty}`:"")
+    +(rs?` · <span style="color:var(--amber);font-weight:700">restricted: ${esc(rs)}</span>`:"");
+}
+async function renderAsinZoro(s){
+  const el=$("#asinzoro"); if(!el) return;
+  s=s||[];
+  const codes=[...new Set(s.map(d=>(""+(d.zoro_code||"")).trim().toUpperCase()).filter(Boolean))];
+  if(!codes.length){el.innerHTML="";return;}
+  // latest paid Zoro $/unit per code (series is date-sorted) → early price-drift warning
+  const paid={};
+  s.forEach(d=>{const c=(""+(d.zoro_code||"")).trim().toUpperCase();if(c&&+d.zoro_price>0)paid[c]=+d.zoro_price;});
+  const r=await api("/api/zoro_tsv?codes="+encodeURIComponent(codes.join(","))).catch(()=>({items:{}}));
+  const items=(r&&r.items)||{};
+  const rows=codes.map(c=>{
+    const it=items[c]; if(!it) return "";
+    let drift="";
+    const sp=+it.sales_price||0, lp=paid[c]||0;
+    if(sp&&lp){const d=(sp-lp)/lp*100;
+      if(Math.abs(d)>1) drift=`<span style="font-weight:800;color:${d>0?'var(--red)':'var(--green)'}" title="current Zoro catalog price vs our latest paid $/unit ($${lp.toFixed(2)})">${d>0?'▲ +':'▼ '}${d.toFixed(1)}% vs paid $${lp.toFixed(2)}</span>`;}
+    return `<div class="irow">
+      <a class="oid" href="https://www.zoro.com/i/${esc(c)}" target="_blank" rel="noopener">${esc(c)} ↗</a>
+      <span class="msg">${_zoroLine(it)}</span>${drift}</div>`;
+  }).filter(Boolean).join("");
+  el.innerHTML=rows?`<div class="sect">Zoro catalog (live TSV, updated daily)</div>
+    <div style="border:1px solid var(--line);border-radius:8px;overflow:hidden">${rows}</div>`:"";
+}
+async function renderDwZoro(o){
+  const el=$("#dwzoro"); if(!el) return;
+  const code=(""+((o&&o.zoro_sku)||"")).trim().toUpperCase();
+  if(!code){el.innerHTML="";return;}
+  const r=await api("/api/zoro_tsv?codes="+encodeURIComponent(code)).catch(()=>({items:{}}));
+  const it=r&&r.items&&r.items[code];
+  if(!it){el.innerHTML="";return;}
+  el.innerHTML=`<div style="margin:8px 0 2px;padding:8px 11px;background:var(--bg);border:1px solid var(--line);border-radius:9px;font-size:12px">
+    🏭 <b>Zoro now</b> (<a class="asinlink" href="https://www.zoro.com/i/${esc(code)}" target="_blank" rel="noopener">${esc(code)}</a>):
+    ${_zoroLine(it)} <span style="color:var(--muted)">· daily TSV</span></div>`;
+}
+
+async function loadInsights(){
+  const p=new URLSearchParams();
+  if($("#account").value)p.set("account",$("#account").value);
+  if(DATE_FROM) p.set("from",DATE_FROM);
+  if(DATE_TO) p.set("to",DATE_TO);
+  // every call is guarded — one failing endpoint (e.g. a stale server missing a new
+  // route, or a transient DB lock during a closing run) must NEVER blank the whole tab.
+  let insErr=null;
+  const r=await api("/api/insights?"+p.toString()).catch(e=>{insErr=e;return{insights:{}};});
+  const w=await api("/api/watch").catch(()=>({watch:[]}));
+  const sp=await api("/api/ship_perf?"+p.toString()).catch(()=>({days:[]}));
+  const hp=await api("/api/handling?"+p.toString()).catch(()=>({asins:[],summary:{}}));
+  const ins=(r&&r.insights)||{};
+  let items=[];
+  for(const k of Object.keys(INAMES)) (ins[k]||[]).forEach(a=>items.push(Object.assign({cat:k},a)));
+  if(ICAT) items=items.filter(a=>a.cat===ICAT);
+  const high=items.filter(a=>a.severity==="high").length;
+  const days=new Set(items.map(a=>a.date||"(undated)"));
+  $("#kpis").innerHTML=[["Changes",items.length],["High priority",high],["Days",days.size]]
+    .map(([l,v],i)=>`<div class="kpi k${i}"><div class="kv-num">${v}</div><div class="kv-lab">${l}</div></div>`).join("");
+  const byDay={}; items.forEach(a=>{const d=a.date||"(undated)";(byDay[d]=byDay[d]||[]).push(a);});
+  const ds=Object.keys(byDay).sort().reverse();
+  const h=ds.map(d=>`<div class="igrp"><h3><span>${esc(d)}</span><span>${byDay[d].length} change(s)</span></h3>`+
+    byDay[d].map(a=>`<div class="irow"><span class="sev ${a.severity||'med'}"></span>
+      <span class="catbadge">${INAMES[a.cat]}</span>
+      ${a.link==='asin'&&a.asin?`<span class="oid" onclick="openAsin('${esc(a.asin)}')">${esc(a.asin)} ↗</span>`:`<span class="oid" onclick="openDw('${esc(a.order_id)}')">${esc(a.order_id)}</span>`}
+      <span class="msg">${esc(a.message||"")}</span>
+      <button class="mini" onclick="resolve('${a.cat}','${esc(a.ref_key)}',this)">Resolve</button></div>`).join("")+`</div>`).join("");
+  const errBanner=insErr?`<div class="igrp"><div class="irow" style="color:var(--red);font-weight:600">⚠ Insights failed to load (server busy, locked, or running older code — restart the dashboard server). Shipping &amp; handling panels still shown below.</div></div>`:'';
+  const body=items.length?h:(insErr?'':'<div class="empty" style="padding:24px">No order changes 🎉</div>');
+  // When a specific category is picked, show ONLY that category's items — the
+  // always-on shipping/handling/watch panels would otherwise sit on top and make
+  // the filter look like it did nothing. Show the panels only in the "All" view.
+  const panels=ICAT?'':(shipPanel(sp.days||[])+handlingPanel(hp)+watchPanel(w.watch||[]));
+  const catNote=ICAT?`<div class="irow" style="color:var(--muted);font-size:12px;padding:4px 0">Filtered to <b>${esc(INAMES[ICAT]||ICAT)}</b> · ${items.length} item(s) — pick “All categories” to see the shipping &amp; handling panels.</div>`:'';
+  $("#insights").innerHTML=errBanner+panels+catNote+body;
+  $("#count").textContent=items.length+" changes";
+}
+function shipPanel(days){
+  days=days||[];
+  if(!days.length) return '';
+  // running totals for the combined footer (the owner's 124+29 / 145+127 = % view)
+  let T={placed:0,must:0,relaxed:0,early:0,pending:0};
+  const rowFor=(d,bold)=>{
+    const placed=d.placed||0, must=d.must_ship||0, relaxed=d.relaxed||0,
+          early=d.shipped_early||0, pending=d.relaxed_pending||0;
+    const rate=relaxed?Math.round(early/relaxed*100):0;
+    const key=bold?'all':esc(d.day);
+    const lbl=bold?'<b>ALL ('+(days.length)+' days)</b>':`<span style="min-width:90px;font-weight:600">${esc(d.day)}</span>`;
+    const earlyClick=early?`onclick="openShipDay('${key}')" style="color:var(--green);font-weight:700;cursor:pointer;text-decoration:underline"`
+                          :`style="color:var(--green);font-weight:700"`;
+    const rateCol=relaxed?`<span ${early?`onclick="openShipDay('${key}')" style="cursor:pointer;"`:''} style="font-weight:800;color:var(--green)">${rate}% early</span>`
+                         :`<span style="color:var(--muted);font-weight:700">— no buffer</span>`;
+    return `<div class="irow"${bold?' style="border-top:2px solid var(--line);font-weight:700;background:var(--card2,#f7f9fc)"':''}>
+      <span style="min-width:90px">${lbl}</span>
+      <span class="msg">placed <b>${placed}</b> &nbsp;·&nbsp; must-ship <span title="ship-by IS the deadline — obligated, not early">${must}</span> &nbsp;·&nbsp; <span style="font-weight:700" title="had a later ship-by = buffer">buffer ${relaxed}</span> &nbsp;→&nbsp; <span ${earlyClick} title="click to see these orders">shipped early ${early}${early?' ↗':''}</span>${pending?` &nbsp;·&nbsp; <span style="color:var(--muted)">pending ${pending}</span>`:''}</span>
+      ${rateCol}</div>`;
+  };
+  const rows=days.map(d=>{
+    T.placed+=d.placed||0; T.must+=d.must_ship||0; T.relaxed+=d.relaxed||0;
+    T.early+=d.shipped_early||0; T.pending+=d.relaxed_pending||0;
+    return rowFor(d,false);
+  }).join("");
+  const footer=rowFor({placed:T.placed,must_ship:T.must,relaxed:T.relaxed,
+                       shipped_early:T.early,relaxed_pending:T.pending}, true);
+  return `<div class="igrp"><h3><span>🚚 Shipped-early — by placement day (PKT)</span><span>${days.length} days</span></h3>
+    <div class="irow" style="color:var(--muted);font-size:11px">Rate = shipped-early ÷ buffer orders. <b>buffer</b> = ship-by later than the day's deadline (we could've shipped later but didn't have to). <b>must-ship</b> = ship-by IS the deadline (obligated → excluded from rate). Live from placer ship-by + shipped-email, PKT→Pacific corrected.</div>
+    ${rows}${days.length>1?footer:''}</div>`;
+}
+async function openShipDay(day){
+  const p=new URLSearchParams({day,kind:"early"});
+  const a=$("#account")&&$("#account").value; if(a)p.set("account",a);
+  if(day==="all"){ if(DATE_FROM)p.set("from",DATE_FROM); if(DATE_TO)p.set("to",DATE_TO); }
+  const r=await api("/api/ship_orders?"+p.toString()).catch(()=>({orders:[]}));
+  const rows=r.orders||[];
+  const head=["placed","order","acct","ASIN","ship-by","shipped (PKT)","days early","Amazon deliver-by"];
+  const body=rows.map(o=>`<tr style="cursor:pointer" onclick="closeSov();openDw('${esc(o.amazon_order_id)}')">
+      <td>${esc(o.day||'')}</td>
+      <td style="color:var(--accent);font-weight:600">${esc(o.amazon_order_id)}</td>
+      <td>${esc(o.account||'')}</td>
+      <td>${o.asin?`<span class="asinlink" onclick="event.stopPropagation();closeSov();openAsin('${esc(o.asin)}')">${esc(o.asin)}</span>`:''}</td>
+      <td>${esc(o.ship_by_date||'')}</td>
+      <td>${esc((o.shipped_email_time||'').slice(0,16))}</td>
+      <td style="color:var(--green);font-weight:700;text-align:right">${o.days_early!=null?o.days_early+'d':''}</td>
+      <td>${esc(o.deliver_by_date||'')}</td></tr>`).join("");
+  $("#sdw").innerHTML=`<span class="close" onclick="closeSov()">×</span>
+    <h2>🚚 Shipped early — ${day==="all"?"all days":esc(day)}${a?' · '+esc(a):''}</h2>
+    <div class="sub">${rows.length} order(s) shipped ahead of their Amazon ship-by (had buffer, shipped anyway)</div>
+    ${rows.length?`<div style="max-height:64vh;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:8px">
+      <table style="font-size:11.5px;width:100%">
+      <thead><tr>${head.map(h=>`<th style="position:sticky;top:0;background:#f3f5fb;padding:6px 8px;text-align:left">${h}</th>`).join("")}</tr></thead>
+      <tbody>${body}</tbody></table></div>`:'<div class="empty">No orders</div>'}`;
+  $("#sov").style.display="flex";
+}
+function closeSov(){$("#sov").style.display="none";}
+
+function handlingPanel(hp){
+  hp=hp||{}; const a=hp.asins||[], s=hp.summary||{};
+  if(!a.length) return '';
+  const col=r=>r.rec==='Cut handling time'?'var(--green)':r.rec==='Add handling time'?'var(--red)':'var(--muted)';
+  const rows=a.map(r=>`<div class="irow">
+      <span class="oid" onclick="openAsin('${esc(r.asin)}')">${esc(r.asin)} ↗</span>
+      <span class="msg">n=${r.n} &nbsp;·&nbsp; avg slack <b style="color:${r.avg_slack>=0?'var(--green)':'var(--red)'}">${r.avg_slack>=0?'+':''}${r.avg_slack}d</b> &nbsp;·&nbsp; range ${r.min}…${r.max}d</span>
+      <span style="font-weight:800;color:${col(r)}">${esc(r.rec)}</span></div>`).join("");
+  return `<div class="igrp"><h3><span>⏱️ Handling-time tuner — Zoro ETA vs Amazon promise</span><span>${s.orders||0} orders · ${s.risk||0} late-risk</span></h3>
+    <div class="irow" style="color:var(--muted);font-size:11px"><b>slack</b> = Amazon promised deliver-by − Zoro ETA. Large + = Zoro beats our promise → <span style="color:var(--green)">cut handling time</span> (faster badge = more sales). Negative = Zoro arrives after promise → <span style="color:var(--red)">add handling time</span>. ⚠ Young signal — Zoro-ETA capture started 6/23, sample still small.</div>
+    ${rows}</div>`;
+}
+function watchPanel(list){
+  list=list||[];
+  const rows=list.map(x=>{
+    const code=esc(x.zoro_code);
+    const al=x.alert?`<span class="ch" style="color:var(--green);font-weight:700">🔔 ${esc(x.alert)}</span> <button class="mini" onclick="watchClear('${code}')">ack</button>`:'';
+    const chk=x.last_checked?esc((''+x.last_checked).slice(0,16)):'not checked yet';
+    return `<div class="irow"${x.alert?' style="background:var(--greenbg)"':''}>
+      <a class="oid" href="https://www.zoro.com/i/${code}" target="_blank" rel="noopener">${code} ↗</a>
+      <span class="msg">${esc(x.last_availability||'?')} · ${esc(x.last_lead_text||'lead ?')} · checked ${chk}</span>
+      ${al}<button class="mini" onclick="watchDel('${code}')">✕</button></div>`;
+  }).join("");
+  const nA=list.filter(x=>x.alert).length;
+  return `<div class="igrp"><h3><span>📦 Restock / handling-time watch</span><span>${list.length} watched · ${nA} 🔔</span></h3>
+    <div class="irow">
+      <input id="watchcode" placeholder="Add Zoro code (e.g. G7646065)" style="flex:1;padding:6px 9px;border:1px solid var(--line);border-radius:7px" onkeydown="if(event.key==='Enter')watchAdd()">
+      <button class="mini" onclick="watchAdd()">+ Add</button>
+      <span style="color:var(--muted);font-size:11px">checked hourly · alerts when back-in-stock or handling &lt; 5 days</span>
+    </div>${rows}</div>`;
+}
+async function watchAdd(){
+  const el=$("#watchcode"); const code=(el&&el.value||"").trim(); if(!code)return;
+  await api("/api/watch",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code})});
+  if(el)el.value=""; loadInsights();
+}
+async function watchDel(code){
+  await api("/api/watch_del",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code})});
+  loadInsights();
+}
+async function watchClear(code){
+  await api("/api/watch_clear",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code})});
+  loadInsights();
+}
+async function resolve(type,key,btn){
+  await api("/api/resolve",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({insight_type:type,ref_key:key})});
+  btn.closest(".irow").style.opacity=.4; btn.textContent="✓ done"; btn.disabled=true;
+}
+
+function _extrasHtml(){
+  const ist="padding:5px 7px;border:1px solid var(--line);border-radius:7px";
+  return `<span class="lbl" style="margin-left:10px">Margin%</span>`
+    +`<input id="mmin" type="number" placeholder="min" value="${MARGIN_MIN}" style="width:56px;${ist}">`
+    +`<input id="mmax" type="number" placeholder="max" value="${MARGIN_MAX}" style="width:56px;${ist}">`
+    +`<span class="chip ${MARGIN_MAX==='8'?'on':''}" id="lowmgnchip" title="show only orders with final margin under 8%" style="${MARGIN_MAX==='8'?'background:#b54708;border-color:#b54708':''}">⚠ &lt;8%</span>`
+    +`<span class="chip ${TAXONLY?'on':''}" id="taxchip">tax only</span>`
+    +`<span class="chip ${NOTAX?'on':''}" id="notaxchip">no tax</span>`
+    +`<select id="statef" style="${ist}"><option value="">All states</option>`
+    +STATES.map(s=>`<option ${STATEF===s?'selected':''}>${esc(s)}</option>`).join("")+`</select>`
+    +`<span class="lbl" style="margin-left:10px">Tag</span>`
+    +`<select id="tagf" style="${ist}"><option value="">All tags</option>`
+    +TAGS_ALL.map(t=>`<option ${TAGF===t?'selected':''}>${esc(t)}</option>`).join("")+`</select>`
+    +`<span class="lbl">Flag</span>`
+    +[["","All"],["#b42318","🔴"],["#eab308","🟡"],["#067647","🟢"]]
+      .map(([v,t])=>`<span class="chip ${FLAGF===v?'on':''}" data-flagf="${v}" title="${v?'only orders flagged '+t:'any / no flag'}">${t}</span>`).join("");
+}
+function _wireExtras(){
+  const mn=$("#mmin"),mx=$("#mmax"),tx=$("#taxchip"),st=$("#statef"),tg=$("#tagf");
+  if(mn)mn.oninput=()=>{MARGIN_MIN=mn.value;renderTable();};
+  if(mx)mx.oninput=()=>{MARGIN_MAX=mx.value;renderTable();};
+  const lm=$("#lowmgnchip");
+  if(lm)lm.onclick=()=>{MARGIN_MAX=(MARGIN_MAX==='8'?'':'8');buildBar();renderTable();};
+  if(tx)tx.onclick=()=>{TAXONLY=!TAXONLY;NOTAX=false;tx.classList.toggle("on",TAXONLY);if($("#notaxchip"))$("#notaxchip").classList.remove("on");renderTable();};
+  const ntx=$("#notaxchip");
+  if(ntx)ntx.onclick=()=>{NOTAX=!NOTAX;TAXONLY=false;ntx.classList.toggle("on",NOTAX);if($("#taxchip"))$("#taxchip").classList.remove("on");renderTable();};
+  if(st)st.onchange=()=>{STATEF=st.value;renderTable();};
+  if(tg)tg.onchange=()=>{TAGF=tg.value;loadOrders();};
+  document.querySelectorAll(".chip[data-flagf]").forEach(c=>c.onclick=()=>{FLAGF=c.dataset.flagf;buildBar();renderTable();});
+}
+function buildBar(){
+  const b=$("#filterbar"); b.style.display="flex";
+  if(TAB==="reminders"){b.style.display="none";return;}
+  if(TAB==="walmart"){b.style.display="none";return;}   // Walmart has its own in-panel status chips
+  if(TAB==="listings"){b.style.display="none";return;}  // Listings has its own action cards
+  if(TAB==="insights"){
+    b.innerHTML='<span class="lbl">Category:</span><select id="icat"><option value="">All categories</option>'+
+      Object.keys(INAMES).map(k=>`<option value="${k}" ${ICAT===k?'selected':''}>${INAMES[k]}</option>`).join("")+'</select>';
+    $("#icat").onchange=function(){ICAT=this.value;loadInsights();};
+    return;
+  }
+  let html="";
+  if(TAB==="orders"){
+    html='<span class="lbl">Status:</span>'+
+      [["","All"],["Completed","Completed"],["Loss","Loss"],["Incomplete","Incomplete"],["Refunded","Refunded"],["Cancelled","Cancelled"]]
+        .map(([v,t])=>`<span class="chip ${LABEL===v?'on':''}" data-label="${v}">${t}</span>`).join("");
+  } else if(TAB==="unresolved"){
+    html='<span class="lbl">Reason:</span>'+
+      ["","Refunded","Incomplete","Past-due","Zip mismatch"].map(v=>`<span class="chip ${REASON===v?'on':''}" data-reason="${v}">${v||"All"}</span>`).join("");
+  } else if(TAB==="placed"){
+    html='<span class="lbl">Placement:</span>'+
+      `<span class="chip ${!ALTF?'on':''}" data-altf="">All</span>`+
+      `<span class="chip ${ALTF?'on':''}" data-altf="1" title="orders placed with the ALTERNATIVE Zoro code because the main SKU was OOS">🔄 ALT SKUs only</span>`;
+  }
+  b.innerHTML=html+_extrasHtml();
+  b.querySelectorAll(".chip[data-label]").forEach(c=>c.onclick=()=>{LABEL=c.dataset.label;buildBar();loadOrders();});
+  b.querySelectorAll(".chip[data-reason]").forEach(c=>c.onclick=()=>{REASON=c.dataset.reason;buildBar();renderTable();});
+  b.querySelectorAll(".chip[data-altf]").forEach(c=>c.onclick=()=>{ALTF=c.dataset.altf==="1";buildBar();renderTable();});
+  _wireExtras();
+}
+function setTab(t){
+  TAB=t;
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.tab===t));
+  const panels=["insights","health","pnl","bank","severe","data","tracker","unmapped","needs_priority","reminders","walmart","listings","repricer"];
+  const isTable=!panels.includes(t);
+  $("#tablewrap").style.display=isTable?"block":"none";
+  // The KPI strip is ORDER metrics (orders / earnings / margin). On Listings and Repricer it
+  // is hidden in favor of dedicated KPI dashboards.
+  $("#kpis").style.display = (t==="listings" || t==="repricer") ? "none" : "flex";
+  panels.forEach(x=>$("#"+(x==="health"?"dhealth":x)).style.display=(t===x)?"block":"none");
+  buildBar();
+  // live auto-refresh on the Placed tab (placer log) — only when scrolled to top, so it never yanks your view
+  clearInterval(window._liveTimer);
+  if(t==="placed"){window._liveTimer=setInterval(()=>{if(TAB!=="placed")return;const w=$("#tablewrap");if(!w||w.scrollTop<40)loadOrders();},30000);}
+  if(t==="insights") loadInsights(); else if(t==="health") loadDataHealth();
+  else if(t==="pnl") (PNL_ACCT==="HOANK"?loadPnlHoank():loadPnl());
+  else if(t==="bank") loadBank(); else if(t==="severe") loadSevere();
+  else if(t==="data") loadData(); else if(t==="tracker") loadTracker();
+  else if(t==="unmapped") loadUnmapped(); else if(t==="needs_priority") loadNeedsPriority();
+  else if(t==="walmart") loadWalmart();
+  else if(t==="listings") loadListings();
+  else if(t==="repricer") loadRepricer();
+  else if(t==="reminders") loadReminders(); else loadOrders();
+}
+
+document.querySelectorAll(".tab").forEach(x=>x.onclick=()=>setTab(x.dataset.tab));
+$("#allcols").onchange=()=>loadOrders();   // full column set lives server-side now — refetch
+$("#q").oninput=()=>{clearTimeout(window._t);window._t=setTimeout(()=>{if(TAB==="insights")return;if(TAB==="walmart")loadWalmart();else loadOrders();},300);};
+$("#account").onchange=refreshCurrent;
+$("#zaccount").onchange=()=>{if(TAB!=="insights")loadOrders();};
+$("#profile").onchange=()=>{if(TAB!=="insights")loadOrders();};
+$("#datemode").onchange=()=>{DATECOL=$("#datemode").value;if(TAB!=="insights")loadOrders();};
+$("#refresh").onclick=()=>{loadFacets();refreshCurrent();};   // refresh also re-pulls tag/facet lists
+$("#whoami").onclick=()=>{const n=(prompt("Your name (shown on your comments):",PROFILE)||"").trim();
+  if(n)saveName(n);refreshWho();};
+refreshWho();
+
+function applyDatePreset(){
+  const v=$("#dpreset").value, cust=v==="custom";
+  $("#dfrom").style.display=cust?"":"none";
+  $("#dto").style.display=cust?"":"none";
+  if(v==="all"){DATE_FROM="";DATE_TO="";}
+  else if(v==="today"){DATE_FROM=TODAY;DATE_TO=TODAY;}
+  else if(v==="7"){DATE_FROM=daysAgo(6);DATE_TO=TODAY;}
+  else if(v==="30"){DATE_FROM=daysAgo(29);DATE_TO=TODAY;}
+  else {DATE_FROM=$("#dfrom").value;DATE_TO=$("#dto").value;}
+  refreshCurrent();
+}
+$("#dpreset").onchange=applyDatePreset;
+$("#dfrom").onchange=()=>{DATE_FROM=$("#dfrom").value;refreshCurrent();};
+$("#dto").onchange=()=>{DATE_TO=$("#dto").value;refreshCurrent();};
+
+loadFacets().then(()=>setTab("orders"));
+
+// ═══════════ Persistent name (server-side by client IP, survives cleared storage) ═══════════
+async function saveName(n){PROFILE=n;localStorage.setItem("profileName",n);refreshWho();
+  try{await api("/api/whoami",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n})});}catch(e){}}
+window.ROLE="admin";   // resolved from /api/whoami; viewers get chat + reminders hidden
+(async()=>{try{const w=await api("/api/whoami");
+  window.ROLE=w.role||"admin";
+  if(window.ROLE==="restricted"){
+    document.documentElement.classList.add("restricted-mode");
+    const allowed = ["placed", "listings", "tracker", "orders", "pnl"];
+    if(!allowed.includes(TAB)) setTab("orders");
+  } else if(window.ROLE!=="admin"){
+    // Viewer (colleague): team chat, Reminder Center, P&L and Bank reconcile are private to
+    // the owner — hide them. (The server also 403s their APIs, so this is cosmetic on top of
+    // real enforcement.)
+    const cf=$("#chatFab");if(cf)cf.style.display="none";
+    const cp=$("#chatPanel");if(cp)cp.style.display="none";
+    ["reminders","pnl","bank"].forEach(t=>
+      document.querySelectorAll(`.tab[data-tab="${t}"]`).forEach(x=>x.style.display="none"));
+    if(["reminders","pnl","bank"].includes(TAB)) setTab("orders");
+  }
+  if(w.name&&!PROFILE){PROFILE=w.name;localStorage.setItem("profileName",PROFILE);refreshWho();}
+  else if(PROFILE&&!w.name)saveName(PROFILE);
+}catch(e){}})();
+
+// ═══════════ Team chat (Slack-style, media supported) ═══════════
+let CHAT_OPEN=false,CHAT_MAXID=0,CHAT_SEEN=+(localStorage.getItem("chatSeen")||0),CHAT_MSGS=[],CHAT_FILE=null;
+function toggleChat(open){CHAT_OPEN=open===undefined?!CHAT_OPEN:open;
+  $("#chatPanel").style.display=CHAT_OPEN?"flex":"none";
+  if(CHAT_OPEN){markChatSeen();renderChat();scrollChat();$("#chatText").focus();}}
+function scrollChat(){const m=$("#chatMsgs");if(m)setTimeout(()=>{m.scrollTop=m.scrollHeight;},30);}
+function markChatSeen(){CHAT_SEEN=Math.max(CHAT_SEEN,CHAT_MAXID);localStorage.setItem("chatSeen",CHAT_SEEN);updChatBadge();}
+function updChatBadge(){const n=CHAT_MSGS.filter(m=>m.id>CHAT_SEEN).length,b=$("#chatBadge");
+  b.style.display=n?"flex":"none";b.textContent=n>99?"99+":n;}
+async function pollChat(){
+  if(window.ROLE!=="admin")return;   // chat is owner-only (server 403s viewers anyway)
+  try{const r=await api("/api/chat?after="+CHAT_MAXID);const ms=r.messages||[];
+    if(ms.length){const m0=$("#chatMsgs"),atBot=!m0||m0.scrollHeight-m0.scrollTop-m0.clientHeight<90;
+      CHAT_MSGS=CHAT_MSGS.concat(ms).slice(-400);CHAT_MAXID=r.last_id||CHAT_MAXID;
+      if(CHAT_OPEN){markChatSeen();renderChat();if(atBot)scrollChat();}else updChatBadge();}
+  }catch(e){}}
+function chatMediaHtml(m){
+  if(!m.media_file)return "";
+  const u="/chat_media/"+encodeURIComponent(m.media_file),t=m.media_type||"";
+  if(t.startsWith("image/"))return `<img src="${u}" loading="lazy" onclick="window.open('${u}')">`;
+  if(t.startsWith("video/"))return `<video src="${u}" controls style="max-width:235px;border-radius:8px;margin-top:4px"></video>`;
+  return `<a href="${u}" download="${esc(m.media_name||'file')}" style="display:block;margin-top:4px">📄 ${esc(m.media_name||m.media_file)}</a>`;}
+function renderChat(){
+  $("#chatMsgs").innerHTML=CHAT_MSGS.map(m=>{
+    const mine=(m.sender||"")===PROFILE;
+    return `<div class="cwho" style="${mine?'text-align:right':''}">${esc(m.sender||"?")} · ${esc((m.created_at||"").slice(5,16))}</div>
+      <div class="cmsg ${mine?'me':'them'}">${esc(m.text||"")}${chatMediaHtml(m)}</div>`;
+  }).join("")||'<div style="margin:auto;color:var(--muted)">No messages yet — say hi 👋</div>';}
+function clearChatFile(){CHAT_FILE=null;$("#chatFile").value="";$("#chatPend").style.display="none";}
+$("#chatFile").onchange=()=>{
+  const f=$("#chatFile").files[0];if(!f)return;
+  if(f.size>25*1024*1024){alert("Max file size is 25 MB");$("#chatFile").value="";return;}
+  const rd=new FileReader();
+  rd.onload=()=>{CHAT_FILE={name:f.name,b64:(""+rd.result).split(",",2)[1]||""};
+    $("#chatPend").style.display="block";
+    $("#chatPend").innerHTML=`📎 ${esc(f.name)} &nbsp;<span style="cursor:pointer;color:#b42318" onclick="clearChatFile()">✕ remove</span>`;};
+  rd.readAsDataURL(f);};
+$("#chatText").addEventListener("paste",e=>{   // paste a screenshot straight into the box
+  const f=(e.clipboardData&&e.clipboardData.files&&e.clipboardData.files[0])||null;
+  if(f){e.preventDefault();const dt=new DataTransfer();dt.items.add(f);$("#chatFile").files=dt.files;$("#chatFile").onchange();}});
+async function sendChat(){
+  const t=$("#chatText").value.trim();
+  if(!t&&!CHAT_FILE)return;
+  const body={sender:ensureProfile(),text:t};
+  if(CHAT_FILE){body.media_b64=CHAT_FILE.b64;body.media_name=CHAT_FILE.name;}
+  const btn=$("#chatSend");btn.disabled=true;btn.textContent="…";
+  try{const r=await api("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(r.ok){$("#chatText").value="";clearChatFile();await pollChat();scrollChat();}
+    else alert(r.error||"send failed");
+  }catch(e){alert("Send failed — server unreachable?");}
+  btn.disabled=false;btn.textContent="➤";}
+$("#chatSend").onclick=sendChat;
+$("#chatText").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat();}});
+$("#chatFab").onclick=()=>toggleChat();
+setInterval(pollChat,5000);pollChat();
+
+// ═══════════ Reminder Center (Microsoft-To-Do style shared tasks) ═══════════
+let REMS=[];
+function remNow(){const d=new Date(),p=n=>(""+n).padStart(2,"0");
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;}
+function remDueCls(r){if(!r.due_at)return "";const now=remNow(),d=(""+r.due_at).slice(0,16).replace("T"," ");
+  if(d<now)return "over";if(d.slice(0,10)===now.slice(0,10))return "today";return "";}
+async function loadReminders(){
+  if(window.ROLE!=="admin"){REMS=[];return;}   // reminders are owner-only (server 403s viewers)
+  try{const r=await api("/api/reminders");REMS=r.reminders||[];}catch(e){REMS=[];}
+  if(TAB==="reminders")renderReminders();updRemBadge();checkDueAlerts();}
+
+// ── Due-time alerts: toast inside the dashboard + OS notification where allowed ──
+function toast(title,body,onclick){
+  const t=document.createElement("div");t.className="toast";
+  t.innerHTML=`<b>${esc(title)}</b>${body?`<div style="margin-top:2px">${esc(body)}</div>`:""}`;
+  t.onclick=()=>{if(onclick)onclick();t.remove();};
+  $("#toasts").appendChild(t);setTimeout(()=>t.remove(),12000);}
+function remBellChip(){
+  if(!("Notification" in window))
+    return `<span class="rmchip" title="This browser blocks OS pop-ups on plain http — in-dashboard alerts still fire here">🔔 in-dashboard alerts on</span>`;
+  const s=Notification.permission;
+  if(s==="granted")return `<span class="rmchip" title="OS pop-up fires when a reminder hits its due time (keep this tab open)">🔔 desktop alerts on</span>`;
+  if(s==="denied")return `<span class="rmchip" title="Notifications are blocked for this site in browser settings — in-dashboard alerts still fire">🔕 desktop blocked</span>`;
+  return `<span class="rmchip" style="cursor:pointer;background:#e7ecfd;font-weight:700" title="Allow OS pop-ups when a reminder is due"
+    onclick="Notification.requestPermission().then(()=>renderReminders())">🔕 enable desktop alerts</span>`;}
+function checkDueAlerts(){
+  let seen={};try{seen=JSON.parse(localStorage.getItem("remNotified")||"{}");}catch(e){}
+  const now=remNow();let dirty=false;
+  REMS.filter(r=>!r.done&&r.due_at).forEach(r=>{
+    const due=(""+r.due_at).slice(0,16).replace("T"," ");
+    if(due<=now&&seen[r.id]!==due){          // fire ONCE per reminder per due-time (re-fires if due edited)
+      seen[r.id]=due;dirty=true;
+      const who=r.assignee&&r.assignee!==PROFILE?` (for ${r.assignee})`:"";
+      toast("⏰ Reminder due"+who,`${r.title} — ${due}`,()=>setTab("reminders"));
+      try{if(("Notification" in window)&&Notification.permission==="granted")
+        new Notification("⏰ Reminder: "+r.title,{body:(r.assignee?("👤 "+r.assignee+" · "):"")+"due "+due,tag:"rem"+r.id});}catch(e){}
+    }});
+  Object.keys(seen).forEach(id=>{if(!REMS.some(r=>""+r.id===id&&!r.done)){delete seen[id];dirty=true;}});
+  if(dirty)localStorage.setItem("remNotified",JSON.stringify(seen));}
+function updRemBadge(){const n=REMS.filter(r=>!r.done&&remDueCls(r)).length,b=$("#remBadge");
+  if(b){b.style.display=n?"inline":"none";b.textContent=n;}}
+function renderReminders(){
+  const names=[...new Set([PROFILE,...REMS.map(r=>r.assignee),...REMS.map(r=>r.created_by)].filter(Boolean))];
+  const pending=REMS.filter(r=>!r.done),done=REMS.filter(r=>r.done);
+  const row=r=>{const cls=r.done?"":remDueCls(r);
+    return `<div class="remrow ${r.done?'done':''}">
+      <span class="remchk ${r.done?'on':''}" title="${r.done?'mark as not done':'mark as done'}" onclick="remToggle(${r.id},${r.done?0:1})">${r.done?"✓":""}</span>
+      <span style="flex:1;min-width:0">
+        <div class="remtitle">${esc(r.title)}</div>
+        ${r.notes?`<div class="remnotes">${esc(r.notes)}</div>`:""}
+        <div class="remmeta">${r.assignee?`<span class="rmchip">👤 ${esc(r.assignee)}</span>`:""}
+          ${r.due_at?`<span class="rmchip due ${cls}">⏰ ${esc((""+r.due_at).slice(0,16).replace("T"," "))}${cls==="over"?" · OVERDUE":cls==="today"?" · today":""}</span>`:""}
+          <span class="rmchip" title="created ${esc(r.created_at||'')}">by ${esc(r.created_by||"?")}</span>
+          ${r.done?`<span class="rmchip">✓ ${esc((r.done_at||"").slice(5,16))}${r.done_by?" by "+esc(r.done_by):""}</span>`:""}</div>
+      </span>
+      <span class="remact" title="edit due date" onclick="remEditDue(${r.id})">📅</span>
+      <span class="remact" style="color:#b42318" title="delete" onclick="remDel(${r.id})">🗑</span>
+    </div>`;};
+  $("#reminders").innerHTML=`<div class="rembox">
+    <h2 style="margin:8px 2px 12px">⏰ Reminder Center &nbsp;${remBellChip()}</h2>
+    <div class="remadd">
+      <input id="remTitle" placeholder="Add a task / reminder… (Enter to add)">
+      <input id="remDue" type="datetime-local" title="due date (optional)">
+      <input id="remWho" list="remNames" placeholder="assign to…" style="width:120px">
+      <datalist id="remNames">${names.map(n=>`<option>${esc(n)}</option>`).join("")}</datalist>
+      <button class="ghost" id="remAddBtn" style="font-weight:700">➕ Add</button>
+    </div>
+    ${pending.length?pending.map(row).join(""):'<div style="color:var(--muted);padding:26px;text-align:center">Nothing pending 🎉</div>'}
+    ${done.length?`<div style="margin:18px 2px 4px;color:var(--muted);font-size:12px;font-weight:800">COMPLETED (${done.length})</div>`+done.slice(0,50).map(row).join(""):""}
+  </div>`;
+  $("#remAddBtn").onclick=remAdd;
+  $("#remTitle").addEventListener("keydown",e=>{if(e.key==="Enter")remAdd();});}
+async function remAdd(){
+  const t=$("#remTitle").value.trim();if(!t)return;
+  // adding a task is a user gesture — the right moment to ask for OS notification permission
+  try{if(("Notification" in window)&&Notification.permission==="default")
+    Notification.requestPermission().then(()=>{if(TAB==="reminders")renderReminders();});}catch(e){}
+  await api("/api/reminder",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({title:t,due_at:($("#remDue").value||"").replace("T"," "),
+      assignee:$("#remWho").value.trim(),created_by:ensureProfile()})});
+  loadReminders();}
+async function remToggle(id,done){
+  await api("/api/reminder_update",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({id,done,done_by:ensureProfile()})});
+  loadReminders();}
+async function remEditDue(id){const r=REMS.find(x=>x.id===id);if(!r)return;
+  const v=prompt("Due (YYYY-MM-DD HH:MM — empty for none):",(r.due_at||"").slice(0,16).replace("T"," "));
+  if(v===null)return;
+  await api("/api/reminder_update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,due_at:v.trim()})});
+  loadReminders();}
+async function remDel(id){if(!confirm("Delete this reminder?"))return;
+  await api("/api/reminder_update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id,delete:1})});
+  loadReminders();}
+setInterval(loadReminders,60000);loadReminders();
+
+// ══════════════════════════════════════════════════════════════════════════
+//  REPRICER & COMPETITOR OPPORTUNITY DASHBOARD
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+//  REPRICER & COMPETITOR OPPORTUNITY DASHBOARD (MONTSERRAT BEAUTIFIED)
+// ══════════════════════════════════════════════════════════════════════════
+let REPRICER_ACCOUNT = "Hathoro";
+let REPRICER_STRATEGY = "ALL";
+let REPRICER_QUERY = "";
+let REPRICER_DATA = null;
+let REPRICER_POLL = null;
+
+async function loadRepricer(force=false){
+  const $R = $("#repricer");
+  if(!$R) return;
+  if(!REPRICER_DATA || force){
+    $R.innerHTML = `
+      <div style="padding:60px 20px;text-align:center;color:var(--muted);font-family:'Montserrat',sans-serif">
+        <div style="font-size:36px;margin-bottom:14px;animation:spin 2s linear infinite;display:inline-block">⚡</div>
+        <div style="font-size:18px;font-weight:700;color:var(--ink);margin-bottom:6px">Analyzing Repricer Intelligence for <b>${esc(REPRICER_ACCOUNT)}</b>…</div>
+        <div style="font-size:13px;color:var(--muted)">Calculating profit maximization, Buy Box reclaim gaps, and PL brand protections</div>
+      </div>`;
+  }
+  try {
+    const res = await api(`/api/repricer?account=${encodeURIComponent(REPRICER_ACCOUNT)}`);
+    REPRICER_DATA = res;
+    renderRepricer();
+
+    // Check if background scraping is running and auto-poll
+    if(res.is_scraping){
+      if(!REPRICER_POLL){
+        REPRICER_POLL = setInterval(()=>loadRepricer(false), 3000);
+      }
+    } else {
+      if(REPRICER_POLL){
+        clearInterval(REPRICER_POLL);
+        REPRICER_POLL = null;
+        toast("🎉 Repricer Updated", `Live scraping complete for ${REPRICER_ACCOUNT}! Data refreshed.`);
+      }
+    }
+  } catch(e) {
+    $R.innerHTML = `
+      <div style="padding:40px;color:var(--red);text-align:center;font-family:'Montserrat',sans-serif">
+        <div style="font-size:32px;margin-bottom:10px">⚠️</div>
+        <h3 style="font-weight:800;margin:0 0 8px 0">Error Loading Repricer Intelligence</h3>
+        <p style="font-size:13px;color:var(--muted)">${esc(e.message||e)}</p>
+        <button class="ghost" onclick="loadRepricer(true)" style="margin-top:12px;font-weight:700">↻ Retry</button>
+      </div>`;
+  }
+}
+
+function setRepricerAccount(acct){
+  REPRICER_ACCOUNT = acct;
+  loadRepricer(true);
+}
+
+function setRepricerStrategy(strat){
+  REPRICER_STRATEGY = strat;
+  renderRepricer();
+}
+
+async function triggerRepricerScrape(){
+  const confirmed = confirm(
+    `🚀 Start Live Amazon Competitor Scraping for ${REPRICER_ACCOUNT}?\n\n` +
+    `• Undetected Chrome will launch in the background.\n` +
+    `• Scrapes live Buy Box, Lowest 1, 2, 3 sellers & prices across all ${REPRICER_ACCOUNT} listings.\n` +
+    `• The Repricer tab will update live and automatically generate the updated Excel (.xlsx) report.`
+  );
+  if(!confirmed) return;
+
+  try {
+    const res = await api(`/api/repricer_scrape?account=${encodeURIComponent(REPRICER_ACCOUNT)}`);
+    toast("⚡ Scraper Started", res.message || `Background scraper running for ${REPRICER_ACCOUNT}`);
+    loadRepricer(true);
+  } catch(e) {
+    alert("Could not start scraper: " + (e.message||e));
+  }
+}
+
+function downloadRepricerExcel(){
+  window.open(`/api/repricer_excel?account=${encodeURIComponent(REPRICER_ACCOUNT)}`, "_blank");
+}
+
+function renderRepricer(){
+  const $R = $("#repricer");
+  if(!$R || !REPRICER_DATA) return;
+
+  const D = REPRICER_DATA;
+  const items = D.items || [];
+  const q = (REPRICER_QUERY || "").toLowerCase().trim();
+
+  // Filter items
+  const filtered = items.filter(it => {
+    if(REPRICER_STRATEGY === "RAISE_PRICE" && it.strategy !== "RAISE_PRICE") return false;
+    if(REPRICER_STRATEGY === "DROP_PRICE_10PCT" && it.strategy !== "DROP_PRICE_10PCT") return false;
+    if(REPRICER_STRATEGY === "PL_HIJACKED" && !it.is_hijacked) return false;
+    if(REPRICER_STRATEGY === "PL_PROTECTED" && it.strategy !== "PL_PROTECTED") return false;
+    if(REPRICER_STRATEGY === "WINNING_BB" && !it.is_our_buy_box) return false;
+
+    if(q){
+      const match = (it.asin||"").toLowerCase().includes(q) ||
+                    (it.sku||"").toLowerCase().includes(q) ||
+                    (it.title||"").toLowerCase().includes(q) ||
+                    (it.lowest_1_seller||"").toLowerCase().includes(q) ||
+                    (it.lowest_2_seller||"").toLowerCase().includes(q);
+      if(!match) return false;
+    }
+    return true;
+  });
+
+  const countRaise = items.filter(x => x.strategy === "RAISE_PRICE").length;
+  const countDrop = items.filter(x => x.strategy === "DROP_PRICE_10PCT").length;
+  const countHijack = items.filter(x => x.is_hijacked).length;
+  const countPlProt = items.filter(x => x.strategy === "PL_PROTECTED").length;
+  const countBBWin = items.filter(x => x.is_our_buy_box).length;
+
+  const fmtCurrency = (n) => n != null ? `$${Number(n).toFixed(2)}` : "—";
+  const fmtNumber = (n) => n != null ? Number(n).toLocaleString() : "0";
+
+  let html = `
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&display=swap');
+    
+    .rep-container, .rep-container * {
+      font-family: 'Montserrat', sans-serif !important;
+      box-sizing: border-box;
+    }
+    .rep-container {
+      padding: 16px 20px;
+      max-width: 100%;
+      background: #f8fafc;
+      min-height: calc(100vh - 60px);
+    }
+    
+    /* Top Header Bar */
+    .rep-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+      background: #ffffff;
+      padding: 14px 20px;
+      border-radius: 14px;
+      border: 1px solid #e2e8f0;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.04), 0 2px 4px -2px rgba(0,0,0,0.03);
+      flex-wrap: wrap;
+    }
+    .rep-title-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .rep-main-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .rep-account-select {
+      font-size: 13px;
+      font-weight: 700;
+      padding: 7px 12px;
+      border-radius: 10px;
+      border: 1.5px solid #cbd5e1;
+      background: #f8fafc;
+      color: #1e293b;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .rep-account-select:focus {
+      border-color: #3b5bdb;
+      box-shadow: 0 0 0 3px rgba(59, 91, 219, 0.15);
+    }
+    .rep-status-tag {
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .rep-status-idle {
+      background: #f1f5f9;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+    .rep-status-scraping {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+      animation: pulse 1.5s infinite;
+    }
+    
+    /* Action Buttons */
+    .rep-actions-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .rep-btn {
+      padding: 8px 15px;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border: none;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+    .rep-btn:hover {
+      transform: translateY(-1.5px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .rep-btn-primary {
+      background: linear-gradient(135deg, #3b5bdb 0%, #2b45b0 100%);
+      color: #ffffff;
+    }
+    .rep-btn-scrape-active {
+      background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+      color: #ffffff;
+      animation: pulse 1.5s infinite;
+    }
+    .rep-btn-success {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+    }
+    .rep-btn-ghost {
+      background: #ffffff;
+      color: #475569;
+      border: 1.5px solid #e2e8f0;
+    }
+    .rep-btn-ghost:hover {
+      border-color: #3b5bdb;
+      color: #3b5bdb;
+      background: #f8fafc;
+    }
+    
+    /* Live Scraping Progress Banner */
+    .rep-scrape-banner {
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+      border: 1.5px solid #fde68a;
+      border-radius: 12px;
+      padding: 12px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      box-shadow: 0 2px 8px rgba(217, 119, 6, 0.08);
+      animation: fadeIn 0.3s ease;
+    }
+    .rep-scrape-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .rep-scrape-spinner {
+      font-size: 22px;
+      animation: spin 1.2s linear infinite;
+    }
+    .rep-scrape-text-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: #92400e;
+    }
+    .rep-scrape-text-sub {
+      font-size: 12px;
+      font-weight: 500;
+      color: #b45309;
+      margin-top: 2px;
+    }
+    
+    /* 6 Executive KPI Cards */
+    .rep-kpis-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .rep-card {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 14px 16px;
+      border: 1.5px solid #e2e8f0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    .rep-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 20px -5px rgba(0,0,0,0.08);
+    }
+    .rep-card.active {
+      border-color: #3b5bdb;
+      box-shadow: 0 0 0 2px #3b5bdb, 0 8px 16px -4px rgba(59, 91, 219, 0.2);
+    }
+    .rep-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+    }
+    .rep-card-total::before { background: linear-gradient(90deg, #64748b, #334155); }
+    .rep-card-raise::before { background: linear-gradient(90deg, #10b981, #059669); }
+    .rep-card-drop::before { background: linear-gradient(90deg, #3b82f6, #1d4ed8); }
+    .rep-card-hijack::before { background: linear-gradient(90deg, #ef4444, #b91c1c); }
+    .rep-card-prot::before { background: linear-gradient(90deg, #06b6d4, #0e7490); }
+    .rep-card-bb::before { background: linear-gradient(90deg, #f59e0b, #d97706); }
+    
+    .rep-card-num {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      color: #0f172a;
+      line-height: 1.1;
+    }
+    .rep-card-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .rep-card-badge {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    
+    /* Strategy Pills & Search Filter */
+    .rep-filter-strip {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 10px 14px;
+      border: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .rep-pill-btn {
+      padding: 6px 14px;
+      border-radius: 25px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border: 1.5px solid #e2e8f0;
+      background: #f8fafc;
+      color: #475569;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .rep-pill-btn:hover {
+      border-color: #94a3b8;
+      color: #1e293b;
+      background: #f1f5f9;
+    }
+    .rep-pill-btn.on {
+      background: #0f172a;
+      color: #ffffff;
+      border-color: #0f172a;
+    }
+    .rep-pill-btn.on.raise { background: #059669; border-color: #059669; }
+    .rep-pill-btn.on.drop { background: #2563eb; border-color: #2563eb; }
+    .rep-pill-btn.on.hijack { background: #dc2626; border-color: #dc2626; }
+    
+    .rep-search-input {
+      padding: 7px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 500;
+      outline: none;
+      width: 260px;
+      background: #f8fafc;
+      transition: all 0.2s;
+    }
+    .rep-search-input:focus {
+      border-color: #3b5bdb;
+      background: #ffffff;
+      box-shadow: 0 0 0 3px rgba(59, 91, 219, 0.12);
+    }
+    
+    /* Ultra Polished Data Table */
+    .rep-table-container {
+      background: #ffffff;
+      border-radius: 14px;
+      border: 1px solid #e2e8f0;
+      overflow-x: auto;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.03), 0 2px 4px -2px rgba(0,0,0,0.02);
+      max-height: calc(100vh - 300px);
+    }
+    .rep-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+    .rep-table th {
+      position: sticky;
+      top: 0;
+      background: #0f172a;
+      color: #f8fafc;
+      font-weight: 700;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 11px 12px;
+      white-space: nowrap;
+      z-index: 20;
+      border-right: 1px solid rgba(255,255,255,0.08);
+    }
+    .rep-table td {
+      padding: 9px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      border-right: 1px solid #f8fafc;
+      vertical-align: middle;
+      white-space: nowrap;
+      color: #334155;
+    }
+    .rep-table tr:hover td {
+      background: #f8fafc;
+    }
+    .rep-table tr.row-hijack td {
+      background: #fff1f2;
+      border-bottom-color: #fecdd3;
+    }
+    .rep-table tr.row-hijack:hover td {
+      background: #ffe4e6;
+    }
+    
+    /* High Impact Badges */
+    .rep-badge-rec-raise {
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      border-radius: 8px;
+      padding: 4px 8px;
+      display: inline-block;
+    }
+    .rep-badge-rec-raise .target-price {
+      color: #047857;
+      font-weight: 800;
+      font-size: 12.5px;
+    }
+    .rep-badge-rec-raise .gain-pill {
+      color: #065f46;
+      font-size: 10.5px;
+      font-weight: 700;
+      margin-top: 1px;
+    }
+    
+    .rep-badge-rec-drop {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 4px 8px;
+      display: inline-block;
+    }
+    .rep-badge-rec-drop .target-price {
+      color: #1d4ed8;
+      font-weight: 800;
+      font-size: 12.5px;
+    }
+    .rep-badge-rec-drop .gain-pill {
+      color: #1e40af;
+      font-size: 10.5px;
+      font-weight: 700;
+      margin-top: 1px;
+    }
+    
+    .rep-badge-hijack-alert {
+      background: #fee2e2;
+      border: 1.5px solid #fca5a5;
+      color: #991b1b;
+      padding: 4px 9px;
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 11.5px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .rep-badge-pl-safe {
+      background: #ecfeff;
+      border: 1px solid #a5f3fc;
+      color: #0e7490;
+      padding: 4px 9px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 11.5px;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    
+    .rep-badge-optimal {
+      background: #f1f5f9;
+      color: #475569;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 11px;
+      display: inline-block;
+    }
+    
+    .rep-bb-yes {
+      background: #dcfce7;
+      color: #15803d;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+    .rep-bb-no {
+      background: #fef3c7;
+      color: #b45309;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 800;
+      font-size: 11px;
+    }
+    
+    .rep-ext-link {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: #eff6ff;
+      border: 1px solid #dbeafe;
+      transition: all 0.15s;
+    }
+    .rep-ext-link:hover {
+      background: #2563eb;
+      color: #ffffff;
+    }
+    
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+
+  <div class="rep-container">
+    <!-- Top Header Bar -->
+    <div class="rep-header">
+      <div class="rep-title-group">
+        <div class="rep-main-title">
+          <span>🏷️ Repricer &amp; Competitor Intelligence</span>
+        </div>
+        <select class="rep-account-select" onchange="setRepricerAccount(this.value)">
+          <option value="Hathoro" ${REPRICER_ACCOUNT==="Hathoro"?"selected":""}>Hathoro (PL: Hath)</option>
+          <option value="HOANK" ${REPRICER_ACCOUNT==="HOANK"?"selected":""}>HOANK (PL: HOA / HO)</option>
+        </select>
+        ${D.is_scraping ? `
+          <div class="rep-status-tag rep-status-scraping">
+            <span style="animation:spin 1.2s linear infinite">⚡</span>
+            <span>Live Scraping in Progress…</span>
+          </div>
+        ` : `
+          <div class="rep-status-tag rep-status-idle">
+            <span>● Ready</span>
+            <span style="color:#64748b">(${items.length} ASINs · NYC 10001)</span>
+          </div>
+        `}
+      </div>
+
+      <div class="rep-actions-group">
+        <button class="rep-btn ${D.is_scraping ? 'rep-btn-scrape-active' : 'rep-btn-primary'}" onclick="triggerRepricerScrape()">
+          ${D.is_scraping ? `<span style="animation:spin 1s linear infinite">⚡</span> Scraping Active…` : `🔄 Refresh &amp; Scrape Live`}
+        </button>
+        <button class="rep-btn rep-btn-ghost" onclick="loadRepricer(true)" title="Reload latest calculations from cache">
+          ⚡ Reload View
+        </button>
+        <button class="rep-btn rep-btn-success" onclick="downloadRepricerExcel()">
+          📥 Download Formatted Excel (.xlsx)
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Scraping Progress Banner (Shows when scraping) -->
+    ${D.is_scraping ? `
+      <div class="rep-scrape-banner">
+        <div class="rep-scrape-info">
+          <div class="rep-scrape-spinner">⚡</div>
+          <div>
+            <div class="rep-scrape-text-title">Undetected Chrome Scraper is Active for ${esc(REPRICER_ACCOUNT)}</div>
+            <div class="rep-scrape-text-sub">Scanning live Amazon offers, Top 3 Lowest sellers, and Buy Box statuses... Table auto-updates every 3s.</div>
+          </div>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#92400e">
+          ${esc(D.last_scrape_status || "Scraping in progress...")}
+        </div>
+      </div>
+    ` : ''}
+
+    <!-- 6 Executive KPI Cards -->
+    <div class="rep-kpis-grid">
+      <!-- Total ASINs -->
+      <div class="rep-card rep-card-total ${REPRICER_STRATEGY==='ALL'?'active':''}" onclick="setRepricerStrategy('ALL')">
+        <div class="rep-card-num">${fmtNumber(D.total_asins)}</div>
+        <div class="rep-card-title">Total Tracked ASINs</div>
+        <div class="rep-card-badge" style="background:#f1f5f9;color:#334155">${fmtNumber(D.total_august_orders)} August Orders</div>
+      </div>
+
+      <!-- Raise Price -->
+      <div class="rep-card rep-card-raise ${REPRICER_STRATEGY==='RAISE_PRICE'?'active':''}" onclick="setRepricerStrategy('RAISE_PRICE')">
+        <div class="rep-card-num" style="color:#059669">${fmtNumber(countRaise)}</div>
+        <div class="rep-card-title">🚀 Raise Price Opps</div>
+        <div class="rep-card-badge" style="background:#ecfdf5;color:#047857">+${fmtCurrency(D.raise_price_total_potential_monthly)} / mo Potential</div>
+      </div>
+
+      <!-- <10% Drop Price -->
+      <div class="rep-card rep-card-drop ${REPRICER_STRATEGY==='DROP_PRICE_10PCT'?'active':''}" onclick="setRepricerStrategy('DROP_PRICE_10PCT')">
+        <div class="rep-card-num" style="color:#2563eb">${fmtNumber(countDrop)}</div>
+        <div class="rep-card-title">🎯 &lt;10% Drop Opps</div>
+        <div class="rep-card-badge" style="background:#eff6ff;color:#1d4ed8">Reclaim Lost Buy Boxes</div>
+      </div>
+
+      <!-- PL Hijacked Listings -->
+      <div class="rep-card rep-card-hijack ${REPRICER_STRATEGY==='PL_HIJACKED'?'active':''}" onclick="setRepricerStrategy('PL_HIJACKED')">
+        <div class="rep-card-num" style="color:#dc2626">${fmtNumber(countHijack)}</div>
+        <div class="rep-card-title">🚨 PL Hijacked Listings</div>
+        <div class="rep-card-badge" style="background:#fee2e2;color:#991b1b">Unauthorized Sellers</div>
+      </div>
+
+      <!-- PL Protected -->
+      <div class="rep-card rep-card-prot ${REPRICER_STRATEGY==='PL_PROTECTED'?'active':''}" onclick="setRepricerStrategy('PL_PROTECTED')">
+        <div class="rep-card-num" style="color:#0891b2">${fmtNumber(countPlProt)}</div>
+        <div class="rep-card-title">🛡️ PL Protected</div>
+        <div class="rep-card-badge" style="background:#ecfeff;color:#0e7490">Wrenchly &amp; Brand Safe</div>
+      </div>
+
+      <!-- Buy Box Win Rate -->
+      <div class="rep-card rep-card-bb ${REPRICER_STRATEGY==='WINNING_BB'?'active':''}" onclick="setRepricerStrategy('WINNING_BB')">
+        <div class="rep-card-num" style="color:#d97706">${D.buy_box_win_rate}%</div>
+        <div class="rep-card-title">Buy Box Win Rate</div>
+        <div class="rep-card-badge" style="background:#fef3c7;color:#b45309">${fmtNumber(countBBWin)} Listings Winning</div>
+      </div>
+    </div>
+
+    <!-- Strategy Filter Pills & Search Bar -->
+    <div class="rep-filter-strip">
+      <span style="font-weight:800;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.04em">Filter Strategy:</span>
+      <div class="rep-pill-btn ${REPRICER_STRATEGY==='ALL'?'on':''}" onclick="setRepricerStrategy('ALL')">All (${items.length})</div>
+      <div class="rep-pill-btn ${REPRICER_STRATEGY==='RAISE_PRICE'?'on raise':''}" onclick="setRepricerStrategy('RAISE_PRICE')">🚀 Raise Price (${countRaise})</div>
+      <div class="rep-pill-btn ${REPRICER_STRATEGY==='DROP_PRICE_10PCT'?'on drop':''}" onclick="setRepricerStrategy('DROP_PRICE_10PCT')">🎯 &lt;10% Drop (${countDrop})</div>
+      <div class="rep-pill-btn ${REPRICER_STRATEGY==='PL_HIJACKED'?'on hijack':''}" onclick="setRepricerStrategy('PL_HIJACKED')">🚨 PL Hijacked (${countHijack})</div>
+      <div class="rep-pill-btn ${REPRICER_STRATEGY==='PL_PROTECTED'?'on':''}" onclick="setRepricerStrategy('PL_PROTECTED')">🛡️ PL Protected (${countPlProt})</div>
+      <div class="rep-pill-btn ${REPRICER_STRATEGY==='WINNING_BB'?'on':''}" onclick="setRepricerStrategy('WINNING_BB')">🏆 Winning BB (${countBBWin})</div>
+
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+        <input id="repSearch" type="search" placeholder="Search ASIN, SKU, Title, Seller…" value="${esc(REPRICER_QUERY)}"
+          class="rep-search-input"
+          oninput="REPRICER_QUERY=this.value;renderRepricer()">
+        <span style="font-size:12px;color:#64748b;font-weight:700">${filtered.length} ASINs shown</span>
+      </div>
+    </div>
+
+    <!-- Ultra Polished Data Table -->
+    <div class="rep-table-container">
+      <table class="rep-table">
+        <thead>
+          <tr>
+            <th>ASIN</th>
+            <th>SKU</th>
+            <th>Repricing Intelligence</th>
+            <th>Product Title</th>
+            <th style="text-align:right">Aug Orders</th>
+            <th style="text-align:right">Aug Units</th>
+            <th style="text-align:right">Our Price</th>
+            <th style="text-align:right">Zoro Cost (No Tax)</th>
+            <th style="text-align:right">Gross Profit</th>
+            <th style="text-align:center">Sellers</th>
+            <th>Buy Box Winner</th>
+            <th style="text-align:right">BB Price</th>
+            <th style="text-align:center">In BB?</th>
+            <th>Lowest 1 Seller &amp; Price</th>
+            <th>Lowest 2 Seller &amp; Price</th>
+            <th>Lowest 3 Seller &amp; Price</th>
+            <th>Strategy Rationale</th>
+            <th style="text-align:center">Amazon</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  if(!filtered.length){
+    html += `<tr><td colspan="18" style="padding:40px;text-align:center;color:#64748b;font-size:14px;font-weight:600">No listings matching this filter or search query.</td></tr>`;
+  } else {
+    for(const it of filtered){
+      const isHijack = it.is_hijacked;
+      const isRaise = it.strategy === "RAISE_PRICE";
+      const isDrop = it.strategy === "DROP_PRICE_10PCT";
+      const isPlProt = it.strategy === "PL_PROTECTED";
+
+      let stratBadge = "";
+      if(isHijack) {
+        stratBadge = `<div class="rep-badge-hijack-alert">🚨 HIJACKED (${it.total_sellers} Sellers)</div>`;
+      } else if(isRaise) {
+        stratBadge = `
+          <div class="rep-badge-rec-raise">
+            <div class="target-price">🚀 RAISE to ${fmtCurrency(it.recommended_price)}</div>
+            <div class="gain-pill">+${fmtCurrency(it.profit_delta_per_unit)}/unit (+${fmtCurrency(it.potential_monthly_gain)}/mo)</div>
+          </div>`;
+      } else if(isDrop) {
+        stratBadge = `
+          <div class="rep-badge-rec-drop">
+            <div class="target-price">🎯 DROP to ${fmtCurrency(it.recommended_price)}</div>
+            <div class="gain-pill">Reclaim Buy Box</div>
+          </div>`;
+      } else if(isPlProt) {
+        const hasWrenchly = (it.strategy_badge||"").includes("Wrenchly");
+        stratBadge = `<div class="rep-badge-pl-safe">🛡️ ${hasWrenchly ? 'PL PROTECTED (Wrenchly)' : 'PL PROTECTED'}</div>`;
+      } else {
+        stratBadge = `<div class="rep-badge-optimal">${esc(it.strategy_badge)}</div>`;
+      }
+
+      const bbBadge = it.is_our_buy_box === true ? `<span class="rep-bb-yes">YES</span>` :
+                      (it.is_our_buy_box === false ? `<span class="rep-bb-no">NO</span>` : `—`);
+
+      const low1Str = it.lowest_1_seller ? `<b>${fmtCurrency(it.lowest_1_price)}</b> <span style="color:#64748b;font-size:11px">(${esc(it.lowest_1_seller)})</span>` : "—";
+      const low2Str = it.lowest_2_seller ? `<b>${fmtCurrency(it.lowest_2_price)}</b> <span style="color:#64748b;font-size:11px">(${esc(it.lowest_2_seller)})</span>` : "—";
+      const low3Str = it.lowest_3_seller ? `<b>${fmtCurrency(it.lowest_3_price)}</b> <span style="color:#64748b;font-size:11px">(${esc(it.lowest_3_seller)})</span>` : "—";
+
+      html += `
+        <tr class="${isHijack?'row-hijack':''}">
+          <td style="font-family:monospace !important;font-weight:800;color:#1e293b">
+            <span class="asinlink" onclick="openAsin('${esc(it.asin)}')" style="cursor:pointer;color:#2563eb">${esc(it.asin)}</span>
+          </td>
+          <td style="font-family:monospace !important;font-size:11.5px;font-weight:${it.is_pl?800:500};color:${isHijack?'#b91c1c':(it.is_pl?'#0e7490':'#334155')}">
+            ${esc(it.sku)}
+          </td>
+          <td>${stratBadge}</td>
+          <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500" title="${esc(it.title)}">
+            ${esc(it.title)}
+          </td>
+          <td style="text-align:right;font-weight:800;color:#0f172a">${fmtNumber(it.august_orders)}</td>
+          <td style="text-align:right;font-weight:600">${fmtNumber(it.august_units)}</td>
+          <td style="text-align:right;font-weight:800;color:#0f172a">${fmtCurrency(it.our_sale_price)}</td>
+          <td style="text-align:right;color:#64748b;font-weight:600">${fmtCurrency(it.zoro_cost_notax)}</td>
+          <td style="text-align:right;font-weight:800;color:${(it.gross_profit||0)>=0?'#059669':'#dc2626'}">
+            ${fmtCurrency(it.gross_profit)}
+            ${it.profit_margin_pct!=null?`<span style="font-size:10px;font-weight:500;color:#64748b"> (${it.profit_margin_pct}%)</span>`:''}
+          </td>
+          <td style="text-align:center;font-weight:800;${isHijack?'color:#b91c1c;font-size:13px':''}">${it.total_sellers}</td>
+          <td style="font-weight:600">${esc(it.buy_box_seller||"—")}</td>
+          <td style="text-align:right;font-weight:700">${fmtCurrency(it.buy_box_price)}</td>
+          <td style="text-align:center">${bbBadge}</td>
+          <td style="background:#f0fdf4;border-left:1px solid #bbf7d0">${low1Str}</td>
+          <td style="background:#f8fafc">${low2Str}</td>
+          <td style="background:#f8fafc">${low3Str}</td>
+          <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;color:#64748b;font-weight:500" title="${esc(it.reason)}">
+            ${esc(it.reason)}
+          </td>
+          <td style="text-align:center">
+            <a href="${esc(it.amazon_url)}" target="_blank" rel="noopener" class="rep-ext-link">Open ↗</a>
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+  </div>
+  `;
+
+  $R.innerHTML = html;
+}
+
+
+</script>
+

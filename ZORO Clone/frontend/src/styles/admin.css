@@ -1,0 +1,185 @@
+/* ════════════════════════════════════════════════════════════════
+   Admin-only additions on top of index.css.
+   Imported once by AdminLayout — shared shell classes (.admin,
+   .admin__side, .kpis, .admin-filters, .z-table, .status-pill …)
+   live in index.css and are reused untouched.
+   ════════════════════════════════════════════════════════════════ */
+
+/* brand accent to echo the storefront logo */
+.admin__brand .t span { color: var(--z-orange); }
+
+/* KPI cards that navigate */
+a.kpi { display: block; color: inherit; text-decoration: none !important; transition: box-shadow 0.15s, border-color 0.15s; }
+a.kpi:hover { border-color: var(--z-line); box-shadow: var(--z-shadow-lg); }
+
+/* two-up card grid on the dashboard */
+.admin-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.admin-two > .z-card { margin: 0; min-width: 0; }
+
+/* header meta (counts / chips next to the h1) */
+.admin__head .meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ── pure-CSS revenue bar chart ─────────────────────────────────── */
+
+.admin-chart { display: flex; align-items: flex-end; gap: 3px; height: 170px; padding-top: 6px; }
+.admin-chart__bar {
+  flex: 1; min-width: 3px; min-height: 2px;
+  background: var(--z-blue-tint);
+  border-radius: 2px 2px 0 0;
+  transition: background 0.12s;
+}
+.admin-chart__bar:hover { background: var(--z-orange); }
+.admin-chart__axis {
+  display: flex; justify-content: space-between;
+  font-size: 11.5px; color: var(--z-gray-light);
+  border-top: 1px solid var(--z-line-soft);
+  margin-top: 6px; padding-top: 5px;
+}
+
+/* ── small stat rows (source / payment splits, top products) ────── */
+
+.admin-statrow {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  font-size: 13.5px; padding: 7px 0;
+  border-bottom: 1px solid var(--z-line-soft);
+}
+.admin-statrow:last-child { border-bottom: none; }
+.admin-statrow .k { color: var(--z-ink); text-transform: capitalize; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-statrow .n { color: var(--z-gray); font-size: 12.5px; white-space: nowrap; }
+.admin-statrow .v { font-weight: 700; white-space: nowrap; }
+
+.admin-toprow {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 0; font-size: 13.5px;
+  border-bottom: 1px solid var(--z-line-soft);
+}
+.admin-toprow:last-child { border-bottom: none; }
+.admin-toprow .rank { color: var(--z-gray-light); font-size: 12px; width: 18px; flex-shrink: 0; }
+.admin-toprow .body { flex: 1; min-width: 0; }
+.admin-toprow .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-toprow .sku { font-size: 12px; color: var(--z-gray); }
+.admin-toprow .rev { font-weight: 700; white-space: nowrap; }
+.admin-toprow .qty { font-size: 12.5px; color: var(--z-gray); white-space: nowrap; }
+
+/* list of linkable rows (recent cases etc.) */
+.admin-rowlink {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0; font-size: 13.5px;
+  color: var(--z-ink) !important; text-decoration: none !important;
+  border-bottom: 1px solid var(--z-line-soft);
+}
+.admin-rowlink:last-child { border-bottom: none; }
+.admin-rowlink:hover .t { color: var(--z-link); text-decoration: underline; }
+.admin-rowlink .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.admin-rowlink .when { font-size: 12px; color: var(--z-gray-light); white-space: nowrap; }
+
+/* ── admin drawer (right-hand detail panel) ─────────────────────── */
+
+.drawer--admin { width: min(720px, 100vw); }
+.drawer--admin .drawer__head .t { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.admin-drawer-body { padding: 16px 20px 48px; }
+
+.admin-sec {
+  font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--z-gray-light);
+  margin: 20px 0 8px;
+  display: flex; align-items: center; gap: 8px;
+}
+.admin-sec:first-child { margin-top: 0; }
+
+.admin-line {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  font-size: 13.5px; padding: 6px 0;
+  border-bottom: 1px solid var(--z-line-soft);
+}
+.admin-line .t { min-width: 0; }
+.admin-line .n { color: var(--z-gray); font-size: 12.5px; white-space: nowrap; }
+
+.admin-addr { font-size: 13.5px; line-height: 1.55; color: var(--z-ink); }
+.admin-addr b { display: block; margin-bottom: 2px; }
+
+.admin-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.admin-shipform {
+  border: 1px solid var(--z-line-soft); border-radius: var(--z-radius);
+  background: var(--z-bg-soft); padding: 12px; margin-top: 10px;
+}
+.admin-shipform .lbl { font-size: 12.5px; color: var(--z-gray); margin-bottom: 8px; display: block; }
+.admin-shipform .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.admin-shipform .z-select, .admin-shipform .z-input { height: 36px; width: auto; flex: 1; min-width: 130px; }
+
+/* ── conversation bubbles (cases) ───────────────────────────────── */
+
+.admin-convo { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.admin-msg {
+  align-self: flex-start; max-width: 88%;
+  background: #fff; border: 1px solid var(--z-line-soft);
+  border-radius: var(--z-radius-lg); padding: 10px 13px;
+  font-size: 13.5px;
+}
+.admin-msg--admin { align-self: flex-end; background: var(--z-blue-soft); border-color: #c7dade; }
+.admin-msg .who {
+  display: flex; justify-content: space-between; gap: 16px;
+  font-size: 11.5px; font-weight: 700; color: var(--z-gray); margin-bottom: 4px;
+}
+.admin-msg .who .when { font-weight: 400; color: var(--z-gray-light); white-space: nowrap; }
+.admin-msg .body { white-space: pre-wrap; word-break: break-word; }
+
+/* ── email log entries ──────────────────────────────────────────── */
+
+.admin-email { border: 1px solid var(--z-line-soft); border-radius: var(--z-radius); background: #fff; }
+.admin-email + .admin-email { margin-top: 8px; }
+.admin-email summary {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; cursor: pointer; list-style: none; font-size: 13px;
+}
+.admin-email summary::-webkit-details-marker { display: none; }
+.admin-email summary .chev { color: var(--z-gray-light); flex-shrink: 0; transition: transform 0.15s; }
+.admin-email[open] summary .chev { transform: rotate(180deg); }
+.admin-email__subject { font-weight: 500; flex: 1; min-width: 160px; }
+.admin-email__meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; color: var(--z-gray);
+}
+.admin-email__body {
+  margin: 0; padding: 12px 14px;
+  border-top: 1px solid var(--z-line-soft); background: var(--z-bg-soft);
+  font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 360px; overflow: auto;
+}
+
+/* ── table extras ───────────────────────────────────────────────── */
+
+.z-table tr.is-open td { background: var(--z-blue-soft); }
+
+.admin-thumb {
+  width: 40px; height: 40px; object-fit: contain; flex-shrink: 0;
+  border: 1px solid var(--z-line-soft); border-radius: 3px; background: #fff;
+}
+.admin-thumb--none {
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--z-gray-light); background: var(--z-bg-soft);
+}
+
+.admin-cell-input { height: 32px; font-size: 13px; padding: 0 8px; width: 100%; }
+.admin-cell-input--qty { width: 64px; }
+.admin-cell-input--price { width: 92px; }
+select.admin-cell-input { padding-right: 26px; background-position: right 8px center; width: auto; }
+
+.admin-cellmeta { font-size: 11.5px; color: var(--z-gray); margin-top: 2px; }
+.admin-was { font-size: 12px; color: var(--z-gray); text-decoration: line-through; margin-right: 5px; }
+
+/* inline confirm bar (returns refund / deny) */
+.admin-confirm { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.admin-confirm .z-input { height: 32px; font-size: 13px; width: 120px; }
+
+/* filters: let the search input stretch */
+.admin-filters .z-input--grow { flex: 1; min-width: 220px; }
+
+/* ── responsive ─────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .admin-two { grid-template-columns: 1fr; }
+  .admin-chart { height: 130px; }
+}

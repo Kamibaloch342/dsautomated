@@ -1,0 +1,10 @@
+{
+  "name": "ekuipt-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EKUIPT Industrial Supply - 2M+ Product B2B eCommerce Platform",
+  "scripts": {
+    "build": "./build.sh",
+    "start": "cd \"Backend(Task)\" && gunicorn --bind 0.0.0.0:$PORT app:app --workers 2 --threads 4 --timeout 120"
+  }
+}

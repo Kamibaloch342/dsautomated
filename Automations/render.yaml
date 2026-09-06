@@ -1,0 +1,35 @@
+# Render deployment of the ZUHRA dashboard in CLOUD MODE.
+# It serves the slim DB the cloud agent uploads to Cloudflare R2 (refreshed every
+# 2 min) and hands CRM edits / launcher commands back through R2. No master DB,
+# no Chrome, no Google credentials needed here.
+#
+# Set these in the Render dashboard (Environment → Secret): R2_ACCESS_KEY,
+# R2_SECRET_KEY, DASH_PASSWORD, DASH_ADMIN_PASSWORD. Never commit them.
+services:
+  - type: web
+    name: zuhra-dashboard
+    runtime: python
+    plan: free
+    rootDir: Automations
+    buildCommand: pip install -r requirements-cloud.txt
+    startCommand: python dashboard/server.py
+    healthCheckPath: /api/cloud_status
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: CLOUD_MODE
+        value: "1"
+      - key: R2_BUCKET
+        value: dsautomated
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_ACCESS_KEY
+        sync: false
+      - key: R2_SECRET_KEY
+        sync: false
+      - key: DASH_PASSWORD
+        sync: false
+      - key: DASH_ADMIN_PASSWORD
+        sync: false
+      - key: CLOUD_DB_PATH
+        value: /tmp/zuhra_dashboard.db

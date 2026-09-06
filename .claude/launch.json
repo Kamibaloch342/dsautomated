@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/.venv/bin/python",
+      "runtimeArgs": ["/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/Automations/dashboard/server.py", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "dashboard-dev",
+      "runtimeExecutable": "/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/.venv/bin/python",
+      "runtimeArgs": ["/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/Automations/dashboard/server.py", "8891"],
+      "port": 8891
+    },
+    {
+      "name": "zoro-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/ZORO Clone/frontend"],
+      "port": 5173
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+# ── ZUHRA Automations — what never enters git ───────────────────────────
+# Secrets
+data/All_Tokens/
+*token.json
+*Credentials.json
+gen-lang-client-*.json
+data/dashboard_password.txt
+data/dashboard_admin_password.txt
+data/seller_central_creds.json
+.env
+.env.*
+
+# Databases, backups, spreadsheets, datafeeds (live in data/ or R2, never git)
+*.db
+*.db-shm
+*.db-wal
+*.db.bak*
+*.sqlite
+*.xlsx
+*.csv
+*.tsv
+TSV Files/
+automations_unified.db
+
+# Runtime data & logs (local only — raw logs are never synced anywhere)
+data/
+!data/.gitkeep
+Final_Testing_Logs/
+engine/_dl_hoank/
+engine/_dl_hathoro/
+*.log
+.autosync_output.log
+.zoro_watch.log
+.orders_*_output*.log
+*.heartbeat
+*.lock
+*.pid
+*.url
+failed_dom.html
+*_structure.html
+*_structure.txt
+message_log.json
+tracking_upload_log.json
+Order_Logs_*.csv
+
+# Private-label media (large binaries)
+private_label/output*/
+private_label/ai_raw/
+private_label/ai_source_photos/
+private_label/constant_images/
+private_label/batch_50_python_style/
+
+# Browser profiles
+.uc_profile*/
+.fedex_*profile/
+.closing_chrome_profiles/
+
+# Python / editors / OS
+__pycache__/
+*.pyc
+.venv*/
+.DS_Store
+.vscode/
+.idea/
+*.bak
+*.bak_*
+
+# downloaded binaries (cloudflared) — install per machine, not via git
+bin/
+
+# work-in-progress dashboard page + default-route gate
+dashboard/*.wip
+dashboard/.v2_disabled

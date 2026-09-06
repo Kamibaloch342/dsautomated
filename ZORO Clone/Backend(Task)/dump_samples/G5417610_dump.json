@@ -1,0 +1,211 @@
+{
+  "vuex-shim": {},
+  "availability": {
+    "isUserStateLoading": false,
+    "isUserZipCodeLoading": false,
+    "currentUserState": null,
+    "currentUserZipCode": null,
+    "userZipManuallySet": false
+  },
+  "notifyMeFlyout": {
+    "isOpen": false
+  },
+  "recommendationsFlyout": {
+    "isOpen": false,
+    "zone": null,
+    "containerId": ""
+  },
+  "builder": {
+    "currentModels": [],
+    "cache": {},
+    "loading": false,
+    "cmsError": false
+  },
+  "globalAlert": {
+    "globalAlert": null,
+    "error": false,
+    "loaded": false
+  },
+  "typeaheadStore": {
+    "typeaheadCache": {},
+    "typeaheadRowsCache": {}
+  },
+  "recommendationsStore": {
+    "categoryRecommendationsCache": {},
+    "productRecommendationsCache": {},
+    "categoryHeaders": null
+  },
+  "dealsStore": {
+    "dealsState": [],
+    "exclusiveOffersState": [],
+    "exclusiveRewardsState": [],
+    "busy": false,
+    "lastFetchedAt": null,
+    "exclusiveCardSeenMap": {}
+  },
+  "loyaltyMembershipStore": {
+    "membership": null,
+    "loadStatus": "initial",
+    "lastFetchedAt": null
+  },
+  "messagingRibbon": {
+    "content": [
+      {
+        "message": "Low prices on everyday needs.",
+        "callToAction": {
+          "text": "Shop Zoro Select",
+          "urlPath": "/b/ZORO%20SELECT/",
+          "analytics": {
+            "eventLabel": "Zoro Select"
+          }
+        }
+      },
+      {
+        "message": "Don't miss these limited time offers.",
+        "callToAction": {
+          "text": "Shop All Deals",
+          "urlPath": "/coupons-promo-codes/",
+          "analytics": {
+            "eventLabel": "Shop All Deals"
+          }
+        }
+      },
+      {
+        "message": "Get 30 days to pay with Net 30.",
+        "callToAction": {
+          "text": "Apply Now",
+          "urlPath": "/net30/",
+          "analytics": {
+            "eventLabel": "Net 30"
+          }
+        }
+      }
+    ],
+    "theme": "white",
+    "error": false
+  },
+  "expectedDateStore": {
+    "state": {
+      "expectedDateCache": null,
+      "analyticsRequired": false,
+      "correlationId": null
+    }
+  },
+  "productStore": {
+    "productDetailsCache": {
+      "G5417610": {
+        "zoroNo": "G5417610",
+        "title": "Point Medical Computer Cart CPU Holder",
+        "erpId": "3959385",
+        "mfrNo": "771893G",
+        "brand": "Afc Industries",
+        "slug": "afc-industries-point-medical-computer-cart-cpu-holder-771893g",
+        "upc": "",
+        "SEOTitleTag": "",
+        "SEOMetaDescription": "",
+        "primaryCategoryPaths": [
+          {
+            "1": "530",
+            "2": "Furniture, Linens & Decor",
+            "3": "furniture-linens-decor"
+          },
+          {
+            "1": "9075",
+            "2": "Office & School Furniture",
+            "3": "office-school-furniture"
+          },
+          {
+            "1": "10086",
+            "2": "Media Stands & Carts",
+            "3": "media-stands-carts"
+          }
+        ],
+        "price": 3087.99,
+        "originalPrice": null,
+        "priceUnit": "EA",
+        "minRetailQty": 1,
+        "packageQty": 1,
+        "description": "Point Medical Computer Cart CPU Holder",
+        "attributes": [
+          {
+            "name": "Item",
+            "value": "Point Medical Computer Cart CPU Holder"
+          },
+          {
+            "name": "Country of Origin (subject to change)",
+            "value": "United States"
+          },
+          {
+            "name": "Package Quantity",
+            "value": "1"
+          }
+        ],
+        "variants": null,
+        "media": [
+          {
+            "name": "Z0pu8ticpyx_.JPG",
+            "type": "image/jpeg"
+          }
+        ],
+        "restrictedStates": [],
+        "restrictedSaleItemCode": "",
+        "isHazmat": false,
+        "isGraingerSKU": true,
+        "isCircleECompliant": false,
+        "lowLeadComplianceLevel": "",
+        "lightingFactLabelFileName": "",
+        "energyGuideLabelFileName": "",
+        "salesStatus": "TP",
+        "isDropShipDirect": true,
+        "leadTime": 15,
+        "isExpeditable": false,
+        "orderChannel": "Default",
+        "isForcedOutOfStock": false,
+        "hasCommercialShippingRestriction": false,
+        "freightCost": 160,
+        "hasFitment": false,
+        "showDisclaimer": false,
+        "isLTL": true
+      }
+    }
+  },
+  "reviewSnippetStore": {
+    "state": {
+      "reviewSnippetCache": {}
+    }
+  },
+  "linkedProducts": {
+    "cache": {},
+    "currentItemPath": "",
+    "isError": false,
+    "map": 0
+  },
+  "TrendingGuides": {
+    "trendingGuides": {},
+    "error": false
+  },
+  "pageNotFoundStore": {
+    "url": ""
+  },
+  "groupMetadataStore": {
+    "groupMetadataCache": {},
+    "groupMetadataError": false
+  },
+  "sticky-atc": {
+    "state": {
+      "stickyVisible": false,
+      "stickyHeight": 0,
+      "atcHeight": 0,
+      "atcDisabled": false
+    }
+  },
+  "promoEligibilityStore": {
+    "busy": false,
+    "promoEligibilityState": {}
+  },
+  "experimentationStore": {
+    "state": {
+      "experimentationCache": {}
+    }
+  }
+}

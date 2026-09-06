@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: ironvale-store
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn --chdir Backend(Task) --bind 0.0.0.0:$PORT app:app --workers 2 --threads 4 --timeout 120"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true

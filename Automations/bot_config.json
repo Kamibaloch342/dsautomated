@@ -1,0 +1,86 @@
+{
+    "profiles": {
+        "DM_COUPON": {
+            "target_label": "MR",
+            "min_margin": -2,
+            "order_limit": 0,
+            "target_label_2": "",
+            "min_margin_2": -10,
+            "skip_priority_coupons": false,
+            "est_margin_only": true,
+            "labels_only": false,
+            "rush_mode": false,
+            "rush_batch": 10
+        },
+        "DM_RESELLER": {
+            "target_label": "AB ECOM",
+            "min_margin": 8,
+            "order_limit": 0,
+            "est_margin_only": true,
+            "labels_only": false,
+            "rush_mode": false,
+            "rush_batch": 10
+        },
+        "HS_COUPON": {
+            "target_label": "MR",
+            "min_margin": -5,
+            "order_limit": 0,
+            "target_label_2": "",
+            "min_margin_2": -20,
+            "skip_priority_coupons": false,
+            "est_margin_only": true,
+            "labels_only": false,
+            "rush_mode": false,
+            "rush_batch": 20
+        },
+        "HS_RESELLER": {
+            "target_label": "Rajar",
+            "min_margin": 0,
+            "order_limit": 0,
+            "est_margin_only": true,
+            "labels_only": false,
+            "rush_mode": false,
+            "rush_batch": 10,
+            "payment_method": "NET30"
+        }
+    },
+    "velocity": {
+        "max_per_cycle": 0,
+        "inter_order_delay": 0,
+        "cycle_sleep": 120
+    },
+    "blocked_order_ids": [],
+    "deciding_coupon_min": 50.0,
+    "pi_target_margin": 10.0,
+    "routing": {
+        "deciding_min_margin_pct": 5,
+        "supervise_unlabelled": true,
+        "supervise_min_cart_for_regular": 50,
+        "promo_ineligible_asins": [],
+        "auto_learn_promo_ineligible": true,
+        "promo_ineligible_min_fails": 2,
+        "supervise_max_per_cycle": 20
+    },
+    "chrome": {
+        "headless": false
+    },
+    "automation": {
+        "auto_closing": {
+            "enabled": false,
+            "times": [
+                "03:30"
+            ],
+            "accounts": [
+                "HOANK",
+                "Hathoro"
+            ],
+            "every_hours": 0
+        },
+        "priority_check": {
+            "enabled": true,
+            "every_hours": 6,
+            "auto_assign": false,
+            "max_per_run": 10
+        }
+    }
+}

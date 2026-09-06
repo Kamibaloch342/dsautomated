@@ -1,0 +1,104 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{{ store_name }} - Your Verification Code</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style type="text/css">
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
+    * { font-family: 'Montserrat', Helvetica, Arial, sans-serif !important; }
+    body {
+      margin: 0; padding: 0; background-color: #F0F4F5;
+      font-family: 'Montserrat', Helvetica, Arial, sans-serif !important;
+      color: #112629; -webkit-font-smoothing: antialiased;
+    }
+    table { border-collapse: collapse; }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F0F4F5; font-family: 'Montserrat', Helvetica, Arial, sans-serif;">
+  <center style="width: 100%; table-layout: fixed; background-color: #F0F4F5; padding: 32px 0 48px 0;">
+    <div style="max-width: 520px; margin: 0 auto;">
+      <!-- TOP BANNER -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #19454B; border-radius: 12px 12px 0 0; overflow: hidden;">
+        <tr>
+          <td align="center" style="padding: 10px 16px; font-size: 11px; font-weight: 700; color: #FFFFFF; letter-spacing: 0.8px; text-transform: uppercase;">
+            🔒 Security Verification
+          </td>
+        </tr>
+      </table>
+
+      <!-- MAIN CONTAINER -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #FFFFFF; border-left: 1px solid #D1DDE0; border-right: 1px solid #D1DDE0; box-shadow: 0 4px 24px rgba(25,69,75,0.06);">
+        <!-- HEADER -->
+        <tr>
+          <td style="padding: 24px 32px 20px 32px; border-bottom: 1px solid #EDF2F4;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center">
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="vertical-align: middle; padding-right: 10px;">
+                        <div style="width: 32px; height: 32px; background: linear-gradient(135deg, #19454B 0%, #0E282C 100%); border-radius: 8px; text-align: center; line-height: 32px; color: #D4773B; font-weight: 900; font-size: 18px; box-shadow: 0 2px 6px rgba(25,69,75,0.2);">
+                          ⬢
+                        </div>
+                      </td>
+                      <td style="vertical-align: middle;">
+                        <span style="font-size: 24px; font-weight: 900; color: #19454B; letter-spacing: -0.5px;">EKUIP<span style="color: #D4773B;">T</span></span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- BODY -->
+        <tr>
+          <td style="padding: 36px 32px 32px 32px; text-align: center;">
+            <div style="font-size: 22px; font-weight: 900; color: #19454B; margin-bottom: 8px;">
+              {{ headline or 'Verify Your Account' }}
+            </div>
+            <div style="font-size: 13px; font-weight: 500; color: #586B6E; line-height: 1.5; margin-bottom: 24px;">
+              Enter the 6-digit verification code below to authenticate your {{ store_name }} account:
+            </div>
+
+            <!-- 6-DIGIT CODE PILL -->
+            <table cellpadding="0" cellspacing="0" style="margin: 0 auto 24px auto;">
+              <tr>
+                <td align="center" style="background-color: #FAF3EE; border: 2px dashed #964C14; border-radius: 12px; padding: 16px 36px;">
+                  <span style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important; font-size: 34px; font-weight: 900; letter-spacing: 8px; color: #964C14;">
+                    {{ otp_code }}
+                  </span>
+                </td>
+              </tr>
+            </table>
+
+            <div style="font-size: 12px; font-weight: 600; color: #586B6E; line-height: 1.5;">
+              ⏳ This code expires in <strong style="color: #112629;">10 minutes</strong>.<br>
+              Never share this code with anyone.
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- FOOTER -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #19454B; border-radius: 0 0 12px 12px; overflow: hidden;">
+        <tr>
+          <td align="center" style="padding: 20px 24px; color: #FFFFFF; font-size: 10px;">
+            <div style="margin-bottom: 4px; opacity: 0.85;">
+              If you did not request this code, you can safely ignore this email.
+            </div>
+            <div style="color: #A3B8BA;">
+              &copy; {{ year }} {{ store_name }} Industrial Supply, Inc. All rights reserved.
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </center>
+</body>
+</html>

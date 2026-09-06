@@ -1,0 +1,245 @@
+/* ════════════════════════════════════════════════════════════════
+   Static & support pages (About / Shipping / Returns / Contact)
+   + compare tray & modal extras.
+   Extends the shared design system in src/index.css.
+   ════════════════════════════════════════════════════════════════ */
+
+/* prose sections */
+.static-prose { max-width: 860px; }
+.static-prose h2 { font-size: 19px; margin: 28px 0 8px; }
+.static-prose p { font-size: 14.5px; line-height: 1.65; margin: 8px 0; }
+.static-prose ul, .static-prose ol {
+  padding-left: 22px; margin: 8px 0 14px;
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 14.5px; line-height: 1.55;
+}
+
+/* stats band (About) — hero__stats pattern with dark text */
+.about-stats {
+  display: flex; gap: 44px; flex-wrap: wrap;
+  background: var(--z-bg-soft);
+  border: 1px solid var(--z-line-soft); border-radius: var(--z-radius-lg);
+  padding: 20px 26px; margin: 20px 0 10px;
+}
+.about-stats .stat .n { font-size: 23px; font-weight: 700; color: var(--z-ink); }
+.about-stats .stat .l { font-size: 13px; color: var(--z-gray); margin-top: 2px; }
+
+/* small info tiles (shipping rates, carriers) */
+.static-tiles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px; margin: 14px 0 6px; max-width: 980px;
+}
+.static-tile {
+  background: #fff; border: 1px solid var(--z-line-soft);
+  border-radius: var(--z-radius-lg); padding: 16px 18px;
+}
+.static-tile .t { font-weight: 700; font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
+.static-tile .t svg { color: var(--z-blue); flex-shrink: 0; }
+.static-tile .big { font-size: 22px; font-weight: 700; margin-bottom: 2px; }
+.static-tile .big.green { color: var(--z-success); }
+.static-tile .d { font-size: 13px; color: var(--z-gray); line-height: 1.55; margin-top: 5px; }
+
+/* vertical numbered steps (Returns RMA flow) */
+.rma-steps {
+  list-style: none; padding: 0; margin: 14px 0; max-width: 720px;
+  display: flex; flex-direction: column; gap: 16px; counter-reset: rma;
+}
+.rma-steps li { position: relative; padding-left: 44px; counter-increment: rma; }
+.rma-steps li::before {
+  content: counter(rma);
+  position: absolute; left: 0; top: -1px;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--z-blue); color: #fff;
+  font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.rma-steps .t { font-weight: 700; font-size: 14.5px; }
+.rma-steps .d { font-size: 13.5px; color: var(--z-gray); line-height: 1.55; margin-top: 2px; }
+
+/* contact info rows */
+.contact-row {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 0; border-bottom: 1px solid var(--z-line-soft);
+}
+.contact-row:last-of-type { border-bottom: none; }
+.contact-row svg { color: var(--z-blue); flex-shrink: 0; margin-top: 2px; }
+.contact-row .t { font-weight: 700; font-size: 14px; }
+.contact-row .d { font-size: 13.5px; color: var(--z-gray); margin-top: 1px; line-height: 1.5; }
+
+/* case submitted state */
+.case-done { text-align: center; padding: 44px 26px; }
+.case-done svg { color: var(--z-success); }
+.case-done h2 { font-size: 21px; margin: 12px 0 6px; }
+.case-done p { color: var(--z-gray); font-size: 14px; margin-bottom: 18px; }
+
+/* ── compare tray extras (bar chrome lives in index.css) ────────── */
+
+.compare-tray__label {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  font-size: 13.5px; font-weight: 500; color: var(--z-ink);
+}
+.compare-tray__label svg { color: var(--z-blue); }
+.compare-tray__limit { font-size: 12px; color: var(--z-warning); font-weight: 500; }
+.compare-tray__actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+
+/* compare modal table */
+.cmp-title { display: flex; align-items: center; gap: 8px; }
+.cmp-title svg { color: var(--z-blue); }
+
+.cmp-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.cmp-table th, .cmp-table td {
+  padding: 9px 12px; text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--z-line-soft);
+}
+.cmp-table thead th { border-bottom: 2px solid var(--z-line-soft); }
+.cmp-table tbody tr:nth-child(even) td { background: #fcfcfc; }
+.cmp-side {
+  width: 150px; min-width: 128px;
+  background: var(--z-bg-soft) !important;
+  font-size: 12.5px; font-weight: 500; color: var(--z-gray);
+}
+.cmp-col { min-width: 195px; max-width: 250px; font-weight: 400; position: relative; padding-top: 14px; }
+.cmp-col__remove {
+  position: absolute; top: 6px; right: 6px;
+  background: none; border: none; color: var(--z-gray-light);
+  padding: 3px; display: flex;
+}
+.cmp-col__remove:hover { color: var(--z-error); }
+.cmp-col__img { width: 100%; height: 110px; object-fit: contain; margin-bottom: 8px; background: #fff; }
+.cmp-col__title {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  font-size: 13.5px; font-weight: 500; line-height: 1.35;
+}
+.cmp-col__price {
+  font-size: 18px; font-weight: 700; color: var(--z-ink);
+  margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.cmp-col__diff { font-size: 12px; color: var(--z-gray); margin-top: 1px; }
+.cmp-col__stock { margin: 5px 0 10px; }
+
+/* ── Visual Media & Split Layouts ─────────────────────────────── */
+
+.static-visual-banner {
+  width: 100%;
+  border-radius: var(--z-radius-lg);
+  overflow: hidden;
+  margin: 24px 0 32px;
+  box-shadow: 0 16px 36px rgba(16, 41, 57, 0.1);
+  border: 1px solid var(--z-line-soft);
+  position: relative;
+}
+.static-visual-banner img {
+  width: 100%;
+  height: 360px;
+  object-fit: cover;
+  display: block;
+}
+.static-visual-banner .caption {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: linear-gradient(0deg, rgba(11, 29, 40, 0.9) 0%, rgba(11, 29, 40, 0) 100%);
+  padding: 36px 24px 18px;
+  color: #fff;
+}
+.static-visual-banner .caption h3 { font-size: 19px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.static-visual-banner .caption p { font-size: 13.5px; color: #d0e4eb; margin: 0; }
+
+.static-split {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 36px;
+  align-items: center;
+  margin: 36px 0;
+}
+.static-split.reverse {
+  grid-template-columns: 0.9fr 1.1fr;
+}
+.static-split__img {
+  width: 100%;
+  height: 280px;
+  object-fit: cover;
+  border-radius: var(--z-radius-lg);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--z-line-soft);
+}
+
+/* ── FAQ Accordion ──────────────────────────────────────────────── */
+
+.faq-section {
+  margin: 38px 0;
+  max-width: 920px;
+}
+.faq-section h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--z-ink);
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.faq-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.faq-item {
+  background: #fff;
+  border: 1px solid var(--z-line-soft);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.faq-item:hover {
+  border-color: var(--z-line);
+}
+.faq-item.is-open {
+  border-color: var(--z-blue);
+  box-shadow: 0 4px 14px rgba(23, 54, 78, 0.06);
+}
+.faq-question {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--z-ink);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.faq-question:hover {
+  color: var(--z-blue);
+}
+.faq-question .icon {
+  flex-shrink: 0;
+  color: var(--z-gray);
+  transition: transform 0.22s var(--z-ease);
+}
+.faq-item.is-open .faq-question .icon {
+  transform: rotate(180deg);
+  color: var(--z-blue);
+}
+.faq-answer {
+  padding: 0 20px 18px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--z-ink-light);
+  border-top: 1px solid var(--z-line-soft);
+  padding-top: 14px;
+  animation: iv-fade-in 0.18s ease;
+}
+
+@media (max-width: 768px) {
+  .about-stats { gap: 24px; padding: 16px 18px; }
+  .cmp-side { min-width: 105px; width: 105px; }
+  .cmp-col { min-width: 170px; }
+  .static-visual-banner img { height: 220px; }
+  .static-split, .static-split.reverse { grid-template-columns: 1fr; gap: 20px; }
+  .static-split__img { height: 220px; }
+}

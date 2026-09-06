@@ -1,0 +1,23 @@
+{
+  "zoro_code": "G6637946",
+  "title": "LED Lamp",
+  "brand": "GE Lighting",
+  "unit_price": 24.99,
+  "availability": "In Stock",
+  "category": "Lighting",
+  "mfr_number": "LED15LS2850",
+  "upc": "123456789",
+  "country_of_origin": "USA",
+  "image_url": "https://.....jpg",
+  "product_url": "https://www.zoro.com/.....",
+  "description": "LED Lamp for indoor use",
+
+  "attributes": {
+      "Voltage": "120V",
+      "Wattage": "15W",
+      "Lumens": "1600",
+      "Color Temperature": "5000K"
+  }
+}
+
+
