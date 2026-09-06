@@ -53,7 +53,11 @@ if OPS.CLOUD_MODE:
         PRICE_TRACKER = os.path.join(os.path.dirname(OPS.CLOUD_DB_PATH), "price_tracker.json")
 import insights as INS
 import analytics as AN
-import repricer_engine as REPRICER
+try:
+    import repricer_engine as REPRICER      # needs pandas + the local offers reports
+except ImportError as _e:                   # cloud mode ships without pandas: repricer is local-only
+    REPRICER = None
+    print(f"[dashboard] repricer disabled: {_e}")
 import threading
 import subprocess
 
@@ -84,7 +88,11 @@ def _start_repricer_scrape(account: str = "Hathoro"):
     t.start()
     return {"status": "started", "message": f"Live scraping started for {acct}"}
 
-PORT = next((int(a) for a in sys.argv[1:] if a.isdigit()), int(os.environ.get("PORT", "8000") or 8000))
+_env_port = int(os.environ.get("PORT") or 0)
+# Render (cloud mode) assigns the port through $PORT and must win even if a start
+# command still passes a number; locally the command-line port wins as before.
+PORT = (_env_port if (OPS.CLOUD_MODE and _env_port)
+        else next((int(a) for a in sys.argv[1:] if a.isdigit()), _env_port or 8000))
 DELIVERED = ("Delivered", "AllDelivered")
 
 # "Live" window for the Unmapped / Needs-Priority tabs: only consider placer run logs that were
@@ -2152,6 +2160,9 @@ class H(BaseHTTPRequestHandler):
             # ── Repricer Engine Endpoints ──
             if p == "/api/repricer":
                 req_acct = q.get("account", ["Hathoro"])[0] or "Hathoro"
+                if REPRICER is None:
+                    return self._send({"error": "The repricer runs on the machine that holds the offers reports "
+                                                "(it is not available on the cloud dashboard)."}, 503)
                 res = REPRICER.analyze_repricing_for_account(account=req_acct, db_path=DB)
                 res["is_scraping"] = _REPRICER_SCRAPING.get("Hathoro" if "HATHORO" in req_acct.upper() else "HOANK", False)
                 res["last_scrape_status"] = _REPRICER_SCRAPING.get("last_msg", "")
