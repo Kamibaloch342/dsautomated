@@ -79,6 +79,8 @@ from platforms.zoro import (
     add_second_item,
     reset_restriction,
     get_product_brand,
+    check_pdp_promo,
+    pdp_promo_ineligible,
 )
 from checkout.dom import place_order_fast
 try:
@@ -86,9 +88,10 @@ try:
 except ImportError:
     place_order_fast_true_api = None
 try:   # live-cart coupon tests for the supervisor / priority check (same API the checkout uses)
-    from checkout.true_api import _get_cart_id, _apply_coupon_api, _is_transient_coupon_error
+    from checkout.true_api import (_get_cart_id, _apply_coupon_api, _is_transient_coupon_error,
+                                   classify_promo_error, _note_reject)
 except ImportError:
-    _get_cart_id = _apply_coupon_api = _is_transient_coupon_error = None
+    _get_cart_id = _apply_coupon_api = _is_transient_coupon_error = classify_promo_error = _note_reject = None
 from platforms.gmail import (
     authenticate_gmail_account,
     get_amazon_earnings_from_gmail,
@@ -762,10 +765,17 @@ def _save_coupon_intel(cache):
                 merged_bad.pop(code, None)
         os.makedirs(os.path.dirname(_COUPON_INTEL_PATH), exist_ok=True)
         tmp = _COUPON_INTEL_PATH + ".tmp"
+        merged_min = {}
+        try:
+            merged_min.update((raw or {}).get("coupon_min_order", {}) or {})
+        except Exception:
+            pass
+        merged_min.update(cache.get("coupon_min_order", {}) or {})
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump({"failed_pairs": [],
                        "working_pairs": merged_working,
-                       "promo_ineligible": merged_bad}, f, indent=0, sort_keys=True)
+                       "promo_ineligible": merged_bad,
+                       "coupon_min_order": merged_min}, f, indent=0, sort_keys=True)
         os.replace(tmp, _COUPON_INTEL_PATH)
     except Exception:
         pass
@@ -809,11 +819,11 @@ def _append_asin_to_sheet_column(col_name, asin):
         return False
 
 
-def _learn_promo_outcome(zoro_code, asin, worked, cache=None, definitive=False):
+def _learn_promo_outcome(zoro_code, asin, worked, cache=None, definitive=False, source=None):
     """Promo-ineligible LEARNING (coupon profiles only call this).
     worked=True  → wipe the code's strikes (a coupon just applied to it).
-    worked=False → one strike (at most one per 10 minutes, so a bad API window
-                   can't poison a code); at routing.promo_ineligible_min_fails
+    worked=False → one strike (at most one per routing.promo_strike_hours, default 24 h,
+                   so a busy day with used-up coupons can't poison a code); at routing.promo_ineligible_min_fails
                    strikes — or at once when definitive=True (every coupon rejected
                    with a non-transient error, e.g. by the priority check) — the
                    code is marked ineligible: its orders are routed to the reseller
@@ -840,11 +850,15 @@ def _learn_promo_outcome(zoro_code, asin, worked, cache=None, definitive=False):
             last_ts = time.mktime(time.strptime(rec["last"][:19], "%Y-%m-%dT%H:%M:%S"))
     except Exception:
         last_ts = 0.0
-    if last_ts and time.time() - last_ts < 600 and not definitive:
-        return                                   # same bad window — don't double-count
+    gap_h = float(ROUTING.get("promo_strike_hours", 24) or 24)
+    if last_ts and time.time() - last_ts < gap_h * 3600 and not definitive:
+        return                                   # one strike per day at most: a busy day with
+                                                 # used-up coupons must not look like ineligibility
     need = int(ROUTING.get("promo_ineligible_min_fails", 2) or 2)
     rec["fails"] = int(rec.get("fails", 0)) + (need if definitive else 1)
     rec["last"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    if source:
+        rec["source"] = source                    # "pdp" = Zoro's best-price badge (permanent)
     if asin and str(asin).upper() not in rec["asins"]:
         rec["asins"].append(str(asin).upper())
     if rec["fails"] >= need and not rec.get("ineligible"):
@@ -950,63 +964,189 @@ def _route_to_sibling(driver, amazon_id, kind, reason, f):
     return ok
 
 
-def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_with_pct, regular_codes, cache):
-    """Supervisor rule for an UNLABELLED order whose cart is already built:
-      1. a PRIORITY coupon applies                                → place here with it
-      2. else cart ≥ SUPERVISE_MIN_CART and a REGULAR coupon applies → place here with it
-      3. else                                                     → reseller profile
-    Coupons are tested on the LIVE cart through the same API the checkout uses,
-    so the verdict is real, not estimated. Returns
-    {"action": "place"|"reseller"|"retry", "coupon", "tier", "reason"}."""
+def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_with_pct, regular_codes, cache,
+                               all_zoro_select=False, reseller_est_margin=None, unit_price=None,
+                               pdp_ineligible=None):
+    """Supervisor rule for an UNLABELLED order whose cart is already built.
+
+      0. PDP badge "not eligible for any other offers or promotions" → reseller (permanent)
+      1. a PRIORITY coupon applies (always tried first — they are 15–20 %, better
+         than the reseller's 10 % even on Zoro Select)      → place here with it
+      2. else all items Zoro Select (reseller already gets 10 %) → reseller
+      3. else cart ≥ SUPERVISE_MIN_CART and a REGULAR coupon applies → place here with it
+      4. else cart < threshold BUT the reseller's estimated margin < DECIDING_MIN_MARGIN
+         and a REGULAR coupon applies (avoid a loss)          → place here with it
+      5. else                                                  → reseller profile
+
+    Coupons are tested on the LIVE cart through the same API the checkout uses, so
+    the verdict is real. Zoro's replies are classified (item / min-order / dead /
+    token / transient): only item-level rejections count as evidence.
+    Returns {"action": place|reseller|retry, "coupon", "tier", "reason",
+             "verdict": {status, suggest, note}}  — verdict = what to record for the ASIN."""
+    def _v(status, suggest, note=""):
+        return {"status": status, "suggest": suggest, "note": note}
+
     if _get_cart_id is None or _apply_coupon_api is None:
-        return {"action": "retry", "coupon": None, "tier": None, "reason": "true_api checkout module unavailable"}
+        return {"action": "retry", "coupon": None, "tier": None, "reason": "true_api checkout module unavailable",
+                "verdict": None}
     code0 = (resolved_items[0].get("sku") if resolved_items else None) or None
     asin0 = (resolved_items[0].get("asin") if resolved_items else None) or None
+    up = float(unit_price or 0)
+    if pdp_ineligible:
+        return {"action": "reseller", "coupon": None, "tier": None,
+                "reason": "Zoro's best price — not eligible for any offers or promotions (PDP badge)",
+                "verdict": _v("PROMO_INELIGIBLE", "Reseller", "Zoro's best price badge (PDP)")}
     cart_id = _get_cart_id(driver)
     if not cart_id:
-        return {"action": "retry", "coupon": None, "tier": None, "reason": "no Zoro cart id"}
+        return {"action": "retry", "coupon": None, "tier": None, "reason": "no Zoro cart id", "verdict": None}
     seen, pri = set(), []
     for c in (priority_with_pct or []):
         code = str((c or {}).get("code") or "").strip()
         if code and code not in seen:
             seen.add(code)
             pri.append(code)
-    tried = transient = 0
+    tried = transient = item_rejects = 0
+    min_orders = {}
 
     def _try(code):
-        nonlocal tried, transient
+        nonlocal tried, transient, item_rejects
         tried += 1
         ok, res = _apply_coupon_api(driver, cart_id, code)
         if ok and (res or 0) > 0:
             return True
-        if not ok and _is_transient_coupon_error(res):
+        kind = _note_reject(code, res, cache) if _note_reject else ("transient" if _is_transient_coupon_error(res) else "item")
+        if kind in ("token", "transient"):
             transient += 1
+        elif kind == "item":
+            item_rejects += 1
+        elif kind == "min_order":
+            try:
+                min_orders[code] = float(classify_promo_error(res)[1] or 0)
+            except Exception:
+                pass
         return False
 
-    print(f"  🧑‍⚖️ SUPERVISOR: testing {len(pri)} priority coupon(s) on the live cart (${raw_cart_cost:.2f})")
+    print(f"  🧑‍⚖️ SUPERVISOR: testing {len(pri)} priority coupon(s) on the live cart (${raw_cart_cost:.2f})"
+          + (" — Zoro Select item(s)" if all_zoro_select else ""))
     for code in pri:
         if _try(code):
             _learn_promo_outcome(code0, asin0, True, cache=cache)
             return {"action": "place", "coupon": code, "tier": "priority",
-                    "reason": f"priority coupon {code} applies (cart ${raw_cart_cost:.2f})"}
-    if raw_cart_cost >= SUPERVISE_MIN_CART:
-        reg = [str(c).strip() for c in (regular_codes or []) if str(c).strip() and str(c).strip() not in seen]
-        print(f"  🧑‍⚖️ SUPERVISOR: no priority coupon; cart ≥ ${SUPERVISE_MIN_CART:.0f} → testing {len(reg)} regular coupon(s)")
+                    "reason": f"priority coupon {code} applies (cart ${raw_cart_cost:.2f})",
+                    "verdict": _v("COUPON_OK", "Coupon", f"priority {code} works")}
+    if tried and transient == tried:
+        return {"action": "retry", "coupon": None, "tier": None,
+                "reason": f"Zoro coupon API transient/session errors on all {tried} attempt(s)", "verdict": None}
+    if min_orders:
+        lo = min(min_orders.values())
+        print(f"  🧑‍⚖️ SUPERVISOR: a priority coupon would apply from a ${lo:.0f} cart (this cart ${raw_cart_cost:.2f})")
+    if all_zoro_select:
+        why = "Zoro Select — no priority coupon applies; reseller already gets the 10 % Select discount"
+        return {"action": "reseller", "coupon": None, "tier": None, "reason": why,
+                "verdict": _v("SELECT", "Reseller", "Zoro Select, no priority coupon")}
+    reg = [str(c).strip() for c in (regular_codes or []) if str(c).strip() and str(c).strip() not in seen]
+    thin = reseller_est_margin is not None and reseller_est_margin < DECIDING_MIN_MARGIN
+    needs_coupon = raw_cart_cost >= SUPERVISE_MIN_CART or thin
+    col_by_price = "Coupon" if up >= SUPERVISE_MIN_CART else "Deciding"
+    why_reg = ""
+    reg_item_rejects = 0
+    if needs_coupon:
+        why_reg = (f"cart ${raw_cart_cost:.2f} ≥ ${SUPERVISE_MIN_CART:.0f}" if raw_cart_cost >= SUPERVISE_MIN_CART
+                   else f"cart ${raw_cart_cost:.2f} < ${SUPERVISE_MIN_CART:.0f} but reseller margin "
+                        f"{reseller_est_margin:.1%} < {DECIDING_MIN_MARGIN:.0%}")
+        if reg:
+            print(f"  🧑‍⚖️ SUPERVISOR: no priority coupon; {why_reg} → testing {len(reg)} regular coupon(s)")
+        else:
+            print(f"  🧑‍⚖️ SUPERVISOR: no priority coupon; {why_reg} — but NO regular coupon is left right now")
+        before = item_rejects
         for code in reg:
             seen.add(code)
             if _try(code):
                 return {"action": "place", "coupon": code, "tier": "regular",
-                        "reason": f"no priority coupon; cart ${raw_cart_cost:.2f} ≥ ${SUPERVISE_MIN_CART:.0f} → regular coupon {code}"}
+                        "reason": f"no priority coupon; {why_reg} → regular coupon {code}",
+                        "verdict": _v("REGULAR_OK", col_by_price, f"regular coupon works ({why_reg})")}
+        reg_item_rejects = item_rejects - before
     if tried and transient == tried:
         return {"action": "retry", "coupon": None, "tier": None,
-                "reason": f"Zoro coupon API transient errors on all {tried} attempt(s)"}
-    if pri and transient == 0:
-        _learn_promo_outcome(code0, asin0, False, cache=cache, definitive=(tried >= max(3, len(pri))))
-    if raw_cart_cost < SUPERVISE_MIN_CART:
-        why = f"no priority coupon applies; cart ${raw_cart_cost:.2f} < ${SUPERVISE_MIN_CART:.0f}"
-    else:
-        why = f"no coupon applies at all (tried {tried}); cart ${raw_cart_cost:.2f}"
-    return {"action": "reseller", "coupon": None, "tier": None, "reason": why}
+                "reason": f"Zoro coupon API transient/session errors on all {tried} attempt(s)", "verdict": None}
+    if needs_coupon:
+        # This order NEEDS a coupon (≥ $50, or a thin margin) and none applied right now.
+        # Regular coupons are single-use and scraped daily, so "none left" or "all used
+        # up" is normal on a busy day — the order WAITS (left unlabelled, retried next
+        # cycle / after the next coupon scrape). It is NOT sent to the reseller at full
+        # price and the ASIN is NOT called ineligible. A strike is recorded only when
+        # regular coupons WERE available and every one was rejected at item level, and
+        # strikes must fall on different days (routing.promo_strike_hours) before an
+        # ASIN becomes ineligible — the PDP badge is the primary ineligibility signal.
+        if reg and reg_item_rejects == len(reg) and transient == 0 and not min_orders:
+            _learn_promo_outcome(code0, asin0, False, cache=cache)
+            why = (f"every available coupon ({tried}) was rejected for this item today — "
+                   f"waiting for the next coupon scrape (strike recorded)")
+        elif not reg:
+            why = f"no priority coupon applies and no regular coupon is left today ({why_reg}) — waiting for the next coupon scrape"
+        else:
+            why = f"no coupon applied ({why_reg}) — waiting for the next coupon scrape"
+        return {"action": "wait", "coupon": None, "tier": None, "reason": why,
+                "verdict": _v("NO_PRIORITY", col_by_price, "no priority coupon; sorted by unit price")}
+    why = (f"no priority coupon applies; cart ${raw_cart_cost:.2f} < ${SUPERVISE_MIN_CART:.0f}"
+           + (f"; reseller margin {reseller_est_margin:.1%} is fine" if reseller_est_margin is not None else ""))
+    return {"action": "reseller", "coupon": None, "tier": None, "reason": why,
+            "verdict": _v("NO_PRIORITY", col_by_price, "no priority coupon; sorted by unit price")}
+
+
+def _record_asin_verdict(asin, verdict, cart_text="", coupon=""):
+    """Write the supervisor's verdict for this ASIN into Priority_ASIN_Control (moves
+    the ASIN into the suggested column + Check_* provenance) so the next order of the
+    same ASIN is pre-sorted. Best effort and OFF-THREAD — never delays placement."""
+    if not asin or not verdict or not IS_COUPON_PROFILE or DRY_RUN:
+        return
+    import threading
+
+    def _w():
+        try:
+            from engine import priority_check as _pc
+            _pc.record_verdict(PROFILE_NAME, str(asin).upper(), verdict["status"], coupon or "", cart_text or "",
+                               verdict["suggest"], verdict.get("note", ""), mod=sys.modules[__name__])
+        except Exception as e:
+            print(f"  ⚠️ sheet verdict not written for {asin}: {e}")
+    threading.Thread(target=_w, daemon=True).start()
+
+
+_PRI_SET_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "dataset", f"priority_coupon_set_{PROFILE_NAME}.json")
+RECHECK_PER_CYCLE = max(1, int(((gui_cfg.get("automation") or {}).get("priority_check") or {}).get("recheck_per_cycle", 15) or 15))
+
+
+def _watch_priority_coupon_set(coupon_codes):
+    """The weekly coupon change: when a NEW priority coupon appears in the Coupons
+    tab, every coupon-dependent ASIN of this store is queued for a re-test with the
+    new coupons (permanent PDP-ineligible ones excluded). The queue is drained a few
+    ASINs per cycle between placements, and each verdict moves the ASIN in the sheet."""
+    if not IS_COUPON_PROFILE or LABELS_ONLY or DRY_RUN:
+        return
+    try:
+        cur = sorted({str((c or {}).get("code") or "").strip()
+                      for c in (coupon_codes[0] if isinstance(coupon_codes, tuple) else [])} - {""})
+        prev = None
+        if os.path.exists(_PRI_SET_PATH):
+            with open(_PRI_SET_PATH, encoding="utf-8") as f:
+                prev = (json.load(f) or {}).get("codes")
+        if prev is None:
+            os.makedirs(os.path.dirname(_PRI_SET_PATH), exist_ok=True)
+            with open(_PRI_SET_PATH, "w", encoding="utf-8") as f:
+                json.dump({"codes": cur, "at": time.strftime("%Y-%m-%d %H:%M")}, f)
+            return
+        new = sorted(set(cur) - set(prev))
+        if new:
+            print(f"  🎟️  NEW priority coupon(s) in the sheet: {', '.join(new)} — "
+                  f"queueing a re-check of every coupon-dependent ASIN")
+            from engine import priority_check as _pc
+            n = _pc.enqueue_recheck(PROFILE_NAME, f"new priority coupon(s): {', '.join(new)}", mod=sys.modules[__name__])
+            print(f"     {n} ASIN(s) queued — {RECHECK_PER_CYCLE} re-tested per cycle between placements")
+        if cur != prev:
+            with open(_PRI_SET_PATH, "w", encoding="utf-8") as f:
+                json.dump({"codes": cur, "at": time.strftime("%Y-%m-%d %H:%M")}, f)
+    except Exception as e:
+        print(f"  ⚠️ priority coupon-set watch: {e}")
 
 
 _PRIORITY_CHECK_LAST = [time.time()]    # first scheduled check only after every_hours
@@ -1020,7 +1160,27 @@ def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
     if not IS_COUPON_PROFILE or DRY_RUN or ASIN_SEARCH:
         return
     pc = (gui_cfg.get("automation") or {}).get("priority_check") or {}
+    try:
+        from engine import priority_check as _pc
+    except Exception as e:
+        print(f"  ⚠️ priority check module unavailable: {e}")
+        return
+    # 1) drain the re-check queue (new weekly coupon → every coupon-dependent ASIN)
+    try:
+        if _pc.queue_size(PROFILE_NAME):
+            _pc.run_queue(driver, PROFILE_NAME, sku_map=sku_map, coupon_codes=coupon_codes, cache=cache,
+                          mod=sys.modules[__name__], max_asins=RECHECK_PER_CYCLE)
+    except Exception as e:
+        print(f"  ⚠️ priority re-check queue: {e}")
+    # 2) scheduled / on-demand check of new ASINs
     req = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "control", "priority_check.request")
+    args = {}
+    if os.path.exists(req):
+        try:
+            with open(req, encoding="utf-8") as f:
+                args = (json.load(f) or {}).get("args") or {}
+        except Exception:
+            args = {}
     every = float(pc.get("every_hours", 6) or 0)
     due = os.path.exists(req) or (pc.get("enabled", True) and every > 0
                                   and time.time() - _PRIORITY_CHECK_LAST[0] >= every * 3600)
@@ -1032,10 +1192,14 @@ def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
     except OSError:
         pass
     try:
-        from engine import priority_check as _pc
+        if args.get("reset"):
+            n = _pc.enqueue_recheck(PROFILE_NAME, f"reset & rebuild requested by {args.get('author', 'dashboard')}",
+                                    mod=sys.modules[__name__], include_ineligible=True)
+            print(f"  🔁 RESET: {n} ASIN(s) queued for a full re-check ({RECHECK_PER_CYCLE} per cycle)")
+            return
         _pc.run_check(driver, PROFILE_NAME, sku_map=sku_map, coupon_codes=coupon_codes, cache=cache,
-                      mod=sys.modules[__name__], only_new=True,
-                      max_asins=int(pc.get("max_per_run", 25) or 25))
+                      mod=sys.modules[__name__], only_new=not args.get("all"),
+                      max_asins=int(args.get("max") or pc.get("max_per_run", 25) or 25))
     except Exception as e:
         print(f"  ⚠️ priority check failed: {e}")
 
@@ -2824,6 +2988,32 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     except Exception as _e:
         print(f"  ⚠️ Zoro estimate capture skipped: {_e}")
 
+    # ── PDP promo badge: "Zoro's best price — not eligible for any other offers or
+    #    promotions" = definitive coupon ineligibility, read from the rendered page.
+    #    Free when the delivery-estimate visit above just happened (cached per SKU on
+    #    disk); supervised orders force one visit per unknown SKU even in rush mode.
+    _pdp_bad = None
+    try:
+        _psku0 = resolved_items[0]["sku"] if resolved_items else None
+        if _psku0:
+            _pdp_bad = pdp_promo_ineligible(_psku0)
+            if _pdp_bad is None and IS_COUPON_PROFILE and order_detail.get("_supervised"):
+                _pdp_bad = check_pdp_promo(driver, _psku0)
+        if _pdp_bad:
+            _learn_promo_outcome(_psku0, primary_item.get("asin"), False, cache=asin_coupon_cache,
+                                 definitive=True, source="pdp")
+            if IS_COUPON_PROFILE and not manual_override:
+                _route_to_sibling(driver, amazon_id, "reseller",
+                                  "Zoro's best price — not eligible for any offers or promotions (PDP badge)",
+                                  dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
+                                       city=city, state=state, order_note=order_note))
+                _record_asin_verdict(primary_item.get("asin"),
+                                     {"status": "PROMO_INELIGIBLE", "suggest": "Reseller",
+                                      "note": "Zoro's best price badge (PDP)"})
+                return "skipped"
+    except Exception as _e:
+        print(f"  ⚠️ PDP promo check skipped: {_e}")
+
     first_cart_item = True
 
     for item in resolved_items:
@@ -2987,18 +3177,30 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # ── SUPERVISOR DECISION (unlabelled, non-priority orders — coupon profiles) ──
     supervised_coupon = None
     if IS_COUPON_PROFILE and order_detail.get("_supervised") and not manual_override:
-        _dec = _supervise_coupon_decision(driver, resolved_items, raw_cart_cost,
-                                          priority_coupons_with_pct, regular_coupon_codes,
-                                          asin_coupon_cache)
+        from utils.config import ZORO_SMALL_ORDER_FEE as _FEE, FREE_SHIPPING_THRESHOLD as _FREE
+        _res_cost = raw_cart_cost + (_FEE if raw_cart_cost < _FREE else 0.0)   # reseller pays list price
+        _res_margin = ((earnings - _res_cost) / _res_cost) if (earnings and _res_cost > 0) else None
+        _dec = _supervise_coupon_decision(
+            driver, resolved_items, raw_cart_cost, priority_coupons_with_pct, regular_coupon_codes,
+            asin_coupon_cache,
+            all_zoro_select=all(it.get("is_zoro_select") for it in resolved_items),
+            reseller_est_margin=_res_margin, unit_price=primary_item.get("unit_price"),
+            pdp_ineligible=_pdp_bad)
+        _cart_txt = f"${raw_cart_cost:.2f} ({sku_field})"
+        if _dec.get("verdict"):
+            _record_asin_verdict(primary_item.get("asin"), _dec["verdict"], _cart_txt, _dec.get("coupon") or "")
         if _dec["action"] == "reseller":
             _route_to_sibling(driver, amazon_id, "reseller", "Supervisor: " + _dec["reason"],
                               dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
                                    city=city, state=state, order_note=order_note))
             return "skipped"
-        if _dec["action"] == "retry":
-            print(f"  🧑‍⚖️ SUPERVISOR: {_dec['reason']} — left unlabelled, retry next cycle")
+        if _dec["action"] in ("retry", "wait"):
+            # left UNLABELLED on purpose: picked up again next cycle (wait = needs a coupon
+            # and none is left today; retry = Zoro API/session trouble)
+            print(f"  🧑‍⚖️ SUPERVISOR: {_dec['reason']} — left unlabelled, next cycle")
             _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
-                        "buyer": buyer, "city": city, "state": state, "status": "SUPERVISOR_RETRY",
+                        "buyer": buyer, "city": city, "state": state,
+                        "status": "SUPERVISOR_WAIT_COUPONS" if _dec["action"] == "wait" else "SUPERVISOR_RETRY",
                         "notes": "; ".join(filter(None, [_dec["reason"], order_note]))})
             return "failed"
         supervised_coupon = _dec.get("coupon")
@@ -3960,6 +4162,7 @@ def main():
                     return
                 time.sleep(60)
                 continue
+            _watch_priority_coupon_set(coupon_codes)     # new weekly coupon → re-check queue
 
             # ── Load Priority ASINs from Google Sheets ─────────
             # Only source of truth — no local fallback.

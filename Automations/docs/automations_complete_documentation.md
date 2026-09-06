@@ -395,11 +395,105 @@ sequenceDiagram
    - Write formatted seller note (profit, margin, PI suggestion)
    - Log everything to `order_log.txt` + sync to DB + Google Sheet
 
-#### Deciding-ASIN Routing
+#### 5.1.1 Priority ASIN Control & Dynamic Profile Routing (Reseller vs. Coupon)
 
-Some ASINs are labelled "Deciding" — the system routes them based on Zoro cart total:
-- Cart ≥ $50: Route to coupon profile (coupon applies, free shipping)
-- Cart < $50: Route to reseller profile (10% reseller discount, may have small-order fee)
+##### The Business Rationale & Profile Economics
+The fulfillment operation runs on **two distinct Zoro account profile types**, each with strict financial tradeoffs:
+
+1. **RESELLER Profile**:
+   - **Blind Packaging**: Orders ship with neutral packing slips without Zoro branding or pricing receipts (essential for Amazon dropshipping customer experience).
+   - **No Promo Codes**: Zoro explicitly disables promotional coupon codes on verified reseller accounts.
+   - **The Zoro Select Advantage**: On all **"Zoro Select" products**, Zoro automatically grants a built-in **10% discount** at checkout without needing any coupon code.
+2. **COUPON Profile**:
+   - **Coupon Enabled**: Normal Zoro accounts that support applying promotional discount codes.
+   - **Maximum Profit Target**: The primary business directive is to place orders through Coupon profiles wherever possible to capture a 10% (or greater) discount on the entire cart.
+   - **Coupon Scarcity**: Standard 10% coupons are single-use and limited in supply (the team cannot generate hundreds of fresh 10% coupons daily).
+
+---
+
+##### The Core Value & Profit Threshold Rules
+To prevent burning scarce single-use coupons on low-dollar orders:
+- **Purchasing Total $\ge \$50$ $\to$ Route to COUPON**:
+  - A 10% discount on $\$50+$ saves $\ge \$5.00$ per order, making it an efficient use of a coupon.
+- **Purchasing Total $< \$50$ $\to$ Route to RESELLER**:
+  - Applying a limited 10% coupon to a $\$10$ order only saves $\$1.00$—a wasteful burn of a scarce coupon code.
+- **The Low-Margin Exception ($< 5\%$ Profit)**:
+  - If purchasing cost is $< \$50$, but the projected profit margin on Reseller is **less than 5%**, the order is forced to **COUPON profile** (so the 10% discount prevents the order from executing at a financial loss).
+
+---
+
+##### The Weekly Rotating "Priority Coupons" (e.g., `FACILITY`, `CLEAN10`)
+Every Monday, Zoro releases rotating brand/category coupons (called **Priority Coupons**):
+- **Superpower**: Priority coupons are **reusable across unlimited orders** for that entire week (saving scarce single-use 10% coupons).
+- **Limitation**: They only apply to specific categories, brands, or product lines.
+- **Brand Exclusions ("Promo Ineligible")**: Brands like Milwaukee, DeWalt, Fluke, etc., carry a strict Zoro restriction: *"This item is not eligible for promotional discounts"*. Promo-ineligible items can NEVER take a coupon and must **100% route to RESELLER**.
+
+---
+
+##### The Monday Sorting Matrix (The 100-ASIN Example)
+When a new priority coupon (e.g., `FACILITY`) arrives on Monday, the order queue is tested across active ASINs:
+
+```
+                                      [100 ASINs with Orders]
+                                                 │
+                        ┌────────────────────────┴────────────────────────┐
+                        ▼                                                 ▼
+             [50 ASINs: FACILITY Works]                        [50 ASINs: FACILITY Fails]
+                        │                                                 │
+                        ▼                                ┌────────────────┴────────────────┐
+                 COUPON PROFILE                          ▼                                 ▼
+           (Uses reusable FACILITY)               [Purchasing < $50]               [Purchasing ≥ $50]
+                                                  (and Profit ≥ 5%)                        │
+                                                         │                                 ▼
+                                          ┌──────────────┴──────────────┐            COUPON PROFILE
+                                          ▼                             ▼           (Standard 10% Code:
+                                   [20 Zoro Select]            [5 Non-Zoro Select]    Saves ≥ $5.00)
+                                          │                             │
+                                          ▼                             ▼
+                                   RESELLER PROFILE               DECIDING MODE
+                                  (Auto 10% discount,         (Qty=1: <$50 → Reseller;
+                                   blind packaging)            Qty≥2: ≥$50 → COUPON!)
+```
+
+* **Zoro Select ($< \$50$)**: Already gets 10% automatically on Reseller $\to$ Stays on **RESELLER** (applying a standard coupon on Coupon profile would give the exact same 10%, wasting a code).
+* **Non-Zoro Select ($< \$50$) — The Multiple Quantity Trap**:
+  - At Qty = 1, Zoro purchase is $< \$50 \to$ Reseller.
+  - **BUT if an Amazon customer orders Qty $\ge 2$**, the purchasing cost crosses **$\ge \$50$**! Once total purchase is $\ge \$50$, routing to Reseller leaves $\$5+$ on the table.
+  - Therefore, Non-Zoro Select items CANNOT be statically hardcoded to Reseller; they must be tagged as **DECIDING MODE** so the bot dynamically checks `order_qty * unit_price` on every single order!
+
+---
+
+##### The Mid-Week Operational Problem: Dynamic Ingestion of Order #101
+* **The Flaw of Static Monday Batches**:
+  - The script sorts the Monday batch into `Priority_ASIN_Control` in Google Sheets.
+  - On Monday night or Tuesday, new orders arrive for **ASIN 101** (never seen before, unmapped in `Priority_ASIN_Control`).
+  - The launcher extracts orders for pre-sorted ASINs first. Unsorted orders are stalled as *"UNLABELLED / NEED ACTION"*, forcing the human operator to manually test coupons and assign columns.
+* **The Autonomous Solution (Dynamic On-The-Fly Ingestion)**:
+  1. If an incoming order's ASIN is **NOT** in `Priority_ASIN_Control`:
+     - Verify it is mapped in `Verified_SKU_Dataset` (base mapping check).
+     - Check known promo-ineligibility from `coupon_intel.json`. If ineligible $\to$ Route to **RESELLER**.
+     - Perform a live background probe of the active weekly priority coupon (`FACILITY`). If it works $\to$ Route to **COUPON**.
+     - If priority coupon fails: evaluate `unit_cost * order_qty` vs. Zoro Select status $\to$ Route to **COUPON** ($\ge \$50$) or **RESELLER** ($< \$50$).
+     - **Auto-Persist**: Automatically append the learned verdict to `Priority_ASIN_Control` so future orders for ASIN 101 are pre-routed without manual intervention.
+
+---
+
+##### The Monday Weekly Reset & Expiry Lifecycle
+* When Sunday midnight passes, Zoro's weekly coupon expires (`FACILITY` is dead, replaced by `SUPPLY15`).
+* Any ASIN routed to Coupon profile solely because of `FACILITY` will now fail checkout.
+* **Reset Architecture**:
+  1. **Reset Trigger**: A "Reset Weekly Priority Coupons" dashboard button (or automated Monday cron).
+  2. Clears the temporary priority coupon column in `Priority_ASIN_Control`.
+  3. Operator (or scraper) supplies the new weekly coupon string in `bot_config.json` (`"priority_coupon": "SUPPLY15"`).
+  4. The background verifier (`engine/priority_check.py`) autonomously re-probes active ASINs and re-populates the sheet cleanly.
+
+---
+
+##### Real-Time Zoro Page/API Analysis for "Promo Ineligible"
+During order checkout and cart testing:
+- **DOM Indicator**: Inspection of `.promo-ineligible-badge`, text containing `"This item is not eligible for promotional discounts"` or `"Excluded from promotional offers"`.
+- **API Payload Indicator**: Item response in `PUT /v1/cart/{cartId}/promo` returning error `PROMO_NOT_APPLICABLE_TO_ITEMS` or item property `promoEligible: false`.
+- **Autonomous Learning**: When this error occurs, immediately record the Zoro SKU / ASIN into `data/dataset/coupon_intel.json` under `promo_ineligible_asins` and append to the Google Sheet `Promo_Ineligible` column. Never attempt coupons on that ASIN again.
 
 #### Safety Mechanisms
 
@@ -1204,6 +1298,33 @@ Tasks:
 2. This should run as part of every closing cycle, not a separate script.
 
 
+PHASE 9: Priority ASIN Autonomous Ingestion & Weekly Coupon Lifecycle
+├── Target: Automate mid-week unmapped ASIN routing & weekly Monday coupon reset
+├── Files: engine/orders.py, engine/priority_check.py, gui/launcher.py, bot_config.json
+├── Requirements:
+│   1. Dynamic ASIN Fallback:
+│      - When an unlabelled order arrives whose ASIN is NOT in Priority_ASIN_Control:
+│        a. Check if ASIN is mapped in Verified_SKU_Dataset
+│        b. Probe live priority coupon (e.g. FACILITY) via lightweight cart check
+│        c. Check Zoro Select flag in combined_reports.db
+│        d. Evaluate purchasing cost at order quantity (order_qty * unit_price)
+│        e. Route dynamically:
+│           - Priority coupon works → COUPON profile
+│           - Cart ≥ $50 → COUPON profile (regular coupon)
+│           - Cart < $50 + Zoro Select → RESELLER profile
+│           - Cart < $50 + Non-Zoro Select + Profit ≥ 5% → RESELLER profile
+│           - Cart < $50 + Non-Zoro Select + Profit < 5% → COUPON profile
+│        f. Automatically write the learned routing back into Priority_ASIN_Control
+│   2. Promo-Ineligible Self-Learning:
+│      - On Zoro error "PROMO_NOT_APPLICABLE_TO_ITEMS" or DOM "not eligible for promotions":
+│        a. Save to data/dataset/coupon_intel.json
+│        b. Permanently mark ASIN as Promo_Ineligible (always route to RESELLER)
+│   3. Monday Weekly Reset Lifecycle:
+│      - Add "reset_priority_coupons" function / launcher button
+│      - Flushes the expired weekly coupon column in Priority_ASIN_Control
+│      - Accepts new weekly code (e.g. "CLEAN10") and re-probes active queue
+
+
 === VERIFICATION CHECKLIST ===
 
 After implementing ALL phases, verify:
@@ -1216,6 +1337,8 @@ After implementing ALL phases, verify:
 □ $0 earnings orders are flagged, not placed (test with a mock $0 response)
 □ dash_chat is completely gone from dashboard
 □ Reconciliation count shows in closing output
+□ Priority ASIN dynamic fallback routes unmapped ASINs automatically
+□ Monday reset clears expired weekly priority coupons and re-probes with new code
 □ ALL existing tests still pass
 □ Order placer still places orders correctly (test with --dry-run --single-cycle)
 □ Closing pipeline still enriches correctly (test with CLOSING_DRY_RUN=1)

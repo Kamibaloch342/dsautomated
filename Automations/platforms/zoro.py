@@ -234,11 +234,111 @@ def get_zoro_delivery_date(driver, sku):
                 safe_get(driver, links[0].get_attribute("href"))
                 time.sleep(4)
         html = driver.page_source or ""
+        _record_pdp_promo(sku, html)                 # free: same rendered page
         m = _DELIV_RE1.search(html) or _DELIV_RE2.search(html)
         return _parse_deliv(m.group(1)) if m else ""
     except Exception as e:
         print(f"  ⚠️ get_zoro_delivery_date({sku}) failed: {e}")
         return ""
+
+
+# ── PDP promo eligibility ────────────────────────────────────────────────────
+# The product page shows "Zoro's best price: not eligible for any other offers or
+# promotions" on items no coupon will ever touch. The badge is rendered client-side
+# (it is NOT in the server HTML), so it can only be read from a RENDERED page.
+# Result is cached per SKU on disk → one page load per SKU, ever, across placers.
+PROMO_INELIGIBLE_PHRASE = "not eligible for any other offers or promotions"
+_PDP_PROMO_MAX_AGE_DAYS = 30
+
+
+def _pdp_promo_path():
+    import os
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "data", "dataset", "pdp_promo.json")
+
+
+def _load_pdp_promo():
+    try:
+        with open(_pdp_promo_path(), encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+_pdp_promo = _load_pdp_promo()      # sku -> {"ineligible": bool, "at": "YYYY-MM-DD HH:MM"}
+
+
+def _save_pdp_promo():
+    import os
+    try:
+        merged = _load_pdp_promo()
+        merged.update(_pdp_promo)
+        os.makedirs(os.path.dirname(_pdp_promo_path()), exist_ok=True)
+        tmp = _pdp_promo_path() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(merged, f, indent=0, sort_keys=True)
+        os.replace(tmp, _pdp_promo_path())
+    except Exception:
+        pass
+
+
+def _record_pdp_promo(sku, html):
+    """Read the badge from a rendered PDP. Only trusts a fully rendered page (the
+    buy box must be there), so a half-loaded page never records a false 'eligible'."""
+    if not sku or not html:
+        return None
+    low = html.lower()
+    if "add to cart" not in low and "subtotal" not in low:
+        return None
+    flag = PROMO_INELIGIBLE_PHRASE in low
+    _pdp_promo[sku] = {"ineligible": bool(flag), "at": time.strftime("%Y-%m-%d %H:%M")}
+    _save_pdp_promo()
+    if flag:
+        print(f"   [ZORO] 🚫 {sku}: Zoro's best price — not eligible for any offers or promotions")
+    return flag
+
+
+def pdp_promo_ineligible(sku):
+    """Cached verdict for a SKU: True / False, or None when unknown or stale."""
+    rec = _pdp_promo.get(sku) or _load_pdp_promo().get(sku)
+    if not rec:
+        return None
+    try:
+        age = time.time() - time.mktime(time.strptime(rec.get("at", "")[:16], "%Y-%m-%d %H:%M"))
+        if age > _PDP_PROMO_MAX_AGE_DAYS * 86400:
+            return None
+    except Exception:
+        pass
+    return bool(rec.get("ineligible"))
+
+
+def check_pdp_promo(driver, sku):
+    """True if the PDP carries the 'not eligible for any other offers or promotions'
+    badge, False if not, None if the page could not be read. NAVIGATES the driver
+    (like get_zoro_delivery_date) unless the SKU is already cached, so call it only
+    where moving the page is safe (before the cart flow)."""
+    cached = pdp_promo_ineligible(sku)
+    if cached is not None:
+        return cached
+    try:
+        safe_get(driver, f"https://www.zoro.com/search?q={sku}")
+        time.sleep(3)
+        if "/i/" not in (driver.current_url or ""):
+            links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/i/']")
+            if links:
+                safe_get(driver, links[0].get_attribute("href"))
+                time.sleep(3)
+        html = ""
+        for _ in range(8):                        # wait for the buy box / badge to render
+            html = driver.page_source or ""
+            if "add to cart" in html.lower():
+                break
+            time.sleep(1)
+        time.sleep(1.5)                           # the promo block renders just after the price
+        return _record_pdp_promo(sku, driver.page_source or html)
+    except Exception as e:
+        print(f"  ⚠️ check_pdp_promo({sku}) failed: {e}")
+        return None
 
 
 def _brand_cache_path():

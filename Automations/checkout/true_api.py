@@ -576,6 +576,74 @@ def _is_transient_coupon_error(err) -> bool:
             or "service unavailable" in e or "internal server error" in e)
 
 
+def classify_promo_error(err):
+    """Turn Zoro's promo-API error text into a verdict (kind, extra):
+      ("token", None)      session problem — Invalid Bearer Token / no_token / Jwt expired:
+                           refresh the token and retry; NEVER a verdict about the coupon
+      ("transient", None)  conflict / timeout / 429 / 5xx / failed to fetch: retry, never a verdict
+      ("dead", None)       the coupon is dead everywhere — "no longer available", "has expired",
+                           "Invalid Promo Code": retire it
+      ("item", None)       the coupon never applies to THIS item — "not valid for the item(s)",
+                           "needs to include at least one eligible <Category> item": definitive
+      ("min_order", 50.0)  cart minimum not met — "needs to include at least $50 of eligible …":
+                           it WOULD apply on a bigger cart (a Deciding signal, not ineligibility)
+      ("unknown", None)
+    Seen in production logs, most → least frequent: not valid for the item(s) (5,700),
+    no longer available (2,700), Invalid Bearer Token (780), category minimums, $ minimums,
+    Invalid Promo Code, has expired, session/fetch failures."""
+    import re as _re
+    e = str(err or "").lower()
+    if not e:
+        return ("unknown", None)
+    if any(s in e for s in ("invalid bearer token", "no_token", "invalid_token", "jwt is expired",
+                            "unauthorized", "'status': 401")):
+        return ("token", None)
+    if _is_transient_coupon_error(e) or "failed to fetch" in e or "bad gateway" in e:
+        return ("transient", None)
+    if "no longer available" in e or "has expired" in e or "invalid promo code" in e or "invalidpromocode" in e:
+        return ("dead", None)
+    if "needs to include" in e:
+        m = _re.search(r"at least \$\s*([0-9][0-9,]*(?:\.[0-9]+)?)", e)
+        if m:
+            try:
+                return ("min_order", float(m.group(1).replace(",", "")))
+            except ValueError:
+                return ("min_order", None)
+        return ("item", None)                     # "…at least one eligible <Category> item"
+    if "not valid for the item" in e or "not applicable" in e or "not eligible" in e:
+        return ("item", None)
+    if "expired" in e:
+        return ("dead", None)
+    if "invalid" in e or "not valid" in e:
+        return ("item", None)
+    return ("unknown", None)
+
+
+def _note_reject(code, result, cache=None):
+    """Log one rejected coupon by kind and act on it (retire dead coupons, remember
+    cart minimums). Returns the kind so callers can decide what counts."""
+    kind, extra = classify_promo_error(result)
+    if kind == "token":
+        print(f"  ⏭️  {code}: session/token error — not counted")
+    elif kind == "transient":
+        print(f"  ⏭️  {code}: transient API error — not counted")
+    elif kind == "dead":
+        update_coupon_status(code, "INVALID")          # dead everywhere → never tried again
+        print(f"  ⏭️  {code}: coupon is dead (no longer available / expired) — marked INVALID")
+    elif kind == "min_order":
+        if extra:
+            print(f"  ⏭️  {code}: cart minimum ${extra:.2f} not met (would apply on a bigger cart)")
+            if cache is not None:
+                cache.setdefault("coupon_min_order", {})[code] = extra
+        else:
+            print(f"  ⏭️  {code}: cart minimum not met")
+    elif kind == "item":
+        print(f"  ⏭️  {code}: not valid for this item")
+    else:
+        print(f"  ⏭️  {code}: {str(result)[:80]}")
+    return kind
+
+
 def _apply_coupon_api(driver, cart_id, coupon_code):
     """Apply a single coupon via API. Returns (ok, savings_or_error).
     Transient API conflicts are retried 3× with backoff; if still failing, the
@@ -596,6 +664,16 @@ def _apply_coupon_api(driver, cart_id, coupon_code):
         if r["ok"]:
             break
         err = str(r["data"]) if r["data"] else r["error"]
+        if classify_promo_error(err)[0] == "token":
+            # Session problem, not a verdict about the coupon (780 of these were once
+            # counted as "invalid for item"). Refresh the token and retry.
+            print(f"   [DEBUG] Coupon API token error (attempt {attempt+1}/3) — refreshing token: {str(err)[:80]}")
+            try:
+                zoro.ensure_token(driver)
+            except Exception:
+                pass
+            time.sleep(1.0)
+            continue
         if _is_transient_coupon_error(err):
             print(f"   [DEBUG] Transient coupon API error (attempt {attempt+1}/3) — retrying: {str(err)[:90]}")
             time.sleep(1.2 * (attempt + 1))
@@ -685,18 +763,7 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
                     _time("_apply_coupons_api (total)", t0)
                     return "SUCCESS", code
 
-                err = str(result).lower()
-                if _is_transient_coupon_error(err):
-                    print(f"  ⏭️  {code}: transient API error")
-                elif "not valid" in err:
-                    print(f"  ⏭️  {code}: not valid for item")
-                elif "expired" in err:
-                    update_coupon_status(code, "INVALID")
-                    print(f"  ⏭️  {code}: expired")
-                elif "invalid" in err:
-                    print(f"  ⏭️  {code}: invalid for item")
-                else:
-                    print(f"  ⏭️  {code}: {err[:60]}")
+                _note_reject(code, result, _cache)
 
     # ── 2. Try regular coupons: first match wins ──
     reg_list = [c for c in (coupon_list or [])
@@ -716,18 +783,7 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
                 _time("_apply_coupons_api (total)", t0)
                 return "SUCCESS", code
 
-            err = str(result).lower()
-            if _is_transient_coupon_error(err):
-                print(f"  ⏭️  {code}: transient API error")
-            elif "not valid" in err:
-                print(f"  ⏭️  {code}: not valid for item")
-            elif "expired" in err:
-                update_coupon_status(code, "INVALID")
-                print(f"  ⏭️  {code}: expired")
-            elif "invalid" in err:
-                print(f"  ⏭️  {code}: invalid for item")
-            else:
-                print(f"  ⏭️  {code}: {err[:60]}")
+            _note_reject(code, result, _cache)
 
     _time("_apply_coupons_api (total)", t0)
     print("  ❌ No coupons worked")

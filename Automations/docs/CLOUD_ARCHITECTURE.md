@@ -71,6 +71,39 @@ stop_closing / run_messages {account}`, `reload_config`, `set_headless {on}`,
 
 ## 5. Placement routing changes (`engine/orders.py`, `bot_config.json → routing`)
 
+**The owner's rules (7 Sep 2026), in the order the bot applies them to an unlabelled order:**
+
+1. Product page says *"Zoro's best price: not eligible for any other offers or promotions"*
+   → reseller, permanently (`platforms/zoro.py: check_pdp_promo`, cached per SKU in
+   `data/dataset/pdp_promo.json`; read for free during the delivery-estimate page visit).
+2. A **priority coupon** (the weekly 15–20 % codes) applies on the live cart → coupon
+   profile — *also for Zoro Select*, because 15–20 % beats the reseller's 10 %.
+3. No priority coupon and the item is **Zoro Select** → reseller (already 10 % off; a
+   regular 10 % coupon would be wasted).
+4. No priority coupon, cart ≥ $50 → regular 10 % coupon, coupon profile.
+5. No priority coupon, cart < $50 **but** the reseller's estimated margin < 5 % → regular
+   coupon anyway (avoid a loss).
+6. Needs a coupon (rule 4 or 5) but none applied — typically because the day's single-use
+   regular coupons are used up → the order **waits** (left unlabelled, retried next cycle /
+   after the next coupon scrape). It is never sent to the reseller at full price and the
+   ASIN is never called ineligible for that; a strike is recorded only when coupons were
+   available and every one was rejected at item level, at most one strike per day
+   (`routing.promo_strike_hours`), two strikes → ineligible. The PDP badge stays the
+   primary ineligibility signal.
+7. Otherwise (cart < $50, healthy margin) → reseller.
+
+Every verdict is written back into *Priority_ASIN_Control* (`Check_*` columns + the ASIN
+is moved into `<store>_Coupon` / `_Reseller` / `_Deciding`), so the next order of the same
+ASIN is pre-sorted. When a **new priority coupon** appears in the Coupons tab, every
+coupon-dependent ASIN of the store is queued and re-tested with the new codes, 15 per
+placer cycle, and moved again (`engine/priority_check.py: enqueue_recheck / run_queue`).
+Permanent PDP-ineligible ASINs are skipped unless *Reset & rebuild* is used. Zoro's coupon
+replies are classified (`checkout/true_api.py: classify_promo_error`): only *"not valid for
+the item(s)"* and *"needs to include at least one eligible <Category> item"* count as
+item rejections; *"$X of eligible"* is a cart minimum (a Deciding signal); *"no longer
+available / has expired / Invalid Promo Code"* retires the coupon; token and transient
+errors are retried and never counted.
+
 | Rule | Where | Config |
 |---|---|---|
 | **Promo-ineligible ASIN → always the reseller profile.** Sources: `routing.promo_ineligible_asins`, sheet column `Promo_Ineligible` in *Priority_ASIN_Control* (optional), and what coupon profiles learn (all coupons rejected on ≥ N separate occasions → `data/dataset/coupon_intel.json` → also appended to the sheet column) | `_is_promo_ineligible`, `_learn_promo_outcome` | `auto_learn_promo_ineligible`, `promo_ineligible_min_fails` |

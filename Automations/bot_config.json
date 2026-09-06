@@ -59,7 +59,8 @@
         "promo_ineligible_asins": [],
         "auto_learn_promo_ineligible": true,
         "promo_ineligible_min_fails": 2,
-        "supervise_max_per_cycle": 20
+        "supervise_max_per_cycle": 20,
+        "promo_strike_hours": 24
     },
     "chrome": {
         "headless": false
@@ -79,8 +80,9 @@
         "priority_check": {
             "enabled": true,
             "every_hours": 6,
-            "auto_assign": false,
-            "max_per_run": 10
+            "auto_assign": true,
+            "max_per_run": 10,
+            "recheck_per_cycle": 15
         }
     }
 }
