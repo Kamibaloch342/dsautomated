@@ -297,6 +297,44 @@ def main():
     ids = [o["amazon_id"] for o in srt]
     check("sort: priority first, supervised strictly last", ids[0] == "p1" and ids[-2:] == ["s1", "s2"], str(ids))
 
+    # ── static guard: no function-local import may shadow a name read earlier ──
+    # (a `from x import NAME` anywhere inside a function makes NAME local to the WHOLE
+    #  function; reading it before that line raises UnboundLocalError at runtime —
+    #  this took every placer down on 7 Sep 2026)
+    src = open(SRC, encoding="utf-8").read()
+    tree = ast.parse(src)
+    problems = []
+
+    def scan(fn):
+        imported = {}   # name -> lineno of the (first) in-function import
+        loads = []      # (name, lineno)
+
+        def walk(node):
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda, ast.ClassDef)):
+                    continue                    # nested scope: its own rules
+                if isinstance(child, ast.ImportFrom):
+                    for a in child.names:
+                        nm = a.asname or a.name
+                        imported.setdefault(nm, child.lineno)
+                elif isinstance(child, ast.Import):
+                    for a in child.names:
+                        nm = a.asname or a.name.split(".")[0]
+                        imported.setdefault(nm, child.lineno)
+                elif isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load):
+                    loads.append((child.id, child.lineno))
+                walk(child)
+        walk(fn)
+        for nm, ln in loads:
+            if nm in imported and ln < imported[nm]:
+                problems.append(f"{fn.name}: '{nm}' read at line {ln} but imported locally at line {imported[nm]}")
+
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scan(node)
+    check("static: no function-local import shadows a name that is read earlier in the same function",
+          not problems, "; ".join(problems[:5]))
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))

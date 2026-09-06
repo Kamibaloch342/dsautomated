@@ -3145,12 +3145,15 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         _is_deciding_order = any((it.get("asin") or "").strip().upper() in _dset
                                  for it in resolved_items)
     if _is_deciding_order and IS_RESELLER_PROFILE:
-        from utils.config import ZORO_SMALL_ORDER_FEE, FREE_SHIPPING_THRESHOLD
+        # Aliased on purpose: a plain `from … import ZORO_SMALL_ORDER_FEE` here would make
+        # that name LOCAL to the whole function and break its module-level use further
+        # down (UnboundLocalError on every order — happened on 7 Sep 2026).
+        from utils.config import ZORO_SMALL_ORDER_FEE as _dec_fee, FREE_SHIPPING_THRESHOLD as _dec_free
         _verdict = _deciding_verdict(
             raw_cart_cost, real_cost, earnings,
             promo_bad=_is_promo_ineligible(resolved_items),
             all_zoro_select=all(it.get("is_zoro_select") for it in resolved_items),
-            small_fee=ZORO_SMALL_ORDER_FEE, free_threshold=FREE_SHIPPING_THRESHOLD)
+            small_fee=_dec_fee, free_threshold=_dec_free)
         if _verdict["route"]:
             _route_to_sibling(driver, amazon_id, "coupon", _verdict["reason"],
                               dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
