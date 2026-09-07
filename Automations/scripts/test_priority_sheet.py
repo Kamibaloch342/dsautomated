@@ -119,6 +119,68 @@ def main():
     ok = pc.move_asin(f, headers6, full, "B0FRESH", "DM_Reseller", "DM")
     check("move: column full (row 102) → rows grown before the append", ok and any(c[0] == "grow" for c in f.calls) and dict(f.calls[-1][1]) == {"A102": "B0FRESH"})
 
+    # ── move policy: human placements are respected ──────────────────────
+    mm = pc.may_move
+    check("policy: ASIN in no column → always placed", mm("NO_PRIORITY", "", False) and mm("SELECT", "", False, "live"))
+    check("policy: human-placed Reseller/Deciding, no priority coupon → NOT moved (new / live / recheck / all)",
+          not any(mm(st, col, False, mode) for st in ("NO_PRIORITY", "REGULAR_OK", "SELECT")
+                  for col in ("HS_Reseller", "HS_Deciding") for mode in ("new", "live", "recheck", "all")))
+    check("policy: priority coupon works → promoted even from a human placement", mm("COUPON_OK", "HS_Reseller", False, "live"))
+    check("policy: product-page ineligible → Reseller even from a human placement", mm("PROMO_INELIGIBLE", "HS_Coupon", False, "new"))
+    check("policy: bot-owned placement may be re-sorted", mm("NO_PRIORITY", "HS_Coupon", True, "new"))
+    check("policy: coupon-dependent (_Coupon) ASIN re-sorted on recheck / all, not on the scheduled new-ASIN check",
+          mm("SELECT", "HS_Coupon", False, "recheck") and mm("SELECT", "DM_Coupon", False, "all") and not mm("SELECT", "HS_Coupon", False, "new"))
+    check("policy: reset rebuilds everything", mm("SELECT", "HS_Deciding", False, "reset") and mm("NO_PRIORITY", "HS_Reseller", False, "reset"))
+    check("owner: bot_owned only when the bot put it in THIS column",
+          pc._bot_owned({"owner": "bot", "column": "HS_Coupon"}, "HS_Coupon") and not pc._bot_owned({"owner": "bot", "column": "HS_Coupon"}, "HS_Reseller")
+          and not pc._bot_owned({"owner": "human", "column": "HS_Coupon"}, "HS_Coupon") and not pc._bot_owned({}, "HS_Coupon"))
+
+    # ── _run_batch end-to-end with a fake driver, fake sheet and a temp memory ─
+    import tempfile, types
+    tmp = tempfile.mkdtemp()
+    pc.VERDICTS_PATH = os.path.join(tmp, "verdicts.json")
+    pc.STATE_PATH = os.path.join(tmp, "state.json")
+    import utils.decision_log as _dl
+    _dl.log = lambda *a, **k: None                      # never touch the live decision log from a test
+    verdicts = {"B0HUMAN": ("SELECT", "Reseller"), "B0NEWONE": ("NO_PRIORITY", "Deciding"),
+                "B0PROMO": ("COUPON_OK", "Coupon"), "B0BOT": ("SELECT", "Reseller"), "B0CDEP": ("SELECT", "Reseller")}
+    pc.check_one = lambda driver, asin, sku_map, pri, cache=None, mod=None: {
+        "Check_ASIN": asin, "Check_At": pc._now(), "Check_Status": verdicts[asin][0], "Check_Suggest": verdicts[asin][1],
+        "Check_Coupon": "", "Check_Cart": "$10", "Check_Note": ""}
+    mod = types.SimpleNamespace(gui_cfg={"automation": {"priority_check": {"auto_assign": True, "write_sheet_notes": False}}})
+    headers6 = ["DM_Reseller", "DM_Coupon", "HS_Reseller", "HS_Coupon", "DM_Deciding", "HS_Deciding"]
+    def batch(rows, todo, mode, seed=None):
+        try: os.remove(pc.VERDICTS_PATH)
+        except OSError: pass
+        for a, (row, col, owner) in (seed or {}).items(): pc.save_verdict(a, row, col, owner)
+        f = fresh(FakeSheets([list(r) for r in rows], cols=6, rows=101))
+        pc._run_batch(None, "HS_COUPON", todo, {}, ["FACILITY8M26"], None, mod, f, f, [list(r) for r in rows][0], [list(r) for r in rows], True, mode=mode)
+        writes = {}
+        for c in f.calls:
+            if c[0] == "values": writes.update(dict(c[1]))
+        return writes, pc.load_verdicts()
+    base = [headers6, ["", "", "", "B0HUMAN", "", ""], ["", "", "", "B0CDEP", "", ""], ["", "", "B0PROMO", "", "", ""], ["", "", "", "", "", ""]]
+    w, v = batch(base, [("B0HUMAN", "HS_Coupon")], "new")
+    check("batch/new: human-placed HS_Coupon ASIN with SELECT verdict → no sheet write, verdict remembered as human/HS_Coupon",
+          not w and v["B0HUMAN"]["column"] == "HS_Coupon" and v["B0HUMAN"]["owner"] == "human", f"writes={w} v={v.get('B0HUMAN')}")
+    w, v = batch(base, [("B0CDEP", "HS_Coupon")], "recheck")
+    check("batch/recheck: coupon-dependent ASIN with SELECT verdict → moved to HS_Reseller, owner bot",
+          w.get("D3") == "" and "B0CDEP" in w.values() and v["B0CDEP"]["column"] == "HS_Reseller" and v["B0CDEP"]["owner"] == "bot", f"writes={w}")
+    w, v = batch(base, [("B0PROMO", "HS_Reseller")], "new")
+    check("batch/new: priority coupon works on a human-placed HS_Reseller ASIN → promoted to HS_Coupon",
+          w.get("C4") == "" and "B0PROMO" in w.values() and v["B0PROMO"]["column"] == "HS_Coupon", f"writes={w}")
+    w, v = batch(base, [("B0NEWONE", "")], "new")
+    check("batch/new: ASIN in no column → placed in HS_Deciding, owner bot",
+          "B0NEWONE" in w.values() and v["B0NEWONE"]["column"] == "HS_Deciding" and v["B0NEWONE"]["owner"] == "bot", f"writes={w}")
+    w, v = batch(base, [("B0HUMAN", "HS_Coupon")], "new",
+                 seed={"B0HUMAN": ({"Check_Status": "COUPON_OK", "Check_Suggest": "Coupon"}, "HS_Coupon", "bot")})
+    check("batch/new: the bot's OWN earlier placement may be re-sorted (HS_Coupon → HS_Reseller)",
+          w.get("D2") == "" and "B0HUMAN" in w.values() and v["B0HUMAN"]["column"] == "HS_Reseller", f"writes={w}")
+    w, v = batch(base, [("B0HUMAN", "HS_Coupon")], "new",
+                 seed={"B0HUMAN": ({"Check_Status": "COUPON_OK", "Check_Suggest": "Coupon"}, "HS_Reseller", "bot")})
+    check("batch/new: bot placed it in ANOTHER column earlier, a human moved it since → treated as human, not moved",
+          not w and v["B0HUMAN"]["owner"] == "human", f"writes={w} v={v.get('B0HUMAN')}")
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL)); sys.exit(1)

@@ -210,6 +210,7 @@ SUPERVISE_MIN_CART = float(ROUTING.get("supervise_min_cart_for_regular", 50) or 
 SUPERVISE_MAX_PER_CYCLE = max(1, int(ROUTING.get("supervise_max_per_cycle", 20) or 20))
 PROMO_INELIGIBLE_ASINS = set()     # rebuilt every cycle by _refresh_promo_ineligible()
 PROMO_INELIGIBLE_CODES = set()
+STORE_SORTED_ASINS = set()         # every ASIN in ANY column of this store — the supervisor leaves those alone
 if SUPERVISE_UNLABELLED:
     print(f"   -> Supervisor: ON — unlabelled mapped orders handled last, max {SUPERVISE_MAX_PER_CYCLE}/cycle "
           f"(regular coupon needs cart ≥ ${SUPERVISE_MIN_CART:.0f})")
@@ -2413,6 +2414,37 @@ def load_priority_asins_from_sheet(profile_name):
     return _load_asin_column_from_sheet(col_name, "priority")
 
 
+def load_store_sorted_asins(profile_name):
+    """Every ASIN that is ALREADY sorted somewhere for this store — all <DM|HS>_*
+    columns of Priority_ASIN_Control — so the supervisor never touches an ASIN a
+    human (or the bot) has placed in Reseller / Deciding / Coupon. Returns None on
+    API failure (caller keeps the last-known set)."""
+    pref = "DM" if profile_name.upper().startswith("DM") else "HS"
+    try:
+        svc = _get_sheets_service()
+        result = svc.spreadsheets().values().get(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:H500",
+        ).execute()
+        rows = result.get("values", [])
+        if len(rows) < 2:
+            return set()
+        headers = [h.strip() for h in rows[0]]
+        out = set()
+        for ci, h in enumerate(headers):
+            if not h.upper().startswith(pref + "_"):
+                continue
+            for row in rows[1:]:
+                if ci < len(row):
+                    val = (row[ci] or "").strip().upper()
+                    if val.startswith("B") and len(val) == 10:
+                        out.add(val)
+        return out
+    except Exception as e:
+        print(f"  ⚠️  Could not load the store's sorted ASINs from sheet: {e}")
+        return None
+
+
 def load_deciding_asins_from_sheet(profile_name):
     """Load Deciding ASINs (per-order coupon/reseller routing) for a reseller
     profile from the 'DM_Deciding' / 'HS_Deciding' sheet columns."""
@@ -4272,6 +4304,17 @@ def main():
             if not LABELS_ONLY:
                 _refresh_promo_ineligible(sku_map, asin_coupon_cache)
 
+            # ── Everything already sorted for this store (all its columns): the
+            #    supervisor must only take ASINs that are in NO column. An ASIN a
+            #    human put in _Reseller or _Deciding is that profile's business.
+            if SUPERVISE_UNLABELLED:
+                _sorted = load_store_sorted_asins(PROFILE_NAME)
+                if _sorted is not None:
+                    STORE_SORTED_ASINS.clear()
+                    STORE_SORTED_ASINS.update(_sorted)
+                elif not STORE_SORTED_ASINS:
+                    print("  ⚠️  Sorted-ASIN list unavailable and no last-known copy — supervisor paused this cycle")
+
             # ── Priority-ASIN auto-check (coupon profiles, between cycles) ────
             _maybe_run_priority_check(driver, sku_map, coupon_codes, asin_coupon_cache)
 
@@ -4349,7 +4392,9 @@ def main():
                     deciding_matched = 0
                     needs_priority_flagged = 0   # unlabelled + non-priority → Needs Priority panel
                     supervised_added = 0         # unlabelled + mapped → supervisor queue (coupon profiles)
+                    sorted_elsewhere = 0         # ASIN sits in another column of this store → not ours
                     _mapped_upper = {str(k).strip().upper() for k in (sku_map or {})}
+                    _supervise_ok = SUPERVISE_UNLABELLED and bool(STORE_SORTED_ASINS)
                     for fo in fav_orders:
                         if fo["amazon_id"] in seen_ids:
                             continue
@@ -4358,7 +4403,10 @@ def main():
                         if _fo_asin not in priority_set and not is_deciding:
                             skipped_asin += 1
                             if not (fo.get("seller_order_id") or "").strip():
-                                if (SUPERVISE_UNLABELLED and _fo_asin in _mapped_upper
+                                if _fo_asin in STORE_SORTED_ASINS:
+                                    sorted_elsewhere += 1       # Reseller/Deciding column: that profile's order
+                                    continue
+                                if (_supervise_ok and _fo_asin in _mapped_upper
                                         and supervised_added < SUPERVISE_MAX_PER_CYCLE):
                                     # SUPERVISOR: mapped but unlabelled and not in Priority ASIN
                                     # Control → queued LAST (after every labelled/priority order);
@@ -4409,7 +4457,8 @@ def main():
                           f"[{deciding_matched} deciding] "
                           f"+ {supervised_added} unlabelled → supervisor "
                           f"(skipped {skipped_asin} non-priority [{needs_priority_flagged} unlabelled → "
-                          f"flagged Needs-Priority], {skipped_label} already labelled)")
+                          f"flagged Needs-Priority, {sorted_elsewhere} sorted in another column], "
+                          f"{skipped_label} already labelled)")
                     if not fav_orders:
                         print("    ⚠️  Favorites view returned 0 orders — if this is wrong, the saved "
                               "view/URL may have changed; set use_favorites_discovery=False to fall back.")

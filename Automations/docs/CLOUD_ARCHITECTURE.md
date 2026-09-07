@@ -92,21 +92,33 @@ stop_closing / run_messages {account}`, `reload_config`, `set_headless {on}`,
    primary ineligibility signal.
 7. Otherwise (cart < $50, healthy margin) → reseller.
 
-Every verdict moves the ASIN into `<store>_Coupon` / `_Reseller` / `_Deciding` in
-*Priority_ASIN_Control* (the sheet keeps its six columns, nothing else is written there),
-so the next order of the same ASIN is pre-sorted. The bot's memory of why — coupon, cart,
-date, profile — lives in `data/priority_verdicts.json` and the decision log
-(`bot_decisions`, dashboard → Attention → Supervisor log). Setting
-`automation.priority_check.write_sheet_notes: true` additionally mirrors it into
-`Check_*` columns of the sheet (off by default). When a **new priority coupon** appears in the Coupons tab, every
-coupon-dependent ASIN of the store is queued and re-tested with the new codes, 15 per
-placer cycle, and moved again (`engine/priority_check.py: enqueue_recheck / run_queue`).
-Permanent PDP-ineligible ASINs are skipped unless *Reset & rebuild* is used. Zoro's coupon
-replies are classified (`checkout/true_api.py: classify_promo_error`): only *"not valid for
-the item(s)"* and *"needs to include at least one eligible <Category> item"* count as
-item rejections; *"$X of eligible"* is a cart minimum (a Deciding signal); *"no longer
-available / has expired / Invalid Promo Code"* retires the coupon; token and transient
-errors are retried and never counted.
+**Who the supervisor touches.** Only an ASIN that is in *no* column of its store
+(`HS_*` for HOANK, `DM_*` for Hathoro). An ASIN a person put in `_Reseller` or `_Deciding`
+is that profile's order, even when the coupon profile sees it first: it is skipped (counted as
+"sorted in another column" in the discovery summary) and never coupon-tested on a live order.
+If the sheet cannot be read and there is no last-known copy, the supervisor pauses for that
+cycle rather than guess.
+
+**Who may move a column.** A new ASIN is always placed (`_Coupon` / `_Reseller` / `_Deciding`
+by the verdict). For an ASIN that is already in a column the checker (`engine/priority_check.py:
+may_move`) moves it only when: a **priority coupon works** (promoted to `_Coupon` from anywhere —
+the owner's rule), the **product page says ineligible** (→ `_Reseller`), the **bot itself** put it
+there (it may re-sort its own placements), it sits in `_Coupon` and the run is a **re-check after
+a coupon change** or the dashboard's *Re-check all*, or the run is *Reset & rebuild* (everything is
+rebuilt). Otherwise a human placement stays and only the verdict is recorded. Who placed what
+(`owner: bot|human`, column, coupon, cart, date) lives in `data/priority_verdicts.json`; the
+reasons are in the decision log (`bot_decisions`, dashboard → Attention → Supervisor log).
+Testing a `_Reseller` ASIN with the weekly priority coupons is harmless: it happens in a scratch
+cart that is cleared afterwards, no order is placed and no single-use coupon is consumed.
+Setting `automation.priority_check.write_sheet_notes: true` additionally mirrors the verdicts
+into `Check_*` columns of the sheet (off by default — the sheet keeps its six columns).
+When a **new priority coupon** appears in the Coupons tab, every ASIN of the store is queued
+and re-tested with the new codes, 15 per placer cycle (`enqueue_recheck / run_queue`); permanent
+PDP-ineligible ASINs are skipped unless *Reset & rebuild* is used. Zoro's coupon replies are
+classified (`checkout/true_api.py: classify_promo_error`): only *"not valid for the item(s)"* and
+*"needs to include at least one eligible <Category> item"* count as item rejections; *"$X of
+eligible"* is a cart minimum (a Deciding signal); *"no longer available / has expired / Invalid
+Promo Code"* retires the coupon; token and transient errors are retried and never counted.
 
 | Rule | Where | Config |
 |---|---|---|
@@ -115,7 +127,8 @@ errors are retried and never counted.
 | **Supervisor** (coupon profiles): unlabelled orders whose ASIN is mapped but not in Priority ASIN Control are queued **last** and decided on the live cart: a priority coupon applies → place; else cart ≥ `supervise_min_cart_for_regular` and a regular coupon applies → place with it; else → labelled for the reseller profile. Unmapped ASINs are never placed (unchanged rule). At most `supervise_max_per_cycle` (20) such orders per cycle so the backlog drains gradually and can be watched in the dashboard's *Bot decisions* feed. | `_supervise_coupon_decision`, `SUPERVISED` / `ROUTED_TO_RESELLER` run-log statuses | `supervise_unlabelled`, `supervise_min_cart_for_regular`, `supervise_max_per_cycle` |
 | **Priority ASIN auto-check**: coupon placers verify new sheet ASINs between cycles (mapped? in stock? which coupon applies on a real cart? cart ≥ $50?) and write `Check_*` verdict columns into *Priority_ASIN_Control*; `auto_assign` can move the ASIN into the suggested column. Also on demand from the dashboard. | `engine/priority_check.py` | `automation.priority_check` |
 
-Unit tests: `python scripts/test_routing_rules.py` (29 cases, no network).
+Unit tests: `python scripts/test_routing_rules.py` (43 cases) and `python scripts/test_priority_sheet.py`
+(sheet writer + move policy against a fake Sheets service) — no network.
 
 ## 6. Automation & memory
 

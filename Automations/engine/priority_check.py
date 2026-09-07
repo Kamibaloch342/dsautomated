@@ -264,18 +264,51 @@ def load_verdicts() -> dict:
         return {}
 
 
-def save_verdict(asin: str, row: dict, column: str = "") -> None:
+def save_verdict(asin: str, row: dict, column: str = "", owner: str | None = None) -> None:
+    """owner: "bot" when the bot put the ASIN in `column`, "human" when a person did.
+    None keeps the previous owner (or "human" for an ASIN the bot never placed)."""
     with _vlock:
         v = load_verdicts()
+        prev = v.get(asin.upper()) or {}
+        if owner is None:                       # keep what we knew; an ASIN the bot never placed is a human's
+            owner = prev.get("owner") or "human"
         v[asin.upper()] = {"status": row.get("Check_Status"), "suggest": row.get("Check_Suggest"),
                            "coupon": row.get("Check_Coupon", ""), "cart": row.get("Check_Cart", ""),
                            "at": row.get("Check_At") or _now(), "profile": row.get("Check_Profile", ""),
-                           "note": row.get("Check_Note", ""), "column": column}
+                           "note": row.get("Check_Note", ""), "column": column, "owner": owner}
         os.makedirs(DATA, exist_ok=True)
         tmp = VERDICTS_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(v, f, indent=0, sort_keys=True)
         os.replace(tmp, VERDICTS_PATH)
+
+
+def may_move(status: str, current_col: str, bot_owned: bool, mode: str = "new") -> bool:
+    """Move policy for an ASIN that is ALREADY in a column.
+    mode: "new" (scheduled check of new ASINs) · "live" (supervisor after a real order)
+          · "recheck" (a new priority coupon arrived) · "all" (dashboard Re-check all)
+          · "reset" (dashboard Reset & rebuild).
+      • a priority coupon works (COUPON_OK)          → yes, promote to Coupon (the owner's rule)
+      • the product page says ineligible             → yes, Reseller (coupons can never apply)
+      • the bot placed it there itself (bot_owned)   → yes, it may re-sort its own placement
+      • reset                                        → yes, everything is rebuilt from scratch
+      • recheck / all and it sits in _Coupon          → yes, coupon-dependent ASINs are re-sorted
+                                                       when the coupon set changes
+      • a human placed it in _Reseller / _Deciding   → NO — record the verdict, leave the column
+    An ASIN in no column (current_col empty) is always placed."""
+    if not current_col:
+        return True
+    if status in ("COUPON_OK", "PROMO_INELIGIBLE"):
+        return True
+    if bot_owned or mode == "reset":
+        return True
+    if mode in ("recheck", "all") and current_col.upper().endswith("_COUPON"):
+        return True
+    return False
+
+
+def _bot_owned(prev: dict, current_col: str) -> bool:
+    return bool(current_col) and prev.get("owner") == "bot" and (prev.get("column") or "").upper() == current_col.upper()
 
 
 def is_permanent(asin: str, sku_map: dict | None = None) -> bool:
@@ -307,12 +340,19 @@ def record_verdict(profile_name: str, asin: str, status: str, coupon: str, cart:
                "Check_Profile": profile_name, "Check_Note": note or ""}
         moved = False
         col = suggested_column(profile_name, suggest)
-        if (move if move is not None else _auto_assign(mod)) and col:
+        cur = (collect_asins(headers, rows, profile_name).get(asin.upper()) or {}).get("column", "")
+        prev = load_verdicts().get(asin.upper()) or {}
+        blocked = bool(col) and bool(cur) and col != cur and not may_move(status, cur, _bot_owned(prev, cur), "live")
+        if blocked:
+            print(f"    · {asin} stays in {cur} (human placement; no priority coupon) — verdict recorded only")
+            col = cur
+        if (move if move is not None else _auto_assign(mod)) and col and col != cur:
             try:
                 moved = move_asin(wsvc, headers, rows, asin, col, store_prefix(profile_name))
             except Exception as e:
                 print(f"    ⚠️ move {asin} → {col}: {e}")
-        save_verdict(asin, row, col)                # the bot's own memory (local file)
+        owner = "bot" if moved else ("human" if blocked else None)
+        save_verdict(asin, row, col if (moved or col == cur) else cur, owner)   # the bot's own memory
         if _sheet_notes(mod):                       # optional: mirror it into the sheet
             had_block = "Check_ASIN" in headers
             headers = ensure_check_headers(wsvc, headers)
@@ -436,7 +476,8 @@ def _priority_codes(mod, coupon_codes):
     return pri
 
 
-def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, svc, wsvc, headers, rows, move):
+def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, svc, wsvc, headers, rows, move,
+               mode: str = "new"):
     notes = _sheet_notes(mod)
     if notes:
         with _write_lock:
@@ -464,15 +505,24 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
         print(f"  [{i}/{len(asins_with_cols)}] {asin} ({col or 'new'}) → {row['Check_Status']} / "
               f"{row.get('Check_Suggest', '')} {row.get('Check_Coupon', '')} {row.get('Check_Cart', '')}  ({time.time() - t0:.0f}s)")
         target = suggested_column(profile_name, row.get("Check_Suggest", ""))
+        prev = load_verdicts().get(asin) or {}
+        blocked = bool(move and target and col and target != col
+                       and not may_move(row.get("Check_Status", ""), col, _bot_owned(prev, col), mode))
+        if blocked:
+            print(f"    · {asin} stays in {col} (human placement; no priority coupon) — verdict recorded only")
+            target = col
+        moved = False
         with _write_lock:
-            if move and target:
+            if move and target and target != col:
                 try:
-                    if move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name)):
+                    moved = move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name))
+                    if moved:
                         print(f"    ↪ {asin}: {col or '—'} → {target}")
                         headers, rows = read_tab(svc)
                 except Exception as e:
                     print(f"    ⚠️ move failed: {e}")
-            save_verdict(asin, row, target)
+            save_verdict(asin, row, target if (moved or not move or target == col) else col,
+                         "bot" if moved else ("human" if blocked else None))
             if notes:
                 try:
                     upsert_check_row(wsvc, headers, rows, row)
@@ -516,7 +566,8 @@ def run_check(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
           f"{len(pri)} priority coupon(s), move={'on' if move else 'off'}")
     if not todo:
         return []
-    return _run_batch(driver, profile_name, todo, sku_map, pri, cache, mod, svc, wsvc, headers, rows, move)
+    return _run_batch(driver, profile_name, todo, sku_map, pri, cache, mod, svc, wsvc, headers, rows, move,
+                      mode="new" if only_new else "all")
 
 
 # ── re-check queue (new weekly coupon / reset) ────────────────────────────
@@ -550,7 +601,8 @@ def enqueue_recheck(profile_name: str, reason: str, mod=None, include_ineligible
         asins.append([asin, meta["column"]])
     os.makedirs(DATA, exist_ok=True)
     with open(_queue_path(profile_name), "w", encoding="utf-8") as f:
-        json.dump({"reason": reason, "queued_at": _now(), "profile": profile_name, "asins": asins}, f, indent=1)
+        json.dump({"reason": reason, "queued_at": _now(), "profile": profile_name, "asins": asins,
+                   "mode": "reset" if include_ineligible else "recheck"}, f, indent=1)
     return len(asins)
 
 
@@ -578,7 +630,7 @@ def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
     pri = _priority_codes(mod, coupon_codes)
     print(f"\n🔁 PRIORITY RE-CHECK ({profile_name}): {len(batch)} of {len(pending)} queued — {q.get('reason', '')}")
     results = _run_batch(driver, profile_name, [tuple(x) for x in batch], sku_map, pri, cache, mod, svc, wsvc,
-                         headers, rows, _auto_assign(mod))
+                         headers, rows, _auto_assign(mod), mode=q.get("mode") or "recheck")
     q["asins"] = rest
     with open(p, "w", encoding="utf-8") as f:
         json.dump(q, f, indent=1)
