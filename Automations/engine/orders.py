@@ -781,16 +781,24 @@ def _save_coupon_intel(cache):
 # ══════════════════════════════════════════════════════════════════════════
 #  ROUTING RULES — promo-ineligible memory, sibling hand-off, supervisor
 # ══════════════════════════════════════════════════════════════════════════
-def _append_asin_to_sheet_column(col_name, asin):
+def _append_asin_to_sheet_column(col_name, asin, profile_name=""):
     """Best-effort: add an ASIN to a Priority_ASIN_Control column (e.g. the
     Promo_Ineligible list the team reviews). Silently skipped if the column
-    doesn't exist — the local memory still routes the order."""
+    doesn't exist — the local memory still routes the order.
+    Also stamps a Google Sheets Cell Note: 'ZUHRA'.
+    """
     try:
         svc = _get_sheets_write_service()
+        meta = svc.spreadsheets().get(spreadsheetId=GOOGLE_SHEET_ID, fields="sheets.properties").execute()
+        sheet_id = None
+        for s in meta.get("sheets", []):
+            if s.get("properties", {}).get("title") == GOOGLE_SHEET_PRIORITY_ASIN_TAB:
+                sheet_id = s.get("properties", {}).get("sheetId")
+                break
         rows = svc.spreadsheets().values().get(
             spreadsheetId=GOOGLE_SHEET_ID,
             range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:AZ500").execute().get("values", [])
-        if not rows:
+        if not rows or sheet_id is None:
             return False
         headers = [h.strip() for h in rows[0]]
         if col_name not in headers:
@@ -802,14 +810,28 @@ def _append_asin_to_sheet_column(col_name, asin):
                 if r[ci].strip().upper() == asin.upper():
                     return True                  # already listed
                 last = ri
-        col = ""
-        n = ci + 1
-        while n:
-            n, rem = divmod(n - 1, 26)
-            col = chr(65 + rem) + col
-        svc.spreadsheets().values().update(
-            spreadsheetId=GOOGLE_SHEET_ID, range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!{col}{last + 1}",
-            valueInputOption="RAW", body={"values": [[asin.upper()]]}).execute()
+
+        req = {
+            "updateCells": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": last,
+                    "endRowIndex": last + 1,
+                    "startColumnIndex": ci,
+                    "endColumnIndex": ci + 1
+                },
+                "rows": [{
+                    "values": [{
+                        "userEnteredValue": {"stringValue": asin.upper()},
+                        "note": "ZUHRA"
+                    }]
+                }],
+                "fields": "userEnteredValue,note"
+            }
+        }
+        svc.spreadsheets().batchUpdate(
+            spreadsheetId=GOOGLE_SHEET_ID,
+            body={"requests": [req]}).execute()
         return True
     except Exception as e:
         print(f"  ⚠️ could not add {asin} to sheet column {col_name}: {e}")
@@ -1019,8 +1041,10 @@ def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_w
         nonlocal tried, transient, item_rejects
         tried += 1
         t0 = time.time()
+        print(f"     🏷️  [Supervisor] Trying {tier} coupon: {code}...")
         ok, res = _apply_coupon_api(driver, cart_id, code)
         if ok and (res or 0) > 0:
+            print(f"     ✅ [Supervisor] {tier.capitalize()} coupon applied: {code} (discount: ${float(res):.2f})")
             attempts.append({"code": code, "tier": tier, "ok": True, "discount": round(float(res), 2),
                              "ms": int((time.time() - t0) * 1000)})
             return True
@@ -1039,6 +1063,8 @@ def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_w
                 pass
         attempts.append({"code": code, "tier": tier, "ok": False, "kind": kind, "min_order": extra,
                          "reply": str(res)[:160], "ms": int((time.time() - t0) * 1000)})
+        print(f"     ⏭️  [Supervisor] {tier.capitalize()} coupon {code} rejected: {kind}"
+              + (f" (min order ${extra:.0f})" if extra else ""))
         return False
 
     def _ret(d):
@@ -3301,6 +3327,18 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                                                                 "qty": it.get("final_qty"), "unit": it.get("unit_price"),
                                                                 "select": bool(it.get("is_zoro_select"))}
                                                                for it in resolved_items])
+        print(f"\n  🧑‍⚖️ ═══════════ SUPERVISOR DECISION ═══════════")
+        print(f"  │ Order ID   : {amazon_id}")
+        print(f"  │ ASIN / SKU : {primary_item.get('asin')} / {sku_field}")
+        print(f"  │ Cart Total : ${raw_cart_cost:.2f} (Qty: {qty_field})")
+        print(f"  │ Action     : {_dec['action'].upper()}")
+        print(f"  │ Reason     : {_dec['reason']}")
+        if _dec.get("coupon"):
+            print(f"  │ Coupon     : {_dec['coupon']} ({str(_dec.get('tier', '')).capitalize()})")
+        if _dec.get("verdict"):
+            print(f"  │ Sheet Rec  : {_dec['verdict'].get('status')} → Column: {_dec['verdict'].get('suggest')}")
+        print(f"  └────────────────────────────────────────────────\n")
+
         if _dec.get("verdict") and priority_coupons_with_pct:
             _record_asin_verdict(primary_item.get("asin"), _dec["verdict"], _cart_txt, _dec.get("coupon") or "")
         elif _dec.get("verdict"):
@@ -3468,16 +3506,6 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             print(f"  🖐️  profit gate waived for {amazon_id} (Manual-{_manual_kind}) — "
                   f"would have required {checkout_min_margin:.0%}")
         checkout_min_margin = None
-
-    # Checkout priority: True REST API → Vuex dispatch → DOM Selenium
-    # Build extra_skus for multi-item Amazon orders (everything after primary)
-    extra_skus = None
-    if len(resolved_items) > 1:
-        extra_skus = [
-            (item["sku"], item["final_qty"])
-            for item in resolved_items[1:]
-        ]
-        print(f"  📦 Multi-item order: passing {len(extra_skus)} extra SKU(s) to checkout")
 
     # Checkout priority: True REST API → Vuex dispatch → DOM Selenium
     # Build extra_skus for multi-item Amazon orders (everything after primary)

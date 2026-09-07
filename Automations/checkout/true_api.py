@@ -172,6 +172,23 @@ def _add_item_api(driver, sku, qty):
         print("   [DEBUG] _add_item_api: no cart_id!")
         return False, 0.0
 
+    # Read existing cart items to determine if this SKU was already present
+    prev_qty = 0
+    prev_cart = _get_cart(driver)
+    if prev_cart:
+        for it in prev_cart.get("items", []):
+            zno = it.get("zoroNo") or it.get("sku")
+            if zno == sku:
+                for k in ("qty", "quantity", "requestedQuantity", "cartQuantity"):
+                    if k in it:
+                        try:
+                            prev_qty = int(float(it[k]))
+                            break
+                        except (TypeError, ValueError):
+                            pass
+                break
+    expected_qty = prev_qty + qty
+
     print(f"   [DEBUG] POST /v1/cart/{cart_id}/items  sku={sku} qty={qty}")
     r = _api(driver, "POST", f"/v1/cart/{cart_id}/items",
              {"item": {"zoroNo": sku, "qty": qty}})
@@ -208,10 +225,10 @@ def _add_item_api(driver, sku, qty):
                     except (TypeError, ValueError):
                         pass
             if actual_qty is None:
-                actual_qty = qty
-            if actual_qty != qty:
+                actual_qty = expected_qty
+            if actual_qty != expected_qty:
                 _time("_add_item_api", t0)
-                print(f"   [DEBUG] Qty mismatch: req {qty}, got {actual_qty}")
+                print(f"   [DEBUG] Qty mismatch: req +{qty} (expected total {expected_qty}), got {actual_qty}")
                 return False, 0.0
             _time("_add_item_api", t0)
             print(f"   [DEBUG] Item verified: {sku} x{actual_qty} @ ${price}")

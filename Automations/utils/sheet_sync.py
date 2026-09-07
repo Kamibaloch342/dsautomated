@@ -212,6 +212,20 @@ def _ensure_header(svc):
         print(f"[SheetSync] Could not ensure header: {e}")
 
 
+def is_order_log_sync_enabled() -> bool:
+    """Check if Order_Log Google Sheet sync is enabled.
+    Disabled by default since the web dashboard now handles order monitoring."""
+    try:
+        from utils.config import load_gui_config
+        cfg = load_gui_config()
+        auto_cfg = cfg.get("automation", {})
+        if "sync_order_log_to_sheet" in auto_cfg:
+            return bool(auto_cfg["sync_order_log_to_sheet"])
+        return bool(cfg.get("sync_order_log_to_sheet", False))
+    except Exception:
+        return False
+
+
 def sync_order_log_to_sheet():
     """Sync local order_log.txt to the Google Sheets Order_Log tab.
 
@@ -219,6 +233,9 @@ def sync_order_log_to_sheet():
     each time and appends new rows OR updates existing rows when data
     changes (e.g., tracking IDs added later).
     """
+    if not is_order_log_sync_enabled():
+        return
+
     _resolve_config()
 
     if not os.path.exists(_LOG_FILE):
@@ -342,6 +359,8 @@ def sync_order_log_to_sheet():
 
 def sync_order_log_async():
     """Fire-and-forget background sync (does not block caller)."""
+    if not is_order_log_sync_enabled():
+        return
     t = threading.Thread(target=sync_order_log_to_sheet, daemon=True)
     t.start()
 
@@ -418,6 +437,8 @@ def pull_sheet_to_local():
     """Append placements found in the sheet but NOT in the local log (placed on another
     machine) to local order_log.txt, and register them with the duplicate lock. Returns
     the number of foreign placements pulled."""
+    if not is_order_log_sync_enabled():
+        return 0
     _resolve_config()
     try:
         svc = _build_sheet_service()
@@ -468,6 +489,8 @@ def trim_sheet_to_days(days=5):
     """Keep only the last `days` of rows in the sheet (col A = YYYY-MM-DD order date),
     so it stays small. The full history always lives in each machine's order_log.txt.
     Returns the number of rows removed."""
+    if not is_order_log_sync_enabled():
+        return 0
     from datetime import timedelta
     _resolve_config()
     try:
@@ -503,6 +526,8 @@ def trim_sheet_to_days(days=5):
 
 def sync_bidirectional(days=5):
     """upload → download → trim. Each step isolated; safe to run every few minutes."""
+    if not is_order_log_sync_enabled():
+        return 0
     try:
         sync_order_log_to_sheet()
     except Exception as e:

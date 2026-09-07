@@ -201,23 +201,27 @@ def write_check_block(wsvc, headers, results: dict) -> None:
                                         valueInputOption="RAW", body={"values": rows}).execute()
 
 
-def move_asin(wsvc, headers, rows, asin: str, to_col: str, store: str) -> bool:
+def move_asin(wsvc, headers, rows, asin: str, to_col: str, store: str, profile_name: str = "", note_reason: str = "") -> bool:
     """Put the ASIN in `to_col` exactly once and blank it in every OTHER column of
     this store, including duplicate rows (idempotent: nothing happens if it is
-    already only there, once)."""
+    already only there, once).
+    Also writes a Google Sheets Cell Note: 'ZUHRA'
+    """
     if to_col not in headers:
         return False
     ti = headers.index(to_col)
     data = []
+    target_cell = None
     kept = False
     for h in headers:
         if not h.upper().startswith(store + "_"):
             continue
         ci = headers.index(h)
         for ri, r in enumerate(rows[1:], start=2):
-            if ci < len(r) and (r[ci] or "").strip().upper() == asin:
+            if ci < len(r) and (r[ci] or "").strip().upper() == asin.upper():
                 if h == to_col and not kept:
                     kept = True                      # first occurrence in the target stays
+                    target_cell = (ci, ri)
                 else:
                     data.append({"range": f"'{TAB}'!{_col_letter(ci)}{ri}", "values": [[""]]})
     if not kept:
@@ -226,11 +230,44 @@ def move_asin(wsvc, headers, rows, asin: str, to_col: str, store: str) -> bool:
             if ti < len(r) and (r[ti] or "").strip():
                 tr = ri + 1
         ensure_grid(wsvc, min_cols=ti + 1, min_rows=tr)
-        data.append({"range": f"'{TAB}'!{_col_letter(ti)}{tr}", "values": [[asin]]})
+        data.append({"range": f"'{TAB}'!{_col_letter(ti)}{tr}", "values": [[asin.upper()]]})
+        target_cell = (ti, tr)
     if not data:
         return False
     wsvc.spreadsheets().values().batchUpdate(spreadsheetId=GOOGLE_SHEET_ID,
                                              body={"valueInputOption": "RAW", "data": data}).execute()
+
+    # Attach ZUHRA attribution note to the target cell
+    if target_cell is not None and not kept:
+        try:
+            g = _sheet_grid(wsvc)
+            sheet_id = g.get("sheetId")
+            if sheet_id is not None:
+                ci, ri = target_cell
+                note_req = {
+                    "updateCells": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": ri - 1,
+                            "endRowIndex": ri,
+                            "startColumnIndex": ci,
+                            "endColumnIndex": ci + 1
+                        },
+                        "rows": [{
+                            "values": [{
+                                "note": "ZUHRA"
+                            }]
+                        }],
+                        "fields": "note"
+                    }
+                }
+                wsvc.spreadsheets().batchUpdate(
+                    spreadsheetId=GOOGLE_SHEET_ID,
+                    body={"requests": [note_req]}
+                ).execute()
+        except Exception:
+            pass  # Best effort note stamping
+
     return True
 
 
@@ -263,6 +300,22 @@ def load_verdicts() -> dict:
             return json.load(f) or {}
     except Exception:
         return {}
+
+
+def clear_verdicts(keep_permanent: bool = True) -> int:
+    """Clear local verdict cache when Google Sheet is wiped or on coupon reset.
+    Ensures Google Sheets remains the sole source of truth and local cache never
+    resurrects or locks out fresh testing. Keeps PDP-ineligible if keep_permanent=True."""
+    with _vlock, mutate_json(VERDICTS_PATH, {}) as v:
+        count = len(v)
+        if keep_permanent:
+            kept = {k: val for k, val in v.items() if (val.get("status") == "PROMO_INELIGIBLE" and "best price" in (val.get("note") or "").lower())}
+            v.clear()
+            v.update(kept)
+            return count - len(kept)
+        else:
+            v.clear()
+            return count
 
 
 def save_verdict(asin: str, row: dict, column: str = "", owner: str | None = None) -> None:
@@ -344,7 +397,9 @@ def record_verdict(profile_name: str, asin: str, status: str, coupon: str, cart:
             col = cur
         if (move if move is not None else _auto_assign(mod)) and col and col != cur:
             try:
-                moved = move_asin(wsvc, headers, rows, asin, col, store_prefix(profile_name))
+                reason = f"{status} / {suggest}: {note}" if note else f"{status} / {suggest}"
+                moved = move_asin(wsvc, headers, rows, asin, col, store_prefix(profile_name),
+                                  profile_name=profile_name, note_reason=reason)
             except Exception as e:
                 print(f"    ⚠️ move {asin} → {col}: {e}")
         owner = "bot" if moved else ("human" if blocked else None)
@@ -529,7 +584,9 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
                 if move and target and target != col:
                     try:
                         headers, rows = read_tab(svc)              # fresh: never trust a snapshot for a write
-                        moved = move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name))
+                        reason = f"{row.get('Check_Status', '')} / {row.get('Check_Suggest', '')}: {row.get('Check_Note', '')}"
+                        moved = move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name),
+                                          profile_name=profile_name, note_reason=reason)
                         if moved:
                             print(f"    ↪ {asin}: {col or '—'} → {target}")
                             headers, rows = read_tab(svc)
@@ -580,12 +637,24 @@ def run_check(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
     existing = load_verdicts()                      # local memory, not the sheet
     targets = collect_asins(headers, rows, profile_name)
     cutoff = (datetime.now() - timedelta(days=RECHECK_DAYS)).strftime("%Y-%m-%d %H:%M")
+    sheet_checks = read_check_block(headers, rows)
+    if "Check_ASIN" in headers and not sheet_checks and existing:
+        # Operator cleared the Check_* block in Google Sheets -> prune local non-permanent cache
+        clear_verdicts(keep_permanent=True)
+        existing = load_verdicts()
     todo = []
     for asin, meta in targets.items():
         prev = existing.get(asin)
-        if only_new and prev and (prev.get("at") or "") >= cutoff and prev.get("status") not in (
+        # If the sheet maintains a Check_* block and this ASIN is missing from it, the sheet was wiped/cleared for this ASIN:
+        if "Check_ASIN" in headers and asin not in sheet_checks and not is_permanent(asin, sku_map, existing):
+            pass
+        elif only_new and prev and (prev.get("at") or "") >= cutoff and prev.get("status") not in (
                 "TRANSIENT", "ERROR", "OOS", "UNMAPPED", "", None):
-            continue
+            # If a priority coupon is active and this ASIN was not tested under it, do NOT skip
+            if pri and prev.get("coupon") not in pri and not is_permanent(asin, sku_map, existing):
+                pass
+            else:
+                continue
         todo.append((asin, meta["column"]))
     # never-checked first, then the oldest verdicts — so a hand-added ASIN in the last
     # column is not starved behind a pile of transient re-tries

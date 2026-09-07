@@ -615,6 +615,13 @@ def add_second_item(driver, sku, qty):
         return False, 0
 
     cart_id = r['d'].get('cartId', '')
+
+    # Check if this sku is already in cart to calculate expected total quantity
+    cart_items = r.get('d', {}).get('items', [])
+    existing_item = _find_cart_item(cart_items, sku)
+    prev_qty = _extract_cart_item_qty(existing_item) if existing_item else 0
+    expected_qty = (prev_qty or 0) + qty
+
     r = zoro_api(driver, "POST", f"/v1/cart/{cart_id}/items",
                  {"item": {"zoroNo": sku, "qty": qty}})
     if r.get('s') != 200:
@@ -629,12 +636,12 @@ def add_second_item(driver, sku, qty):
     actual_qty = _extract_cart_item_qty(item)
     if actual_qty is None:
         print(f"   [ZORO API] ⚠ Could not verify cart qty for {sku}; continuing")
-    elif actual_qty != qty:
-        print(f"   [ZORO API] Qty mismatch for {sku}: requested {qty}, cart shows {actual_qty}")
+    elif actual_qty != expected_qty:
+        print(f"   [ZORO API] Qty mismatch for {sku}: requested +{qty} (expected total {expected_qty}), cart shows {actual_qty}")
         return False, 0
 
     price = _extract_cart_item_price(item)
-    print(f"   [ZORO API] 2nd item added: {sku} x{qty} @ ${price:.2f}")
+    print(f"   [ZORO API] 2nd item added: {sku} x{qty} @ ${price:.2f}" + (f" (cart total: {actual_qty})" if prev_qty else ""))
     return True, price
 
 

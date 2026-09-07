@@ -70,8 +70,11 @@ def main():
     #      made on other machines into the local log (+duplicate lock), trim sheet to 5 days.
     #      Runs BEFORE placer_log so pulled rows land in order_placer_orders this same pass.
     def sh():
-        from utils.sheet_sync import sync_bidirectional
-        sync_bidirectional(days=5)
+        from utils.sheet_sync import sync_bidirectional, is_order_log_sync_enabled
+        if is_order_log_sync_enabled():
+            sync_bidirectional(days=5)
+        else:
+            print("[auto-sync] sheet_log: skipped (Order_Log sync disabled)", flush=True)
     step("sheet_log", sh)
 
     def p():

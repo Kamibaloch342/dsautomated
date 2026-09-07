@@ -1,8 +1,9 @@
 # ZUHRA Software — Complete System Documentation
 
 > **Generated:** Friday, 5 September 2026  
+> **Updated:** Monday, 7 September 2026 (Reflecting Cloudflare R2 Layer, Priority ASIN Control Rebuild, and Option A Sheet-Authority Model)  
 > **Codebase:** `Automations/` (HOANK STORE + Hathoro Amazon → Zoro Dropshipping)  
-> **Total Production Code:** ~35,000+ lines across 50+ Python files
+> **Total Production Code:** ~38,000+ lines across 55+ Python files
 
 ---
 
@@ -478,14 +479,18 @@ When a new priority coupon (e.g., `FACILITY`) arrives on Monday, the order queue
 
 ---
 
-##### The Monday Weekly Reset & Expiry Lifecycle
-* When Sunday midnight passes, Zoro's weekly coupon expires (`FACILITY` is dead, replaced by `SUPPLY15`).
-* Any ASIN routed to Coupon profile solely because of `FACILITY` will now fail checkout.
-* **Reset Architecture**:
-  1. **Reset Trigger**: A "Reset Weekly Priority Coupons" dashboard button (or automated Monday cron).
-  2. Clears the temporary priority coupon column in `Priority_ASIN_Control`.
-  3. Operator (or scraper) supplies the new weekly coupon string in `bot_config.json` (`"priority_coupon": "SUPPLY15"`).
-  4. The background verifier (`engine/priority_check.py`) autonomously re-probes active ASINs and re-populates the sheet cleanly.
+##### The Monday Weekly Reset & Expiry Lifecycle (Option A: Full Sheet Wipe & Re-evaluation)
+* **The Expiry Event**: Every Sunday midnight, Zoro's weekly priority coupon expires (`FACILITY` expires, replaced on Monday morning by e.g. `SUPPLY15` or `WORK20`).
+* **Why Option A (Full Wipe & Re-test) Is Strictly Required**:
+  1. **Zoro Select Margin Optimization (15–20% vs. 10%)**: Under normal circumstances, Zoro Select products get an automatic 10% discount on the Reseller profile with blind packaging. A standard 10% coupon on the Coupon profile offers no advantage. **However, weekly priority coupons offer 15% or 20% discounts**. A 15% or 20% coupon beats the Reseller 10% auto-discount and yields 5% to 10% more margin! Leaving Zoro Select items stranded in Reseller without re-testing costs the business hundreds of dollars weekly. Therefore, Zoro Select products MUST be re-evaluated whenever a new priority coupon arrives.
+  2. **Preventing Failed Checkouts**: Any ASIN that was promoted to the Coupon profile specifically because of the previous coupon will fail checkout once that coupon expires.
+* **The Reset Architecture**:
+  1. **Sheet Wipe**: The operator clears the ASIN columns (`HS_Coupon`, `DM_Coupon`, etc.) and/or the `Check_*` block in Google Sheets, or triggers "Reset & Rebuild" from the dashboard.
+  2. **Anti-Caching Guarantee (Google Sheets Is Master)**:
+     - The placer loads priority ASINs directly from the Google Sheets API every cycle (`_load_asin_column_from_sheet`). When the sheet column is wiped, the placer immediately receives `[]` and clears `_LAST_PRIORITY_ASINS[:] = []`. Local memory CANNOT override an empty sheet.
+     - The background verifier (`engine/priority_check.py`) inspects the Google Sheet `Check_*` block. If the operator wiped the sheet or deleted an ASIN's check row, the engine immediately detects it, purges the local non-permanent verdict cache via `clear_verdicts(keep_permanent=True)`, and forces a fresh test. Local JSON files CAN NEVER block or resurrect wiped ASINs.
+  3. **Permanent Brand Ineligibility Preserved**: Only true manufacturer-level brand exclusions (**Milwaukee, DeWalt, Fluke**) that strictly forbid all promotional codes on Zoro remain permanently in `PROMO_INELIGIBLE`. Everything else is re-evaluated.
+  4. **Dynamic On-the-Fly Re-population**: As new coupons arrive, `engine/priority_check.py` autonomously probes cart viability with the new weekly code, placing working ASINs into Coupon and non-working items into Reseller / Deciding mode.
 
 ---
 
@@ -1680,10 +1685,23 @@ These are large, contain secrets, or are machine-specific.
 
 ---
 
+### 🔴 RULE 26: Google Sheets Is the Sole Authority — Local Caches Must Never Override or Block Sheet Wipes
+
+Google Sheets (`Priority_ASIN_Control` tab) is the single source of truth for all priority routing, deciding ASINs, and supervisor classifications. Local caches (`data/priority_verdicts.json`, in-memory `_LAST_PRIORITY_ASINS`) exist purely for speed, NOT to dictate state.
+
+**NEVER:**
+- Allow local cache to skip testing an ASIN when an operator has wiped or cleared its entry in Google Sheets.
+- Retain stale local verdicts when a weekly priority coupon expires or changes.
+- Let local memory block an ASIN from being re-probed when a new coupon code (e.g. 15% or 20%) arrives.
+- Fall back to local cache when the Google Sheet explicitly returns an empty column `[]` (an empty column means the operator wiped it; fallback is ONLY permitted on API network exceptions).
+- Preserve coupon verdicts across the Monday sheet reset (only permanent brand ineligibles like Milwaukee, DeWalt, and Fluke may be preserved).
+
+---
+
 ### Summary: Rule Priority
 
 | Priority | Rules | Theme |
 |----------|-------|-------|
-| 🔴 **CRITICAL** (financial risk) | 1, 2, 3, 4, 5, 6, 7 | Placement safety, duplicate prevention, data integrity |
+| 🔴 **CRITICAL** (financial risk) | 1, 2, 3, 4, 5, 6, 7, 26 | Placement safety, duplicate prevention, data integrity, sheet authority |
 | 🟡 **IMPORTANT** (operational risk) | 8, 9, 10, 11, 12, 13, 14, 15 | Configuration stability, data preservation |
 | 🟢 **STANDARD** (code quality) | 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 | Best practices, consistency |

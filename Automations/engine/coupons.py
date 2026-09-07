@@ -804,14 +804,48 @@ def _append_coupon_to_sheet(code):
     for attempt in range(1, max_attempts + 1):
         try:
             svc = _get_sheets_service()
-            svc.spreadsheets().values().append(
+            append_res = svc.spreadsheets().values().append(
                 spreadsheetId=GOOGLE_SHEET_ID,
                 range=f"{GOOGLE_SHEET_TAB}!A1",
                 valueInputOption="RAW",
                 insertDataOption="OVERWRITE",
                 body={"values": [[code]]},
             ).execute()
-            console.print(f"[green]   📊 Uploaded to Google Sheet[/green]")
+            try:
+                from datetime import datetime
+                updated_range = append_res.get("updates", {}).get("updatedRange", "")
+                if updated_range:
+                    meta = svc.spreadsheets().get(spreadsheetId=GOOGLE_SHEET_ID, fields="sheets.properties").execute()
+                    sheet_id = next((s["properties"]["sheetId"] for s in meta.get("sheets", []) if s["properties"]["title"] == GOOGLE_SHEET_TAB), None)
+                    if sheet_id is not None:
+                        m = re.search(r"[A-Z]+(\d+)", updated_range.split("!")[-1])
+                        if m:
+                            row_num = int(m.group(1))
+                            svc.spreadsheets().batchUpdate(
+                                spreadsheetId=GOOGLE_SHEET_ID,
+                                body={
+                                    "requests": [{
+                                        "updateCells": {
+                                            "range": {
+                                                "sheetId": sheet_id,
+                                                "startRowIndex": row_num - 1,
+                                                "endRowIndex": row_num,
+                                                "startColumnIndex": 0,
+                                                "endColumnIndex": 1
+                                            },
+                                            "rows": [{
+                                                "values": [{
+                                                    "note": "ZUHRA"
+                                                }]
+                                            }],
+                                            "fields": "note"
+                                        }
+                                    }]
+                                }
+                            ).execute()
+            except Exception:
+                pass
+            console.print(f"[green]   📊 Uploaded to Google Sheet with ZUHRA license note[/green]")
             return True
         except Exception as e:
             err = str(e).lower()

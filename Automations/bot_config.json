@@ -83,6 +83,7 @@
             "auto_assign": true,
             "max_per_run": 10,
             "recheck_per_cycle": 15
-        }
+        },
+        "sync_order_log_to_sheet": false
     }
 }

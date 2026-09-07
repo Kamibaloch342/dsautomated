@@ -65,3 +65,4 @@ page_source_tmp.html
 **/venv_*/
 **/.venv/
 **/node_modules/
+**/.cache/
