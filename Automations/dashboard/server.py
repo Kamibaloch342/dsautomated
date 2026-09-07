@@ -2089,6 +2089,17 @@ class H(BaseHTTPRequestHandler):
                 return self._send(asin_detail(urllib.parse.unquote(p.split("/api/asin/", 1)[1]), q))
             if p == "/api/orders":
                 return self._send(orders(q))
+            if p == "/api/daybook":
+                import daybook as _dbk
+                return self._send(_dbk.daybook(q))
+            if p == "/api/daybook.csv":
+                import daybook as _dbk
+                _csv, _name = _dbk.daybook_csv(q)
+                return self._send(_csv.encode("utf-8-sig"), ctype="text/csv; charset=utf-8",
+                                  hdrs=[("Content-Disposition", f'attachment; filename="{_name}"')])
+            if p == "/api/growth":
+                import daybook as _dbk
+                return self._send(_dbk.growth(q))
             if p == "/api/listings":
                 return self._send(listings(q))
             if p == "/api/walmart":

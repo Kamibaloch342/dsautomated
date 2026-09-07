@@ -106,3 +106,15 @@ Statuses worth surfacing: SUPERVISED, SUPERVISOR_RETRY, ROUTED_TO_RESELLER, ROUT
 - `GET /api/unmapped`, `/api/needs_priority` (live placer panels), `/api/tracker`, `/api/listings` (+`POST /api/listing_label`), `/api/walmart`, `/api/repricer?account=`, `/api/asin/<asin>`, `/api/asins`, `/api/raw`, `POST /api/cell`
 - `GET /api/reminders`, `POST /api/reminder`, `POST /api/reminder_update` (admin), `GET/POST /api/pnl`, `/api/pnl_hoank`
 Removed: `/api/chat` (returns empty / 410) and `/chat_media/`.
+
+## Analytics (added 8 Sep 2026) — `dashboard/daybook.py`
+
+All three honour `account`, `from`, `to` (YYYY-MM-DD), `profile`, `zoro_account`, `label`.
+
+| Endpoint | What it returns |
+|---|---|
+| `GET /api/daybook?days=14&datecol=purchase\|placed\|shipped\|delivered` | Orders grouped by day (newest first). Each order carries money, dates, tracking, coupon, CRM fields and `s`, the derived lifecycle flags: `placed, pending, shipped, delivered, tracking, late_ship, late_delivery, cancelled, refunded, returned, loss, incomplete, tracking_msg_sent(+tracking_msg_at), delivery_checkin(+at), oos_notice, cancel_ack, buyer_wrote(+buyer_msgs), has_case, refund_at, return_at, refund_amount, return_reason`. Per-day `counts` + `money`, range `totals`, and `freshness` (last placed / last closing enrichment / last buyer, return and tracking emails). Sources: `v_orders_all` (closing ∪ placed-but-unclosed), `order_crm`, `archive_messages` (tracking_sent, delivery_checkin, oos_notice, cancellation_ack, buyer_inquiry/reply), `archive_returns` (dated refunds/returns — `closing_orders.refund_date` is always empty). |
+| `GET /api/daybook.csv` (same params) | The same rows as a CSV attachment, `date` column first, one row per order with every flag as a column. |
+| `GET /api/growth` (default last 30 days) | Period vs the previous equal period: `summary`/`prev_summary`/`compare`, `daily`, `weekly`, `weekdays`, `hours` (placement hour), `profiles`, `accounts`, `zoro_accounts`, `coupons` + `coupon_total` (priority = multi-use, regular = single-use), `asins` (top_profit, top_volume, losers, trouble, new, growing, fading), `refunds` (reasons, asins, cancel_asins, net_after_refund), `shipping` (on-time %, early/on-time/late, placement / time-to-ship / Zoro ship hours, purchase→delivered days, tracking-message coverage, carriers, weekly late rate), `buyers` (repeat buyers, business share), `states`, `margin_dist`, `freshness`. |
+
+Reading rule for the UI: orders purchased after `freshness.last_closing_enrichment` show as pending / not shipped until the closing pipeline runs — that is data lag, not a late shipment.
