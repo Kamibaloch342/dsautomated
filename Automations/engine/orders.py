@@ -1149,9 +1149,9 @@ RECHECK_PER_CYCLE = max(1, int(((gui_cfg.get("automation") or {}).get("priority_
 
 
 def _watch_priority_coupon_set(coupon_codes):
-    """The weekly coupon change: when a NEW priority coupon appears in the Coupons
-    tab, every coupon-dependent ASIN of this store is queued for a re-test with the
-    new coupons (permanent PDP-ineligible ones excluded). The queue is drained a few
+    """The weekly coupon change: when a priority coupon appears in or disappears from
+    the Coupons tab, every coupon-dependent ASIN of this store is queued for a re-test
+    with the current coupons (permanent PDP-ineligible ones excluded). The queue is drained a few
     ASINs per cycle between placements, and each verdict moves the ASIN in the sheet."""
     if not IS_COUPON_PROFILE or LABELS_ONLY or DRY_RUN:
         return
@@ -1168,11 +1168,16 @@ def _watch_priority_coupon_set(coupon_codes):
                 json.dump({"codes": cur, "at": time.strftime("%Y-%m-%d %H:%M")}, f)
             return
         new = sorted(set(cur) - set(prev))
-        if new:
-            print(f"  🎟️  NEW priority coupon(s) in the sheet: {', '.join(new)} — "
-                  f"queueing a re-check of every coupon-dependent ASIN")
+        gone = sorted(set(prev) - set(cur))
+        if new or gone:
+            # A new code can promote ASINs to _Coupon; an expired/removed code means the
+            # ASINs that were in _Coupon because of it must be re-sorted (the owner's
+            # rule: "when FACILITY expires, all those 100 have to be checked again").
+            what = (f"new: {', '.join(new)}" if new else "") + (" | " if new and gone else "") + \
+                   (f"expired/removed: {', '.join(gone)}" if gone else "")
+            print(f"  🎟️  Priority coupon set changed ({what}) — queueing a re-check of every coupon-dependent ASIN")
             from engine import priority_check as _pc
-            n = _pc.enqueue_recheck(PROFILE_NAME, f"new priority coupon(s): {', '.join(new)}", mod=sys.modules[__name__])
+            n = _pc.enqueue_recheck(PROFILE_NAME, f"priority coupon change — {what}", mod=sys.modules[__name__])
             print(f"     {n} ASIN(s) queued — {RECHECK_PER_CYCLE} re-tested per cycle between placements")
         if cur != prev:
             with open(_PRI_SET_PATH, "w", encoding="utf-8") as f:
