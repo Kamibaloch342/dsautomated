@@ -240,6 +240,57 @@ def _auto_assign(mod) -> bool:
         return True
 
 
+def _sheet_notes(mod) -> bool:
+    """Write the Check_* provenance block into the sheet? OFF by default — the sheet
+    stays the six columns the team knows; the bot's memory lives in
+    data/priority_verdicts.json and the decision log / dashboard show the reasons."""
+    try:
+        return bool(((mod.gui_cfg.get("automation") or {}).get("priority_check") or {}).get("write_sheet_notes", False))
+    except Exception:
+        return False
+
+
+# ── local verdict memory (replaces the sheet's Check_* block) ─────────────
+VERDICTS_PATH = os.path.join(DATA, "priority_verdicts.json")
+_vlock = __import__("threading").Lock()
+
+
+def load_verdicts() -> dict:
+    """asin -> {status, suggest, coupon, cart, at, profile, note, column}"""
+    try:
+        with open(VERDICTS_PATH, encoding="utf-8") as f:
+            return json.load(f) or {}
+    except Exception:
+        return {}
+
+
+def save_verdict(asin: str, row: dict, column: str = "") -> None:
+    with _vlock:
+        v = load_verdicts()
+        v[asin.upper()] = {"status": row.get("Check_Status"), "suggest": row.get("Check_Suggest"),
+                           "coupon": row.get("Check_Coupon", ""), "cart": row.get("Check_Cart", ""),
+                           "at": row.get("Check_At") or _now(), "profile": row.get("Check_Profile", ""),
+                           "note": row.get("Check_Note", ""), "column": column}
+        os.makedirs(DATA, exist_ok=True)
+        tmp = VERDICTS_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(v, f, indent=0, sort_keys=True)
+        os.replace(tmp, VERDICTS_PATH)
+
+
+def is_permanent(asin: str, sku_map: dict | None = None) -> bool:
+    """PDP-badge ineligible ASINs never need a re-test."""
+    v = load_verdicts().get(asin.upper()) or {}
+    if v.get("status") == "PROMO_INELIGIBLE" and "best price" in (v.get("note") or "").lower():
+        return True
+    try:
+        from platforms.zoro import pdp_promo_ineligible
+        code = ((sku_map or {}).get(asin.upper()) or {}).get("zoro_code")
+        return bool(code and pdp_promo_ineligible(code))
+    except Exception:
+        return False
+
+
 def record_verdict(profile_name: str, asin: str, status: str, coupon: str, cart: str, suggest: str,
                    note: str = "", mod=None, move=None) -> dict:
     """Write ONE verdict (used by the supervisor after a real order): Check_* row +
@@ -255,19 +306,20 @@ def record_verdict(profile_name: str, asin: str, status: str, coupon: str, cart:
                "Check_Cart": cart or "", "Check_Suggest": suggest, "Check_At": _now(),
                "Check_Profile": profile_name, "Check_Note": note or ""}
         moved = False
-        if (move if move is not None else _auto_assign(mod)):
-            col = suggested_column(profile_name, suggest)
-            if col:
-                try:
-                    moved = move_asin(wsvc, headers, rows, asin, col, store_prefix(profile_name))
-                except Exception as e:
-                    print(f"    ⚠️ move {asin} → {col}: {e}")
-        had_block = "Check_ASIN" in headers
-        headers = ensure_check_headers(wsvc, headers)
-        if moved or not had_block:
-            headers, rows = read_tab(svc)           # re-read after the move / header creation
-        upsert_check_row(wsvc, headers, rows, row)
-    print(f"  📋 sheet: {asin} → {status} / {suggest}" + (" (moved)" if moved else ""))
+        col = suggested_column(profile_name, suggest)
+        if (move if move is not None else _auto_assign(mod)) and col:
+            try:
+                moved = move_asin(wsvc, headers, rows, asin, col, store_prefix(profile_name))
+            except Exception as e:
+                print(f"    ⚠️ move {asin} → {col}: {e}")
+        save_verdict(asin, row, col)                # the bot's own memory (local file)
+        if _sheet_notes(mod):                       # optional: mirror it into the sheet
+            had_block = "Check_ASIN" in headers
+            headers = ensure_check_headers(wsvc, headers)
+            if moved or not had_block:
+                headers, rows = read_tab(svc)
+            upsert_check_row(wsvc, headers, rows, row)
+    print(f"  📋 sheet: {asin} → {status} / {suggest}" + (f" (moved to {col})" if moved else ""))
     return {"ok": True, "moved": moved}
 
 
@@ -385,9 +437,11 @@ def _priority_codes(mod, coupon_codes):
 
 
 def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, svc, wsvc, headers, rows, move):
-    with _write_lock:
-        headers = ensure_check_headers(wsvc, headers)
-    headers, rows = read_tab(svc)
+    notes = _sheet_notes(mod)
+    if notes:
+        with _write_lock:
+            headers = ensure_check_headers(wsvc, headers)
+        headers, rows = read_tab(svc)
     results = []
     for i, (asin, col) in enumerate(asins_with_cols, 1):
         t0 = time.time()
@@ -409,22 +463,23 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
             pass
         print(f"  [{i}/{len(asins_with_cols)}] {asin} ({col or 'new'}) → {row['Check_Status']} / "
               f"{row.get('Check_Suggest', '')} {row.get('Check_Coupon', '')} {row.get('Check_Cart', '')}  ({time.time() - t0:.0f}s)")
+        target = suggested_column(profile_name, row.get("Check_Suggest", ""))
         with _write_lock:
-            if move:
-                target = suggested_column(profile_name, row.get("Check_Suggest", ""))
-                if target:
-                    try:
-                        if move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name)):
-                            print(f"    ↪ {asin}: {col or '—'} → {target}")
-                            headers, rows = read_tab(svc)
-                    except Exception as e:
-                        print(f"    ⚠️ move failed: {e}")
-            try:
-                upsert_check_row(wsvc, headers, rows, row)
-                headers, rows = read_tab(svc)
-            except Exception as e:
-                print(f"    ⚠️ could not write the verdict row for {asin}: {e}")
-    print(f"  ✅ {len(results)} verdict(s) written to '{TAB}' Check_* columns")
+            if move and target:
+                try:
+                    if move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name)):
+                        print(f"    ↪ {asin}: {col or '—'} → {target}")
+                        headers, rows = read_tab(svc)
+                except Exception as e:
+                    print(f"    ⚠️ move failed: {e}")
+            save_verdict(asin, row, target)
+            if notes:
+                try:
+                    upsert_check_row(wsvc, headers, rows, row)
+                    headers, rows = read_tab(svc)
+                except Exception as e:
+                    print(f"    ⚠️ could not write the verdict row for {asin}: {e}")
+    print(f"  ✅ {len(results)} verdict(s) recorded" + (f" (+ Check_* columns in '{TAB}')" if notes else " in data/priority_verdicts.json"))
     try:
         os.makedirs(DATA, exist_ok=True)
         with open(STATE_PATH, "w", encoding="utf-8") as f:
@@ -447,13 +502,13 @@ def run_check(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
     sku_map = sku_map if sku_map is not None else (mod.load_sku_map() or {})
     pri = _priority_codes(mod, coupon_codes)
     move = _auto_assign(mod) if auto_assign is None else bool(auto_assign)
-    existing = read_check_block(headers, rows)
+    existing = load_verdicts()                      # local memory, not the sheet
     targets = collect_asins(headers, rows, profile_name)
     cutoff = (datetime.now() - timedelta(days=RECHECK_DAYS)).strftime("%Y-%m-%d %H:%M")
     todo = []
     for asin, meta in targets.items():
         prev = existing.get(asin)
-        if only_new and prev and prev.get("Check_At", "") >= cutoff and prev.get("Check_Status") not in ("TRANSIENT", "ERROR", ""):
+        if only_new and prev and (prev.get("at") or "") >= cutoff and prev.get("status") not in ("TRANSIENT", "ERROR", "", None):
             continue
         todo.append((asin, meta["column"]))
     todo = todo[:max_asins]
@@ -483,12 +538,14 @@ def enqueue_recheck(profile_name: str, reason: str, mod=None, include_ineligible
     if mod is None:
         from engine import orders as mod  # noqa: F811
     headers, rows = read_tab(mod._get_sheets_service())
-    block = read_check_block(headers, rows)
     targets = collect_asins(headers, rows, profile_name)
+    try:
+        sku_map = mod.load_sku_map() or {}
+    except Exception:
+        sku_map = {}
     asins = []
     for asin, meta in targets.items():
-        prev = block.get(asin) or {}
-        if not include_ineligible and prev.get("Check_Status") in PERMANENT and "PDP" in (prev.get("Check_Note") or "").upper():
+        if not include_ineligible and is_permanent(asin, sku_map):
             continue
         asins.append([asin, meta["column"]])
     os.makedirs(DATA, exist_ok=True)

@@ -92,9 +92,13 @@ stop_closing / run_messages {account}`, `reload_config`, `set_headless {on}`,
    primary ineligibility signal.
 7. Otherwise (cart < $50, healthy margin) → reseller.
 
-Every verdict is written back into *Priority_ASIN_Control* (`Check_*` columns + the ASIN
-is moved into `<store>_Coupon` / `_Reseller` / `_Deciding`), so the next order of the same
-ASIN is pre-sorted. When a **new priority coupon** appears in the Coupons tab, every
+Every verdict moves the ASIN into `<store>_Coupon` / `_Reseller` / `_Deciding` in
+*Priority_ASIN_Control* (the sheet keeps its six columns, nothing else is written there),
+so the next order of the same ASIN is pre-sorted. The bot's memory of why — coupon, cart,
+date, profile — lives in `data/priority_verdicts.json` and the decision log
+(`bot_decisions`, dashboard → Attention → Supervisor log). Setting
+`automation.priority_check.write_sheet_notes: true` additionally mirrors it into
+`Check_*` columns of the sheet (off by default). When a **new priority coupon** appears in the Coupons tab, every
 coupon-dependent ASIN of the store is queued and re-tested with the new codes, 15 per
 placer cycle, and moved again (`engine/priority_check.py: enqueue_recheck / run_queue`).
 Permanent PDP-ineligible ASINs are skipped unless *Reset & rebuild* is used. Zoro's coupon
