@@ -914,7 +914,13 @@ const Home = {
   },
   async loadKpis(){
     try {
-      const [ov, td] = await Promise.all([GET("/api/overview", S.gp), GET("/api/today", S.gp)]);
+      GET("/api/today", S.gp).then(td => {
+        const cards = td && td.cards ? td.cards : [];
+        const el = $("#home-today");
+        if (el) el.innerHTML = cards.map(c => `<div class="kpi sev-${esc(c.sev||"ok")}"><div class="l">${esc(c.title)}</div><div class="v" style="font-size:${String(c.value).length>10?"15px":"20px"}">${esc(c.value)}</div><div class="s">${esc(c.sub||"")}</div></div>`).join("") || "";
+      }).catch(()=>{});
+
+      const ov = await GET("/api/overview", S.gp);
       const k = ov.kpi || {}; const series = (ov.series||[]).slice(-30);
       const mx = Math.max(1, ...series.map(s=>Math.abs(U.n(s.earnings))));
       const spark = `<div class="sparkwrap" title="daily earnings, last ${series.length} days">${series.map(s=>`<i style="height:${Math.max(4,Math.round(U.n(s.earnings)/mx*100))}%" title="${esc(s.date)} · ${U.money(s.earnings,0)} · ${s.orders} orders"></i>`).join("")}</div>`;
@@ -926,8 +932,6 @@ const Home = {
         ["Orders", U.int(k.orders), U.int(k.units)+" units", ""],
         ["Avg order", k.orders?U.money(U.n(k.earnings)/k.orders):"—", k.orders?U.money(U.n(k.profit)/k.orders)+" profit each":"", ""],
       ].map(([l,v,s,c])=>`<div class="kpi ${c}"><div class="l">${l}</div><div class="v money">${v}</div><div class="s">${s}</div></div>`).join("");
-      const cards = td.cards || [];
-      $("#home-today").innerHTML = cards.map(c => `<div class="kpi sev-${esc(c.sev||"ok")}"><div class="l">${esc(c.title)}</div><div class="v" style="font-size:${String(c.value).length>10?"15px":"20px"}">${esc(c.value)}</div><div class="s">${esc(c.sub||"")}</div></div>`).join("") || "";
     } catch (e) { $("#home-kpis").innerHTML = U.err(e); }
   },
   async loadFleet(){
