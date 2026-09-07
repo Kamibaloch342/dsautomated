@@ -2075,6 +2075,8 @@ class H(BaseHTTPRequestHandler):
                 return self._send(OPS.reconcile(DB, int(q.get("days", ["30"])[0] or 30)))
             if p == "/api/cloud_status":
                 return self._send(OPS.cloud_status())
+            if p == "/api/decisions":
+                return self._send(OPS.decisions(DB, q))
             if p == "/api/placer_events":
                 return self._send(OPS.placer_events(float(q.get("hours", ["24"])[0] or 24),
                                                     (q.get("status", [""])[0] or "").split(","),

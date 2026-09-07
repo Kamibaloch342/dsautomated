@@ -92,7 +92,7 @@ SLIM_TABLES = [
     "dash_prefs", "dash_reminders", "listing_health", "listing_labels", "listing_relist",
     "listing_runs", "order_feedback", "order_messages", "order_returns", "walmart_orders",
     "insight_resolutions", "action_log", "zoro_watch", "monthly_pnl", "hoank_pnl",
-    "amazon_order_details", "placer_claims", "closing_run_log",
+    "amazon_order_details", "placer_claims", "closing_run_log", "bot_decisions",
 ]
 SLIM_VIEWS = ("v_orders_all", "v_closing")
 

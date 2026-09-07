@@ -67,6 +67,7 @@ class Recorder:
         self.coupon_results = {}          # code -> (ok, result)
         self.coupon_calls = []
         self.verdicts = []
+        self.decisions = []
 
     def update_amazon_seller_id(self, driver, amazon_id, value, profile, **kw):
         self.labels.append((amazon_id, value))
@@ -117,6 +118,7 @@ def make_ns(rec, tmpdir, profile="HS_COUPON", routing=None):
         "_record_asin_verdict": rec.record_verdict,
         "pdp_promo_ineligible": lambda sku: None,
         "check_pdp_promo": lambda d, sku: None,
+        "_DLOG": __import__("types").SimpleNamespace(log=lambda kind, **f: rec.decisions.append((kind, f))),
     }
     for name, code in load_functions().items():
         exec(code, ns)
@@ -296,6 +298,33 @@ def main():
     srt, counts = ns["_sort_orders_for_processing"](orders)
     ids = [o["amazon_id"] for o in srt]
     check("sort: priority first, supervised strictly last", ids[0] == "p1" and ids[-2:] == ["s1", "s2"], str(ids))
+
+    # ── supervisor returns every coupon attempt (for the decision log) ──────
+    rec.coupon_results = {"PRI20": (False, MIN50), "PRI15": (False, ITEM), "REG1": (True, 3.0)}
+    d = sup(None, [{"sku": "G888", "asin": "B0SUPER0004"}], 75.0, pri, reg, ns["_load_coupon_intel"](), unit_price=75.0)
+    kinds = [(a["code"], a["tier"], a.get("ok"), a.get("kind")) for a in d["attempts"]]
+    check("supervisor: attempts list carries tier + Zoro's classified reply per coupon",
+          kinds == [("PRI20", "priority", False, "min_order"), ("PRI15", "priority", False, "item"), ("REG1", "regular", True, None)]
+          and d["min_orders"] == {"PRI20": 50.0}, str(kinds))
+    check("route/learn: decisions are recorded through the decision log",
+          any(k == "route" for k, _ in rec.decisions) and any(k == "learn" for k, _ in rec.decisions))
+
+    # ── decision_log module: JSONL + table round trip in a temp location ─────
+    from utils import decision_log as dlmod
+    tmpd = tempfile.mkdtemp()
+    dlmod.DIR, dlmod.DB_PATH, dlmod._schema_ready = os.path.join(tmpd, "decisions"), os.path.join(tmpd, "t.db"), False
+    r1 = dlmod.log("supervisor", profile="HS_COUPON", amazon_id="111-1", asin="B0T", sku="G1", action="place", tier="regular",
+                   cart=75.5, unit_price=75.5, qty="1", earnings=90, margin=0.12, zoro_select=False, pdp_ineligible=False,
+                   verdict={"status": "REGULAR_OK", "suggest": "Coupon"}, attempts=[{"code": "REG1", "ok": True}], reason="test")
+    dlmod.log("deciding", profile="HS_RESELLER", amazon_id="111-2", asin="B0T", action="place_here", cart=30, reason="t")
+    rows = dlmod.read(date=r1["ts"][:10], limit=10)
+    js = dlmod.read_jsonl(r1["ts"][:10])
+    check("decision_log: table rows flattened (verdict, attempts, numbers) and JSONL complete",
+          len(rows) == 2 and rows[0]["kind"] == "deciding" and rows[1]["verdict_status"] == "REGULAR_OK"
+          and rows[1]["attempts"] == 1 and rows[1]["cart"] == 75.5 and rows[1]["data"]["attempts"][0]["code"] == "REG1"
+          and len(js) == 2 and js[0]["kind"] == "supervisor")
+    check("decision_log: filters by kind / order id", len(dlmod.read(kind="supervisor", limit=10)) == 1
+          and dlmod.read(amazon_id="111-2", limit=10)[0]["action"] == "place_here")
 
     # ── static guard: no function-local import may shadow a name read earlier ──
     # (a `from x import NAME` anywhere inside a function makes NAME local to the WHOLE

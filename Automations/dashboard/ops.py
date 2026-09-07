@@ -631,6 +631,36 @@ def placer_events(hours: float = 24, statuses: list[str] | None = None, limit: i
     return {"hours": hours, "events": out[:limit], "available": os.path.isdir(rajar)}
 
 
+# ── decision log (supervisor / deciding / pdp / route / learn / sheet / check / outcome) ──
+def decisions(db: str, q: dict) -> dict:
+    """Structured routing decisions from bot_decisions (utils/decision_log.py).
+    Works in both modes: the table rides to the cloud in the slim DB."""
+    from utils import decision_log as dl
+    g = lambda k, d=None: (q.get(k, [d])[0] or d)  # noqa: E731
+    rows = dl.read(db_path=db, date=g("date"), kind=g("kind"), profile=g("profile"), asin=g("asin"),
+                   amazon_id=g("order"), action=g("action"), since=g("since"), limit=int(g("limit", "500") or 500))
+    summary = {"by_kind": {}, "by_action": {}, "supervisor_by_action": {}, "coupon_hits": {}}
+    for r in rows:
+        summary["by_kind"][r["kind"]] = summary["by_kind"].get(r["kind"], 0) + 1
+        key = f"{r['kind']}:{r.get('action')}"
+        summary["by_action"][key] = summary["by_action"].get(key, 0) + 1
+        if r["kind"] == "supervisor":
+            summary["supervisor_by_action"][r.get("action")] = summary["supervisor_by_action"].get(r.get("action"), 0) + 1
+            for a in (r.get("data") or {}).get("attempts") or []:
+                c = summary["coupon_hits"].setdefault(a.get("code"), {"tried": 0, "worked": 0, "item": 0, "min_order": 0,
+                                                                        "dead": 0, "transient": 0})
+                c["tried"] += 1
+                if a.get("ok"):
+                    c["worked"] += 1
+                else:
+                    k = a.get("kind") or "other"
+                    if k == "token":
+                        k = "transient"
+                    if k in c:
+                        c[k] += 1
+    return {"rows": rows, "summary": summary, "count": len(rows)}
+
+
 # ── reconciliation ────────────────────────────────────────────────────────
 def reconcile(db: str, days: int = 30) -> dict:
     """Gmail says N orders, the report/closing says M — show the gap and the ids."""

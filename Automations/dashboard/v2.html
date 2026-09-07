@@ -502,7 +502,7 @@ html[data-theme="light"] .console,html:not([data-theme]) .console{background:#0b
 
     <section class="sec" id="sec-attention">
       <div class="sec-head"><h1>Attention</h1><span class="sub">severe money leaks, placer blockers, bot decisions, and the tracker</span><span class="grow"></span><span class="upd" id="att-upd"></span><button class="b s" onclick="Att.load(true)">Refresh</button></div>
-      <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="tracker">Tracker<span class="cnt" id="att-c-tracker"></span></button></div>
+      <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="log">Supervisor log<span class="cnt" id="att-c-log"></span></button><button data-tab="tracker">Tracker<span class="cnt" id="att-c-tracker"></span></button></div>
       <div id="att-body"><span class="skel"></span><span class="skel"></span></div>
     </section>
 
@@ -1225,6 +1225,7 @@ const Att = {
     if (tab === "unmapped") return GET("/api/unmapped", {account: acct});
     if (tab === "needs_priority") return GET("/api/needs_priority", {account: acct});
     if (tab === "bot") return GET("/api/placer_events", {hours: this.botHours, limit: 1000});
+    if (tab === "log") return GET("/api/decisions", Object.assign({limit: this.logLimit||400}, this.logKind?{kind:this.logKind}:{}, this.logQ?{order:this.logQ}:{}));
     if (tab === "tracker") return GET("/api/tracker");
   },
   bind(){ $$("#att-body [data-open]").forEach(el => el.onclick = e => { e.stopPropagation(); Drawer.open(el.dataset.open); }); },
@@ -1260,6 +1261,37 @@ const Att = {
       ${Object.entries(groups).sort((a,b)=>b[1].length-a[1].length).map(([st, list]) => `<div class="card grp"><div class="hd"><h2><span class="pill ${cls(st)}">${esc(st)}</span></h2><span class="sub">${list.length} orders</span></div><div class="tblwrap" style="border:0;border-radius:0;box-shadow:none;max-height:380px"><table class="t"><thead><tr><th>Time</th><th>Profile</th><th>Order</th><th>ASIN</th><th>Buyer</th><th>Why</th></tr></thead><tbody>${list.slice(0,300).map(e=>`<tr class="click" data-open="${esc(e.amazon_id)}"><td class="mono small">${esc(e.run.slice(0,10))} ${esc(e.time)}</td><td>${esc(e.profile||"")}</td><td class="mono">${esc(e.amazon_id)}</td><td class="mono">${esc(e.asin||"")}</td><td>${esc(e.buyer||"")}${e.state?" · "+esc(e.state):""}</td><td class="wrap" style="max-width:520px">${esc(e.notes||"")}</td></tr>`).join("")}</tbody></table></div></div>`).join("") || U.empty("No decisions match", "toggle a status above")}`;
   },
   toggleStatus(s){ if (this.botStatuses.has(s)) this.botStatuses.delete(s); else this.botStatuses.add(s); this.load(); },
+  logKind: "", logLimit: 400, logQ: "",
+  setLog(k, v){ this[k] = v; this.load(true); },
+  r_log(d){
+    const rows = d.rows||[], sm = d.summary||{};
+    $("#att-c-log").textContent = rows.length||"";
+    const kinds = ["", "supervisor", "deciding", "outcome", "route", "learn", "sheet", "check", "pdp"];
+    const acls = a => /place|place_here|COUPON_OK|REGULAR_OK|cleared|success/.test(a||"")?"ok":/wait|retry|strike|error|failed|low_profit/.test(a||"")?"warn":/reseller|route_to_coupon|ineligible|PROMO_INELIGIBLE|SELECT/.test(a||"")?"":"";
+    const chips = Object.entries(sm.supervisor_by_action||{}).map(([k,n])=>`<span class="pill ${acls(k)}">${esc(k)} ${n}</span>`).join(" ");
+    const hits = Object.entries(sm.coupon_hits||{}).sort((a,b)=>b[1].tried-a[1].tried);
+    const hitTbl = hits.length ? `<div class="card grp"><div class="hd"><h2>Coupons tried by the supervisor</h2><span class="sub">worked / tried · item = Zoro says not valid for the item · min$ = cart minimum not met · dead = retired</span></div>
+        <div class="tblwrap"><table class="t"><thead><tr><th>Code</th><th>Tried</th><th>Worked</th><th>Hit</th><th>Item</th><th>Min $</th><th>Dead</th><th>Busy</th></tr></thead><tbody>
+        ${hits.map(([c,h])=>`<tr><td class="mono">${esc(c)}</td><td>${h.tried}</td><td>${h.worked}</td><td>${h.tried?Math.round(100*h.worked/h.tried)+"%":"—"}</td><td>${h.item}</td><td>${h.min_order}</td><td>${h.dead}</td><td>${h.transient}</td></tr>`).join("")}
+        </tbody></table></div></div>` : "";
+    const fmt = v => v==null||v===""?"—":(typeof v==="number"?(Math.abs(v)<1&&v!==0?(v*100).toFixed(1)+"%":U.money(v)):esc(String(v)));
+    const attempts = r => { const a = (r.data||{}).attempts||[]; if (!a.length) return ""; return `<div class="smallnote" style="margin:6px 0 0 24px">${a.map(x=>`<span class="pill ${x.ok?"ok":x.kind==="item"?"bad":x.kind==="min_order"?"warn":""}" title="${esc(x.reply||"")}">${esc(x.tier||"")} ${esc(x.code)} → ${x.ok?"applied −"+U.money(x.discount||0):esc(x.kind||"")}${x.min_order?" ≥ "+U.money(x.min_order):""}</span>`).join(" ")}</div>`; };
+    const row = r => { const dd = r.data||{}; const v = dd.verdict||{};
+      return `<tr class="dec-row"><td class="mono small">${esc((r.ts||"").slice(5,16))}</td><td><span class="pill">${esc(r.kind)}</span></td><td class="small">${esc(r.profile||"")}</td>
+        <td>${r.amazon_id?`<a class="mono" data-open="${esc(r.amazon_id)}" href="#order/${esc(r.amazon_id)}">${esc(r.amazon_id)}</a>`:"—"}</td><td class="mono small">${esc(r.asin||"")}</td>
+        <td><span class="pill ${acls(r.action)}">${esc(r.action||"")}</span>${r.tier?` <span class="small muted">${esc(r.tier)}</span>`:""}</td><td class="mono small">${esc(r.coupon||"")}</td>
+        <td>${fmt(r.cart)}</td><td>${r.margin==null?"—":(r.margin*100).toFixed(1)+"%"}</td><td class="small">${r.zoro_select?"Select ":""}${r.pdp_ineligible?"PDP-ineligible":""}</td>
+        <td class="small">${esc(r.verdict_suggest||"")}</td><td class="small" style="max-width:420px">${esc(r.reason||"")}${attempts(r)}</td></tr>`; };
+    return `<div class="row" style="margin-bottom:10px;gap:8px;flex-wrap:wrap">
+        <select class="in s" onchange="Att.setLog('logKind', this.value)">${kinds.map(k=>`<option value="${k}" ${k===this.logKind?"selected":""}>${k||"all kinds"}</option>`).join("")}</select>
+        <input class="in s" placeholder="order id…" value="${esc(this.logQ)}" onchange="Att.setLog('logQ', this.value.trim())" style="min-width:200px">
+        <select class="in s" onchange="Att.setLog('logLimit', parseInt(this.value))">${[100,400,1000,3000].map(n=>`<option value="${n}" ${n===this.logLimit?"selected":""}>last ${n}</option>`).join("")}</select>
+        <span class="muted small">${U.int(rows.length)} records · every supervisor / deciding decision with its inputs and each coupon Zoro was asked about</span></div>
+      ${chips?`<div class="row" style="margin-bottom:10px;gap:6px;flex-wrap:wrap"><span class="muted small">supervisor:</span> ${chips}</div>`:""}
+      ${hitTbl}
+      ${rows.length ? `<div class="tblwrap" style="max-height:calc(100vh - 300px)"><table class="t"><thead><tr><th>When</th><th>Kind</th><th>Profile</th><th>Order</th><th>ASIN</th><th>Decision</th><th>Coupon</th><th>Cart</th><th>Margin</th><th>Flags</th><th>Sheet →</th><th>Why · attempts</th></tr></thead><tbody>${rows.map(row).join("")}</tbody></table></div>`
+                    : U.empty("No decisions recorded yet", "the coupon profiles write here when they reach unlabelled orders; reseller profiles when they meet a Deciding ASIN")}`;
+  },
   r_tracker(d){
     const items = d.items||[]; $("#att-c-tracker").textContent = items.length||"";
     const q = this.trackerQ.toLowerCase();

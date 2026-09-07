@@ -321,6 +321,14 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
         row["Check_Note"] = "; ".join(filter(None, [f"was in {col}" if col else "new", row.get("Check_Note", "")]))
         existing[asin] = row
         results.append(row)
+        try:
+            from utils import decision_log as _dl
+            _dl.log("check", profile=profile_name, asin=asin, sku=((sku_map.get(asin) or {}).get("zoro_code") or ""),
+                    action=row.get("Check_Status"), coupon=row.get("Check_Coupon", ""), reason=row.get("Check_Note", ""),
+                    verdict={"status": row.get("Check_Status"), "suggest": row.get("Check_Suggest"), "note": row.get("Check_Note")},
+                    cart_text=row.get("Check_Cart", ""), was_in=col, move=move, priority_codes=pri)
+        except Exception:
+            pass
         print(f"  [{i}/{len(asins_with_cols)}] {asin} ({col or 'new'}) → {row['Check_Status']} / "
               f"{row.get('Check_Suggest', '')} {row.get('Check_Coupon', '')} {row.get('Check_Cart', '')}  ({time.time() - t0:.0f}s)")
         if move:
