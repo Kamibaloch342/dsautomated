@@ -628,6 +628,11 @@ class Agent:
                       "VALUES(?,?,?,?,?,?)",
                       (data.get("title", ""), data.get("notes", ""), data.get("due_at"), data.get("assignee"),
                        author, ts))
+        elif op == "set_whoami":
+            c.execute("CREATE TABLE IF NOT EXISTS dash_prefs(client_key TEXT PRIMARY KEY, name TEXT, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+            c.execute("INSERT INTO dash_prefs(client_key,name) VALUES(?,?) "
+                      "ON CONFLICT(client_key) DO UPDATE SET name=excluded.name, updated_at=CURRENT_TIMESTAMP",
+                      (key, data.get("name", "")))
         else:
             raise ValueError(f"unknown CRM op {op}")
 

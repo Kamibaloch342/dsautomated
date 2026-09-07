@@ -51,6 +51,13 @@ if OPS.CLOUD_MODE:
     DB = OPS.CLOUD_DB_PATH
     if not os.path.exists(PRICE_TRACKER):
         PRICE_TRACKER = os.path.join(os.path.dirname(OPS.CLOUD_DB_PATH), "price_tracker.json")
+try:
+    with sqlite3.connect(DB, timeout=30) as _init_c:
+        _init_c.execute("PRAGMA journal_mode=WAL")
+        _init_c.execute("PRAGMA synchronous=NORMAL")
+        _init_c.execute("PRAGMA busy_timeout=30000")
+except Exception:
+    pass
 import insights as INS
 import analytics as AN
 try:
@@ -256,8 +263,8 @@ def _run_account(path):
 def ro():
     # Normal connection + query_only (NOT mode=ro): a WAL database can fail to open
     # read-only when the -wal/-shm are active. query_only gives read safety without that.
-    c = sqlite3.connect(DB, timeout=8)
-    c.execute("PRAGMA busy_timeout=8000")
+    c = sqlite3.connect(DB, timeout=30)
+    c.execute("PRAGMA busy_timeout=30000")
     c.execute("PRAGMA query_only=ON")
     c.row_factory = sqlite3.Row
     return c
@@ -265,7 +272,6 @@ def ro():
 
 def rw():
     c = sqlite3.connect(DB, timeout=30)
-    c.execute("PRAGMA journal_mode=WAL")
     c.execute("PRAGMA busy_timeout=30000")
     c.row_factory = sqlite3.Row
     return c
@@ -691,30 +697,44 @@ def order_detail(oid):
     return {"order": order, "notes": notes, "returns": returns}
 
 
+_FACETS_CACHE = {"ts": 0, "data": None}
+
+
 def facets():
     """Distinct values for the dashboard dropdowns (accounts + Zoro buying accounts + tags)."""
-    c = ro()
-    accts = [r[0] for r in c.execute(
-        "SELECT DISTINCT account FROM closing_orders WHERE COALESCE(account,'')!='' ORDER BY account")]
-    zaccts = [r[0] for r in c.execute(
-        "SELECT DISTINCT zoro_account_name FROM closing_orders WHERE COALESCE(zoro_account_name,'')!='' ORDER BY zoro_account_name")]
-    profs = [r[0] for r in c.execute(
-        "SELECT DISTINCT profile_name FROM order_placer_orders WHERE COALESCE(profile_name,'')!='' ORDER BY profile_name")]
-    states = [r[0] for r in c.execute(
-        "SELECT DISTINCT ship_state FROM v_orders_all WHERE COALESCE(ship_state,'')!='' ORDER BY ship_state")]
-    # every tag in use (order_crm.tags is a comma list; standard + custom) for the Tag filter
-    tags, seen = [], set()
+    now = time.time()
+    if _FACETS_CACHE["data"] and (now - _FACETS_CACHE["ts"] < 300):
+        return _FACETS_CACHE["data"]
     try:
-        for (t,) in c.execute("SELECT tags FROM order_crm WHERE COALESCE(tags,'')!=''"):
-            for x in str(t).split(","):
-                x = x.strip()
-                if x and x.lower() not in seen:
-                    seen.add(x.lower()); tags.append(x)
-        tags.sort(key=str.lower)
-    except sqlite3.OperationalError:
-        pass   # order_crm not migrated yet
-    c.close()
-    return {"accounts": accts, "zoro_accounts": zaccts, "profiles": profs, "states": states, "tags": tags}
+        c = ro()
+        accts = [r[0] for r in c.execute(
+            "SELECT DISTINCT account FROM closing_orders WHERE COALESCE(account,'')!='' ORDER BY account")]
+        zaccts = [r[0] for r in c.execute(
+            "SELECT DISTINCT zoro_account_name FROM closing_orders WHERE COALESCE(zoro_account_name,'')!='' ORDER BY zoro_account_name")]
+        profs = [r[0] for r in c.execute(
+            "SELECT DISTINCT profile_name FROM order_placer_orders WHERE COALESCE(profile_name,'')!='' ORDER BY profile_name")]
+        states = [r[0] for r in c.execute(
+            "SELECT DISTINCT ship_state FROM v_orders_all WHERE COALESCE(ship_state,'')!='' ORDER BY ship_state")]
+        # every tag in use (order_crm.tags is a comma list; standard + custom) for the Tag filter
+        tags, seen = [], set()
+        try:
+            for (t,) in c.execute("SELECT tags FROM order_crm WHERE COALESCE(tags,'')!=''"):
+                for x in str(t).split(","):
+                    x = x.strip()
+                    if x and x.lower() not in seen:
+                        seen.add(x.lower()); tags.append(x)
+            tags.sort(key=str.lower)
+        except sqlite3.OperationalError:
+            pass   # order_crm not migrated yet
+        c.close()
+        res = {"accounts": accts, "zoro_accounts": zaccts, "profiles": profs, "states": states, "tags": tags}
+        _FACETS_CACHE["ts"] = now
+        _FACETS_CACHE["data"] = res
+        return res
+    except Exception:
+        if _FACETS_CACHE["data"]:
+            return _FACETS_CACHE["data"]
+        raise
 
 
 _WATCH_DDL = ("CREATE TABLE IF NOT EXISTS zoro_watch(zoro_code TEXT PRIMARY KEY, label TEXT, "
@@ -1095,7 +1115,16 @@ def set_whoami(body, client_ip):
                   "ON CONFLICT(client_key) DO UPDATE SET name=excluded.name, updated_at=CURRENT_TIMESTAMP",
                   (client_ip, name))
         c.commit(); c.close()
-    _retry_write(w)
+    try:
+        _retry_write(w)
+    except Exception:
+        if not OPS.CLOUD_MODE:
+            raise
+    if OPS.CLOUD_MODE:
+        try:
+            OPS.push_crm_event("set_whoami", client_ip, {"name": name}, name)
+        except Exception:
+            pass
     return {"ok": True, "name": name}
 
 
@@ -1973,8 +2002,13 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         for k, v in (hdrs or []):
             self.send_header(k, v)
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception:
+            pass
 
     def _genuine_local(self):
         """True only for a real local request (owner's Mac). Public proxies (Cloudflare tunnel,

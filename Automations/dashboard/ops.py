@@ -136,6 +136,13 @@ def cloud_db_refresh(force: bool = False) -> dict:
             if force or fp != _cloud["fingerprint"] or not os.path.exists(CLOUD_DB_PATH):
                 ok = s.get_file(man.get("key") or KEY_SLIM_GZ, CLOUD_DB_PATH, gunzip=True)
                 if ok:
+                    try:
+                        with sqlite3.connect(CLOUD_DB_PATH, timeout=15) as conn:
+                            conn.execute("PRAGMA journal_mode=WAL")
+                            conn.execute("PRAGMA synchronous=NORMAL")
+                            conn.execute("PRAGMA busy_timeout=30000")
+                    except Exception:
+                        pass
                     _cloud["fingerprint"] = fp
                     _cloud["refreshed_at"] = utcnow()
                     _cloud["manifest"] = man
