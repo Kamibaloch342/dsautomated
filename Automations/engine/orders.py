@@ -330,8 +330,11 @@ def _acquire_lock():
 #  LOGGING
 # ══════════════════════════════════════════════════════════════════
 _run_ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-_log_file = os.path.join(LOG_DIR, f"run_{_run_ts}.json")
-_csv_file = os.path.join(LOG_DIR, f"run_{_run_ts}.csv")
+# Per-profile file names: four placers started in the same second used to share ONE
+# run_<ts>.json/.csv and overwrite each other's run log (seen 7 Sep 2026 — every
+# panel then attributed all events to whichever profile saved last).
+_log_file = os.path.join(LOG_DIR, f"run_{_run_ts}_{PROFILE_NAME}.json")
+_csv_file = os.path.join(LOG_DIR, f"run_{_run_ts}_{PROFILE_NAME}.csv")
 
 _run_log = {
     "started": _run_ts,
@@ -1178,6 +1181,7 @@ def _watch_priority_coupon_set(coupon_codes):
 
 
 _PRIORITY_CHECK_LAST = [time.time()]    # first scheduled check only after every_hours
+_CART_FAILS = {}                        # amazon_id -> {"n": consecutive cart-add failures, "last": epoch}
 
 
 def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
@@ -2698,6 +2702,18 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     addr_raw = order_detail.get("address")
     merchant_id = _normalize_merchant_order_id(order_detail.get("merchant_order_id", ""))
 
+    # ── Repeated cart failures: don't burn a minute every cycle on the same order ──
+    # (one SKU failed 43 cart adds in a row on 7 Sep 2026). After 3 failures the order
+    # is parked for 2 hours and shows up as CART_FAIL_PARKED for a human to look at.
+    _cf = _CART_FAILS.get(amazon_id)
+    if _cf and _cf["n"] >= 3 and time.time() - _cf["last"] < 7200:
+        if not _cf.get("announced"):
+            _cf["announced"] = True
+            print(f"  ⏸️  {amazon_id}: cart add failed {_cf['n']}× — parked for 2 h (check the item on Zoro)")
+            _log_order({"amazon_id": amazon_id, "status": "CART_FAIL_PARKED",
+                        "notes": f"cart add failed {_cf['n']} times in a row — parked 2 h; check the Zoro item / quantity"})
+        return "skipped"
+
     # ── HARD LOCAL DEDUP LOCK (authoritative, checked FIRST) ──────
     # Our own record of what we've already bought — deterministic and immune to the
     # Amazon-UI re-scrape flakiness / Gmail lag that let the same order be re-bought 41x.
@@ -3100,6 +3116,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 
         if not cart_ok:
             print(f"  ❌ Cart/Add failed for {item['sku']}")
+            _rec = _CART_FAILS.setdefault(amazon_id, {"n": 0, "last": 0.0})
+            _rec["n"] += 1
+            _rec["last"] = time.time()
+            _rec.pop("announced", None)
             _log_order({
                 "amazon_id": amazon_id,
                 "asin": asin_field,
@@ -3834,6 +3854,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         if used_coupon and IS_COUPON_PROFILE:
             _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), True,
                                  cache=asin_coupon_cache)
+        _CART_FAILS.pop(amazon_id, None)
         return "success"
     
     elif result_status == "LOW_PROFIT":

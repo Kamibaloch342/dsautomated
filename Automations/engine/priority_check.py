@@ -88,6 +88,77 @@ def read_tab(svc):
     return headers, rows
 
 
+# ── grid size + write serialisation ───────────────────────────────────────
+# The tab was created with 6 columns × 101 rows. Any write beyond that grid is a
+# 400 from the Sheets API (that is why the first day's Check_* writes all failed),
+# so every write first makes sure the grid is big enough. Writes from the two
+# coupon profiles are serialised per process; each store only touches its own
+# columns, and Check_* rows are upserted one ASIN at a time (never the whole
+# block), so concurrent placers cannot overwrite each other's verdicts.
+import threading as _threading
+_write_lock = _threading.Lock()
+_grid = {"sheetId": None, "rows": 0, "cols": 0}
+
+
+def _sheet_grid(svc, refresh=False):
+    if _grid["sheetId"] is None or refresh:
+        meta = svc.spreadsheets().get(spreadsheetId=GOOGLE_SHEET_ID, fields="sheets.properties").execute()
+        for s in meta.get("sheets", []):
+            p = s.get("properties", {})
+            if p.get("title") == TAB:
+                gp = p.get("gridProperties", {})
+                _grid.update(sheetId=p.get("sheetId"), rows=int(gp.get("rowCount", 0)), cols=int(gp.get("columnCount", 0)))
+    return _grid
+
+
+def ensure_grid(wsvc, min_cols: int = 0, min_rows: int = 0) -> None:
+    """Grow the tab (append columns/rows) so a write at (min_cols, min_rows) fits."""
+    g = _sheet_grid(wsvc)
+    reqs = []
+    if min_cols > g["cols"]:
+        reqs.append({"appendDimension": {"sheetId": g["sheetId"], "dimension": "COLUMNS", "length": min_cols - g["cols"] + 2}})
+    if min_rows > g["rows"]:
+        reqs.append({"appendDimension": {"sheetId": g["sheetId"], "dimension": "ROWS", "length": min_rows - g["rows"] + 100}})
+    if reqs:
+        wsvc.spreadsheets().batchUpdate(spreadsheetId=GOOGLE_SHEET_ID, body={"requests": reqs}).execute()
+        _sheet_grid(wsvc, refresh=True)
+
+
+def ensure_check_headers(wsvc, headers: list) -> list:
+    """Create the Check_* header block (one blank separator column after the last
+    existing header) if it is missing. Returns the updated header list."""
+    if "Check_ASIN" in headers:
+        return headers
+    start = len(headers) + 1
+    ensure_grid(wsvc, min_cols=start + len(CHECK_COLS), min_rows=2)
+    rng = f"'{TAB}'!{_col_letter(start)}1:{_col_letter(start + len(CHECK_COLS) - 1)}1"
+    wsvc.spreadsheets().values().update(spreadsheetId=GOOGLE_SHEET_ID, range=rng, valueInputOption="RAW",
+                                        body={"values": [CHECK_COLS]}).execute()
+    return headers + [""] + CHECK_COLS
+
+
+def upsert_check_row(wsvc, headers: list, rows: list, row: dict) -> int:
+    """Write ONE ASIN's Check_* row: over its existing row if the ASIN is already
+    in the block, else on the first free row of the block. Returns the sheet row."""
+    ci = headers.index("Check_ASIN")
+    asin = (row.get("Check_ASIN") or "").strip().upper()
+    target = None
+    last = 1
+    for ri, r in enumerate(rows[1:], start=2):
+        v = (r[ci] if ci < len(r) else "") or ""
+        if v.strip():
+            last = ri
+            if v.strip().upper() == asin and target is None:
+                target = ri
+    if target is None:
+        target = last + 1
+    ensure_grid(wsvc, min_cols=ci + len(CHECK_COLS), min_rows=target)
+    rng = f"'{TAB}'!{_col_letter(ci)}{target}:{_col_letter(ci + len(CHECK_COLS) - 1)}{target}"
+    wsvc.spreadsheets().values().update(spreadsheetId=GOOGLE_SHEET_ID, range=rng, valueInputOption="RAW",
+                                        body={"values": [[str(row.get(c, "") or "") for c in CHECK_COLS]]}).execute()
+    return target
+
+
 def collect_asins(headers, rows, profile_name: str) -> dict:
     """ASIN → {"column": header} for this store's columns (+ any inbox column)."""
     pref = store_prefix(profile_name)
@@ -130,28 +201,30 @@ def write_check_block(wsvc, headers, results: dict) -> None:
 
 
 def move_asin(wsvc, headers, rows, asin: str, to_col: str, store: str) -> bool:
-    """Put the ASIN in `to_col` and blank it in every OTHER column of this store
-    (idempotent: nothing happens if it is already only there)."""
+    """Put the ASIN in `to_col` exactly once and blank it in every OTHER column of
+    this store, including duplicate rows (idempotent: nothing happens if it is
+    already only there, once)."""
     if to_col not in headers:
         return False
     ti = headers.index(to_col)
     data = []
-    already = False
+    kept = False
     for h in headers:
         if not h.upper().startswith(store + "_"):
             continue
         ci = headers.index(h)
         for ri, r in enumerate(rows[1:], start=2):
             if ci < len(r) and (r[ci] or "").strip().upper() == asin:
-                if h == to_col:
-                    already = True
+                if h == to_col and not kept:
+                    kept = True                      # first occurrence in the target stays
                 else:
                     data.append({"range": f"'{TAB}'!{_col_letter(ci)}{ri}", "values": [[""]]})
-    if not already:
+    if not kept:
         tr = 2
         for ri, r in enumerate(rows[1:], start=2):
             if ti < len(r) and (r[ti] or "").strip():
                 tr = ri + 1
+        ensure_grid(wsvc, min_cols=ti + 1, min_rows=tr)
         data.append({"range": f"'{TAB}'!{_col_letter(ti)}{tr}", "values": [[asin]]})
     if not data:
         return False
@@ -173,23 +246,27 @@ def record_verdict(profile_name: str, asin: str, status: str, coupon: str, cart:
     move the ASIN into the suggested column. Safe to call from a thread."""
     if mod is None:
         from engine import orders as mod  # noqa: F811
-    svc, wsvc = mod._get_sheets_service(), mod._get_sheets_write_service()
-    headers, rows = read_tab(svc)
-    if not headers:
-        return {"ok": False, "error": "sheet empty"}
-    block = read_check_block(headers, rows)
-    block[asin] = {"Check_ASIN": asin, "Check_Status": status, "Check_Coupon": coupon or "",
-                   "Check_Cart": cart or "", "Check_Suggest": suggest, "Check_At": _now(),
-                   "Check_Profile": profile_name, "Check_Note": note or ""}
-    moved = False
-    if (move if move is not None else _auto_assign(mod)):
-        col = suggested_column(profile_name, suggest)
-        if col:
-            try:
-                moved = move_asin(wsvc, headers, rows, asin, col, store_prefix(profile_name))
-            except Exception as e:
-                print(f"    ⚠️ move {asin} → {col}: {e}")
-    write_check_block(wsvc, headers, block)
+    with _write_lock:
+        svc, wsvc = mod._get_sheets_service(), mod._get_sheets_write_service()
+        headers, rows = read_tab(svc)
+        if not headers:
+            return {"ok": False, "error": "sheet empty"}
+        row = {"Check_ASIN": asin, "Check_Status": status, "Check_Coupon": coupon or "",
+               "Check_Cart": cart or "", "Check_Suggest": suggest, "Check_At": _now(),
+               "Check_Profile": profile_name, "Check_Note": note or ""}
+        moved = False
+        if (move if move is not None else _auto_assign(mod)):
+            col = suggested_column(profile_name, suggest)
+            if col:
+                try:
+                    moved = move_asin(wsvc, headers, rows, asin, col, store_prefix(profile_name))
+                except Exception as e:
+                    print(f"    ⚠️ move {asin} → {col}: {e}")
+        had_block = "Check_ASIN" in headers
+        headers = ensure_check_headers(wsvc, headers)
+        if moved or not had_block:
+            headers, rows = read_tab(svc)           # re-read after the move / header creation
+        upsert_check_row(wsvc, headers, rows, row)
     print(f"  📋 sheet: {asin} → {status} / {suggest}" + (" (moved)" if moved else ""))
     return {"ok": True, "moved": moved}
 
@@ -308,7 +385,9 @@ def _priority_codes(mod, coupon_codes):
 
 
 def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, svc, wsvc, headers, rows, move):
-    existing = read_check_block(headers, rows)
+    with _write_lock:
+        headers = ensure_check_headers(wsvc, headers)
+    headers, rows = read_tab(svc)
     results = []
     for i, (asin, col) in enumerate(asins_with_cols, 1):
         t0 = time.time()
@@ -319,7 +398,6 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
                    "Check_Coupon": "", "Check_Cart": "", "Check_Note": str(e)[:120]}
         row["Check_Profile"] = profile_name
         row["Check_Note"] = "; ".join(filter(None, [f"was in {col}" if col else "new", row.get("Check_Note", "")]))
-        existing[asin] = row
         results.append(row)
         try:
             from utils import decision_log as _dl
@@ -331,20 +409,22 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
             pass
         print(f"  [{i}/{len(asins_with_cols)}] {asin} ({col or 'new'}) → {row['Check_Status']} / "
               f"{row.get('Check_Suggest', '')} {row.get('Check_Coupon', '')} {row.get('Check_Cart', '')}  ({time.time() - t0:.0f}s)")
-        if move:
-            target = suggested_column(profile_name, row.get("Check_Suggest", ""))
-            if target:
-                try:
-                    if move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name)):
-                        print(f"    ↪ {asin}: {col or '—'} → {target}")
-                        headers, rows = read_tab(svc)
-                except Exception as e:
-                    print(f"    ⚠️ move failed: {e}")
-    try:
-        write_check_block(wsvc, headers, existing)
-        print(f"  ✅ verdicts written to '{TAB}' Check_* columns")
-    except Exception as e:
-        print(f"  ⚠️ could not write verdicts: {e}")
+        with _write_lock:
+            if move:
+                target = suggested_column(profile_name, row.get("Check_Suggest", ""))
+                if target:
+                    try:
+                        if move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name)):
+                            print(f"    ↪ {asin}: {col or '—'} → {target}")
+                            headers, rows = read_tab(svc)
+                    except Exception as e:
+                        print(f"    ⚠️ move failed: {e}")
+            try:
+                upsert_check_row(wsvc, headers, rows, row)
+                headers, rows = read_tab(svc)
+            except Exception as e:
+                print(f"    ⚠️ could not write the verdict row for {asin}: {e}")
+    print(f"  ✅ {len(results)} verdict(s) written to '{TAB}' Check_* columns")
     try:
         os.makedirs(DATA, exist_ok=True)
         with open(STATE_PATH, "w", encoding="utf-8") as f:

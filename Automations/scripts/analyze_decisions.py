@@ -113,7 +113,7 @@ def main():
     print("\n── 4. outcomes of supervised / deciding orders ──")
     for label, group in (("supervisor → place", [r for r in sup if r.get("action") == "place"]),
                          ("deciding → place_here", [r for r in dec if r.get("action") == "place_here"])):
-        res = Counter((out.get(r.get("amazon_id")) or {}).get("status", "no outcome yet") for r in group)
+        res = Counter((out.get(r.get("amazon_id")) or {}).get("action", "no outcome yet") for r in group)
         print(f"  {label:22} {len(group):4} orders → {dict(res)}")
 
     # 5. rule audit
