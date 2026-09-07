@@ -138,6 +138,7 @@ def main():
     # ── _run_batch end-to-end with a fake driver, fake sheet and a temp memory ─
     import tempfile, types
     tmp = tempfile.mkdtemp()
+    pc.DATA = tmp                                       # every file the checker writes goes to the temp dir
     pc.VERDICTS_PATH = os.path.join(tmp, "verdicts.json")
     pc.STATE_PATH = os.path.join(tmp, "state.json")
     import utils.decision_log as _dl
@@ -195,7 +196,6 @@ def main():
     check("batch: with NO priority coupons nothing is moved (verdict only)", not w and "B0CDEP" in pc.load_verdicts(), f"writes={w}")
 
     # ── re-check queue: crash-safe, per-ASIN bookkeeping, isolation ──────
-    pc.DATA = tmp
     class Mod:
         gui_cfg = {"automation": {"priority_check": {"auto_assign": True, "write_sheet_notes": False}}}
         def __init__(self, sheet): self.sheet = sheet

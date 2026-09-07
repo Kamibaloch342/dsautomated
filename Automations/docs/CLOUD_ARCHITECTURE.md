@@ -60,6 +60,15 @@ stop_closing / run_messages {account}`, `reload_config`, `set_headless {on}`,
 * `/` = v2 (order-centric timeline, case recording with full history, Ops page with
   machine cards, live console and settings); `/legacy` = the previous UI.
 * New endpoints are documented in `dashboard/V2_API.md`.
+* **Analytics** (nav item, was "Insights"; `dashboard/daybook.py`): *Day book* = orders grouped by
+  day with every lifecycle state per order (placed · shipped · tracking · delivered · late ·
+  cancelled · refunded/returned · tracking message sent · delivery check-in · buyer wrote · case)
+  and a CSV download for the range or a single day; *Growth*, *Coupons*, *ASINs*, *Shipping*,
+  *Refunds & cancels*, *Buyers & places* = period-vs-previous-period analytics; *Changes* = the
+  anomaly feed; *P&L* = the monthly P&L forms for both stores. Attention → *Tracker* groups the
+  team's flagged/tagged/commented orders by day of last activity with inline flag and case-status
+  edits. Every analytics view shows how fresh each data source is: orders after the last closing
+  run look pending/not shipped until closing runs — that is data lag, not a late shipment.
 * **Local mode** (the machine with the master DB): reads the DB directly; other machines'
   state comes from R2.
 * **Cloud mode** (`CLOUD_MODE=1`, `render.yaml`): downloads the slim DB from R2 and

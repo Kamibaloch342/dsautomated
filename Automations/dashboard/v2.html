@@ -425,6 +425,98 @@ html[data-theme="light"] .console,html:not([data-theme]) .console{background:#0b
 @keyframes pulse{50%{opacity:.3}}
 .ev-badge{font-size:10.5px;padding:0 6px;border-radius:99px;background:var(--bg3);color:var(--muted);font-family:var(--mono)}
 .fl-menu{display:flex;gap:6px;align-items:center}
+/* ── analytics: shared (charts, tables, notes) ─────────────────────── */
+.ana-period{font-size:12.5px;color:var(--text2);margin-bottom:12px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+.grw-note{font-size:12px;color:var(--muted);padding:8px 14px;border-top:1px dashed var(--line);line-height:1.5}
+.grw-note b{color:var(--text2)}
+.kpi .d{font-size:11.5px;margin-top:3px;color:var(--muted)}
+.grw-delta{font-weight:600}
+.grw-delta.up{color:var(--green)}.grw-delta.down{color:var(--red)}
+.warn-t{color:var(--amber)}
+.chart{width:100%;height:auto;display:block;font-family:var(--font);font-size:10.5px;font-variant-numeric:tabular-nums}
+.chart .ch-grid{stroke:var(--line);stroke-width:1}
+.chart .ch-zero{stroke:var(--muted2);stroke-width:1;stroke-dasharray:3 3}
+.chart .ch-ax{fill:var(--muted);font-size:10.5px}
+.chart .ch-val{fill:var(--text2);font-size:10px;font-weight:600}
+.chart .ch-bar{fill:var(--accent);opacity:.75}
+.chart .ch-bar:hover{opacity:1}
+.chart .ch-bar.warn{fill:var(--amber)}.chart .ch-bar.bad{fill:var(--red)}.chart .ch-bar.ok{fill:var(--green)}.chart .ch-bar.neg{fill:var(--red)}.chart .ch-bar.dim{opacity:.35}
+.chart .ch-ln{fill:none;stroke:var(--green);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .ch-dot{fill:var(--green)}.chart .ch-dot.neg{fill:var(--red)}
+.ch-legend{display:flex;gap:14px;font-size:11.5px;color:var(--muted);margin-top:4px}
+.ch-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--accent);opacity:.75}
+.ch-legend .sw.ln{background:var(--green);height:3px;vertical-align:2px;opacity:1}
+.hbars{display:grid;grid-template-columns:minmax(70px,max-content) 1fr max-content;gap:5px 10px;align-items:center;font-size:12px}
+.hbars .k{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.hbars .bar{height:14px;border-radius:3px;background:var(--bg3);overflow:hidden}
+.hbars .bar i{display:block;height:100%;background:var(--accent);border-radius:3px;opacity:.8}
+.hbars .bar i.bad{background:var(--red)}.hbars .bar i.warn{background:var(--amber)}.hbars .bar i.ok{background:var(--green)}
+.hbars .v{white-space:nowrap;text-align:right;font-weight:600}
+.hbars .v .muted{font-weight:400}
+table.t tr.tot td{font-weight:600;background:var(--bg3);border-top:1px solid var(--line2)}
+table.t th.num{text-align:right}
+.ana-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;align-items:center}
+.ana-chips .chip b{font-weight:600}
+.card.grp .tblwrap{border:0;border-radius:0 0 var(--r) var(--r);box-shadow:none;max-height:520px}
+.card .hd .in.s{padding:3px 7px}
+/* ── day book ───────────────────────────────────────────────────────── */
+.dbk-ctl{margin-bottom:12px}
+.dbk-ctl .bd{padding:10px 14px}
+.dbk-row{gap:8px}
+.dbk-row .seg button{padding:5px 10px;font-size:12.5px}
+.dbk-row input.in{min-width:220px;flex:1}
+.dbk-tot{margin:0 0 12px}
+.dbk-tot .stats{grid-template-columns:repeat(auto-fit,minmax(108px,1fr))}
+.dbk-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px}
+.dbk-chips .chip{padding:3px 9px;font-size:12px}
+.dbk-chips .chip b{font-weight:600}
+.dbk-chips .seg button{padding:3px 8px;font-size:11.5px}
+.dbk-day{margin-bottom:10px}
+.dbk-day>.hd{flex-wrap:wrap;cursor:pointer;user-select:none;gap:8px 12px}
+.dbk-day>.hd:hover{background:var(--bg3)}
+.dbk-day.open>.hd{border-radius:var(--r) var(--r) 0 0}
+.dbk-caret{color:var(--muted);width:10px;font-size:12px;flex:none}
+.dbk-title b{font-size:14px;margin-right:6px}
+.dbk-n{font-weight:600;white-space:nowrap}
+.dbk-pills{display:flex;flex-wrap:wrap;gap:4px}
+.dbk-pills .pill{font-size:11px;padding:0 7px;line-height:17px}
+.dbk-money{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--text2);white-space:nowrap}
+.dbk-money b{font-weight:600}
+.dbk-day .tblwrap{border:0;border-radius:0 0 var(--r) var(--r);box-shadow:none;max-height:72vh}
+.dbk-t td{padding:5px 8px;font-size:12px}
+.dbk-t td.ttl{max-width:280px}
+.dbk-life{display:flex;flex-wrap:wrap;gap:3px;max-width:460px}
+.dbk-life .pill{font-size:10.5px;padding:0 6px;line-height:16px}
+.dbk-life .tag{line-height:16px;font-size:10.5px}
+.dbk-banner{line-height:1.5}
+.dbk-fresh{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0 0 10px}
+/* ── tracker ────────────────────────────────────────────────────────── */
+.trk-row{margin-bottom:8px;gap:6px}
+.trk-grp{margin-bottom:12px}
+.trk-day{display:flex;align-items:center;gap:8px;padding:6px 2px;font-size:13px}
+.trk-day b{font-size:13.5px}
+.trk-day.follow b{color:var(--amber)}
+.trk-t td{padding:5px 8px}
+.trk-flag{width:20px;height:20px;border-radius:50%;border:1px dashed var(--line2);background:var(--c,transparent);padding:0;color:var(--muted);font-size:13px;line-height:1}
+.trk-flag.set{border-style:solid;border-color:transparent;box-shadow:0 0 0 1px rgba(0,0,0,.1)}
+.trk-flag:hover{box-shadow:0 0 0 3px var(--accent-bg)}
+.trk-sel{max-width:160px}
+.trk-sel.ok{color:var(--green)}.trk-sel.warn{color:var(--amber)}
+.trk-note{max-width:320px;overflow:hidden;text-overflow:ellipsis}
+.trk-menu{position:fixed;z-index:70;background:var(--bg2);border:1px solid var(--line2);border-radius:10px;box-shadow:var(--shadow2);padding:7px;display:flex;gap:7px}
+/* ── P&L ────────────────────────────────────────────────────────────── */
+.pnl-fig{font-size:28px;font-weight:800;letter-spacing:-.4px;color:var(--accent-text)}
+.pnl-fig.neg{color:var(--red)}
+.pnl-fig2{font-size:18px;font-weight:700}
+.pnl-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}
+.pnl-fields label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:2px}
+.pnl-fields .in{width:100%;font-weight:600}
+.pnl-fields .ro{font-weight:600;padding:6px 0}
+.pnl-sect{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:12px 0 4px;font-weight:600}
+.pnl-box{display:flex;gap:28px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--bg);margin-top:10px}
+.pnl-box .l{font-size:11.5px;color:var(--muted)}
+.pnl-split input{width:70px}
+@media(max-width:900px){.pnl-fields{grid-template-columns:1fr}.dbk-life{max-width:none}}
 </style>
 </head>
 <body>
@@ -435,7 +527,7 @@ html[data-theme="light"] .console,html:not([data-theme]) .console{background:#0b
     <button class="nav" data-nav="orders"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Orders</span><em class="cnt" id="cnt-orders"></em></button>
     <button class="nav" data-nav="ops"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Ops</span><em class="cnt" id="cnt-ops"></em></button>
     <button class="nav" data-nav="attention"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Attention</span><em class="cnt" id="cnt-attention"></em></button>
-    <button class="nav" data-nav="insights"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg><span>Insights</span></button>
+    <button class="nav" data-nav="insights"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg><span>Analytics</span></button>
     <button class="nav" data-nav="reminders" id="nav-reminders"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M5 3L2 6M19 3l3 3"/></svg><span>Reminders</span><em class="cnt" id="cnt-reminders"></em></button>
     <button class="nav" data-nav="more"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>More</span></button>
     <div class="foot">
@@ -507,11 +599,9 @@ html[data-theme="light"] .console,html:not([data-theme]) .console{background:#0b
     </section>
 
     <section class="sec" id="sec-insights">
-      <div class="sec-head"><h1>Insights</h1><span class="sub">anomalies detected across orders, plus shipping performance</span><span class="grow"></span><span class="upd" id="ins-upd"></span><button class="b s" onclick="Ins.load(true)">Refresh</button></div>
-      <div class="grid g2">
-        <div class="card"><div class="hd"><h2>Insights</h2><span class="sub" id="ins-sub"></span></div><div class="bd" id="ins-body"><span class="skel"></span><span class="skel"></span></div></div>
-        <div class="card"><div class="hd"><h2>Shipping performance</h2><span class="sub">last 14 days · placed vs shipped early / on time / late</span></div><div class="bd tight" id="ins-ship"><div class="bd"><span class="skel"></span></div></div></div>
-      </div>
+      <div class="sec-head"><h1>Analytics</h1><span class="sub" id="ana-sub">orders by day, growth, coupons, ASINs, shipping, refunds, buyers, P&amp;L</span><span class="grow"></span><span class="upd" id="ins-upd"></span><button class="b s" onclick="Ins.load(true)">Refresh</button></div>
+      <div class="tabs" id="ana-tabs"><button data-tab="daybook" class="on">Day book</button><button data-tab="growth">Growth</button><button data-tab="coupons">Coupons</button><button data-tab="asins">ASINs</button><button data-tab="shipping">Shipping</button><button data-tab="refunds">Refunds &amp; cancels</button><button data-tab="buyers">Buyers &amp; places</button><button data-tab="changes">Changes<span class="cnt" id="ana-c-changes"></span></button><button data-tab="pnl">P&amp;L</button></div>
+      <div id="ana-body"><div class="card"><div class="bd"><span class="skel"></span><span class="skel"></span><span class="skel"></span></div></div></div>
     </section>
 
     <section class="sec" id="sec-reminders">
@@ -550,7 +640,7 @@ html[data-theme="light"] .console,html:not([data-theme]) .console{background:#0b
 /* ═══════════════════════════════════════════════════════════════════════
    ZUHRA v2 — single script, small modules:
    U (utils) · api · S (state) · Toast · Dlg · Theme · Me · Nav · Home ·
-   Orders · Drawer · Ops · Att · Ins · Rem · boot
+   Orders · Drawer · Ops · Att · Ins (Analytics: Daybook · Growth · Changes · PnL) · Rem · boot
    ═══════════════════════════════════════════════════════════════════════ */
 "use strict";
 const $ = (s, r=document) => r.querySelector(s);
@@ -1292,54 +1382,679 @@ const Att = {
       ${rows.length ? `<div class="tblwrap" style="max-height:calc(100vh - 300px)"><table class="t"><thead><tr><th>When</th><th>Kind</th><th>Profile</th><th>Order</th><th>ASIN</th><th>Decision</th><th>Coupon</th><th>Cart</th><th>Margin</th><th>Flags</th><th>Sheet →</th><th>Why · attempts</th></tr></thead><tbody>${rows.map(row).join("")}</tbody></table></div>`
                     : U.empty("No decisions recorded yet", "the coupon profiles write here when they reach unlabelled orders; reseller profiles when they meet a Deciding ASIN")}`;
   },
+  /* ── tracker: flagged / commented / follow-up orders, grouped by day of last activity ── */
+  trk: {group:true, follow:true, flags:new Set(), tags:new Set(), status:"", q:""},
   r_tracker(d){
     const items = d.items||[]; $("#att-c-tracker").textContent = items.length||"";
-    const q = this.trackerQ.toLowerCase();
-    const rows = items.filter(x => !q || JSON.stringify(x).toLowerCase().includes(q));
-    return `<div class="row" style="margin-bottom:10px"><input class="in s" placeholder="filter tracker…" value="${esc(this.trackerQ)}" oninput="Att.trackerQ=this.value;Att.load()" style="min-width:240px"><span class="muted small">${U.int(rows.length)} of ${U.int(items.length)} flagged / commented / with a follow-up · sorted by reminder date, then open cases</span></div>
-      <div class="tblwrap" style="max-height:calc(100vh - 260px)"><table class="t"><thead><tr><th></th><th>Order</th><th>Label</th><th>Account</th><th>ASIN</th><th>Case</th><th>Tags</th><th>Follow-up</th><th>Notes</th><th>Updated</th></tr></thead><tbody>${rows.slice(0,600).map(x=>`<tr class="click" data-open="${esc(x.id)}"><td>${U.flagdot(x.flag)}</td><td class="mono">${esc(x.id)}</td><td>${U.lb(x.label)}</td><td>${esc(x.account||"")}</td><td class="mono">${esc(x.asin||"")}</td><td>${x.case_status?`<span class="pill ${/resolved|closed|won/i.test(x.case_status)?"ok":"warn"}">${esc(x.case_status)}</span>`:""}</td><td>${U.tags(x.tags)}</td><td>${x.reminder_at?`<b>${esc(x.reminder_at)}</b> <span class="muted">${esc(x.reminder_note||"")}</span>`:""}</td><td class="wrap" style="max-width:320px">${x.notes?`<span class="ev-badge">${x.notes}</span> ${esc(String(x.last_note||"").slice(0,120))}`:""}</td><td class="small muted">${esc(U.rel(x.updated_at))}</td></tr>`).join("")||`<tr><td colspan="10">${U.empty("Nothing tracked")}</td></tr>`}</tbody></table></div>`;
+    return `<div class="row trk-row"><input class="in s" id="trk-q" placeholder="filter: order, WB, ASIN, tag, note, account…" value="${esc(this.trk.q)}" oninput="Att.trk.q=this.value;Att.trkQ()" style="min-width:260px"><div id="trk-ctl" class="row grow" style="gap:6px">${this.trkControls(items)}</div></div>
+      <div id="trk-chips" class="row trk-row">${this.trkChips(items)}</div><div id="trk-list">${this.trkList(items)}</div>`;
+  },
+  trkHay(x){ return x._h || (x._h = [x.id,x.account,x.label,x.asin,x.tags,x.case_status,x.reminder_note,x.last_note].join(" ").toLowerCase()); },
+  trkTags(x){ return String(x.tags||"").split(",").map(s=>s.trim()).filter(Boolean); },
+  trkAct(x){ const ds = [x.updated_at, x.last_note_at].map(v=>U.parseDt(v)).filter(Boolean); return ds.length ? new Date(Math.max(...ds.map(d=>d.getTime()))) : null; },
+  trkRows(items){
+    const t = this.trk; const q = t.q.trim().toLowerCase();
+    return items.filter(x => (!q || this.trkHay(x).includes(q))
+      && (!t.flags.size || t.flags.has(String(x.flag||"").toLowerCase()))
+      && (!t.tags.size || this.trkTags(x).some(g => t.tags.has(g)))
+      && (!t.status || (t.status==="open" ? (!!x.case_status && !/resolved|closed/i.test(x.case_status)) : t.status==="none" ? !x.case_status : x.case_status===t.status)));
+  },
+  trkControls(items){
+    const t = this.trk; const q = t.q.trim().toLowerCase(); const base = items.filter(x => !q || this.trkHay(x).includes(q));
+    const stN = {}; base.forEach(x => { const k = x.case_status||""; stN[k] = (stN[k]||0)+1; });
+    const open = base.filter(x => x.case_status && !/resolved|closed/i.test(x.case_status)).length;
+    const statuses = Array.from(new Set(CASE_STATUS.concat(Object.keys(stN).filter(Boolean))));
+    const today = localKey(new Date()); const due = base.filter(x => x.reminder_at && String(x.reminder_at).slice(0,10) <= today).length;
+    return `<button class="toggle ${t.group?"on":""}" onclick="Att.trkSet('group', !Att.trk.group)" title="group by day of last activity"></button><span class="small">group by day</span>
+      <button class="chip btn ${t.follow?"on":""}" onclick="Att.trkSet('follow', !Att.trk.follow)" title="pin orders with a follow-up date to the top, soonest first">⏰ follow-ups first${due?` <b>${U.int(due)} due</b>`:""}</button>
+      <select class="in s" onchange="Att.trkSet('status', this.value)"><option value="">any case status</option><option value="open" ${t.status==="open"?"selected":""}>open cases (${open})</option><option value="none" ${t.status==="none"?"selected":""}>no case status (${stN[""]||0})</option>${statuses.map(s=>`<option value="${esc(s)}" ${t.status===s?"selected":""}>${esc(s.replace(/_/g," "))} (${stN[s]||0})</option>`).join("")}</select>
+      <span class="grow"></span><span class="muted small">${U.int(this.trkRows(items).length)} of ${U.int(items.length)} flagged / commented / with a follow-up</span>`;
+  },
+  trkChips(items){
+    const t = this.trk; const q = t.q.trim().toLowerCase(); const base = items.filter(x => !q || this.trkHay(x).includes(q));
+    const flagN = {}; base.forEach(x => { const k = String(x.flag||"").toLowerCase(); flagN[k] = (flagN[k]||0)+1; });
+    const tagN = {}; base.forEach(x => this.trkTags(x).forEach(g => tagN[g] = (tagN[g]||0)+1));
+    const chip = (c, n) => `<button class="chip btn ${t.flags.has(c)?"on":""}" onclick="Att.trkToggle('flags','${c}')"><span class="flagdot" style="background:${c||"var(--bg4)"};margin-right:0"></span>${n} <b>${U.int(flagN[c]||0)}</b></button>`;
+    const tags = Object.entries(tagN).sort((a,b)=>b[1]-a[1]).slice(0,24);
+    return FLAGS.map(([c,n]) => chip(c,n)).join("") + chip("","No flag")
+      + (tags.length ? `<span class="muted small" style="margin-left:6px">tags:</span>` + tags.map(([g,n]) => `<button class="chip btn ${t.tags.has(g)?"on":""}" onclick="Att.trkToggle('tags',${esc(JSON.stringify(g))})">${esc(g)} <b>${n}</b></button>`).join("") : "")
+      + ((t.flags.size||t.tags.size||t.status||t.q) ? `<button class="chip btn" onclick="Att.trkClear()">✕ clear filters</button>` : "");
+  },
+  trkList(items){
+    const rows = this.trkRows(items); const t = this.trk; const today = localKey(new Date());
+    if (!rows.length) return `<div class="card">${U.empty(items.length?"Nothing matches the filters":"Nothing tracked yet", items.length?"clear a chip or the text filter":"flag an order, add a comment or set a follow-up in the order drawer and it shows up here")}</div>`;
+    const act = x => this.trkAct(x); const byAct = (a,b) => ((act(b)||0)-(act(a)||0)); const due = x => x.reminder_at ? String(x.reminder_at).slice(0,10) : "";
+    const groups = []; let rest = rows;
+    if (t.follow) { const f = rows.filter(x => x.reminder_at).sort((a,b) => due(a)<due(b)?-1:due(a)>due(b)?1:byAct(a,b)); if (f.length) { groups.push({title:"Follow-ups", sub:`${f.filter(x=>due(x)<today).length} overdue · ${f.filter(x=>due(x)===today).length} today · soonest first`, rows:f, cls:"follow"}); rest = rows.filter(x => !x.reminder_at); } }
+    if (t.group) { const m = new Map(); rest.slice().sort(byAct).forEach(x => { const d = act(x); const k = d ? localKey(d) : "unknown"; if (!m.has(k)) m.set(k, []); m.get(k).push(x); }); for (const [k, list] of m) { const dl = dayLabel(k); groups.push({title:dl.title, sub:dl.sub, rows:list}); } }
+    else if (rest.length) groups.push({title: t.follow?"Everything else":"All tracked", sub:"most recent activity first", rows: rest.slice().sort(byAct)});
+    return groups.map(g => `<div class="trk-grp"><div class="trk-day ${g.cls||""}"><b>${esc(g.title)}</b><span class="muted small">${esc(g.sub||"")}</span><span class="pill">${U.int(g.rows.length)}</span></div>${this.trkTable(g.rows, today)}</div>`).join("");
+  },
+  trkTable(rows, today){
+    return `<div class="tblwrap"><table class="t trk-t"><thead><tr><th title="flag">⚑</th><th>Order / WB</th><th>Account</th><th>Label</th><th>ASIN</th><th>Tags</th><th>Case status</th><th>Follow-up</th><th>Last comment</th><th>When</th></tr></thead><tbody>${rows.map(x => {
+      const dk = x.reminder_at ? String(x.reminder_at).slice(0,10) : ""; const over = dk && dk < today, todayDue = dk===today; const st = x.case_status||""; const opts = CASE_STATUS.concat(st&&!CASE_STATUS.includes(st)?[st]:[]); const a = this.trkAct(x); const note = String(x.last_note||""); const rn = String(x.reminder_note||"");
+      return `<tr data-id="${esc(x.id)}">
+        <td><button class="trk-flag ${x.flag?"set":""}" style="--c:${esc(x.flag||"transparent")}" title="${x.flag?"change flag":"set a flag"}" onclick="Att.trkFlagMenu(event, '${esc(x.id)}')">${x.flag?"":"+"}</button></td>
+        <td class="mono"><span class="olink" data-open="${esc(x.id)}">${esc(x.id)}</span></td>
+        <td>${esc(x.account||"")}</td><td>${U.lb(x.label)}</td>
+        <td class="mono">${x.asin?`<span class="olink" onclick="Ins.drill('${esc(x.asin)}')">${esc(x.asin)}</span>`:""}</td>
+        <td>${U.tags(x.tags)}</td>
+        <td><select class="in s trk-sel ${st?(/resolved|closed/i.test(st)?"ok":"warn"):""}" onchange="Att.trkUpdate('${esc(x.id)}', {case_status:this.value})"><option value="">—</option>${opts.map(o=>`<option value="${esc(o)}" ${o===st?"selected":""}>${esc(o.replace(/_/g," "))}</option>`).join("")}</select></td>
+        <td class="small">${dk?`<span class="${over?"neg":todayDue?"warn-t":""}" title="${esc(x.reminder_at)}">⏰ ${esc(U.date(dk))}${over?" · overdue":todayDue?" · today":""}</span>${rn?`<div class="lab-note" title="${esc(rn)}">${esc(rn.slice(0,60))}${rn.length>60?"…":""}</div>`:""}`:`<span class="muted">—</span>`}</td>
+        <td class="trk-note" title="${esc(note)}">${x.notes?`<span class="ev-badge" title="${x.notes} notes">${x.notes}</span> `:""}${esc(note.slice(0,90))}${note.length>90?"…":""}</td>
+        <td class="small muted nowrap" title="${esc(a?a.toLocaleString():"")}">${a?esc(U.rel(a)):"—"}</td></tr>`; }).join("")}</tbody></table></div>`;
+  },
+  trkRefresh(){
+    const d = this.cache.tracker; if (!d) return; const items = d.items||[];
+    const c = $("#trk-ctl"); if (c) c.innerHTML = this.trkControls(items);
+    const ch = $("#trk-chips"); if (ch) ch.innerHTML = this.trkChips(items);
+    const l = $("#trk-list"); if (l) l.innerHTML = this.trkList(items);
+    this.bind();
+  },
+  trkQ: U.debounce(() => Att.trkRefresh(), 220),
+  trkSet(k, v){ this.trk[k] = v; this.trkRefresh(); },
+  trkToggle(set, v){ const s = this.trk[set]; if (s.has(v)) s.delete(v); else s.add(v); this.trkRefresh(); },
+  trkClear(){ this.trk.flags.clear(); this.trk.tags.clear(); this.trk.status = ""; this.trk.q = ""; const q = $("#trk-q"); if (q) q.value = ""; this.trkRefresh(); },
+  trkFlagMenu(ev, id){
+    ev.stopPropagation(); this.trkCloseMenu();
+    const m = document.createElement("div"); m.className = "trk-menu"; m.id = "trk-menu";
+    m.innerHTML = FLAGS.map(([c,n]) => `<button class="flag" style="--c:${c}" title="${n}" data-flag="${c}"></button>`).join("") + `<button class="flag none" title="No flag" data-flag=""></button>`;
+    document.body.appendChild(m);
+    const r = ev.currentTarget.getBoundingClientRect(); m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8))+"px"; m.style.top = Math.min(r.bottom+4, innerHeight - m.offsetHeight - 8)+"px";
+    $$("button", m).forEach(b => b.onclick = e => { e.stopPropagation(); this.trkCloseMenu(); this.trkUpdate(id, {flag_color: b.dataset.flag}); });
+    this._trkDoc = () => this.trkCloseMenu(); setTimeout(() => document.addEventListener("click", this._trkDoc, {once:true}), 0);
+  },
+  trkCloseMenu(){ const m = $("#trk-menu"); if (m) m.remove(); if (this._trkDoc) { document.removeEventListener("click", this._trkDoc); this._trkDoc = null; } },
+  async trkUpdate(id, fields){
+    const d = this.cache.tracker; const it = d && (d.items||[]).find(x => x.id===id); const prev = it ? Object.assign({}, it) : null;
+    const map = {flag_color:"flag"};
+    if (it) { for (const [k,v] of Object.entries(fields)) it[map[k]||k] = v; this.trkRefresh(); }
+    try {
+      const r = await POST("/api/order_update", Object.assign({order_id:id, author:S.name||S.role}, fields)); if (r.ok===false) throw new Error(r.error||"save failed");
+      Toast.ok((r.queued?"Queued · ":"Saved · ")+id+" · "+Object.entries(fields).map(([k,v]) => k.replace("_color","")+" → "+(v ? (FLAGS.find(f=>f[0]===v)||[null,v])[1] : "—")).join(", "));
+      Orders.patch(id, fields);
+    } catch (e) { if (it && prev) { Object.assign(it, prev); this.trkRefresh(); } Toast.err(e.message); }
   },
 };
 SECTIONS.attention = Att;
 $$("#att-tabs button").forEach(b => b.onclick = () => Att.show(b.dataset.tab));
+document.addEventListener("keydown", e => { if (e.key==="Escape") Att.trkCloseMenu(); });
 
-/* ═══════════════════════════ INSIGHTS ═══════════════════════════════ */
-const Ins = {
-  data: null, cat: "", loaded: false,
-  start(){ if (!this.loaded) this.load(); },
-  onFilter(){ this.load(true); },
-  async load(force){
-    if (force || !this.loaded) {
-      $("#ins-body").innerHTML = U.skel(5);
-      try {
-        const [d, sp] = await Promise.all([GET("/api/insights", S.gp), GET("/api/ship_perf", S.gp)]);
-        this.data = d; this.loaded = true; this.renderShip(sp);
-        $("#ins-upd").textContent = "updated "+new Date().toLocaleTimeString();
-      } catch (e) { $("#ins-body").innerHTML = U.err(e); return; }
+/* ═══════════════════════════ ANALYTICS ══════════════════════════════
+   Ins (section · tabs · per-tab cache) · Chart (inline SVG) · Tbl (sortable tables) · F (formatters)
+   Daybook · Growth (growth / coupons / asins / shipping / refunds / buyers) · Changes · PnL
+   ═══════════════════════════════════════════════════════════════════ */
+function localKey(d){ return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+function dayLabel(k){
+  const d = U.parseDt(k); if (!d) return {title:"Unknown date", sub:""};
+  const t0 = new Date(); t0.setHours(0,0,0,0);
+  const diff = Math.round((t0 - new Date(d.getFullYear(), d.getMonth(), d.getDate()))/86400000);
+  const title = diff===0?"Today":diff===1?"Yesterday":diff===-1?"Tomorrow":d.toLocaleDateString("en-GB",{weekday:"long"});
+  const sub = d.toLocaleDateString("en-GB", Object.assign({day:"numeric",month:"short",year:"numeric"}, Math.abs(diff)<=1?{weekday:"short"}:{}));
+  return {title, sub};
+}
+function parseStamp(v){
+  if (!v) return null; if (v instanceof Date) return v;
+  const m = String(v).match(/(\d{4})-?(\d{2})-?(\d{2})(?:[T\s-](\d{2}):?(\d{2}):?(\d{2})?)?/); if (!m) return null;
+  const d = new Date(+m[1], +m[2]-1, +m[3], +(m[4]||0), +(m[5]||0), +(m[6]||0)); return isNaN(d) ? null : d;
+}
+/* freshness banner: closing/enrichment older than 2 days = warning (orders after it look pending) */
+function freshness(f, compact){
+  if (!f) return "";
+  const enr = parseStamp(f.last_closing_enrichment); const age = enr ? Math.floor((Date.now()-enr.getTime())/86400000) : null;
+  const items = [["last placed", f.last_placed],["closing ran", f.last_closing_enrichment],["closing covers purchases to", f.last_closing_purchase],["tracking email", f.last_tracking_email],["buyer message", f.last_buyer_message],["return email", f.last_return_email]];
+  const line = items.filter(([,v])=>v).map(([l,v]) => { const d = parseStamp(v); return `<span title="${esc(v)}">${l} <b>${esc(d?U.rel(d):String(v))}</b></span>`; }).join(" · ");
+  const stale = age==null || age>2;
+  if (!stale) return `<div class="smallnote dbk-fresh">${line}</div>`;
+  return `<div class="banner dbk-banner"><b>Closing / enrichment last ran ${enr?esc(U.date(enr))+" — "+age+" days ago":"at an unknown time"}.</b> Orders purchased after ${esc(f.last_closing_purchase||"that date")} show as <i>pending / not shipped</i> until closing runs; shipped, delivered, late, refund and message figures are only complete up to then.${compact?"":`<div class="small" style="margin-top:4px;opacity:.85">${line}</div>`}</div>`;
+}
+const NOTE = t => `<div class="grw-note">${t}</div>`;
+const NOTECARD = t => `<div class="card grw-note" style="border-top:0;margin-bottom:14px">${t}</div>`;
+
+const F = {
+  m: v => U.money(v), m0: v => U.money(v,0), i: v => U.int(v), p: v => U.pct(v),
+  pm(v, d=2){ const x = U.n(v); return `<span class="${x<0?"neg":x>0?"pos":""}">${U.money(v,d)}</span>`; },
+  mg(v){ return v==null||v===""?"—":`<span class="${U.n(v)<0?"neg":""}">${U.pct(v)}</span>`; },
+  rate(v, warn=10, bad=20){ const x = U.n(v); return `<span class="${x>=bad?"neg":x>=warn?"warn-t":""}">${U.pct(v)}</span>`; },
+  asin(a){ return a&&a!=="—" ? `<span class="olink" onclick="Ins.drill('${esc(a)}')" title="open in Orders">${esc(a)}</span>` : "—"; },
+  wk(k){ return `<span title="${esc(k)}">${esc(String(k).replace(/^\d{4}-/,""))}</span>`; },
+  delta(cc, goodUp=true, fmt=U.int, pts=false){
+    if (!cc || cc.prev==null) return `<span class="muted">no previous period</span>`;
+    const d = U.n(cc.diff); if (d===0) return `<span class="grw-delta">no change</span> <span class="muted">vs ${fmt(cc.prev)}</span>`;
+    const good = goodUp ? d>0 : d<0; const sign = d>0?"+":"";
+    const dv = pts ? `${sign}${d.toFixed(1)} pts` : `${sign}${fmt(d)}`;
+    return `<span class="grw-delta ${good?"up":"down"}">${d>0?"▲":"▼"} ${dv}${!pts&&cc.pct!=null?` (${sign}${U.pct(cc.pct)})`:""}</span> <span class="muted">vs ${fmt(cc.prev)}</span>`;
+  },
+  sum(rows){ const t = {orders:0, units:0, earnings:0, cost:0, profit:0, coupon_saved:0, refunds:0, cancelled:0, refunded:0, returned:0, late:0, loss_orders:0}; rows.forEach(r => Object.keys(t).forEach(k => t[k] += U.n(r[k]))); t.margin_pct = t.earnings?t.profit/t.earnings*100:null; t.avg_profit = t.orders?t.profit/t.orders:0; t.cancel_rate = t.orders?t.cancelled/t.orders*100:0; t.refund_rate = t.orders?t.refunded/t.orders*100:0; t.late_rate = t.orders?t.late/t.orders*100:0; return t; },
+};
+const AGG_COLS = (keyLabel, keyFmt) => [
+  {k:"key", l:keyLabel, fmt: r => keyFmt ? keyFmt(r) : `<b>${esc(r.key)}</b>`},
+  {k:"orders", l:"Orders", num:true, fmt:r=>U.int(r.orders)},
+  {k:"units", l:"Units", num:true, fmt:r=>U.int(r.units)},
+  {k:"earnings", l:"Earnings", num:true, fmt:r=>U.money(r.earnings)},
+  {k:"cost", l:"Cost", num:true, fmt:r=>U.money(r.cost)},
+  {k:"profit", l:"Profit", num:true, fmt:r=>F.pm(r.profit)},
+  {k:"margin_pct", l:"Margin", num:true, fmt:r=>F.mg(r.margin_pct)},
+  {k:"avg_profit", l:"Avg profit", num:true, fmt:r=>F.pm(r.avg_profit)},
+  {k:"coupon_saved", l:"Coupon saved", num:true, fmt:r=>U.money(r.coupon_saved)},
+  {k:"refunds", l:"Refunds", num:true, fmt:r=>U.money(r.refunds)},
+  {k:"cancel_rate", l:"Cancel", num:true, fmt:r=>F.rate(r.cancel_rate)},
+  {k:"refund_rate", l:"Refund", num:true, fmt:r=>F.rate(r.refund_rate,3,8)},
+  {k:"late_rate", l:"Late", num:true, fmt:r=>F.rate(r.late_rate)},
+];
+const AGG_TOTAL = rows => { const t = F.sum(rows); return [`<b>Total</b>`, U.int(t.orders), U.int(t.units), U.money(t.earnings), U.money(t.cost), F.pm(t.profit), F.mg(t.margin_pct), F.pm(t.avg_profit), U.money(t.coupon_saved), U.money(t.refunds), U.pct(t.cancel_rate), U.pct(t.refund_rate), U.pct(t.late_rate)]; };
+const ASIN_COLS = () => [
+  {k:"asin", l:"ASIN", fmt:r=>F.asin(r.asin)+(r.new?` <span class="pill teal" title="not sold in the previous period">new</span>`:"")},
+  {k:"sku", l:"SKU", fmt:r=>`<span class="mono small muted">${esc(r.sku||"")}</span>`},
+  {k:"title", l:"Title", cls:"ttl", fmt:r=>esc(r.title||""), title:r=>r.title||""},
+  {k:"orders", l:"Orders", num:true, fmt:r=>`${U.int(r.orders)} <span class="muted small" title="previous period">vs ${U.int(r.prev_orders)}</span>`},
+  {k:"units", l:"Units", num:true, fmt:r=>U.int(r.units)},
+  {k:"earnings", l:"Earnings", num:true, fmt:r=>U.money(r.earnings)},
+  {k:"profit", l:"Profit", num:true, fmt:r=>F.pm(r.profit)},
+  {k:"margin_pct", l:"Margin", num:true, fmt:r=>F.mg(r.margin_pct)},
+  {k:"avg_profit", l:"Avg profit", num:true, fmt:r=>F.pm(r.avg_profit)},
+  {k:"cancel_rate", l:"Cancel", num:true, fmt:r=>F.rate(r.cancel_rate)},
+  {k:"refund_rate", l:"Refund", num:true, fmt:r=>F.rate(r.refund_rate,3,8)},
+  {k:"late_rate", l:"Late", num:true, fmt:r=>F.rate(r.late_rate)},
+];
+
+/* ── inline SVG charts (no libraries) ─────────────────────────────── */
+const Chart = {
+  nice(v){ if (!(v>0)) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v/p; const n = f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10; return n*p; },
+  k(v){ v = U.n(v); const a = Math.abs(v); const s = a>=1e6?(a/1e6).toFixed(1)+"M":a>=1e4?Math.round(a/1e3)+"k":a>=1000?(a/1000).toFixed(1)+"k":a>=100?String(Math.round(a)):a>=10?a.toFixed(1):Number.isInteger(a)?String(a):a.toFixed(2); return (v<0?"−":"")+s; },
+  $k(v){ v = U.n(v); return (v<0?"−$":"$")+Chart.k(Math.abs(v)); },
+  /* bars on the left axis + a line on the right axis */
+  combo(rows, o){
+    const n = rows.length; if (!n) return U.empty("No data for this period");
+    const W = o.w||900, H = o.h||230, L = 56, R = o.line?60:14, T = 12, B = 28, pw = W-L-R, ph = H-T-B;
+    const bv = rows.map(r => U.n(r[o.bar])); const lv = o.line ? rows.map(r => U.n(r[o.line])) : [];
+    const bmax = Chart.nice(Math.max(...bv, 0));
+    const lmax = Chart.nice(Math.max(0, ...lv)) || 1; const lmin = Math.min(0, ...lv); const lminN = lmin<0 ? -Chart.nice(-lmin) : 0;
+    const ly = v => T + ph - (v - lminN)/(lmax - lminN)*ph; const by = v => T + ph - v/bmax*ph;
+    const bw = pw/n, barw = Math.max(1, bw*0.66);
+    const fb = o.fmtBar||Chart.k, fl = o.fmtLine||Chart.k, flf = o.fmtLineFull||(v=>U.money(v)), fx = o.fmtX||(v=>String(v));
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.title||"chart")}">`;
+    [0,.25,.5,.75,1].forEach(t => { const y = T+ph-t*ph; s += `<line class="ch-grid" x1="${L}" x2="${W-R}" y1="${y}" y2="${y}"/><text class="ch-ax" x="${L-6}" y="${y+3.5}" text-anchor="end">${esc(fb(bmax*t))}</text>`; if (o.line) s += `<text class="ch-ax" x="${W-R+6}" y="${y+3.5}">${esc(fl(lminN+(lmax-lminN)*t))}</text>`; });
+    rows.forEach((r,i) => { const x = L+i*bw+(bw-barw)/2; const y = by(bv[i]); s += `<rect class="ch-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barw.toFixed(1)}" height="${Math.max(0,T+ph-y).toFixed(1)}"><title>${esc(fx(r[o.x]))} · ${esc(o.barLabel||o.bar)} ${esc(U.int(bv[i]))}${o.line?` · ${esc(o.lineLabel||o.line)} ${esc(flf(lv[i]))}`:""}${o.extra?" · "+esc(o.extra(r)):""}</title></rect>`; });
+    const every = Math.max(1, Math.ceil(n/(o.maxLabels||12)));
+    rows.forEach((r,i) => { if (i%every===0 || i===n-1) s += `<text class="ch-ax" x="${(L+i*bw+bw/2).toFixed(1)}" y="${H-8}" text-anchor="middle">${esc(fx(r[o.x]))}</text>`; });
+    if (o.line) {
+      if (lminN<0) { const y0 = ly(0).toFixed(1); s += `<line class="ch-zero" x1="${L}" x2="${W-R}" y1="${y0}" y2="${y0}"/>`; }
+      s += `<polyline class="ch-ln" points="${rows.map((r,i)=>`${(L+i*bw+bw/2).toFixed(1)},${ly(lv[i]).toFixed(1)}`).join(" ")}"/>`;
+      rows.forEach((r,i) => { s += `<circle class="ch-dot ${lv[i]<0?"neg":""}" cx="${(L+i*bw+bw/2).toFixed(1)}" cy="${ly(lv[i]).toFixed(1)}" r="2.6"><title>${esc(fx(r[o.x]))} · ${esc(o.lineLabel||o.line)} ${esc(flf(lv[i]))}</title></circle>`; });
     }
-    this.render();
+    return s + `</svg><div class="ch-legend"><span><i class="sw"></i>${esc(o.barLabel||o.bar)} (left axis)</span>${o.line?`<span><i class="sw ln"></i>${esc(o.lineLabel||o.line)} (right axis)</span>`:""}</div>`;
+  },
+  /* vertical bars with the value written above each bar */
+  vbars(rows, o){
+    const n = rows.length; if (!n) return U.empty("No data for this period");
+    const W = o.w||600, H = o.h||170, L = 8, R = 8, T = 20, B = 24, pw = W-L-R, ph = H-T-B;
+    const val = r => U.n(typeof o.y==="function"?o.y(r):r[o.y]); const lab = r => typeof o.x==="function"?o.x(r):r[o.x];
+    const vals = rows.map(val); const max = Math.max(...vals.map(Math.abs), 0)||1;
+    const bw = pw/n, barw = Math.max(2, bw*0.7); const fmt = o.fmt||U.int;
+    let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.title||"bars")}"><line class="ch-grid" x1="${L}" x2="${W-R}" y1="${T+ph}" y2="${T+ph}"/>`;
+    rows.forEach((r,i) => { const v = vals[i]; const h = Math.abs(v)/max*ph; const x = L+i*bw+(bw-barw)/2; const y = T+ph-h; const cls = (o.cls?o.cls(r,v):"")||""; const xl = String(lab(r));
+      s += `<rect class="ch-bar ${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barw.toFixed(1)}" height="${h.toFixed(1)}"><title>${esc(xl)} · ${esc(fmt(v))}${o.sub?` · ${esc(o.sub(r))}`:""}</title></rect>`;
+      if (n<=40) s += `<text class="ch-val" x="${(x+barw/2).toFixed(1)}" y="${(y-4).toFixed(1)}" text-anchor="middle">${esc(fmt(v))}</text>`;
+      if (n<=40 || i%Math.ceil(n/24)===0) s += `<text class="ch-ax" x="${(x+barw/2).toFixed(1)}" y="${H-7}" text-anchor="middle">${esc(xl)}</text>`; });
+    return s + `</svg>`;
+  },
+  /* horizontal bars (HTML grid) */
+  hbars(rows, o){
+    if (!rows.length) return U.empty("No data for this period");
+    const val = r => U.n(typeof o.v==="function"?o.v(r):r[o.v]); const vals = rows.map(val);
+    const max = o.max || Math.max(...vals.map(Math.abs), 0) || 1; const fmt = o.fmt||U.int;
+    return `<div class="hbars">${rows.map((r,i) => { const v = vals[i]; const k = String(typeof o.k==="function"?o.k(r):r[o.k]); const cls = (o.cls?o.cls(r,v):"")||""; return `<span class="k" title="${esc(k)}">${o.kHtml?o.kHtml(r):esc(k)}</span><div class="bar"><i class="${cls}" style="width:${Math.min(100,Math.abs(v)/max*100).toFixed(1)}%"></i></div><span class="v">${fmt(v)}${o.sub?` <span class="muted">${o.sub(r)}</span>`:""}</span>`; }).join("")}</div>`;
+  },
+};
+
+/* ── sortable tables ──────────────────────────────────────────────── */
+const Tbl = {
+  reg: {},
+  /* cols: [{k, l, num, fmt(row), cls, title(row), sort:false|key}] · opts: {sort, dir, limit, total(rows)->cells, empty, maxh, row(r)->attrs, cls} */
+  html(id, cols, rows, opts={}){
+    const prev = this.reg[id]; const st = {id, cols, rows: rows||[], opts, k: prev?prev.k:(opts.sort||null), dir: prev?prev.dir:(opts.dir||"desc"), limit: opts.limit||0};
+    this.reg[id] = st;
+    return `<div class="tblwrap ${opts.cls||""}" id="${id}" style="${opts.maxh?`max-height:${opts.maxh}`:""}">${this.inner(st)}</div>`;
+  },
+  inner(st){
+    const {cols, opts} = st; let rows = st.rows;
+    if (st.k) rows = Tbl.sorted(rows, st.k, st.dir);
+    const shown = st.limit ? rows.slice(0, st.limit) : rows;
+    const th = cols.map(c => { const sk = c.sort===false?null:(c.sort||c.k); return `<th class="${c.num?"num":""} ${sk?"sortable":""}" ${sk?`onclick="Tbl.sort('${st.id}','${sk}')"`:""}>${c.l}${sk&&st.k===sk?`<span class="arr">${st.dir==="asc"?"▲":"▼"}</span>`:""}</th>`; }).join("");
+    const tr = r => `<tr ${opts.row?opts.row(r):""}>${cols.map(c => `<td class="${c.num?"num":""} ${c.cls||""}" ${c.title?`title="${esc(c.title(r))}"`:""}>${c.fmt?c.fmt(r):esc(r[c.k]??"")}</td>`).join("")}</tr>`;
+    const body = shown.map(tr).join("") || `<tr><td colspan="${cols.length}">${U.empty(opts.empty||"Nothing here")}</td></tr>`;
+    const tot = opts.total && rows.length ? `<tfoot><tr class="tot">${opts.total(rows).map((v,i)=>`<td class="${cols[i]&&cols[i].num?"num":""}">${v}</td>`).join("")}</tr></tfoot>` : "";
+    const more = st.limit && rows.length>st.limit ? `<div class="pager"><span>showing ${U.int(st.limit)} of ${U.int(rows.length)}</span><span class="grow"></span><button class="b s" onclick="Tbl.more('${st.id}')">Show all</button></div>` : "";
+    return `<table class="t"><thead><tr>${th}</tr></thead><tbody>${body}</tbody>${tot}</table>${more}`;
+  },
+  sorted(rows, k, dir){ const m = dir=="asc"?1:-1; const num = /^-?\d+(\.\d+)?$/; const nul = v => v==null||v===""; return rows.slice().sort((a,b) => { const x = a[k], y = b[k]; if (nul(x)&&nul(y)) return 0; if (nul(x)) return 1; if (nul(y)) return -1; const sx = String(x).trim(), sy = String(y).trim(); if (num.test(sx)&&num.test(sy)) return (parseFloat(sx)-parseFloat(sy))*m; return sx.toLowerCase().localeCompare(sy.toLowerCase())*m; }); },
+  sort(id, k){ const st = this.reg[id]; if (!st) return; if (st.k===k) st.dir = st.dir==="asc"?"desc":"asc"; else { st.k = k; const c = st.cols.find(x => (x.sort||x.k)===k); st.dir = c && !c.num ? "asc" : "desc"; } const el = $("#"+id); if (el) el.innerHTML = this.inner(st); },
+  more(id){ const st = this.reg[id]; if (!st) return; st.limit = 0; const el = $("#"+id); if (el) el.innerHTML = this.inner(st); },
+};
+
+/* ── section: tabs, routing, cache ────────────────────────────────── */
+const Ins = {
+  tab: "daybook", cache: {}, _seq: 0,
+  TABS: [["daybook","Day book"],["growth","Growth"],["coupons","Coupons"],["asins","ASINs"],["shipping","Shipping"],["refunds","Refunds & cancels"],["buyers","Buyers & places"],["changes","Changes"],["pnl","P&L"]],
+  SUBS: {daybook:"every order, grouped by day — download, filter by status, drill into any order", growth:"this period against the previous one — where the money is moving", coupons:"what the coupon profiles saved and which codes carry the business", asins:"which products earn, which lose, which are new, growing or fading", shipping:"how fast orders get placed, shipped and delivered", refunds:"refunds, returns and cancellations — the leaks", buyers:"repeat buyers, business share and where orders go", changes:"anomalies detected across orders — resolve them as you go", pnl:"monthly close per store — balances in, payables out"},
+  start(sub){ if (sub && this.TABS.some(t => t[0]===sub)) this.tab = sub; this.show(this.tab); },
+  onFilter(){ this.cache = {}; Daybook.onGlobal(); this.load(true); },
+  show(tab){ this.tab = tab; $$("#ana-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab===tab)); if (Nav.current==="insights") history.replaceState(null, "", "#insights/"+tab); this.load(); },
+  key(k){ return k+"|"+JSON.stringify(S.gp); },
+  has(k){ return !!this.cache[this.key(k)]; },
+  data(k, fetcher, force){ const kk = this.key(k); if (force) delete this.cache[kk]; if (!this.cache[kk]) this.cache[kk] = fetcher().catch(e => { delete this.cache[kk]; throw e; }); return this.cache[kk]; },
+  growth(force){ return this.data("growth", () => GET("/api/growth", S.gp), force); },
+  get MODS(){ return {daybook: Daybook, growth: Growth, coupons: Growth, asins: Growth, shipping: Growth, refunds: Growth, buyers: Growth, changes: Changes, pnl: PnL}; },
+  async load(force){
+    const tab = this.tab, body = $("#ana-body"); const seq = ++this._seq;
+    $("#ana-sub").textContent = this.SUBS[tab]||"";
+    const alive = () => seq===this._seq && this.tab===tab && Nav.current==="insights";
+    try { await this.MODS[tab].mount(body, !!force, alive); if (alive()) $("#ins-upd").textContent = "updated "+new Date().toLocaleTimeString(); }
+    catch (e) { if (alive()) body.innerHTML = U.err(e)+`<div style="margin-top:8px"><button class="b s" onclick="Ins.load(true)">Retry</button></div>`; }
+  },
+  drill(asin){ S.q = asin; $("#q").value = asin; Nav.go("orders"); Orders.load(); },
+  skel(){ return `<div class="kpis">${Array.from({length:5},()=>`<div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div>`).join("")}</div><div class="card"><div class="bd">${U.skel(6)}</div></div>`; },
+};
+SECTIONS.insights = Ins;
+$$("#ana-tabs button").forEach(b => b.onclick = () => Ins.show(b.dataset.tab));
+
+/* ═══════════════════════════ DAY BOOK ═══════════════════════════════ */
+const Daybook = {
+  st: {datecol:"purchase", quick:14, profile:"", label:"", zoro:"", q:"", flags:new Set(), mode:"all"},
+  open: new Set(), pages: {}, data: null, _seq: 0, PAGE: 100, todayKey: "",
+  FLAGS: [
+    ["placed","Placed", o=>o.s.placed], ["pending","Pending", o=>o.s.pending&&!o.s.cancelled], ["shipped","Shipped", o=>o.s.shipped], ["tracking","Tracking", o=>o.s.tracking], ["delivered","Delivered", o=>o.s.delivered],
+    ["late_ship","Late ship", o=>o.s.late_ship], ["late_delivery","Late delivery", o=>o.s.late_delivery], ["cancelled","Cancelled", o=>o.s.cancelled], ["refunded","Refunded", o=>o.s.refunded], ["returned","Returned", o=>o.s.returned], ["loss","Loss", o=>o.s.loss], ["incomplete","Incomplete", o=>o.s.incomplete],
+    ["msg","Tracking msg sent", o=>o.s.tracking_msg_sent], ["nomsg","No tracking msg", o=>(o.s.shipped||o.s.tracking)&&!o.s.tracking_msg_sent], ["checkin","Check-in sent", o=>o.s.delivery_checkin], ["nocheckin","Delivered, no check-in", o=>o.s.delivered&&!o.s.delivery_checkin], ["buyer","Buyer wrote", o=>o.s.buyer_wrote], ["oos","OOS notice", o=>o.s.oos_notice],
+    ["case","Has case", o=>o.s.has_case||!!o.case_status], ["flag","Flagged", o=>!!o.flag], ["coupon","Coupon used", o=>!!o.coupon&&o.coupon!=="None"], ["nocoupon","No coupon", o=>!o.coupon||o.coupon==="None"], ["business","Business buyer", o=>!!o.business],
+  ],
+  onGlobal(){ if (S.from||S.to) this.st.quick = "custom"; else if (this.st.quick==="custom") this.st.quick = 14; },
+  params(){ const s = this.st; const p = {datecol:s.datecol, account:S.gp.account, profile:s.profile, label:s.label, zoro_account:s.zoro}; if (s.quick==="custom" && (S.from||S.to)) { p.from = S.from; p.to = S.to; } else p.days = s.quick==="custom"?14:s.quick; return p; },
+  csvUrl(extra){ return "/api/daybook.csv"+U.qs(Object.assign(this.params(), extra||{})); },
+  async mount(body, force){
+    this.onGlobal();
+    if (!Orders._facetsDone) { body.innerHTML = this.skel(); await Orders.facets().catch(()=>{}); }
+    body.innerHTML = `<div class="card dbk-ctl"><div class="bd">${this.controls()}</div></div><div id="dbk-fresh"></div><div id="dbk-tot" class="dbk-tot"></div><div id="dbk-chips" class="dbk-chips"></div><div id="dbk-out">${this.skel()}</div>`;
+    this.bindControls(); this.syncCtl();
+    await this.load(force);
+  },
+  skel(){ return `<div class="card"><div class="bd">${U.skel(3)}</div></div><div class="card" style="margin-top:10px"><div class="bd">${U.skel(6)}</div></div>`; },
+  controls(){
+    const s = this.st; const opt = (list, cur, any) => `<option value="">${any}</option>`+list.map(v=>`<option value="${esc(v)}" ${v===cur?"selected":""}>${esc(v)}</option>`).join("");
+    const profiles = (S.facets.profiles&&S.facets.profiles.length)?S.facets.profiles:PROFILES; const zoros = S.facets.zoro_accounts||[];
+    return `<div class="row dbk-row">
+      <span class="seg" id="dbk-basis" title="which date the day grouping uses"><button data-v="purchase">Purchase</button><button data-v="placed">Placed</button><button data-v="shipped">Shipped</button><button data-v="delivered">Delivered</button></span>
+      <span class="seg" id="dbk-quick"><button data-v="1">Today</button><button data-v="7">7d</button><button data-v="14">14d</button><button data-v="30">30d</button><button data-v="custom" title="uses the From → To dates in the top bar">Custom</button></span>
+      <select class="in s" id="dbk-profile">${opt(profiles, s.profile, "Any profile")}</select>
+      <select class="in s" id="dbk-label">${opt(LABELS, s.label, "Any label")}</select>
+      ${zoros.length?`<select class="in s" id="dbk-zoro">${opt(zoros, s.zoro, "Any Zoro account")}</select>`:""}
+      <input class="in s" id="dbk-q" placeholder="filter: order id, WB, ASIN, SKU, title, state, coupon…" value="${esc(s.q)}">
+      <button class="b s ghost" onclick="Daybook.expandAll(true)">Expand all</button><button class="b s ghost" onclick="Daybook.expandAll(false)">Collapse all</button>
+      <a class="b s p" id="dbk-csv" href="${this.csvUrl()}" title="download every order in this range as CSV (same filters)">Download CSV</a></div>`;
+  },
+  bindControls(){
+    $$("#dbk-basis button").forEach(b => b.onclick = () => this.set("datecol", b.dataset.v));
+    $$("#dbk-quick button").forEach(b => b.onclick = () => { const v = b.dataset.v; if (v==="custom" && !(S.from||S.to)) Toast.show("Pick From → To in the top bar for a custom range — showing 14 days"); this.set("quick", v==="custom"?"custom":parseInt(v)); });
+    $("#dbk-profile").onchange = e => this.set("profile", e.target.value);
+    $("#dbk-label").onchange = e => this.set("label", e.target.value);
+    const z = $("#dbk-zoro"); if (z) z.onchange = e => this.set("zoro", e.target.value);
+    $("#dbk-q").addEventListener("input", U.debounce(e => { this.st.q = e.target.value.trim(); this.render(); }, 200));
+  },
+  syncCtl(){ const s = this.st; $$("#dbk-basis button").forEach(b => b.classList.toggle("on", b.dataset.v===s.datecol)); $$("#dbk-quick button").forEach(b => b.classList.toggle("on", String(b.dataset.v)===String(s.quick))); const a = $("#dbk-csv"); if (a) a.href = this.csvUrl(); },
+  set(k, v){ this.st[k] = v; this.syncCtl(); this.load(); },
+  async load(force){
+    const seq = ++this._seq; const p = this.params(); const key = "daybook"+JSON.stringify(p);
+    const out = $("#dbk-out"); if (!out) return;
+    if (force || !Ins.has(key)) out.innerHTML = this.skel();
+    try {
+      const d = await Ins.data(key, () => GET("/api/daybook", p), force);
+      if (seq!==this._seq || !$("#dbk-out")) return;
+      this.data = d; this.open = new Set((d.days||[]).slice(0,1).map(x => x.date)); this.pages = {}; this.render();
+    } catch (e) { if (seq===this._seq && $("#dbk-out")) $("#dbk-out").innerHTML = U.err(e)+`<div style="margin-top:8px"><button class="b s" onclick="Daybook.load(true)">Retry</button></div>`; }
+  },
+  hay(o){ return o._h || (o._h = [o.id,o.wb,o.wb_all,o.asin,o.sku,o.title,o.state,o.city,o.coupon,o.tags,o.tracking,o.profile,o.account,o.label,o.case_status].join(" ").toLowerCase()); },
+  preds(){ return Array.from(this.st.flags).map(k => (this.FLAGS.find(f => f[0]===k)||[])[2]).filter(Boolean); },
+  filterRows(orders){ const q = this.st.q.toLowerCase(); const fl = this.preds(); const any = this.st.mode==="any"; return orders.filter(o => (!q || this.hay(o).includes(q)) && (!fl.length || (any ? fl.some(f=>f(o)) : fl.every(f=>f(o))))); },
+  toggleFlag(k){ if (this.st.flags.has(k)) this.st.flags.delete(k); else this.st.flags.add(k); this.render(); },
+  clearFlags(){ this.st.flags.clear(); this.render(); },
+  setMode(m){ this.st.mode = m; this.render(); },
+  agg(rows){
+    const t = {orders:rows.length, units:0, earnings:0, cost:0, profit:0, coupon:0, refunds:0, placed:0, pending:0, shipped:0, tracking:0, delivered:0, late:0, cancelled:0, refunded:0, returned:0, loss:0, msg:0, nomsg:0, checkin:0, buyer:0, cases:0, oos:0};
+    for (const o of rows) { const s = o.s||{}; t.units += U.n(o.qty); t.earnings += U.n(o.earnings); t.cost += U.n(o.cost); t.profit += U.n(o.profit); t.coupon += U.n(o.coupon_saved); t.refunds += U.n(s.refund_amount!=null?s.refund_amount:o.refund_amount);
+      if (s.placed) t.placed++; if (s.pending&&!s.cancelled) t.pending++; if (s.shipped) t.shipped++; if (s.tracking) t.tracking++; if (s.delivered) t.delivered++; if (s.late_ship||s.late_delivery) t.late++; if (s.cancelled) t.cancelled++; if (s.refunded) t.refunded++; if (s.returned) t.returned++; if (s.loss) t.loss++;
+      if (s.tracking_msg_sent) t.msg++; else if (s.shipped||s.tracking) t.nomsg++; if (s.delivery_checkin) t.checkin++; if (s.buyer_wrote) t.buyer++; if (s.has_case||o.case_status||o.flag) t.cases++; if (s.oos_notice) t.oos++; }
+    t.margin = t.earnings ? t.profit/t.earnings*100 : null; t.avg = t.orders ? t.profit/t.orders : 0; return t;
+  },
+  pills(t){
+    const p = (n, cls, l, title) => n ? `<span class="pill ${cls}" title="${esc(title||l)}">${l} ${U.int(n)}</span>` : "";
+    return p(t.placed,"info","placed","placed on Zoro (has a WB number)")+p(t.pending,"warn","pending","placed but not shipped yet")+p(t.shipped,"ok","shipped")+p(t.delivered,"ok","delivered")+p(t.late,"bad","late","shipped or delivered after the promised date")+p(t.cancelled,"bad","cancelled")+p(t.refunded,"bad","refunded")+p(t.returned,"bad","returned")+p(t.loss,"bad","loss","orders that lost money")+p(t.msg,"ok","msg ✓","tracking message sent to the buyer")+p(t.nomsg,"warn","no msg","shipped but no tracking message sent yet")+p(t.checkin,"ok","check-in","delivery check-in sent")+p(t.buyer,"purple","buyer wrote")+p(t.oos,"warn","oos notice")+p(t.cases,"","cases","flagged, tagged or with a case status");
+  },
+  totals(t, d){
+    const st = (l, v, cls="") => `<div class="stat"><div class="l">${l}</div><div class="v ${cls}">${v}</div></div>`;
+    const days = (d.days||[]).length;
+    return `<div class="card"><div class="bd"><div class="row" style="margin-bottom:8px"><b>${U.int(t.orders)} orders</b><span class="muted small">${esc(d.from||"")} → ${esc(d.to||"")} · ${days} day${days===1?"":"s"} · by ${esc(d.datecol||"purchase")} date${(this.st.q||this.st.flags.size)?" · filtered":""}</span></div>
+      <div class="stats">${st("Units",U.int(t.units))}${st("Earnings",U.money(t.earnings,0))}${st("Zoro cost",U.money(t.cost,0))}${st("Profit",U.money(t.profit,0),t.profit<0?"neg":"pos")}${st("Margin",U.pct(t.margin),U.n(t.margin)<0?"neg":"")}${st("Avg profit / order",U.money(t.avg))}${st("Coupon saved",U.money(t.coupon,0))}${st("Refunds",U.money(t.refunds,0),t.refunds?"neg":"")}${st("Orders / day",days?U.int(Math.round(t.orders/days)):"—")}</div>
+      <div class="dbk-pills" style="margin-top:10px">${this.pills(t)||`<span class="muted small">no lifecycle data</span>`}</div></div></div>`;
+  },
+  chips(textRows){
+    const s = this.st; const cnt = {}; this.FLAGS.forEach(([k,,f]) => cnt[k] = textRows.reduce((a,o) => a+(f(o)?1:0), 0));
+    return `<span class="muted small">Status:</span><span class="seg"><button class="${s.mode==="all"?"on":""}" onclick="Daybook.setMode('all')" title="an order must match every selected chip">match all</button><button class="${s.mode==="any"?"on":""}" onclick="Daybook.setMode('any')" title="an order may match any selected chip">match any</button></span>`
+      + this.FLAGS.map(([k,l]) => `<button class="chip btn ${s.flags.has(k)?"on":""}" onclick="Daybook.toggleFlag('${k}')" ${cnt[k]?"":'style="opacity:.55"'}>${l} <b>${U.int(cnt[k])}</b></button>`).join("")
+      + (s.flags.size?`<button class="chip btn" onclick="Daybook.clearFlags()">✕ clear</button>`:"");
+  },
+  render(){
+    const d = this.data; if (!d || !$("#dbk-out")) return; this.todayKey = localKey(new Date());
+    const days = d.days||[]; const q = this.st.q.toLowerCase();
+    const textRows = []; days.forEach(day => (day.orders||[]).forEach(o => { if (!q || this.hay(o).includes(q)) textRows.push(o); }));
+    $("#dbk-chips").innerHTML = this.chips(textRows);
+    const vis = days.map(day => ({day, rows: this.filterRows(day.orders||[])})).filter(x => x.rows.length);
+    const all = []; vis.forEach(x => all.push(...x.rows));
+    $("#dbk-fresh").innerHTML = freshness(d.freshness);
+    $("#dbk-tot").innerHTML = this.totals(this.agg(all), d);
+    $("#dbk-out").innerHTML = vis.length ? vis.map(x => this.dayCard(x.day, x.rows)).join("") : `<div class="card">${days.length ? U.empty("No orders match the filters", "clear the status chips or the text filter") : U.empty("No orders in this range", this.emptyHint(d))}</div>`;
+  },
+  emptyHint(d){ return /shipped|delivered/.test(d.datecol||"") ? "ship and delivery dates come from the closing pipeline — if closing has not run for these days there is nothing to group yet (see the freshness line above)" : "try another date basis, a wider range, or All accounts"; },
+  dayCard(day, rows){
+    const t = this.agg(rows); const open = this.open.has(day.date); const dl = dayLabel(day.date); const total = (day.orders||[]).length;
+    return `<div class="card dbk-day ${open?"open":""}" data-date="${esc(day.date)}">
+      <div class="hd" onclick="Daybook.toggle('${esc(day.date)}')">
+        <span class="dbk-caret">${open?"▾":"▸"}</span>
+        <div class="dbk-title"><b>${esc(dl.title)}</b><span class="muted">${esc(dl.sub)}</span></div>
+        <span class="dbk-n">${U.int(t.orders)} orders${rows.length!==total?` <span class="muted">of ${U.int(total)}</span>`:""}</span>
+        <div class="dbk-pills">${this.pills(t)}</div>
+        <span class="grow"></span>
+        <div class="dbk-money"><span>earn <b>${U.money(t.earnings,0)}</b></span><span>cost <b>${U.money(t.cost,0)}</b></span><span>profit <b class="${t.profit<0?"neg":"pos"}">${U.money(t.profit,0)}</b></span><span>margin <b class="${U.n(t.margin)<0?"neg":""}">${U.pct(t.margin)}</b></span><span>coupon <b>${U.money(t.coupon,0)}</b></span>${t.refunds?`<span>refunds <b class="neg">${U.money(t.refunds,0)}</b></span>`:""}</div>
+        <a class="b s ghost" href="${this.csvUrl({from:day.date, to:day.date, days:""})}" onclick="event.stopPropagation()" title="download this day as CSV">CSV</a>
+      </div>
+      ${open?`<div class="bd tight">${this.table(day, rows)}</div>`:""}
+    </div>`;
+  },
+  table(day, rows){
+    const shown = Math.min(rows.length, (this.pages[day.date]||1)*this.PAGE); const slice = rows.slice(0, shown);
+    return `<div class="tblwrap"><table class="t dbk-t"><thead><tr><th>Order</th><th>Account</th><th>ASIN / SKU / title</th><th class="num">Qty</th><th>Label</th><th>Lifecycle</th><th class="num">Earnings</th><th class="num">Cost</th><th class="num">Profit</th><th class="num">Margin</th><th>Coupon</th><th>Ship by · Deliver by</th><th>State</th></tr></thead><tbody>${slice.map(o => this.row(o)).join("")}</tbody></table>
+      ${rows.length>shown?`<div class="pager"><span>showing ${U.int(shown)} of ${U.int(rows.length)}</span><span class="grow"></span><button class="b s" onclick="Daybook.more('${esc(day.date)}')">Show ${U.int(Math.min(this.PAGE, rows.length-shown))} more</button><button class="b s ghost" onclick="Daybook.more('${esc(day.date)}', true)">Show all</button></div>`:""}</div>`;
+  },
+  row(o){
+    const s = o.s||{}; const p = U.n(o.profit); const hasCost = o.cost!=null && o.cost!=="" && (U.n(o.cost)!==0 || s.placed);
+    const shipBy = String(o.ship_by||"").slice(0,10), delBy = String(o.deliver_by||"").split("|")[0].slice(0,10);
+    const shipLate = shipBy && shipBy < this.todayKey && !s.shipped && !s.cancelled; const delLate = delBy && delBy < this.todayKey && !s.delivered && !s.cancelled;
+    return `<tr>
+      <td class="mono"><span class="olink" onclick="Drawer.open('${esc(o.id)}')">${U.flagdot(o.flag)}${esc(o.id)}</span>${o.wb?`<div class="lab-note mono" title="${esc(o.wb_all||o.wb)}">${esc(o.wb)}${o.wb_all&&o.wb_all!==o.wb?" +":""}</div>`:""}</td>
+      <td>${esc(o.account||"")}<div class="lab-note">${esc(o.profile||"")}</div></td>
+      <td class="ttl" title="${esc(o.title||"")}">${o.asin?`<span class="mono olink" onclick="Ins.drill('${esc(o.asin)}')">${esc(o.asin)}</span>`:""} <span class="muted small">${esc(o.sku||"")}</span><div class="ttl-line">${esc(o.title||"")}</div></td>
+      <td class="num">${esc(o.qty??"")}${o.business?` <span class="pill" title="business buyer" style="padding:0 4px">B</span>`:""}</td>
+      <td>${U.lb(o.label)}</td>
+      <td><div class="dbk-life">${this.life(o)}</div></td>
+      <td class="num">${U.money(o.earnings)}</td>
+      <td class="num">${hasCost?U.money(o.cost):"—"}</td>
+      <td class="num ${hasCost?(p<0?"neg":p>0?"pos":""):""}">${hasCost?U.money(p):"—"}</td>
+      <td class="num ${U.n(o.margin)<0?"neg":""}">${hasCost?U.pct(o.margin):"—"}</td>
+      <td>${o.coupon&&o.coupon!=="None"?`<span class="mono small">${esc(o.coupon)}</span>`:`<span class="muted">—</span>`}${U.n(o.coupon_saved)?`<div class="lab-note">saved ${U.money(o.coupon_saved)}</div>`:""}</td>
+      <td class="small nowrap"><span class="${shipLate?"neg":""}" title="ship by ${esc(shipBy)}">${shipBy?esc(U.date(shipBy)):"—"}</span> · <span class="${delLate?"neg":""}" title="deliver by ${esc(delBy)}">${delBy?esc(U.date(delBy)):"—"}</span></td>
+      <td title="${esc(o.city||"")}">${esc(o.state||"")}</td></tr>`;
+  },
+  life(o){
+    const s = o.s||{}; const P = (cls, txt, title) => `<span class="pill ${cls}" title="${esc(title||"")}">${txt}</span>`; const out = [];
+    if (s.placed) out.push(P("info","Placed", `${o.wb||""} · ${o.placed_at||""}`)); else if (!s.cancelled) out.push(P("","Not placed","no Zoro order yet"));
+    if (s.pending && !s.cancelled) out.push(P("warn","Pending","placed, not shipped yet"));
+    if (s.shipped) out.push(P("ok","Shipped", o.shipped_at||""));
+    if (s.tracking) out.push(P("teal","Tracking", `${o.carrier||""} ${o.tracking||""}`.trim()));
+    if (s.delivered) out.push(P("ok","Delivered", o.delivered_at||o.delivery_status||""));
+    if (s.late_ship) out.push(P("bad","Late ship", `ship by ${o.ship_by||""} · shipped ${o.shipped_at||"—"}`));
+    if (s.late_delivery) out.push(P("bad","Late delivery", `deliver by ${o.deliver_by||""} · delivered ${o.delivered_at||"—"}`));
+    if (s.cancelled) out.push(P("bad","Cancelled", s.cancel_ack?"cancelled · cancellation acknowledgement sent":"cancelled"));
+    if (s.refunded) out.push(P("bad","Refunded "+U.money(s.refund_amount!=null?s.refund_amount:o.refund_amount), `refund ${s.refund_at||o.refund_at||""}`));
+    if (s.returned) out.push(P("bad","Returned", `${s.return_reason||o.return_reason||""} ${s.return_at||o.return_at||""}`.trim()));
+    if (s.oos_notice) out.push(P("warn","OOS notice","out-of-stock notice sent to the buyer"));
+    if (s.tracking_msg_sent) out.push(P("ok","Msg ✓", "tracking message sent "+(s.tracking_msg_at||""))); else if (s.shipped||s.tracking) out.push(P("warn","Msg ✗","shipped but no tracking message sent yet"));
+    if (s.delivery_checkin) out.push(P("ok","Check-in ✓", "delivery check-in sent "+(s.delivery_checkin_at||"")));
+    if (s.buyer_wrote) out.push(P("purple", `Buyer wrote${s.buyer_msgs>1?" ("+s.buyer_msgs+")":""}`, `${s.buyer_msgs||1} buyer message(s)`));
+    const tags = U.tags(o.tags);
+    if (o.flag || tags || o.case_status || s.has_case) out.push(`<span class="pill ${/resolved|closed/i.test(o.case_status||"")?"ok":"warn"}" title="case">${U.flagdot(o.flag)}${o.case_status?esc(String(o.case_status).replace(/_/g," ")):"case"}${o.case_type?" · "+esc(o.case_type):""}</span>${tags}`);
+    return out.join("");
+  },
+  toggle(date){ if (this.open.has(date)) this.open.delete(date); else this.open.add(date); this.renderDay(date); },
+  renderDay(date){ const el = $(`.dbk-day[data-date="${date}"]`); const day = (this.data&&this.data.days||[]).find(x => x.date===date); if (!el||!day) return; el.outerHTML = this.dayCard(day, this.filterRows(day.orders||[])); },
+  more(date, all){ this.pages[date] = all ? 1e9 : (this.pages[date]||1)+1; this.renderDay(date); },
+  expandAll(on){ if (!this.data) return; this.open = new Set(on ? (this.data.days||[]).map(x => x.date) : []); this.render(); },
+};
+
+/* ═══════════════════════════ GROWTH & FRIENDS ═══════════════════════ */
+const Growth = {
+  g: null, asinList: "top_profit",
+  LISTS: [["top_profit","Top profit","the ASINs that made the most money — keep them in stock, keep their coupons alive"],["top_volume","Top volume","most orders — these set your workload and your late-shipment risk"],["losers","Losers","negative profit or loss orders — reprice, relabel to reseller, or stop selling"],["trouble","Trouble","cancel ≥ 20%, refund ≥ 15% or late ≥ 25% with 3+ orders — quality or supplier problems"],["new","New","not sold in the previous period — watch their first margins"],["growing","Growing","at least 1.5× the previous period's orders — capacity and coupon coverage matter here"],["fading","Fading","half or less of the previous period's orders — out of stock, lost the buy box, or a dead coupon"]],
+  async mount(body, force, alive){
+    const tab = Ins.tab; const need = tab==="shipping";
+    if (force || !Ins.has("growth") || (need && !Ins.has("ship_perf"))) body.innerHTML = Ins.skel();
+    const [g, sp] = await Promise.all([Ins.growth(force), need ? Ins.data("ship_perf", () => GET("/api/ship_perf", S.gp), force) : Promise.resolve(null)]);
+    if (!alive()) return; this.g = g;
+    body.innerHTML = this[tab](g, sp);
+  },
+  period(g){ return `<div class="ana-period"><span><b>${esc(g.from)} → ${esc(g.to)}</b> (${g.days} days${S.account!=="All"?" · "+esc(S.account):" · both stores"})</span><span class="muted">compared with <b>${esc(g.prev_from)} → ${esc(g.prev_to)}</b></span><span class="muted">set From → To in the top bar to change the period</span></div>`; },
+  card(title, sub, body, note, extraHd){ return `<div class="card grp"><div class="hd"><h2>${title}</h2>${sub?`<span class="sub">${sub}</span>`:""}${extraHd?`<span class="grow"></span>${extraHd}`:""}</div>${body}${note?NOTE(note):""}</div>`; },
+  kpi(l, v, d, cls=""){ return `<div class="kpi ${cls}"><div class="l">${l}</div><div class="v money">${v}</div><div class="d">${d||""}</div></div>`; },
+  dir(cc, word){ const p = U.n(cc&&cc.pct); if (cc==null||cc.prev==null) return `${word} unchanged`; return `${word} ${p>0?"up":p<0?"down":"flat"}${p?" "+U.pct(Math.abs(p)):""}`; },
+
+  growth(g){
+    const s = g.summary||{}, p = g.prev_summary||{}, c = g.compare||{};
+    const kp = (l, key, fmt, goodUp=true, pts=false) => this.kpi(l, fmt(s[key]), F.delta(c[key], goodUp, fmt, pts));
+    const kpis = `<div class="kpis">${kp("Orders","orders",U.int)}${kp("Earnings","earnings",F.m0)}${kp("Profit","profit",F.m0)}${kp("Margin","margin_pct",U.pct,true,true)}${kp("Avg profit / order","avg_profit",F.m)}${kp("Coupon saved","coupon_saved",F.m0)}${kp("Cancel rate","cancel_rate",U.pct,false,true)}${kp("Refund rate","refund_rate",U.pct,false,true)}${kp("Late rate","late_rate",U.pct,false,true)}${kp("Units","units",U.int)}</div>`;
+    const faster = U.n((c.profit||{}).pct) >= U.n((c.orders||{}).pct);
+    const kpiNote = `${this.dir(c.orders,"Orders")}, ${this.dir(c.profit,"profit")} against the previous ${g.days} days. Margin moved ${U.pct(p.margin_pct)} → <b>${U.pct(s.margin_pct)}</b>; each order now earns <b>${U.money(s.avg_profit)}</b> (was ${U.money(p.avg_profit)}). ${faster ? "Profit is keeping pace with volume — the mix is healthy." : "You are selling more but keeping less per order — check Coupons, Refunds &amp; cancels and the losers list under ASINs."} Refunds this period: ${U.money(s.refunds,0)} (${U.money(p.refunds,0)} before).`;
+    const daily = this.card("Daily orders and profit", `${(g.daily||[]).length} days`, `<div class="bd">${Chart.combo(g.daily||[], {x:"key", bar:"orders", line:"profit", barLabel:"orders", lineLabel:"profit", fmtLine:Chart.$k, fmtLineFull:v=>U.money(v,0), fmtX:v=>U.date(v), extra:r=>`margin ${U.pct(r.margin_pct)} · cancelled ${r.cancelled} · late ${r.late}`})}</div>`,
+      `Bars are orders per day, the line is profit. A day where the bars stay tall but the line dips means thin margins, cancellations or refunds on that day — open it in the Day book. The last day is usually partial.`);
+    const weeklyCols = [{k:"key", l:"Week", fmt:r=>`<b>${F.wk(r.key)}</b>`}].concat(AGG_COLS("").slice(1));
+    const weekly = this.card("Week by week", "ISO weeks · the current week is partial", Tbl.html("grw-weekly", weeklyCols, g.weekly||[], {sort:"key", dir:"desc", total:AGG_TOTAL}),
+      `Read this top to bottom for the trend: if margin falls while orders rise, the extra volume is coming from low-margin ASINs or heavier coupon use.`);
+    const profiles = g.profiles||[]; const cp = F.sum(profiles.filter(r=>/COUPON/.test(r.key))), rs = F.sum(profiles.filter(r=>/RESELLER/.test(r.key)));
+    const cmp = `<div class="bd"><div class="stats">${[["Coupon profiles",cp],["Reseller profiles",rs]].map(([l,t])=>`<div class="stat"><div class="l">${l}</div><div class="v">${U.int(t.orders)} orders · ${U.money(t.profit,0)} · ${U.pct(t.margin_pct)} margin</div><div class="small muted">${U.money(t.avg_profit)} / order · coupon saved ${U.money(t.coupon_saved,0)} · cancel ${U.pct(t.cancel_rate)}</div></div>`).join("")}</div></div>`;
+    const profCols = AGG_COLS("Profile").filter(c => !["units","cost","refunds"].includes(c.k));
+    const profTbl = this.card("Profiles — coupon vs reseller", "HS_* = HOANK · DM_* = Hathoro", cmp + Tbl.html("grw-prof", profCols, profiles, {sort:"profit", total: rows => { const t = F.sum(rows); return [`<b>Total</b>`, U.int(t.orders), U.money(t.earnings), F.pm(t.profit), F.mg(t.margin_pct), F.pm(t.avg_profit), U.money(t.coupon_saved), U.pct(t.cancel_rate), U.pct(t.refund_rate), U.pct(t.late_rate)]; }}),
+      cp.orders&&rs.orders ? `Coupon profiles keep <b>${U.pct(cp.margin_pct)}</b> per order versus <b>${U.pct(rs.margin_pct)}</b> on reseller — the coupon saved column is the margin the coupons manufacture. "—" is orders with no placer profile recorded.` : `"—" is orders with no placer profile recorded.`);
+    const accts = g.accounts||[]; const acctCols = AGG_COLS("Store").filter(c => !["units","cost","refunds"].includes(c.k));
+    const acctTbl = this.card("Stores", "HOANK vs Hathoro", Tbl.html("grw-acct", acctCols, accts, {sort:"profit"}),
+      accts.length>1 ? `${esc(accts[0].key)} brings ${U.pct(accts[0].orders/Math.max(1,accts.reduce((a,r)=>a+U.n(r.orders),0))*100)} of orders and ${U.pct(accts[0].profit/Math.max(1e-9,accts.reduce((a,r)=>a+U.n(r.profit),0))*100)} of profit — if those two numbers drift apart, one store is carrying thinner margins.` : `Pick "All" in the account switcher to compare both stores.`);
+    const wd = g.weekdays||[]; const busiest = wd.slice().sort((a,b)=>b.orders-a.orders)[0], richest = wd.slice().sort((a,b)=>b.profit-a.profit)[0];
+    const weekdays = this.card("Orders by weekday", "purchase date", `<div class="bd">${Chart.vbars(wd, {x:"key", y:"orders", fmt:U.int, sub:r=>`profit ${U.money(r.profit,0)} · margin ${U.pct(r.margin_pct)} · cancel ${U.pct(r.cancel_rate)}`})}</div>`,
+      busiest ? `Busiest day is <b>${esc(busiest.key)}</b> (${U.int(busiest.orders)} orders); most profitable is <b>${esc(richest.key)}</b> (${U.money(richest.profit,0)}). Plan placer capacity and closing runs around the peak days so orders do not wait.` : "");
+    const hrs = g.hours||[]; const top = hrs.slice().sort((a,b)=>b.placed-a.placed).slice(0,3).map(h=>h.hour); const tot = hrs.reduce((a,h)=>a+U.n(h.placed),0); const night = hrs.filter(h=>h.hour<6).reduce((a,h)=>a+U.n(h.placed),0);
+    const hours = this.card("Placement hour of day", "when the placers actually bought on Zoro · machine local time", `<div class="bd">${Chart.vbars(hrs, {x:r=>String(r.hour).padStart(2,"0"), y:"placed", fmt:U.int, cls:(r,v)=>top.includes(r.hour)?"ok":""})}</div>`,
+      tot ? `Peak placement hours: <b>${top.map(h=>String(h).padStart(2,"0")+":00").join(", ")}</b>. ${U.pct(night/tot*100)} of placements happen before 06:00. Long gaps here are hours the placers were idle — the average purchase → placement time on the Shipping tab tells you what that costs.` : "");
+    const md = g.margin_dist||[]; const mdTot = md.reduce((a,b)=>a+U.n(b.orders),0), mdProf = md.reduce((a,b)=>a+U.n(b.profit),0); const thin = md.filter(b=>/^<0|^0–5/.test(b.bucket)); const thinN = thin.reduce((a,b)=>a+U.n(b.orders),0), thinP = thin.reduce((a,b)=>a+U.n(b.profit),0); const fat = md.filter(b=>/20–35|35%/.test(b.bucket)).reduce((a,b)=>a+U.n(b.profit),0);
+    const margin = this.card("Margin distribution", "orders per margin band", `<div class="bd">${Chart.hbars(md, {k:"bucket", v:"orders", fmt:U.int, sub:r=>`profit ${F.pm(r.profit,0)}`, cls:(r)=>/^<0/.test(r.bucket)?"bad":/^0–5/.test(r.bucket)?"warn":""})}</div>`,
+      mdTot ? `<b>${U.pct(thinN/mdTot*100)}</b> of orders sit under 5% margin and made ${U.money(thinP,0)} in total — one refund turns each of those into a loss. <b>${U.pct(fat/Math.max(1e-9,mdProf)*100)}</b> of all profit comes from orders above 20% margin: protect those ASINs and their coupons.` : "");
+    const zc = AGG_COLS("Zoro account").filter(c => !["units","refunds","refund_rate","late_rate"].includes(c.k)); zc[zc.findIndex(c=>c.k==="cost")].l = "Spend";
+    const zoro = this.card("Zoro account spend", "which Zoro logins the money went through", Tbl.html("grw-zoro", zc, g.zoro_accounts||[], {sort:"cost"}),
+      `Spend per Zoro account is what you reconcile against the card / Payoneer statements. "—" is orders where the placer record has no account.`);
+    return this.period(g) + freshness(g.freshness, true) + kpis + NOTECARD(kpiNote) + daily + weekly + `<div class="grid g2">${profTbl}${acctTbl}</div>` + `<div class="grid g2" style="margin-top:14px">${weekdays}${hours}</div>` + `<div class="grid g2" style="margin-top:14px">${margin}${zoro}</div>`;
+  },
+
+  coupons(g){
+    const t = g.coupon_total||{}, list = g.coupons||[], s = g.summary||{};
+    const kpis = `<div class="kpis">${this.kpi("Orders with a coupon", U.int(t.orders_with_coupon), `${U.pct(t.share_pct)} of all orders`)}${this.kpi("Saved in total", U.money(t.saved,0), F.delta(g.compare&&g.compare.coupon_saved, true, F.m0))}${this.kpi("Priority coupons", U.money(t.priority_saved,0), "multi-use codes from Priority ASIN Control")}${this.kpi("Regular coupons", U.money(t.regular_saved,0), "single-use / other codes")}${this.kpi("Avg saved / coupon order", t.orders_with_coupon?U.money(U.n(t.saved)/t.orders_with_coupon):"—", "per order that used one")}${this.kpi("Codes used", U.int(list.length), "distinct codes this period")}</div>`;
+    const top = list.slice().sort((a,b)=>U.n(b.saved)-U.n(a.saved)).slice(0,10);
+    const bars = this.card("Top 10 codes by savings", "", `<div class="bd">${Chart.hbars(top, {k:"code", v:"saved", fmt:v=>U.money(v,0), kHtml:r=>`<span class="mono">${esc(r.code)}</span>`, sub:r=>`${U.int(r.uses)} uses · ${U.pct(r.avg_pct)} off`})}</div>`,
+      top.length ? `<b>${esc(top[0].code)}</b> alone saved ${U.money(top[0].saved,0)} over ${U.int(top[0].uses)} orders. When a top code dies, the profiles fall back to weaker ones — that shows up as a margin dip on the Growth tab within days.` : "");
+    const cols = [
+      {k:"code", l:"Code", fmt:r=>`<span class="mono">${esc(r.code)}</span>`},
+      {k:"kind", l:"Kind", fmt:r=>`<span class="pill ${/priority/.test(r.kind||"")?"teal":""}">${esc(r.kind||"")}</span>`},
+      {k:"uses", l:"Uses", num:true, fmt:r=>U.int(r.uses)},
+      {k:"saved", l:"Saved", num:true, fmt:r=>U.money(r.saved)},
+      {k:"avg_saved", l:"Avg saved", num:true, fmt:r=>U.money(r.avg_saved)},
+      {k:"avg_pct", l:"Avg %", num:true, fmt:r=>U.pct(r.avg_pct)},
+      {k:"profit", l:"Profit on those orders", num:true, fmt:r=>F.pm(r.profit)},
+      {k:"first", l:"First used", fmt:r=>esc(U.date(r.first))},
+      {k:"last", l:"Last used", fmt:r=>esc(U.date(r.last))},
+    ];
+    const tbl = this.card("All codes", `${U.int(list.length)} codes · click a header to sort`, Tbl.html("cpn-t", cols, list, {sort:"saved", limit:50, total: rows => [`<b>Total</b>`, "", U.int(rows.reduce((a,r)=>a+U.n(r.uses),0)), U.money(rows.reduce((a,r)=>a+U.n(r.saved),0)), "", "", F.pm(rows.reduce((a,r)=>a+U.n(r.profit),0)), "", ""]}),
+      `Coupon savings were <b>${U.pct(U.n(t.saved)/Math.max(1,U.n(s.cost))*100)}</b> of Zoro cost this period. A code whose "last used" date is days old has probably expired — that is what the supervisor log under Attention shows as dead codes.`);
+    return this.period(g) + kpis + bars + tbl;
+  },
+
+  asins(g){
+    const a = g.asins||{};
+    if (!a[this.asinList]) this.asinList = "top_profit";
+    const chips = `<div class="ana-chips" id="asin-chips">${this.LISTS.map(([k,l])=>`<button class="chip btn ${k===this.asinList?"on":""}" data-k="${k}" onclick="Growth.setAsin('${k}')">${l} <b>${U.int((a[k]||[]).length)}</b></button>`).join("")}</div>`;
+    const kpis = `<div class="kpis">${this.kpi("ASINs sold", U.int(a.count), `${U.int(a.prev_count)} in the previous period`)}${this.kpi("New", U.int((a.new||[]).length), "first sale this period")}${this.kpi("Growing", U.int((a.growing||[]).length), "≥ 1.5× previous orders")}${this.kpi("Fading", U.int((a.fading||[]).length), "≤ ½ previous orders")}${this.kpi("Losers", U.int((a.losers||[]).length), "negative profit or loss orders")}${this.kpi("Trouble", U.int((a.trouble||[]).length), "high cancel / refund / late")}</div>`;
+    return this.period(g) + kpis + chips + `<div id="asin-out">${this.asinTable()}</div>`;
+  },
+  asinTable(){
+    const a = (this.g||{}).asins||{}; const k = this.asinList; const meta = this.LISTS.find(x=>x[0]===k)||[k,k,""]; const rows = a[k]||[];
+    const cols = ASIN_COLS(); if (k==="losers") cols.splice(9,0,{k:"loss_orders", l:"Loss orders", num:true, fmt:r=>U.int(r.loss_orders)}); if (k==="trouble") cols.push({k:"cancelled", l:"Cancelled", num:true, fmt:r=>U.int(r.cancelled)});
+    return this.card(meta[1], meta[2], Tbl.html("asin-"+k, cols, rows, {sort: k==="top_volume"?"orders":k==="losers"?"profit":k==="trouble"?"cancel_rate":k==="fading"?"prev_orders":"profit", dir: k==="losers"?"asc":"desc", empty:"Nothing in this list for the period"}),
+      `Click an ASIN to open its orders. "vs" is the order count in the previous period of the same length.`);
+  },
+  setAsin(k){ this.asinList = k; $$("#asin-chips .chip").forEach(b => b.classList.toggle("on", b.dataset.k===k)); const out = $("#asin-out"); if (out) out.innerHTML = this.asinTable(); },
+
+  shipping(g, sp){
+    const sh = g.shipping||{}; const s = g.summary||{}; const c = g.compare||{};
+    const kpis = `<div class="kpis">${this.kpi("Shipped on time", U.pct(sh.on_time_pct), "of orders with a ship date", U.n(sh.on_time_pct)>=95?"sev-ok":U.n(sh.on_time_pct)>=85?"sev-med":"sev-high")}${this.kpi("Delivered", U.pct(sh.delivered_pct), "of orders in the period")}${this.kpi("Early / on time / late", `<span style="font-size:16px"><span class="pos">${U.int(sh.shipped_early)}</span> / ${U.int(sh.shipped_on_time)} / <span class="neg">${U.int(sh.shipped_late)}</span></span>`, "shipments vs the ship-by date")}${this.kpi("Late rate", U.pct(s.late_rate), F.delta(c.late_rate, false, U.pct, true), U.n(s.late_rate)>=10?"sev-high":U.n(s.late_rate)>=5?"sev-med":"sev-ok")}${this.kpi("Purchase → placed", sh.avg_placement_hrs!=null?U.n(sh.avg_placement_hrs).toFixed(1)+" h":"—", "average time until the placer bought it")}${this.kpi("Purchase → shipped", sh.avg_time_to_ship_hrs!=null?U.n(sh.avg_time_to_ship_hrs).toFixed(1)+" h":"—", "average time to ship")}${this.kpi("Zoro ship time", sh.avg_zoro_ship_hrs!=null?U.n(sh.avg_zoro_ship_hrs).toFixed(1)+" h":"—", "placed → shipped, Zoro's part")}${this.kpi("Purchase → delivered", sh.avg_purchase_to_delivered_days!=null?U.n(sh.avg_purchase_to_delivered_days).toFixed(1)+" d":"—", "average door-to-door")}${this.kpi("Tracking message sent", U.pct(sh.tracking_msg_pct), "of shipped orders", U.n(sh.tracking_msg_pct)>=90?"sev-ok":U.n(sh.tracking_msg_pct)>=70?"sev-med":"sev-high")}</div>`;
+    const kpiNote = NOTECARD(`Of the ${U.n(sh.avg_time_to_ship_hrs).toFixed(1)} h from purchase to shipment, <b>${U.n(sh.avg_placement_hrs).toFixed(1)} h</b> is yours (until the placer buys) and <b>${U.n(sh.avg_zoro_ship_hrs).toFixed(1)} h</b> is Zoro's. ${U.n(sh.avg_placement_hrs)>U.n(sh.avg_zoro_ship_hrs)?"Placement is the slower half — keeping placers running around the clock shortens it directly.":"Zoro is the slower half — placement is already quick."} Tracking messages reached ${U.pct(sh.tracking_msg_pct)} of shipped orders; the missing ones are in the Day book under the "No tracking msg" chip.`);
+    const wk = sh.weekly||[];
+    const weekly = this.card("Late rate by week", "share of orders shipped or delivered late", `<div class="bd">${Chart.vbars(wk, {x:r=>String(r.key).replace(/^\d{4}-/,""), y:"late_rate", fmt:v=>U.pct(v), cls:(r,v)=>v>=10?"bad":v>=5?"warn":"ok", sub:r=>`${U.int(r.late)} late of ${U.int(r.orders)}`})}</div>`,
+      wk.length ? `Latest full week: <b>${U.pct(wk[wk.length-1].late_rate)}</b> late. Above 5% starts to hurt the account health metrics; a spike in one week usually traces back to one supplier warehouse or one trouble ASIN.` : "");
+    const carCols = AGG_COLS("Carrier").filter(c => !["cost","coupon_saved","refunds","cancel_rate"].includes(c.k));
+    const carriers = this.card("Carriers", "from the tracking numbers", Tbl.html("ship-car", carCols, sh.carriers||[], {sort:"orders"}), `"—" is orders with no tracking captured yet — mostly recent ones waiting for the closing pipeline.`);
+    const days = ((sp||{}).days||[]).slice(0,14);
+    const tot = days.reduce((a,d)=>({placed:a.placed+U.n(d.placed), early:a.early+U.n(d.early), ontime:a.ontime+U.n(d.ontime), late:a.late+U.n(d.late), pending:a.pending+U.n(d.relaxed_pending)}), {placed:0,early:0,ontime:0,late:0,pending:0});
+    const perf = this.card("Ship performance, last 14 days", "placed vs shipped early / on time / late", `<div class="bd"><div class="stats">${[["Placed",U.int(tot.placed)],["Shipped early",U.int(tot.early)],["On time",U.int(tot.ontime)],["Late",U.int(tot.late),tot.late?"neg":""],["Still pending",U.int(tot.pending)]].map(([l,v,c])=>`<div class="stat"><div class="l">${l}</div><div class="v ${c||""}">${v}</div></div>`).join("")}</div></div>
+      <div class="tblwrap" style="border:0;border-radius:0;box-shadow:none"><table class="t"><thead><tr><th>Day</th><th class="num">Placed</th><th class="num">Must ship</th><th class="num">Early</th><th class="num">On time</th><th class="num">Late</th><th class="num">Pending</th><th class="num">Early %</th></tr></thead><tbody>${days.map(d=>`<tr><td>${esc(d.day)}</td><td class="num">${U.int(d.placed)}</td><td class="num">${U.int(d.must_ship)}</td><td class="num pos">${U.int(d.early)}</td><td class="num">${U.int(d.ontime)}</td><td class="num ${d.late?"neg":""}">${U.int(d.late)}</td><td class="num muted">${U.int(d.relaxed_pending)}</td><td class="num">${U.pct(d.early_rate,0)}</td></tr>`).join("")||`<tr><td colspan="8">${U.empty("No shipping data")}</td></tr>`}</tbody></table></div>`,
+      `"Must ship" is orders whose ship-by date falls on that day; "pending" is placed orders with no shipment yet — a big pending number on old days means closing has not run, not that Zoro is late.`);
+    return this.period(g) + freshness(g.freshness, true) + kpis + kpiNote + `<div class="grid g2">${weekly}${carriers}</div>` + perf;
+  },
+
+  refunds(g){
+    const r = g.refunds||{}, s = g.summary||{}, c = g.compare||{};
+    const kpis = `<div class="kpis">${this.kpi("Refund rate", U.pct(s.refund_rate), F.delta(c.refund_rate, false, U.pct, true), U.n(s.refund_rate)>=5?"sev-high":U.n(s.refund_rate)>=2?"sev-med":"sev-ok")}${this.kpi("Refunded", U.money(s.refunds,0), F.delta(c.refunds, false, F.m0), "sev-high")}${this.kpi("Net profit after refunds", U.money(r.net_after_refund,0), `profit ${U.money(s.profit,0)} − refunds`, U.n(r.net_after_refund)>=0?"sev-ok":"sev-high")}${this.kpi("Return rate", U.pct(s.return_rate), F.delta(c.return_rate, false, U.pct, true))}${this.kpi("Cancel rate", U.pct(s.cancel_rate), F.delta(c.cancel_rate, false, U.pct, true), U.n(s.cancel_rate)>=10?"sev-high":U.n(s.cancel_rate)>=5?"sev-med":"sev-ok")}${this.kpi("Loss orders", U.int(s.loss_orders), F.delta(c.loss_orders, false, U.int))}</div>`;
+    const reasons = r.reasons||[]; const rn = reasons.reduce((a,x)=>a+U.n(x.n),0); const topR = reasons[0];
+    const reasonsCard = this.card("Return / refund reasons", `${U.int(rn)} returns`, `<div class="bd">${Chart.hbars(reasons, {k:"reason", v:"n", fmt:U.int, sub:x=>U.money(x.amount,0)})}</div>`,
+      topR ? `<b>${esc(topR.reason)}</b> is the top reason (${U.pct(U.n(topR.n)/Math.max(1,rn)*100)}). "Inaccurate website description" and "wrong item" point at listing copy or Zoro substitutions; "no longer needed" and "ordered by mistake" are buyer-side and mostly unavoidable — but each still costs the Zoro return shipping.` : "");
+    const rc = ASIN_COLS().filter(c => !["units","late_rate","avg_profit"].includes(c.k)); rc.splice(4, 0, {k:"refunded", l:"Refunded", num:true, fmt:x=>U.int(x.refunded)}, {k:"refunds", l:"Refund $", num:true, fmt:x=>`<span class="neg">${U.money(x.refunds)}</span>`});
+    const refAsins = this.card("ASINs by refund amount", "", Tbl.html("ref-asin", rc, r.asins||[], {sort:"refunds", limit:25}), `An ASIN with a healthy margin but a high refund rate is still a loser once the refund comes off — compare the Profit column with Refund $.`);
+    const cc = ASIN_COLS().filter(c => !["units","late_rate","refund_rate","avg_profit"].includes(c.k)); cc.splice(4, 0, {k:"cancelled", l:"Cancelled", num:true, fmt:x=>U.int(x.cancelled)});
+    const canAsins = this.card("ASINs by cancellations", "", Tbl.html("can-asin", cc, r.cancel_asins||[], {sort:"cancelled", limit:25}), `Cancellations before placement cost nothing but the sale; cancellations after placement mean a Zoro return. A high cancel rate on one ASIN is usually out-of-stock at Zoro or a price the buyer regretted.`);
+    const link = `<div class="card" style="margin-bottom:14px"><div class="bd row"><span>Refunds without a return request and refunds at a loss are listed order-by-order under Attention.</span><span class="grow"></span><button class="b s p" onclick="Nav.go('attention','severe')">Open Attention → Severe</button></div></div>`;
+    return this.period(g) + kpis + link + `<div class="grid g2">${reasonsCard}${refAsins}</div><div style="margin-top:14px">${canAsins}</div>`;
+  },
+
+  buyers(g){
+    const b = g.buyers||{}, s = g.summary||{}; const states = g.states||[]; const rep = b.repeat||[];
+    const repOrders = rep.reduce((a,r)=>a+U.n(r.orders),0);
+    const kpis = `<div class="kpis">${this.kpi("Repeat buyers", U.int(b.repeat_count), "bought more than once this period")}${this.kpi("Orders from repeat buyers", U.int(repOrders), `${U.pct(repOrders/Math.max(1,U.n(s.orders))*100)} of all orders (top list)`)}${this.kpi("Business orders", U.int(b.business_orders), `${U.pct(b.business_pct)} of orders are Amazon Business`)}${this.kpi("States shipped to", U.int(states.length), states[0]?`${esc(states[0].key)} leads with ${U.int(states[0].orders)} orders`:"")}</div>`;
+    const repCols = [{k:"name", l:"Buyer", fmt:r=>`<b>${esc(r.name||"")}</b>`},{k:"zip", l:"ZIP", fmt:r=>`<span class="mono">${esc(r.zip||"")}</span>`}].concat(AGG_COLS("").slice(1).filter(c => !["cost","coupon_saved","late_rate"].includes(c.k)));
+    const repTbl = this.card("Repeat buyers", "same name + ZIP, 2+ orders", Tbl.html("buy-rep", repCols, rep, {sort:"orders", limit:30}),
+      `Repeat buyers are the closest thing to wholesale accounts you have: they are usually businesses re-ordering consumables. High refund or cancel rates on a repeat buyer are worth a message.`);
+    const stTot = states.reduce((a,r)=>a+U.n(r.orders),0);
+    const stBars = this.card("Orders by state", "top 15", `<div class="bd">${Chart.hbars(states.slice(0,15), {k:"key", v:"orders", fmt:U.int, sub:r=>`${U.pct(U.n(r.orders)/Math.max(1,stTot)*100)} · profit ${U.money(r.profit,0)} · late ${U.pct(r.late_rate)}`})}</div>`,
+      states.length ? `The top 5 states take ${U.pct(states.slice(0,5).reduce((a,r)=>a+U.n(r.orders),0)/Math.max(1,stTot)*100)} of orders. States with a higher late rate than the rest are far from the Zoro warehouses that ship your top ASINs — worth knowing before promising delivery dates.` : "");
+    const stCols = AGG_COLS("State").filter(c => !["cost","coupon_saved"].includes(c.k));
+    const stTbl = this.card("All states", `${U.int(states.length)} states`, Tbl.html("buy-st", stCols, states, {sort:"orders", limit:25, total: rows => { const t = F.sum(rows); return [`<b>Total</b>`, U.int(t.orders), U.int(t.units), U.money(t.earnings), F.pm(t.profit), F.mg(t.margin_pct), F.pm(t.avg_profit), U.money(t.refunds), U.pct(t.cancel_rate), U.pct(t.refund_rate), U.pct(t.late_rate)]; }}), "");
+    return this.period(g) + kpis + `<div class="grid g2">${repTbl}${stBars}</div><div style="margin-top:14px">${stTbl}</div>`;
+  },
+};
+
+/* ═══════════════════════════ CHANGES (anomaly list) ═════════════════ */
+const Changes = {
+  data: null, cat: "",
+  async mount(body, force, alive){
+    body.innerHTML = `<div class="card"><div class="hd"><h2>Changes &amp; anomalies</h2><span class="sub" id="ins-sub"></span></div><div class="bd" id="ins-body">${U.skel(5)}</div></div>`;
+    const d = await Ins.data("insights", () => GET("/api/insights", S.gp), force); if (!alive()) return;
+    this.data = d; this.render();
   },
   render(){
     const d = this.data||{}; const counts = d.counts||{}; const cats = Object.keys(counts).filter(k=>counts[k]>0).sort((a,b)=>counts[b]-counts[a]);
     if (!this.cat || !counts[this.cat]) this.cat = cats[0]||"";
     const items = ((d.insights||{})[this.cat]||[]);
-    $("#ins-sub").textContent = `${U.int(d.total||0)} open across ${cats.length} categories`;
-    $("#ins-body").innerHTML = `<div class="ins-cats">${cats.map(c=>`<button class="chip btn ${c===this.cat?"on":""}" onclick="Ins.cat=${JSON.stringify(c)};Ins.render()">${esc(c.replace(/_/g," "))} <b>${U.int(counts[c])}</b></button>`).join("")||U.empty("No open insights")}</div>
-      <div style="max-height:calc(100vh - 320px);overflow:auto">${items.slice(0,200).map(a=>`<div class="ins-item sev-${esc(a.severity||"low")}"><span class="sevdot"></span><div class="m">${esc(a.message)}<div class="small muted">${a.order_id?`<span class="olink" onclick="Drawer.open('${esc(a.order_id)}')">${esc(a.order_id)}</span> · `:""}${a.asin?`<span class="mono">${esc(a.asin)}</span> · `:""}${esc(a.date||"")}</div></div><button class="b s" onclick="Ins.resolve(${JSON.stringify(this.cat)},${JSON.stringify(a.ref_key)},this)">Resolve</button></div>`).join("")}${items.length>200?`<div class="smallnote">showing 200 of ${U.int(items.length)}</div>`:""}</div>`;
+    const sub = $("#ins-sub"); if (sub) sub.textContent = `${U.int(d.total||0)} open across ${cats.length} categories`;
+    $("#ana-c-changes").textContent = d.total||"";
+    const body = $("#ins-body"); if (!body) return;
+    body.innerHTML = `<div class="ins-cats">${cats.map(c=>`<button class="chip btn ${c===this.cat?"on":""}" onclick="Changes.cat=${esc(JSON.stringify(c))};Changes.render()">${esc(c.replace(/_/g," "))} <b>${U.int(counts[c])}</b></button>`).join("")||U.empty("No open insights")}</div>
+      <div style="max-height:calc(100vh - 320px);overflow:auto">${items.slice(0,200).map(a=>`<div class="ins-item sev-${esc(a.severity||"low")}"><span class="sevdot"></span><div class="m">${esc(a.message)}<div class="small muted">${a.order_id?`<span class="olink" onclick="Drawer.open('${esc(a.order_id)}')">${esc(a.order_id)}</span> · `:""}${a.asin?`<span class="mono">${esc(a.asin)}</span> · `:""}${esc(a.date||"")}</div></div><button class="b s" onclick="Changes.resolve(${esc(JSON.stringify(this.cat))},${esc(JSON.stringify(a.ref_key))},this)">Resolve</button></div>`).join("")}${items.length>200?`<div class="smallnote">showing 200 of ${U.int(items.length)}</div>`:""}</div>`;
   },
   async resolve(type, key, btn){
     btn.disabled = true;
-    try { const r = await POST("/api/resolve", {insight_type:type, ref_key:key}); if (r.ok===false) throw new Error(r.error); btn.closest(".ins-item").style.opacity = ".35"; btn.textContent = "Resolved"; const c = this.data.counts; c[type] = Math.max(0,(c[type]||1)-1); this.data.total = Math.max(0,(this.data.total||1)-1); this.data.insights[type] = (this.data.insights[type]||[]).filter(x=>x.ref_key!==key); Toast.ok("Resolved"); }
+    try { const r = await POST("/api/resolve", {insight_type:type, ref_key:key}); if (r.ok===false) throw new Error(r.error); btn.closest(".ins-item").style.opacity = ".35"; btn.textContent = "Resolved"; const c = this.data.counts; c[type] = Math.max(0,(c[type]||1)-1); this.data.total = Math.max(0,(this.data.total||1)-1); this.data.insights[type] = (this.data.insights[type]||[]).filter(x=>x.ref_key!==key); $("#ana-c-changes").textContent = this.data.total||""; const sub = $("#ins-sub"); if (sub) sub.textContent = `${U.int(this.data.total||0)} open`; Toast.ok("Resolved"); }
     catch (e) { btn.disabled = false; Toast.err(e.message); }
   },
-  renderShip(sp){
-    const days = (sp.days||[]).slice(0,14);
-    const tot = days.reduce((a,d)=>({placed:a.placed+U.n(d.placed), early:a.early+U.n(d.early), ontime:a.ontime+U.n(d.ontime), late:a.late+U.n(d.late), pending:a.pending+U.n(d.relaxed_pending)}), {placed:0,early:0,ontime:0,late:0,pending:0});
-    $("#ins-ship").innerHTML = `<div class="bd"><div class="stats">${[["Placed",U.int(tot.placed)],["Shipped early",U.int(tot.early)],["On time",U.int(tot.ontime)],["Late",U.int(tot.late),tot.late?"neg":""],["Still pending",U.int(tot.pending)]].map(([l,v,c])=>`<div class="stat"><div class="l">${l}</div><div class="v ${c||""}">${v}</div></div>`).join("")}</div></div>
-      <div class="tblwrap" style="border:0;border-radius:0;box-shadow:none"><table class="t"><thead><tr><th>Day</th><th class="num">Placed</th><th class="num">Must ship</th><th class="num">Early</th><th class="num">On time</th><th class="num">Late</th><th class="num">Pending</th><th class="num">Early %</th></tr></thead><tbody>${days.map(d=>`<tr><td>${esc(d.day)}</td><td class="num">${U.int(d.placed)}</td><td class="num">${U.int(d.must_ship)}</td><td class="num pos">${U.int(d.early)}</td><td class="num">${U.int(d.ontime)}</td><td class="num ${d.late?"neg":""}">${U.int(d.late)}</td><td class="num muted">${U.int(d.relaxed_pending)}</td><td class="num">${U.pct(d.early_rate,0)}</td></tr>`).join("")||`<tr><td colspan="8">${U.empty("No shipping data")}</td></tr>`}</tbody></table></div>`;
+};
+
+/* ═══════════════════════════ P&L (monthly close) ════════════════════ */
+const PnL = {
+  DEFAULT_SPLITS: [{name:"Imran",pct:75},{name:"Kam",pct:18},{name:"Uncle",pct:3},{name:"Asad",pct:4}],
+  h: null, k: null, splits: [], mH: "", mK: "", _sh: 0, _sk: 0,
+  canEdit(){ return S.role === "admin"; },
+  async mount(body){
+    body.innerHTML = `<div class="grid g2"><div class="card" id="pnl-hat"><div class="hd"><h2>Hathoro</h2></div><div class="bd">${U.skel(6)}</div></div><div class="card" id="pnl-hoa"><div class="hd"><h2>HOANK</h2></div><div class="bd">${U.skel(6)}</div></div></div>
+      <div class="smallnote" style="margin-top:10px">Figures are typed in at month end from the real balances — they are not computed from orders. ${this.canEdit()?"You are an admin: edit the fields and press Save.":"Only admins can edit; ask an admin to close the month."}</div>`;
+    await Promise.all([this.loadH(this.mH), this.loadK(this.mK)]);
+  },
+  fld(id, label, v, calc){ return `<div><label for="${id}">${label}</label>${this.canEdit()?`<input class="in" id="${id}" type="number" step="0.01" value="${esc(v??0)}" oninput="${calc}">`:`<div class="ro" id="${id}" data-v="${esc(v??0)}">${U.money(v)}</div>`}</div>`; },
+  val(id){ const e = $("#"+id); if (!e) return 0; return U.n(e.tagName==="INPUT" ? e.value : e.dataset.v); },
+  errCard(name, e){ const admin = /admin/i.test(e.message||""); return `<div class="hd"><h2>${name}</h2></div><div class="bd">${admin ? U.empty("P&L is limited to admins", "sign in as an admin to see the monthly close") : U.err(e)}</div>`; },
+  monthCtl(id, cur, fn){ return `<span class="grow"></span><input class="in s" type="month" id="${id}" value="${esc(cur||"")}" onchange="${fn}(this.value)" title="pick a month"><button class="b s" onclick="${fn}($('#${id}').value)">Load</button>`; },
+  hist(rows, fn, cols){ return `<div class="pnl-sect">History</div><div class="tblwrap" style="max-height:220px;box-shadow:none"><table class="t"><thead><tr>${cols.map(c=>`<th class="${c[2]?"num":""}">${c[0]}</th>`).join("")}</tr></thead><tbody>${rows.map(h=>`<tr class="click" onclick="${fn}('${esc(h.month)}')">${cols.map(c=>`<td class="${c[2]?"num":""}">${c[1](h)}</td>`).join("")}</tr>`).join("")||`<tr><td colspan="${cols.length}"><div class="empty">No months saved yet</div></td></tr>`}</tbody></table></div>`; },
+  /* Hathoro: Final = Amazon + Payoneer − Investment − Personal, then the stakeholder split */
+  async loadH(month){
+    this.mH = month||""; const seq = ++this._sh; const el = $("#pnl-hat"); if (!el) return;
+    try {
+      const r = await GET("/api/pnl", month?{month}:{}); if (seq!==this._sh || !$("#pnl-hat")) return;
+      this.h = r; const cur = r.current||{}; this.splits = (cur.splits&&cur.splits.length?cur.splits:(r.default_splits||this.DEFAULT_SPLITS)).map(s=>({name:s.name, pct:U.n(s.pct)}));
+      $("#pnl-hat").innerHTML = `<div class="hd"><h2>Hathoro</h2><span class="sub">Final profit = Amazon + Payoneer − Investment − Personal</span>${this.monthCtl("pnl-h-month", cur.month, "PnL.loadH")}</div>
+        <div class="bd">
+          <div class="pnl-fields">${this.fld("ph_amazon","Amazon balance",cur.amazon,"PnL.calcH()")}${this.fld("ph_payoneer","Payoneer balance",cur.payoneer,"PnL.calcH()")}${this.fld("ph_investment","Investment",cur.investment??180000,"PnL.calcH()")}${this.fld("ph_personal","Imran Rajar personal balance",cur.personal,"PnL.calcH()")}</div>
+          <div class="pnl-box"><div><div class="l">Final profit${cur.month?" · "+esc(cur.month):""}</div><div class="pnl-fig" id="ph_final">$0.00</div></div><div><div class="l">Last saved</div><div class="pnl-fig2">${cur.updated_at?esc(U.date(cur.updated_at)):"—"}</div></div></div>
+          <div class="pnl-sect">Stakeholder split</div>
+          <table class="t pnl-split" style="max-width:460px"><thead><tr><th>Stakeholder</th><th class="num">%</th><th class="num">Amount</th></tr></thead><tbody>${this.splits.map((s,i)=>`<tr><td>${esc(s.name)}</td><td class="num">${this.canEdit()?`<input class="in s" type="number" step="0.1" value="${s.pct}" oninput="PnL.splits[${i}].pct=U.n(this.value);PnL.calcH()">`:U.pct(s.pct)}</td><td class="num"><b id="ph_amt_${i}">$0.00</b></td></tr>`).join("")}</tbody><tfoot><tr class="tot"><td>Total</td><td class="num"><span id="ph_pct_total">0</span>%</td><td class="num" id="ph_amt_total">$0.00</td></tr></tfoot></table>
+          ${this.canEdit()?`<div class="savebar"><button class="b p" onclick="PnL.saveH()">Save ${cur.month?esc(cur.month):"month"}</button></div>`:""}
+          ${this.hist(r.history||[], "PnL.loadH", [["Month",h=>`<b>${esc(h.month)}</b>`],["Final profit",h=>F.pm(h.final_profit),1],["Amazon",h=>U.money(h.amazon),1],["Payoneer",h=>U.money(h.payoneer),1],["Updated",h=>`<span class="muted">${esc(String(h.updated_at||"").slice(0,16))}</span>`]])}
+        </div>`;
+      this.calcH();
+    } catch (e) { if (seq===this._sh && $("#pnl-hat")) $("#pnl-hat").innerHTML = this.errCard("Hathoro", e); }
+  },
+  calcH(){
+    const final = this.val("ph_amazon") + this.val("ph_payoneer") - this.val("ph_investment") - this.val("ph_personal");
+    const f = $("#ph_final"); if (f) { f.textContent = U.money(final); f.classList.toggle("neg", final<0); }
+    let pt = 0; this.splits.forEach((s,i) => { pt += U.n(s.pct); const el = $("#ph_amt_"+i); if (el) el.textContent = U.money(final*U.n(s.pct)/100); });
+    const pe = $("#ph_pct_total"); if (pe) { pe.textContent = Math.round(pt*10)/10; pe.className = Math.abs(pt-100)>0.05?"neg":""; }
+    const ae = $("#ph_amt_total"); if (ae) ae.textContent = U.money(final*pt/100);
+  },
+  async saveH(){
+    const month = ($("#pnl-h-month")||{}).value||""; if (!month) return Toast.err("Pick a month first");
+    try { const r = await POST("/api/pnl", {month, amazon:this.val("ph_amazon"), payoneer:this.val("ph_payoneer"), investment:this.val("ph_investment"), personal:this.val("ph_personal"), splits:this.splits.map(s=>({name:s.name, pct:s.pct}))}); if (r.ok===false) throw new Error(r.error||"not saved"); Toast.ok("Saved Hathoro "+month); this.loadH(month); }
+    catch (e) { Toast.err(e.message); }
+  },
+  /* HOANK: Total = Amazon + Wise; Profit = Total − (Net30 + Amex) − Personal − Other costs */
+  async loadK(month){
+    this.mK = month||""; const seq = ++this._sk; const el = $("#pnl-hoa"); if (!el) return;
+    try {
+      const r = await GET("/api/pnl_hoank", month?{month}:{}); if (seq!==this._sk || !$("#pnl-hoa")) return;
+      this.k = r; const cur = r.current||{};
+      $("#pnl-hoa").innerHTML = `<div class="hd"><h2>HOANK</h2><span class="sub">Profit = (Amazon + Wise) − (Net30 + Amex) − Personal − Other costs</span>${this.monthCtl("pnl-k-month", cur.month, "PnL.loadK")}</div>
+        <div class="bd">
+          <div class="pnl-sect" style="margin-top:0">Balances (money you hold)</div>
+          <div class="pnl-fields">${this.fld("pk_amazon","Amazon balance",cur.amazon,"PnL.calcK()")}${this.fld("pk_wise","Wise balance",cur.wise,"PnL.calcK()")}</div>
+          <div class="pnl-sect">Payables &amp; costs (money going out)</div>
+          <div class="pnl-fields">${this.fld("pk_net30","Net30 payable",cur.net30,"PnL.calcK()")}${this.fld("pk_amex","Amex payable",cur.amex,"PnL.calcK()")}${this.fld("pk_personal","Personal balance",cur.personal,"PnL.calcK()")}${this.fld("pk_other","Other total costs",cur.other_costs,"PnL.calcK()")}</div>
+          <div class="pnl-box"><div><div class="l">Total balance = Amazon + Wise</div><div class="pnl-fig2" id="pk_total">$0.00</div></div><div><div class="l">Profit${cur.month?" · "+esc(cur.month):""}</div><div class="pnl-fig" id="pk_final">$0.00</div></div><div><div class="l">Last saved</div><div class="pnl-fig2">${cur.updated_at?esc(U.date(cur.updated_at)):"—"}</div></div></div>
+          ${this.canEdit()?`<div class="savebar"><button class="b p" onclick="PnL.saveK()">Save ${cur.month?esc(cur.month):"month"}</button></div>`:""}
+          ${this.hist(r.history||[], "PnL.loadK", [["Month",h=>`<b>${esc(h.month)}</b>`],["Total balance",h=>U.money(h.total_balance),1],["Profit",h=>F.pm(h.final_profit),1],["Payables",h=>U.money(U.n(h.net30)+U.n(h.amex)),1],["Updated",h=>`<span class="muted">${esc(String(h.updated_at||"").slice(0,16))}</span>`]])}
+        </div>`;
+      this.calcK();
+    } catch (e) { if (seq===this._sk && $("#pnl-hoa")) $("#pnl-hoa").innerHTML = this.errCard("HOANK", e); }
+  },
+  calcK(){
+    const total = this.val("pk_amazon") + this.val("pk_wise");
+    const final = total - (this.val("pk_net30") + this.val("pk_amex")) - this.val("pk_personal") - this.val("pk_other");
+    const t = $("#pk_total"); if (t) t.textContent = U.money(total);
+    const f = $("#pk_final"); if (f) { f.textContent = U.money(final); f.classList.toggle("neg", final<0); }
+  },
+  async saveK(){
+    const month = ($("#pnl-k-month")||{}).value||""; if (!month) return Toast.err("Pick a month first");
+    try { const r = await POST("/api/pnl_hoank", {month, amazon:this.val("pk_amazon"), wise:this.val("pk_wise"), net30:this.val("pk_net30"), amex:this.val("pk_amex"), personal:this.val("pk_personal"), other_costs:this.val("pk_other")}); if (r.ok===false) throw new Error(r.error||"not saved"); Toast.ok("Saved HOANK "+month); this.loadK(month); }
+    catch (e) { Toast.err(e.message); }
   },
 };
-SECTIONS.insights = Ins;
 
 /* ═══════════════════════════ REMINDERS ══════════════════════════════ */
 const Rem = {

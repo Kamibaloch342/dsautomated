@@ -489,14 +489,16 @@ def growth(q):
         dates = sorted(_d10(r.get("purchase_date")) for r in rr)
         coupons.append({"code": code, "uses": len(rr), "saved": round(sav, 2), "avg_saved": round(sav / len(rr), 2),
                         "avg_pct": pct, "first": dates[0], "last": dates[-1],
-                        "kind": "priority (multi-use)" if len(rr) >= 3 else "regular (single-use)",
+                        "kind": ("auto-applied promo" if code.lower().startswith("promo applied")
+                                 else "priority (multi-use)" if len(rr) >= 3 else "regular (single-use)"),
                         "profit": round(sum(_f(r.get("profit_dollars")) for r in rr), 2)})
     coupons.sort(key=lambda x: -x["saved"])
     coupon_orders = sum(c["uses"] for c in coupons)
     coupon_total = {"orders_with_coupon": coupon_orders, "saved": round(sum(c["saved"] for c in coupons), 2),
                     "share_pct": round(coupon_orders / (len(cur) or 1) * 100, 1),
                     "priority_saved": round(sum(c["saved"] for c in coupons if c["kind"].startswith("priority")), 2),
-                    "regular_saved": round(sum(c["saved"] for c in coupons if c["kind"].startswith("regular")), 2)}
+                    "regular_saved": round(sum(c["saved"] for c in coupons if c["kind"].startswith("regular")), 2),
+                    "auto_saved": round(sum(c["saved"] for c in coupons if c["kind"].startswith("auto")), 2)}
 
     # ── ASINs ──
     aby = defaultdict(list)
