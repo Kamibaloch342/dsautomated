@@ -4629,7 +4629,8 @@ def main():
                                 dup_prefetch=dup_map,
                             )
                             _run_log["orders_processed"] += 1
-                            if order.get("_supervised") or order.get("_deciding"):
+                            if (order.get("_supervised") or order.get("_deciding")) and not (
+                                    status == "skipped" and str(detail.get("merchant_order_id") or "").strip().upper().startswith("WB")):
                                 _DLOG.log("outcome", profile=PROFILE_NAME, amazon_id=amazon_id, asin=asin, sku=sku,
                                           action=status, reason="checkout result (rush loop)",
                                           supervised=bool(order.get("_supervised")), deciding=bool(order.get("_deciding")))
@@ -4819,7 +4820,9 @@ def main():
                     )
 
                     _run_log["orders_processed"] += 1
-                    if order.get("_supervised") or order.get("_deciding"):
+                    if (order.get("_supervised") or order.get("_deciding")) and not (
+                            status == "skipped" and str(detail.get("merchant_order_id") or "").strip().upper().startswith("WB")):
+                        # (an already-placed order met again is not an outcome worth recording)
                         _DLOG.log("outcome", profile=PROFILE_NAME, amazon_id=amazon_id, asin=asin, sku=sku,
                                   action=status, reason="checkout result",
                                   supervised=bool(order.get("_supervised")), deciding=bool(order.get("_deciding")))

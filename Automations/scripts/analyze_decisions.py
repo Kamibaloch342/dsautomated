@@ -79,7 +79,15 @@ def main():
     print("  by profile:", dict(Counter(r.get("profile") or "?" for r in recs)))
     sup = [r for r in recs if r["kind"] == "supervisor"]
     dec = [r for r in recs if r["kind"] == "deciding"]
-    out = {r.get("amazon_id"): r for r in recs if r["kind"] == "outcome"}
+    # one order can be met again in a later cycle (already placed → "skipped"): keep the
+    # most meaningful outcome per order, not the last one
+    _rank = {"success": 5, "low_profit": 4, "failed": 3, "duplicate": 2, "pending": 1, "skipped": 0}
+    out = {}
+    for r in recs:
+        if r["kind"] == "outcome":
+            prev = out.get(r.get("amazon_id"))
+            if prev is None or _rank.get(r.get("action"), 0) >= _rank.get(prev.get("action"), 0):
+                out[r.get("amazon_id")] = r
 
     # 2. supervisor
     print("\n── 2. supervisor ──")
