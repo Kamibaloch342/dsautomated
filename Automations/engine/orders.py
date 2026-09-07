@@ -3006,6 +3006,15 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                           "Promo-ineligible ASIN — coupons never apply; reseller profile places it",
                           dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
                                city=city, state=state, order_note=order_note))
+        # Keep the sheet in step with the memory: every ineligible ASIN of this order
+        # belongs in <store>_Reseller (a PROMO_INELIGIBLE verdict may move it from any
+        # column, and re-adds it if someone removed it). Off-thread, idempotent.
+        for _it in resolved_items or []:
+            _ia = str(_it.get("asin") or "").strip().upper()
+            if _ia in PROMO_INELIGIBLE_ASINS or (_it.get("sku") or "") in PROMO_INELIGIBLE_CODES \
+                    or (_it.get("main_sku") or "") in PROMO_INELIGIBLE_CODES:
+                _record_asin_verdict(_ia, {"status": "PROMO_INELIGIBLE", "suggest": "Reseller",
+                                           "note": "promo-ineligible memory (coupon_intel)"})
         return "skipped"
 
     # ── Zoro Select brand detection (before cart ops) ────────────────
