@@ -130,6 +130,47 @@ Promo Code"* retires the coupon; token and transient errors are retried and neve
 Unit tests: `python scripts/test_routing_rules.py` (43 cases) and `python scripts/test_priority_sheet.py`
 (sheet writer + move policy against a fake Sheets service) — no network.
 
+### 5a. Reliability rules for priority coupons (8 Sep 2026)
+
+The owner's priority is "not a single order may miss a priority coupon", so these rules
+are enforced in code, not by convention:
+
+* **Priority coupons are never retired automatically.** A "no longer available / expired /
+  invalid" reply for a weekly 15–20 % code is counted and shown (`priority_dead_replies`
+  in the coupon intel), never written as INVALID and never deleted from the Coupons tab —
+  only regular single-use codes are. Session/token expiry replies are classified as token
+  problems, never as a dead coupon.
+* **Best coupon first, priority before regular, always.** The loader sorts priority codes
+  by percentage (fixed-amount codes after). Checkout tries every priority code before any
+  regular one; a remembered code jumps the queue only when it is itself the top priority
+  code, so a cached 10 % regular can never pre-empt a 15–20 % priority code. A code that
+  "applies" with a $0 discount is not a success.
+* **Bad API windows never downgrade an order.** If every priority coupon fails for
+  session/transient reasons the checkout stops with `COUPON_RETRY`; the order stays
+  unlabelled and is retried next cycle (claim released, no strike).
+* **A coupon profile never places at list price.** An empty Coupons tab is a failed load
+  (the cycle waits); an order with no coupon at all in the pool is logged
+  `NO_COUPONS_WAIT` and retried.
+* **A bad coupon-sheet read never re-sorts the store.** If the priority set reads back empty
+  while it was non-empty before, no re-check is queued and the memory is kept; the checker
+  never moves anything when it has no priority coupons; the supervisor records no verdict
+  without them.
+* **Shared memories are cross-process safe.** `utils/jsonstore.py` (flock + atomic write)
+  guards `priority_verdicts.json`, `coupon_intel.json`, `pdp_promo.json` and the re-check
+  queues; a corrupt file is moved aside, never overwritten in place.
+* **The re-check queue survives crashes.** ASINs are removed one by one as they finish, a
+  failing ASIN never aborts the batch, columns are judged as they are NOW (not as queued),
+  rows are re-read under the lock right before a move, a pending Reset is never downgraded
+  by a later coupon change, and an unreadable queue is rebuilt from the full store.
+* **A promoted ASIN is not placed by the reseller.** Right before reserving an unlabelled
+  order, the reseller checks the verdict memory: if the coupon placer promoted that ASIN to
+  `_Coupon` after this cycle's sheet load, the order is handed to the coupon profile.
+* **A sheet outage never hides orders.** If the priority column is unreadable the last
+  known list is kept; with no last-known copy, discovery is off for that cycle instead of
+  treating the profile's own ASINs as "sorted elsewhere".
+* **Dashboard checks reach both stores.** `Priority check / Re-check all / Reset` write one
+  request file per coupon profile (`priority_check.<PROFILE>.request`).
+
 ## 6. Automation & memory
 
 * **Auto-closing**: `automation.auto_closing` (`enabled`, `times` HH:MM list, `accounts`,

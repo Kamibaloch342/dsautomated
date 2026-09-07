@@ -211,6 +211,8 @@ SUPERVISE_MAX_PER_CYCLE = max(1, int(ROUTING.get("supervise_max_per_cycle", 20) 
 PROMO_INELIGIBLE_ASINS = set()     # rebuilt every cycle by _refresh_promo_ineligible()
 PROMO_INELIGIBLE_CODES = set()
 STORE_SORTED_ASINS = set()         # every ASIN in ANY column of this store — the supervisor leaves those alone
+_LAST_PRIORITY_ASINS = []          # last successfully loaded priority column (kept when a sheet read fails)
+_CYCLE_STARTED_AT = [time.time()]  # when this cycle loaded its sheet lists (late column check compares to it)
 if SUPERVISE_UNLABELLED:
     print(f"   -> Supervisor: ON — unlabelled mapped orders handled last, max {SUPERVISE_MAX_PER_CYCLE}/cycle "
           f"(regular coupon needs cart ≥ ${SUPERVISE_MIN_CART:.0f})")
@@ -752,38 +754,28 @@ def _load_coupon_intel():
 
 
 def _save_coupon_intel(cache):
+    """Merge this process's coupon memory into the shared file under a cross-process
+    lock — two coupon placers write it, and a plain merge-and-replace lost strikes."""
     try:
-        merged_working = {}
-        merged_bad = {}
-        try:
-            with open(_COUPON_INTEL_PATH, encoding="utf-8") as f:
-                raw = json.load(f)
-            merged_working.update(raw.get("working_pairs", {}))
-            merged_bad.update(raw.get("promo_ineligible", {}) or {})
-        except Exception:
-            pass
-        merged_working.update(cache.get("working_pairs", {}))
-        merged_bad.update(cache.get("promo_ineligible", {}) or {})
-        # a code that later WORKED was popped from the in-memory dict — honour that
-        for code in list(merged_bad):
-            if code not in (cache.get("promo_ineligible") or {}) and cache.get("_promo_cleared", set()) and code in cache["_promo_cleared"]:
-                merged_bad.pop(code, None)
-        os.makedirs(os.path.dirname(_COUPON_INTEL_PATH), exist_ok=True)
-        tmp = _COUPON_INTEL_PATH + ".tmp"
-        merged_min = {}
-        try:
-            merged_min.update((raw or {}).get("coupon_min_order", {}) or {})
-        except Exception:
-            pass
-        merged_min.update(cache.get("coupon_min_order", {}) or {})
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump({"failed_pairs": [],
-                       "working_pairs": merged_working,
-                       "promo_ineligible": merged_bad,
-                       "coupon_min_order": merged_min}, f, indent=0, sort_keys=True)
-        os.replace(tmp, _COUPON_INTEL_PATH)
-    except Exception:
-        pass
+        from utils.jsonstore import locked, read_json, write_json_atomic
+        with locked(_COUPON_INTEL_PATH):
+            raw = read_json(_COUPON_INTEL_PATH, None, quarantine=True)
+            raw = raw if isinstance(raw, dict) else {}
+            merged_working = dict(raw.get("working_pairs", {}) or {})
+            merged_bad = dict(raw.get("promo_ineligible", {}) or {})
+            merged_working.update(cache.get("working_pairs", {}))
+            merged_bad.update(cache.get("promo_ineligible", {}) or {})
+            # a code that later WORKED was popped from the in-memory dict — honour that
+            for code in list(merged_bad):
+                if code not in (cache.get("promo_ineligible") or {}) and cache.get("_promo_cleared", set()) \
+                        and code in cache["_promo_cleared"]:
+                    merged_bad.pop(code, None)
+            merged_min = dict(raw.get("coupon_min_order", {}) or {})
+            merged_min.update(cache.get("coupon_min_order", {}) or {})
+            write_json_atomic(_COUPON_INTEL_PATH, {"failed_pairs": [], "working_pairs": merged_working,
+                                                   "promo_ineligible": merged_bad, "coupon_min_order": merged_min})
+    except Exception as e:
+        print(f"  ⚠️ coupon intel not saved: {e}")
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1032,7 +1024,8 @@ def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_w
             attempts.append({"code": code, "tier": tier, "ok": True, "discount": round(float(res), 2),
                              "ms": int((time.time() - t0) * 1000)})
             return True
-        kind = _note_reject(code, res, cache) if _note_reject else ("transient" if _is_transient_coupon_error(res) else "item")
+        kind = (_note_reject(code, res, cache, priority=(tier == "priority")) if _note_reject
+                else ("transient" if _is_transient_coupon_error(res) else "item"))
         extra = None
         if kind in ("token", "transient"):
             transient += 1
@@ -1141,7 +1134,7 @@ def _record_asin_verdict(asin, verdict, cart_text="", coupon=""):
             print(f"  ⚠️ sheet verdict not written for {asin}: {e}")
             _DLOG.log("sheet", profile=PROFILE_NAME, asin=str(asin).upper(), action="error", reason=str(e)[:200],
                       verdict=verdict)
-    threading.Thread(target=_w, daemon=True).start()
+    threading.Thread(target=_w, daemon=False, name="asin-verdict").start()   # finishes even during a stop
 
 
 _PRI_SET_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "dataset", f"priority_coupon_set_{PROFILE_NAME}.json")
@@ -1169,6 +1162,10 @@ def _watch_priority_coupon_set(coupon_codes):
             return
         new = sorted(set(cur) - set(prev))
         gone = sorted(set(prev) - set(cur))
+        if prev and not cur:
+            print(f"  ⚠️  Priority coupon set read back EMPTY (was {', '.join(prev)}) — treated as a bad read: "
+                  f"no re-check queued, memory kept. Remove codes one at a time in the Coupons tab.")
+            return
         if new or gone:
             # A new code can promote ASINs to _Coupon; an expired/removed code means the
             # ASINs that were in _Coupon because of it must be re-sorted (the owner's
@@ -1211,7 +1208,7 @@ def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
     except Exception as e:
         print(f"  ⚠️ priority re-check queue: {e}")
     # 2) scheduled / on-demand check of new ASINs
-    req = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "control", "priority_check.request")
+    req = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "control", f"priority_check.{PROFILE_NAME}.request")
     args = {}
     if os.path.exists(req):
         try:
@@ -2379,7 +2376,7 @@ def _load_asin_column_from_sheet(col_name, what):
         svc = _get_sheets_service()
         result = svc.spreadsheets().values().get(
             spreadsheetId=GOOGLE_SHEET_ID,
-            range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:H500",
+            range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:AZ500",
         ).execute()
         rows = result.get("values", [])
         if len(rows) < 2:
@@ -2429,7 +2426,7 @@ def load_store_sorted_asins(profile_name):
         svc = _get_sheets_service()
         result = svc.spreadsheets().values().get(
             spreadsheetId=GOOGLE_SHEET_ID,
-            range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:H500",
+            range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:AZ500",
         ).execute()
         rows = result.get("values", [])
         if len(rows) < 2:
@@ -3304,8 +3301,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                                                                 "qty": it.get("final_qty"), "unit": it.get("unit_price"),
                                                                 "select": bool(it.get("is_zoro_select"))}
                                                                for it in resolved_items])
-        if _dec.get("verdict"):
+        if _dec.get("verdict") and priority_coupons_with_pct:
             _record_asin_verdict(primary_item.get("asin"), _dec["verdict"], _cart_txt, _dec.get("coupon") or "")
+        elif _dec.get("verdict"):
+            print("  🧑‍⚖️ SUPERVISOR: no priority coupons loaded — order handled, ASIN left unsorted until they are")
         if _dec["action"] == "reseller":
             _route_to_sibling(driver, amazon_id, "reseller", "Supervisor: " + _dec["reason"],
                               dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
@@ -3442,6 +3441,14 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         print(f"  🏷️  Coupon: ON ({len(priority_codes_for_checkout)} priority + {len(regular_coupon_codes)} regular)" + (" (no priority)" if skip_priority else ""))
     elif IS_COUPON_PROFILE:
         print(f"  🏷️  Coupon: OFF ({TARGET_LABEL} profile)")
+    if IS_COUPON_PROFILE and not skip_coupons and not manual_override and not coupon_arg:
+        # No coupon at all in today's pool: this profile exists to place WITH coupons, so it
+        # waits for the next coupon load instead of buying at list price.
+        print("  ⏸️  No coupons available (priority or regular) — not placing at full price; waiting for the next coupon load")
+        _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                    "buyer": buyer, "city": city, "state": state, "status": "NO_COUPONS_WAIT",
+                    "notes": "; ".join(filter(None, ["no priority or regular coupons loaded — waiting", order_note]))})
+        return "failed"
 
     # ── Checkout ──────────────────────────────────────────────────
     # FINAL-MARGIN GATE: now computed on the PRE-TAX checkout total in true_api.py
@@ -3576,6 +3583,27 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 **filter_kwargs_for_callee(place_order_fast,
                                            checkout_kwargs, warn_label="ENGINE"))
         return result
+
+    # ── Last-second column check (reseller profiles, unlabelled discovery orders) ──
+    # The coupon placer's checker may have promoted this ASIN to <store>_Coupon AFTER this
+    # cycle loaded its sheet lists (a priority coupon works on it now). Never place it at
+    # list price then: hand it to the coupon profile. Labelled orders are left alone — a
+    # person or the sibling profile decided those.
+    if IS_RESELLER_PROFILE and not (merchant_id or "").strip() and not manual_override:
+        try:
+            from engine import priority_check as _pc_late
+            _late = _pc_late.load_verdicts().get(str(primary_item.get("asin") or "").strip().upper()) or {}
+            _cycle_ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(_CYCLE_STARTED_AT[0]))
+            if (str(_late.get("column") or "").upper().endswith("_COUPON")
+                    and _late.get("owner") == "bot" and (_late.get("at") or "") >= _cycle_ts):
+                _route_to_sibling(driver, amazon_id, "coupon",
+                                  f"ASIN promoted to the Coupon column at {_late.get('at')} "
+                                  f"(priority coupon {_late.get('coupon') or ''} works) — after this cycle's sheet load",
+                                  dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
+                                       city=city, state=state, order_note=order_note))
+                return "skipped"
+        except Exception as _e:
+            print(f"  ⚠️ late column check skipped: {_e}")
 
     # ── RESERVE the claim BEFORE spending a single cent ───────────
     # This is the atomic gate. If a claim already exists (placed this run, in history,
@@ -3895,7 +3923,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         # Delete used regular coupon from Google Sheet so colleagues don't reuse it.
         # Priority coupons are reusable and stay in the sheet.
         used_coupon = last_checkout_result.get("used_coupon_code") if last_checkout_result else None
-        if used_coupon and used_coupon != "AUTO_APPLIED" and used_coupon not in priority_codes_for_checkout:
+        _all_priority_codes = {c["code"] for c in (priority_coupons_with_pct or [])} | set(priority_codes_for_checkout or [])
+        if used_coupon and used_coupon != "AUTO_APPLIED" and used_coupon not in _all_priority_codes:
             _delete_coupon_from_sheet(used_coupon)
         if used_coupon and IS_COUPON_PROFILE:
             _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), True,
@@ -3965,10 +3994,11 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif result_status == "NET30_RESTRICTED":
         update_amazon_seller_id(driver, amazon_id, "Net30", PROFILE_NAME)
         status_note = "Net30 restricted"
-    elif result_status in ("NO_COUPONS_SKIP", "COUPON FAIL"):
+    elif result_status in ("NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY"):
         # Coupon failed — leave the order untouched so it retries next cycle.
         # Do NOT relabel as "MR Profit Margin" or "Rajar" — that blocks retries.
-        status_note = f"No coupon worked — skipping (will retry next cycle)"
+        status_note = (f"Coupon API / session trouble on every priority coupon — retry next cycle"
+                       if result_status == "COUPON_RETRY" else f"No coupon worked — skipping (will retry next cycle)")
         if result_status == "COUPON FAIL" and IS_COUPON_PROFILE and not skip_coupons:
             # one strike towards promo-ineligible (strikes ≥ 10 min apart; at
             # routing.promo_ineligible_min_fails the ASIN routes to the reseller)
@@ -3983,7 +4013,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # These statuses are all detected BEFORE Zoro payment, so it is safe to release the
     # claim and let the order retry next cycle (matches the pre-existing retry intent).
     _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED",
-                        "NO_COUPONS_SKIP", "COUPON FAIL")
+                        "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
     if _HAS_LOCK and not DRY_RUN:
         if result_status in _SAFE_PREPAYMENT:
             plock.release(amazon_id, f"pre-payment failure: {result_status}")
@@ -4094,8 +4124,8 @@ def load_coupon_codes():
         ).execute()
         rows = result.get("values", [])
         if len(rows) < 2:
-            print("  ⚠️  Coupon sheet empty")
-            return [], []
+            print("  ⚠️  Coupon sheet came back EMPTY — treated as a failed load (this profile never places without coupons)")
+            return None
 
         priority = []
         regular = []
@@ -4116,11 +4146,18 @@ def load_coupon_codes():
                 coupon_info = {"code": code, "fixed_amount": fixed_amt, "min_order": min_order}
                 print(f"   [DEBUG] Fixed-amount coupon: {code} = ${fixed_amt:.0f} off ${min_order:.0f}+")
             else:
-                # Try parsing percentage from column B ONLY
+                # Percentage from column B — tolerant of "15%", "15 %", "15% off"
                 try:
                     pct = float(val_str)
                 except (ValueError, TypeError):
-                    pct = 0
+                    _digits = re.sub(r"[^0-9.]", "", val_str or "")
+                    try:
+                        pct = float(_digits) if _digits else 0
+                    except ValueError:
+                        pct = 0
+                    if val_str and not pct:
+                        print(f"  ⚠️  Coupon {code}: column B '{val_str}' is not a number — treated as a REGULAR "
+                              f"(single-use) code; fix the sheet if it is a priority coupon")
 
                 if pct > 0:
                     coupon_info = {"code": code, "pct": pct}
@@ -4146,6 +4183,18 @@ def load_coupon_codes():
             if lc and lc not in legacy_priority_codes and metadata.get(lc) != "USED":
                 priority.append({"code": lc, "pct": 10})  # assume 10% for legacy
 
+        # one entry per (code, value); a priority code is never ALSO a regular one
+        _seen, _pri = set(), []
+        for c in priority:
+            k = (c["code"], c.get("pct"), c.get("fixed_amount"), c.get("min_order"))
+            if k not in _seen:
+                _seen.add(k)
+                _pri.append(c)
+        priority = _pri
+        _pcodes = {c["code"] for c in priority}
+        regular = [c for i, c in enumerate(regular) if c not in _pcodes and c not in regular[:i]]
+        # BEST coupon first: checkout and supervisor take the first priority code that applies
+        priority.sort(key=lambda c: (0, -float(c["pct"])) if "pct" in c else (1, -float(c.get("fixed_amount") or 0)))
         print(f"  ✅ Loaded {len(priority)} priority coupons + {len(regular)} regular coupons")
         if priority:
             summaries = []
@@ -4238,6 +4287,8 @@ def main():
         processed_count = success_count = failed_count = low_profit_count = 0
         total_orders = 0
 
+        _CYCLE_STARTED_AT[0] = time.time()
+
         print(f"\n⚙️  STARTING CYCLE: {time.strftime('%H:%M:%S')}")
 
         # STALE-CODE GUARD: a running process keeps the code it started with, so a fix
@@ -4284,6 +4335,7 @@ def main():
 
             # ── Load Priority ASINs from Google Sheets ─────────
             # Only source of truth — no local fallback.
+            _priority_load_failed = False
             PRIORITY_ASINS.clear()
             _prev_deciding = list(DECIDING_ASINS)   # survives a failed sheet load below
             DECIDING_ASINS.clear()
@@ -4292,10 +4344,22 @@ def main():
                       "— processing labelled orders only")
             else:
                 sheet_priority_asins = load_priority_asins_from_sheet(PROFILE_NAME)
-                if sheet_priority_asins:
+                if sheet_priority_asins is None:
+                    # Sheets API failed. An empty list here would make this profile's own
+                    # ASINs look "sorted in another column" and drop their orders silently.
+                    if _LAST_PRIORITY_ASINS:
+                        print(f"  ⚠️  Priority column unreadable this cycle — keeping the last-known "
+                              f"{len(_LAST_PRIORITY_ASINS)} ASIN(s)")
+                        PRIORITY_ASINS.extend(_LAST_PRIORITY_ASINS)
+                    else:
+                        print("  ⚠️  Priority column unreadable and no last-known copy — discovery is OFF this cycle")
+                        _priority_load_failed = True
+                elif sheet_priority_asins:
                     PRIORITY_ASINS.extend(sheet_priority_asins)
+                    _LAST_PRIORITY_ASINS[:] = list(sheet_priority_asins)
                 else:
                     print(f"  ℹ️  No priority ASINs from sheet")
+                    _LAST_PRIORITY_ASINS[:] = []
 
                 # ── Deciding ASINs (reseller profiles route these per-order) ──
                 if PROFILE_NAME in _PROFILE_TO_DECIDING_COLUMN:
@@ -4389,7 +4453,7 @@ def main():
                     print(f"    (none)")
 
             # ── Discover priority-ASIN orders (pending/unlabelled) ──────────────
-            if (PRIORITY_ASINS or DECIDING_ASINS or SUPERVISE_UNLABELLED) and not ASIN_SEARCH:
+            if (PRIORITY_ASINS or DECIDING_ASINS or SUPERVISE_UNLABELLED) and not ASIN_SEARCH and not _priority_load_failed:
                 seen_ids = {o["amazon_id"] for o in scraped_orders}
                 priority_set = {pa.strip().upper() for pa in PRIORITY_ASINS if pa and pa.strip()}
                 deciding_set = {da.strip().upper() for da in DECIDING_ASINS if da and da.strip()}

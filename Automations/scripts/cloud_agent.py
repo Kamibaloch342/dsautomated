@@ -404,8 +404,10 @@ class Agent:
             # A running coupon placer picks the request up between cycles (safer: it
             # owns the Zoro cart). Only when no placer is running do we spawn the
             # standalone checker.
-            _write_json(os.path.join(CONTROL_DIR, "priority_check.request"),
-                        {"author": cmd.get("author"), "at": utcnow(), "args": args})
+            sys.path.insert(0, os.path.join(AUTO, "dashboard"))
+            import ops as _ops_pc
+            for _p in _ops_pc.priority_request_paths(args):
+                _write_json(_p, {"author": cmd.get("author"), "at": utcnow(), "args": args})
             st = launcher_state()
             if st.get("alive") and any(n.startswith("orders_") and "COUPON" in n for n in (st.get("procs") or {})):
                 return True, "request queued — the running coupon placer will check between cycles"

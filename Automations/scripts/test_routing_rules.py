@@ -38,7 +38,7 @@ from checkout.true_api import classify_promo_error  # noqa: E402  (pure function
 WANT = ["_deciding_verdict", "_supervise_coupon_decision", "_learn_promo_outcome",
         "_refresh_promo_ineligible", "_is_promo_ineligible", "_route_to_sibling",
         "_sort_orders_for_processing", "_load_coupon_intel", "_save_coupon_intel",
-        "_append_asin_to_sheet_column"]
+        "_append_asin_to_sheet_column", "_watch_priority_coupon_set"]
 
 ITEM = "{'cartErrors': [{'detail': {'error': 'Promo code is not valid for the item(s) in your cart.'}, 'status': 400}]}"
 CAT = "{'cartErrors': [{'detail': {'error': 'To qualify for this 15% off coupon, your order needs to include at least one eligible Electrical Supplies item.'}}]}"
@@ -84,7 +84,7 @@ class Recorder:
         self.verdicts.append((asin, verdict, coupon))
 
 
-def _note_reject_stub(code, result, cache=None):
+def _note_reject_stub(code, result, cache=None, priority=False):
     kind, extra = classify_promo_error(result)
     if kind == "min_order" and cache is not None and extra:
         cache.setdefault("coupon_min_order", {})[code] = extra
@@ -150,6 +150,54 @@ def main():
     check("classify: conflict / failed to fetch / 502 → transient",
           classify_promo_error(CONFLICT)[0] == "transient" and classify_promo_error("Failed to fetch")[0] == "transient"
           and classify_promo_error("{'message': 'Bad Gateway', 'status': '502'}")[0] == "transient")
+    check("classify: 'session has expired' / 'token has expired' → token, never dead",
+          classify_promo_error("Your session has expired")[0] == "token"
+          and classify_promo_error("{'error': 'token has expired'}")[0] == "token")
+    check("classify: 5xx / 429 in any formatting → transient",
+          classify_promo_error('{"status": 503, "title": "Service down"}')[0] == "transient"
+          and classify_promo_error("HTTP 429 Too Many Requests")[0] == "transient")
+
+    # ── checkout coupon ORDER (_apply_coupons_api against a fake Zoro) ───────
+    import checkout.true_api as TA
+    calls, retired = [], []
+    TA._time = lambda *a, **k: None
+    TA._get_cart = lambda d: {"discountTotal": 5.0}
+    TA.update_coupon_status = lambda code, status: retired.append((code, status))
+    def fake_zoro(answers):
+        def _apply(driver, cart_id, code):
+            calls.append(code)
+            a = answers.get(code, ITEM)
+            return (True, 5.0) if a == "OK" else (False, a)
+        return _apply
+    calls.clear(); TA._apply_coupon_api = fake_zoro({"REG1": "OK", "PRI15": "OK"})
+    st, code = TA._apply_coupons_api(None, "c", ["PRI20", "PRI15", "REG1", "REG2"], ["PRI20", "PRI15"], "B0X",
+                                     {"working_pairs": {"G1": "REG1"}}, zoro_code="G1")
+    check("checkout: a remembered REGULAR code never jumps ahead of the priority codes",
+          st == "SUCCESS" and code == "PRI15" and calls == ["PRI20", "PRI15"], f"{calls} → {code}")
+    calls.clear(); TA._apply_coupon_api = fake_zoro({"PRI20": "OK"})
+    st, code = TA._apply_coupons_api(None, "c", ["PRI20", "PRI15", "REG1"], ["PRI20", "PRI15"], "B0X",
+                                     {"working_pairs": {"G1": "PRI20"}}, zoro_code="G1")
+    check("checkout: the remembered TOP priority code is fast-tracked", code == "PRI20" and calls == ["PRI20"], str(calls))
+    calls.clear(); TA._apply_coupon_api = fake_zoro({"PRI15": "OK"})
+    st, code = TA._apply_coupons_api(None, "c", ["PRI20", "PRI15", "REG1"], ["PRI20", "PRI15"], "B0X",
+                                     {"working_pairs": {"G1": "PRI15"}}, zoro_code="G1")
+    check("checkout: a remembered lower priority code still lets the best one be tried first",
+          code == "PRI15" and calls == ["PRI20", "PRI15"], str(calls))
+    calls.clear(); TA._apply_coupon_api = fake_zoro({"REG2": "OK"})
+    st, code = TA._apply_coupons_api(None, "c", ["PRI20", "REG1", "REG2"], ["PRI20"], "B0X", {}, zoro_code="G1",
+                                     preferred_coupon="REG2")
+    check("checkout: the supervisor's regular code comes after priority, before the other regulars",
+          code == "REG2" and calls == ["PRI20", "REG2"], str(calls))
+    calls.clear(); TA._apply_coupon_api = fake_zoro({"PRI20": CONFLICT, "PRI15": "TRANSIENT: timed out"})
+    st, code = TA._apply_coupons_api(None, "c", ["PRI20", "PRI15", "REG1"], ["PRI20", "PRI15"], "B0X", {}, zoro_code="G1")
+    check("checkout: every priority coupon transient → COUPON_RETRY and no regular is tried",
+          st == "COUPON_RETRY" and "REG1" not in calls, f"{st} {calls}")
+    calls.clear(); retired.clear(); TA._apply_coupon_api = fake_zoro({"PRI20": DEAD, "REG1": DEAD})
+    cache = {}
+    st, code = TA._apply_coupons_api(None, "c", ["PRI20", "REG1"], ["PRI20"], "B0X", cache, zoro_code="G1")
+    check("checkout: 'no longer available' retires a REGULAR code but NEVER a priority code (counted instead)",
+          st == "COUPON FAIL" and retired == [("REG1", "INVALID")] and cache.get("priority_dead_replies", {}).get("PRI20") == 1,
+          f"{retired} {cache}")
 
     # ── _deciding_verdict ────────────────────────────────────────────────
     dv = ns["_deciding_verdict"]
@@ -363,6 +411,29 @@ def main():
             scan(node)
     check("static: no function-local import shadows a name that is read earlier in the same function",
           not problems, "; ".join(problems[:5]))
+
+    # ── weekly coupon-set watch: never re-sort the store on an empty read ─────
+    import types as _types
+    import engine.priority_check as PC
+    queued = []
+    PC.enqueue_recheck = lambda profile, reason, mod=None, include_ineligible=False: (queued.append(reason), 7)[1]
+    sys.modules["engine.orders_under_test"] = _types.SimpleNamespace()
+    nsw = make_ns(Recorder(), tempfile.mkdtemp())
+    nsw.update({"IS_COUPON_PROFILE": True, "LABELS_ONLY": False, "DRY_RUN": False, "RECHECK_PER_CYCLE": 15,
+                "__name__": "engine.orders_under_test",
+                "_PRI_SET_PATH": os.path.join(tempfile.mkdtemp(), "priority_coupon_set_HS_COUPON.json")})
+    W = nsw["_watch_priority_coupon_set"]
+    two = ([{"code": "FACILITY8M26", "pct": 15}, {"code": "POWER8X726", "pct": 15}], ["R1"])
+    W(two); W(two)
+    check("watch: first sighting and an unchanged set queue nothing", queued == [], str(queued))
+    W(([], []))
+    check("watch: an EMPTY read while codes existed queues nothing and keeps the memory",
+          queued == [] and json.load(open(nsw["_PRI_SET_PATH"]))["codes"] == ["FACILITY8M26", "POWER8X726"], str(queued))
+    W(([{"code": "FACILITY8M26", "pct": 15}, {"code": "POWER8X726", "pct": 15}, {"code": "ZSELECT", "pct": 20}], []))
+    check("watch: a NEW code queues a full re-check", len(queued) == 1 and "new: ZSELECT" in queued[-1], str(queued))
+    W(([{"code": "POWER8X726", "pct": 15}, {"code": "ZSELECT", "pct": 20}], []))
+    check("watch: an EXPIRED/removed code queues a full re-check too",
+          len(queued) == 2 and "expired/removed: FACILITY8M26" in queued[-1], str(queued))
 
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:

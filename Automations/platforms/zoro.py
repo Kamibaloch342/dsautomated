@@ -269,15 +269,12 @@ _pdp_promo = _load_pdp_promo()      # sku -> {"ineligible": bool, "at": "YYYY-MM
 
 
 def _save_pdp_promo():
-    import os
+    """Merge this process's badge memory into the shared file under a cross-process
+    lock (four placers write it; a plain merge-and-replace lost the others' entries)."""
     try:
-        merged = _load_pdp_promo()
-        merged.update(_pdp_promo)
-        os.makedirs(os.path.dirname(_pdp_promo_path()), exist_ok=True)
-        tmp = _pdp_promo_path() + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(merged, f, indent=0, sort_keys=True)
-        os.replace(tmp, _pdp_promo_path())
+        from utils.jsonstore import mutate_json
+        with mutate_json(_pdp_promo_path(), {}) as merged:
+            merged.update(_pdp_promo)
     except Exception:
         pass
 

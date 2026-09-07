@@ -44,7 +44,20 @@ LAUNCHER_STATE = os.path.join(DATA, "launcher_state.json")
 CONSOLE_LOG = os.path.join(DATA, "console_log.txt")
 CONTROL_QUEUE = os.path.join(DATA, "control", "queue")
 CONTROL_DONE = os.path.join(DATA, "control", "done")
-PRIORITY_REQUEST = os.path.join(DATA, "control", "priority_check.request")
+PRIORITY_REQUEST = os.path.join(DATA, "control", "priority_check.request")   # legacy name (unused)
+
+
+def priority_request_paths(args):
+    """One request file per coupon profile. profile = HS_COUPON / DM_COUPON (also
+    accepts HS, DM, HOANK, Hathoro); missing or 'all' → both stores."""
+    prof = str((args or {}).get("profile") or "").strip().upper()
+    if prof.startswith("HS") or prof.startswith("HOANK"):
+        profs = ["HS_COUPON"]
+    elif prof.startswith("DM") or prof.startswith("HATH"):
+        profs = ["DM_COUPON"]
+    else:
+        profs = ["HS_COUPON", "DM_COUPON"]
+    return [os.path.join(DATA, "control", f"priority_check.{p}.request") for p in profs]
 CFG_PATH = os.path.join(AUTO, "bot_config.json")
 KEY_SLIM_GZ = "db/dashboard.db.gz"
 CLOUD_DB_PATH = os.environ.get("CLOUD_DB_PATH") or os.path.join(
@@ -279,7 +292,8 @@ def send_command(action: str, target: str | None, args: dict | None, author: str
                 return {"ok": bool(res.get("ok")), "id": cid, "target": target, "result": res.get("result", "")}
         return {"ok": True, "id": cid, "target": target, "result": "queued (launcher busy — check results)"}
     if target == me and not CLOUD_MODE and action == "run_priority_check":
-        _write_json(PRIORITY_REQUEST, {"author": author, "at": utcnow(), "args": args})
+        for _p in priority_request_paths(args):
+            _write_json(_p, {"author": author, "at": utcnow(), "args": args})
     if target == me and not CLOUD_MODE and action == "set_config":
         return config_set(args, author)
     s = r2()

@@ -181,6 +181,72 @@ def main():
     check("batch/new: bot placed it in ANOTHER column earlier, a human moved it since → treated as human, not moved",
           not w and v["B0HUMAN"]["owner"] == "human", f"writes={w} v={v.get('B0HUMAN')}")
 
+    # ── no priority coupons loaded → nothing moves ───────────────────────
+    w, v = batch(base, [("B0CDEP", "HS_Coupon")], "recheck")            # sanity: with coupons it moves
+    check("batch: with priority coupons a recheck moves the Coupon-column ASIN", "B0CDEP" in w.values())
+    try: os.remove(pc.VERDICTS_PATH)
+    except OSError: pass
+    f = fresh(FakeSheets([list(r) for r in base], cols=6, rows=101))
+    pc._run_batch(None, "HS_COUPON", [("B0CDEP", "HS_Coupon")], {}, [], None, mod, f, f, [list(r) for r in base][0],
+                  [list(r) for r in base], True, mode="recheck")
+    w = {}
+    for c in f.calls:
+        if c[0] == "values": w.update(dict(c[1]))
+    check("batch: with NO priority coupons nothing is moved (verdict only)", not w and "B0CDEP" in pc.load_verdicts(), f"writes={w}")
+
+    # ── re-check queue: crash-safe, per-ASIN bookkeeping, isolation ──────
+    pc.DATA = tmp
+    class Mod:
+        gui_cfg = {"automation": {"priority_check": {"auto_assign": True, "write_sheet_notes": False}}}
+        def __init__(self, sheet): self.sheet = sheet
+        def _get_sheets_service(self): return self.sheet
+        def _get_sheets_write_service(self): return self.sheet
+        def load_sku_map(self): return {}
+        def load_coupon_codes(self): return ([{"code": "FACILITY8M26", "pct": 15}], [])
+    qrows = [headers6] + [["", "", f"B0Q{i:07d}", "", "", ""] for i in range(1, 5)]      # 4 ASINs in HS_Reseller (10-char IDs)
+    sheet = fresh(FakeSheets([list(r) for r in qrows], cols=6, rows=101))
+    m = Mod(sheet)
+    try: os.remove(pc.VERDICTS_PATH)
+    except OSError: pass
+    n = pc.enqueue_recheck("HS_COUPON", "test coupon change", mod=m)
+    qp = pc._queue_path("HS_COUPON")
+    check("queue: enqueue lists every ASIN of the store", n == 4 and pc.queue_size("HS_COUPON") == 4)
+    seen = []
+    def flaky_check(driver, asin, sku_map, pri, cache=None, mod=None):
+        seen.append(asin)
+        if asin == "B0Q0000002":
+            raise RuntimeError("boom")
+        return {"Check_ASIN": asin, "Check_At": pc._now(), "Check_Status": "COUPON_OK", "Check_Suggest": "Coupon",
+                "Check_Coupon": "FACILITY8M26 (priority)", "Check_Cart": "$10", "Check_Note": ""}
+    pc.check_one = flaky_check
+    res = pc.run_queue(None, "HS_COUPON", sku_map={}, coupon_codes=([{"code": "FACILITY8M26", "pct": 15}], []), mod=m, max_asins=3)
+    check("queue: one failing ASIN does not abort the batch (3 tested, 3 results incl. ERROR row)",
+          seen == ["B0Q0000001", "B0Q0000002", "B0Q0000003"] and len(res) == 3 and any(r["Check_Status"] == "ERROR" for r in res), f"seen={seen} n={len(res)}")
+    check("queue: finished ASINs are removed one by one (1 left after a batch of 3)", pc.queue_size("HS_COUPON") == 1)
+    v = pc.load_verdicts()
+    check("queue: working priority coupon promoted B0Q…1/B0Q…3 to HS_Coupon, owner bot",
+          v.get("B0Q0000001", {}).get("column") == "HS_Coupon" and v.get("B0Q0000003", {}).get("owner") == "bot", str({k: v[k].get("column") for k in v}))
+    # a pending RESET is not downgraded by a later coupon-change queue
+    pc.enqueue_recheck("HS_COUPON", "reset", mod=m, include_ineligible=True)
+    pc.enqueue_recheck("HS_COUPON", "new coupon", mod=m)
+    import json as _json
+    check("queue: a pending reset keeps mode=reset when a coupon change re-queues", _json.load(open(qp))["mode"] == "reset")
+    # corrupt file → size -1, run_queue rebuilds it instead of silently doing nothing
+    with open(qp, "w") as fh: fh.write("{not json")
+    check("queue: unreadable file reports -1 (not 0)", pc.queue_size("HS_COUPON") == -1)
+    pc.check_one = lambda driver, asin, sku_map, pri, cache=None, mod=None: {
+        "Check_ASIN": asin, "Check_At": pc._now(), "Check_Status": "SELECT", "Check_Suggest": "Reseller",
+        "Check_Coupon": "", "Check_Cart": "$10", "Check_Note": ""}
+    res = pc.run_queue(None, "HS_COUPON", sku_map={}, coupon_codes=([{"code": "X", "pct": 15}], []), mod=m, max_asins=50)
+    check("queue: unreadable file is rebuilt from the full store and drained", len(res) == 4 and pc.queue_size("HS_COUPON") == 0, f"n={len(res)}")
+    check("queue: with no priority coupons the queue waits untouched",
+          (pc.enqueue_recheck("HS_COUPON", "again", mod=m) == 4
+           and pc.run_queue(None, "HS_COUPON", sku_map={}, coupon_codes=([], []), mod=m) == [] and pc.queue_size("HS_COUPON") == 4))
+    # preloaded verdicts for is_permanent
+    check("is_permanent: uses the preloaded verdict dict",
+          pc.is_permanent("B0PERM", {}, {"B0PERM": {"status": "PROMO_INELIGIBLE", "note": "Zoro's best price badge (PDP)"}})
+          and not pc.is_permanent("B0PERM", {}, {}))
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL)); sys.exit(1)

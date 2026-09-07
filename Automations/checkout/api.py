@@ -216,7 +216,10 @@ def _apply_coupons_vuex(driver, coupon_list, priority_coupons, asin,
                 print(f"  ⏭️  Priority {code}: not valid for item")
             continue
         elif "expired" in error_lower or "invalid" in error_lower:
-            update_coupon_status(code, "INVALID")
+            if is_priority:
+                print(f"  ⚠️  Priority {code}: '{str(promo_error)[:50]}' — not retired automatically")
+            else:
+                update_coupon_status(code, "INVALID")
             continue
         elif "net 30" in error_lower or "net30" in error_lower:
             return "NET30_RESTRICTED", None

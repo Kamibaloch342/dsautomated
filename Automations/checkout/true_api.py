@@ -569,10 +569,13 @@ def _is_transient_coupon_error(err) -> bool:
     coupon-impossible (no_coupon_codes) while SUPPLIES626 demonstrably worked on
     it — all 34 codes 'failed' inside one bad 90s window with 'conflict while
     modifying resource, try again' and the item was poisoned for the whole run."""
+    import re as _re
     e = str(err or "").lower()
     return ("conflict while modifying" in e or "try again" in e
             or "timed out" in e or "timeout" in e
             or "'status': 429" in e or "'status': 5" in e
+            or "too many requests" in e or "gateway timeout" in e
+            or bool(_re.search(r"status['\"]?\s*[:=]\s*['\"]?(429|5\d\d)\b", e))
             or "service unavailable" in e or "internal server error" in e)
 
 
@@ -596,7 +599,8 @@ def classify_promo_error(err):
     if not e:
         return ("unknown", None)
     if any(s in e for s in ("invalid bearer token", "no_token", "invalid_token", "jwt is expired",
-                            "unauthorized", "'status': 401")):
+                            "unauthorized", "'status': 401", "session has expired", "session expired",
+                            "token has expired", "token expired", "bearer")):
         return ("token", None)
     if _is_transient_coupon_error(e) or "failed to fetch" in e or "bad gateway" in e:
         return ("transient", None)
@@ -619,17 +623,29 @@ def classify_promo_error(err):
     return ("unknown", None)
 
 
-def _note_reject(code, result, cache=None):
-    """Log one rejected coupon by kind and act on it (retire dead coupons, remember
-    cart minimums). Returns the kind so callers can decide what counts."""
+def _note_reject(code, result, cache=None, priority=False):
+    """Log one rejected coupon by kind and act on it (retire dead REGULAR coupons,
+    remember cart minimums). Returns the kind so callers can decide what counts.
+    priority=True: the weekly 15–20 % codes are managed by people in the Coupons tab
+    and are NEVER retired automatically — one odd reply must not cost every later
+    order its priority coupon. The reply is counted and shown instead."""
     kind, extra = classify_promo_error(result)
     if kind == "token":
         print(f"  ⏭️  {code}: session/token error — not counted")
     elif kind == "transient":
         print(f"  ⏭️  {code}: transient API error — not counted")
     elif kind == "dead":
-        update_coupon_status(code, "INVALID")          # dead everywhere → never tried again
-        print(f"  ⏭️  {code}: coupon is dead (no longer available / expired) — marked INVALID")
+        if priority:
+            n = 1
+            if cache is not None:
+                d = cache.setdefault("priority_dead_replies", {})
+                d[code] = int(d.get(code, 0) or 0) + 1
+                n = d[code]
+            print(f"  ⚠️  {code}: PRIORITY coupon answered '{str(result)[:60]}' (reply #{n}) — "
+                  f"NOT retired automatically; if it really expired, remove it from the Coupons tab")
+        else:
+            update_coupon_status(code, "INVALID")          # dead everywhere → never tried again
+            print(f"  ⏭️  {code}: coupon is dead (no longer available / expired) — marked INVALID")
     elif kind == "min_order":
         if extra:
             print(f"  ⏭️  {code}: cart minimum ${extra:.2f} not met (would apply on a bigger cart)")
@@ -701,89 +717,92 @@ def _apply_coupon_api(driver, cart_id, coupon_code):
             return True, discount
 
     _time("_apply_coupon_api", t0)
-    print(f"  ⚠️  Coupon {coupon_code}: API OK but cart shows no discount")
-    return True, 0
+    print(f"  ⚠️  Coupon {coupon_code}: API OK but cart shows no discount — not counted as applied")
+    return False, "NO_DISCOUNT: API accepted the code but the cart shows no discount"
 
 
 def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
                         asin, asin_coupon_cache, zoro_code=None,
                         preferred_coupon=None):
-    """Fast coupon testing: first-match-wins for priority, then regular.
-    If `preferred_coupon` is provided, it is tried FIRST before the normal
-    list order. This ensures the strategy-recommended coupon gets a chance.
-    
-    Priority coupons are ALWAYS tried first (no skip option).
-    """
+    """Coupon selection on the live cart. The ORDER is a reliability rule:
+      1. every PRIORITY coupon (the weekly 15–20 % codes; the loader sorts them
+         best-% first) — the first one that applies wins;
+      2. then the preferred / remembered REGULAR code (if any), then the other regulars.
+    A remembered code jumps the queue ONLY when it is itself the top priority coupon,
+    so a cached 10 % regular can never pre-empt a 15–20 % priority code.
+    If EVERY priority attempt failed for session/transient reasons the result is
+    COUPON_RETRY (the order waits for the next cycle) — never a silent fallback to a
+    regular coupon during a bad API window.
+    Returns ("SUCCESS", code) | ("COUPON_RETRY", None) | ("COUPON FAIL", None)."""
     t0 = time.perf_counter()
     cache_key = zoro_code or asin or ""
-    _cache = asin_coupon_cache or {}
-    working_pairs = _cache.get("working_pairs", {})
+    _cache = asin_coupon_cache if asin_coupon_cache is not None else {}   # an empty dict is still THE cache
+    working_pairs = _cache.setdefault("working_pairs", {})
+    pri = []
+    for c in (priority_coupons or []):
+        c = str(c or "").strip()
+        if c and c not in pri:
+            pri.append(c)
+    pri_set = set(pri)
+    reg = []
+    for c in (coupon_list or []):
+        c = str(c or "").strip()
+        if c and c not in pri_set and c not in reg:
+            reg.append(c)
 
-    # Fast-track known working coupon (skip testing entirely)
-    if cache_key in working_pairs:
-        known = working_pairs[cache_key]
-        if known in (coupon_list or []) or known in (priority_coupons or []):
-            print(f"   [DEBUG] Fast-track known working coupon: {known}")
-            ok, _ = _apply_coupon_api(driver, cart_id, known)
-            if ok:
-                return "SUCCESS", known
+    def _win(code, how):
+        cart = _get_cart(driver)
+        discount = float(cart.get("discountTotal", 0) or 0) if cart else 0.0
+        print(f"  ✅ {how}: {code} (discount: ${discount:.2f})")
+        if cache_key:
+            working_pairs[cache_key] = code
+        _time("_apply_coupons_api (total)", t0)
+        return "SUCCESS", code
 
-    # ── 0. Try preferred coupon FIRST (strategy recommendation) ──
-    if preferred_coupon:
-        print(f"  🏷️  Trying preferred coupon (strategy recommendation): {preferred_coupon}")
-        ok, result = _apply_coupon_api(driver, cart_id, preferred_coupon)
+    known = working_pairs.get(cache_key) if cache_key else None
+    tried = set()
+
+    # ── 0. remembered PRIORITY code — only when it is already the best one ──
+    if known and pri and known == pri[0]:
+        print(f"   [DEBUG] Fast-track remembered priority coupon: {known}")
+        ok, res = _apply_coupon_api(driver, cart_id, known)
+        tried.add(known)
         if ok:
-            cart = _get_cart(driver)
-            discount = float(cart.get("discountTotal", 0) or 0) if cart else 0.0
-            print(f"  ✅ Preferred coupon worked: {preferred_coupon} (discount: ${discount:.2f})")
-            if cache_key:
-                working_pairs[cache_key] = preferred_coupon
-            _time("_apply_coupons_api (total)", t0)
-            return "SUCCESS", preferred_coupon
-        err = str(result).lower()
-        if _is_transient_coupon_error(err):
-            print(f"  ⏭️  {preferred_coupon}: transient API error — not counted against this coupon")
-        else:
-            print(f"  ⏭️  {preferred_coupon}: preferred coupon failed ({err[:60]})")
+            return _win(known, "Remembered priority coupon worked")
+        _note_reject(known, res, _cache, priority=True)
 
-    # ── 1. Try priority coupons: first match wins ──
-    if priority_coupons:
-        pri_list = [c for c in priority_coupons]
-        if pri_list:
-            print(f"  🏷️  Trying {len(pri_list)} priority coupon(s)...")
-            for code in pri_list:
-                code = str(code).strip()
-                ok, result = _apply_coupon_api(driver, cart_id, code)
-                if ok:
-                    cart = _get_cart(driver)
-                    discount = float(cart.get("discountTotal", 0) or 0) if cart else 0.0
-                    print(f"  ✅ Priority coupon worked: {code} (discount: ${discount:.2f})")
-                    if cache_key:
-                        working_pairs[cache_key] = code
-                    _time("_apply_coupons_api (total)", t0)
-                    return "SUCCESS", code
-
-                _note_reject(code, result, _cache)
-
-    # ── 2. Try regular coupons: first match wins ──
-    reg_list = [c for c in (coupon_list or [])
-                if c not in (priority_coupons or [])]
-    print(f"   [DEBUG] reg_list len={len(reg_list)}, coupon_list len={len(coupon_list or [])}, priority_coupons len={len(priority_coupons or [])}")
-    if reg_list:
-        print(f"  🏷️  Trying {len(reg_list)} regular coupon(s)...")
-        for code in reg_list:
-            code = str(code).strip()
-            ok, result = _apply_coupon_api(driver, cart_id, code)
+    # ── 1. priority coupons, best % first ──
+    if pri:
+        print(f"  🏷️  Trying {len(pri)} priority coupon(s) (best % first)...")
+        kinds = []
+        for code in pri:
+            if code in tried:
+                continue
+            ok, res = _apply_coupon_api(driver, cart_id, code)
             if ok:
-                cart = _get_cart(driver)
-                discount = float(cart.get("discountTotal", 0) or 0) if cart else 0.0
-                print(f"  ✅ Regular coupon worked: {code} (discount: ${discount:.2f})")
-                if cache_key:
-                    working_pairs[cache_key] = code
-                _time("_apply_coupons_api (total)", t0)
-                return "SUCCESS", code
+                return _win(code, "Priority coupon worked")
+            kinds.append(_note_reject(code, res, _cache, priority=True))
+        if kinds and all(k in ("token", "transient") for k in kinds):
+            print("  ⏸️  Every priority coupon failed on a session/transient error — NOT falling back "
+                  "to regular coupons; the order waits for the next cycle")
+            _time("_apply_coupons_api (total)", t0)
+            return "COUPON_RETRY", None
 
-            _note_reject(code, result, _cache)
+    # ── 2. regular coupons: preferred / remembered first, then the rest ──
+    order = []
+    for c in (preferred_coupon, known):
+        if c and c in reg and c not in order:
+            order.append(c)
+    order += [c for c in reg if c not in order]
+    if preferred_coupon and preferred_coupon not in pri_set and preferred_coupon not in reg:
+        print(f"   [DEBUG] preferred coupon {preferred_coupon} is not in today's pool — skipped")
+    if order:
+        print(f"  🏷️  Trying {len(order)} regular coupon(s)...")
+        for code in order:
+            ok, res = _apply_coupon_api(driver, cart_id, code)
+            if ok:
+                return _win(code, "Regular coupon worked")
+            _note_reject(code, res, _cache)
 
     _time("_apply_coupons_api (total)", t0)
     print("  ❌ No coupons worked")
@@ -1247,7 +1266,7 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 asin, asin_coupon_cache, zoro_code=zoro_code,
                 preferred_coupon=preferred_coupon)
             print(f"   coupon_result={coupon_result}, used={used_coupon_code}")
-            if coupon_result in ("COUPON FAIL", "NET30_RESTRICTED", "NO_COUPONS_SKIP"):
+            if coupon_result in ("COUPON FAIL", "COUPON_RETRY", "NET30_RESTRICTED", "NO_COUPONS_SKIP"):
                 return _format_checkout_result(coupon_result, return_details=return_details)
         else:
             print(f"\n[10] No coupons to apply")

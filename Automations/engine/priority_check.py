@@ -53,6 +53,7 @@ CHECK_COLS = ["Check_ASIN", "Check_Status", "Check_Coupon", "Check_Cart", "Check
 RECHECK_DAYS = 7
 CART_THRESHOLD = 50.0
 DATA = os.path.join(AUTO, "data")
+from utils.jsonstore import mutate_json, read_json, write_json_atomic, locked  # noqa: E402
 STATE_PATH = os.path.join(DATA, "priority_check_state.json")
 PERMANENT = ("PROMO_INELIGIBLE",)          # never re-queued automatically (PDP badge)
 
@@ -266,9 +267,9 @@ def load_verdicts() -> dict:
 
 def save_verdict(asin: str, row: dict, column: str = "", owner: str | None = None) -> None:
     """owner: "bot" when the bot put the ASIN in `column`, "human" when a person did.
-    None keeps the previous owner (or "human" for an ASIN the bot never placed)."""
-    with _vlock:
-        v = load_verdicts()
+    None keeps the previous owner (or "human" for an ASIN the bot never placed).
+    Cross-process safe: HS_COUPON and DM_COUPON share this file."""
+    with _vlock, mutate_json(VERDICTS_PATH, {}) as v:
         prev = v.get(asin.upper()) or {}
         if owner is None:                       # keep what we knew; an ASIN the bot never placed is a human's
             owner = prev.get("owner") or "human"
@@ -276,11 +277,6 @@ def save_verdict(asin: str, row: dict, column: str = "", owner: str | None = Non
                            "coupon": row.get("Check_Coupon", ""), "cart": row.get("Check_Cart", ""),
                            "at": row.get("Check_At") or _now(), "profile": row.get("Check_Profile", ""),
                            "note": row.get("Check_Note", ""), "column": column, "owner": owner}
-        os.makedirs(DATA, exist_ok=True)
-        tmp = VERDICTS_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(v, f, indent=0, sort_keys=True)
-        os.replace(tmp, VERDICTS_PATH)
 
 
 def may_move(status: str, current_col: str, bot_owned: bool, mode: str = "new") -> bool:
@@ -311,9 +307,9 @@ def _bot_owned(prev: dict, current_col: str) -> bool:
     return bool(current_col) and prev.get("owner") == "bot" and (prev.get("column") or "").upper() == current_col.upper()
 
 
-def is_permanent(asin: str, sku_map: dict | None = None) -> bool:
+def is_permanent(asin: str, sku_map: dict | None = None, verdicts: dict | None = None) -> bool:
     """PDP-badge ineligible ASINs never need a re-test."""
-    v = load_verdicts().get(asin.upper()) or {}
+    v = (verdicts if verdicts is not None else load_verdicts()).get(asin.upper()) or {}
     if v.get("status") == "PROMO_INELIGIBLE" and "best price" in (v.get("note") or "").lower():
         return True
     try:
@@ -476,64 +472,93 @@ def _priority_codes(mod, coupon_codes):
     return pri
 
 
+def _state_path(profile_name: str) -> str:
+    return os.path.join(DATA, f"priority_check_state_{profile_name}.json")
+
+
 def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, svc, wsvc, headers, rows, move,
-               mode: str = "new"):
+               mode: str = "new", on_done=None, current_cols=None):
+    """Test each ASIN and apply the move policy. Reliability rules:
+      • one ASIN's failure never aborts the rest (per-ASIN try/except, on_done always called);
+      • the column an ASIN is judged against is its column NOW (current_cols), not the
+        one recorded when it was queued days ago;
+      • rows are re-read under the write lock right before a move, so a cell filled by
+        the supervisor thread meanwhile is never overwritten;
+      • with NO priority coupons loaded nothing is moved — a bad coupon-sheet read must
+        never demote a store's Coupon column."""
     notes = _sheet_notes(mod)
     if notes:
         with _write_lock:
             headers = ensure_check_headers(wsvc, headers)
         headers, rows = read_tab(svc)
+    if move and not pri:
+        print("  ⚠️  no priority coupons loaded — verdicts are recorded but NOTHING is moved this run")
+        move = False
     results = []
     for i, (asin, col) in enumerate(asins_with_cols, 1):
         t0 = time.time()
+        col = (current_cols or {}).get(asin, col) if current_cols is not None else col
         try:
-            row = check_one(driver, asin, sku_map, pri, cache=cache, mod=mod)
-        except Exception as e:
-            row = {"Check_ASIN": asin, "Check_At": _now(), "Check_Status": "ERROR", "Check_Suggest": "Re-check later",
-                   "Check_Coupon": "", "Check_Cart": "", "Check_Note": str(e)[:120]}
-        row["Check_Profile"] = profile_name
-        row["Check_Note"] = "; ".join(filter(None, [f"was in {col}" if col else "new", row.get("Check_Note", "")]))
-        results.append(row)
-        try:
-            from utils import decision_log as _dl
-            _dl.log("check", profile=profile_name, asin=asin, sku=((sku_map.get(asin) or {}).get("zoro_code") or ""),
-                    action=row.get("Check_Status"), coupon=row.get("Check_Coupon", ""), reason=row.get("Check_Note", ""),
-                    verdict={"status": row.get("Check_Status"), "suggest": row.get("Check_Suggest"), "note": row.get("Check_Note")},
-                    cart_text=row.get("Check_Cart", ""), was_in=col, move=move, priority_codes=pri)
-        except Exception:
-            pass
-        print(f"  [{i}/{len(asins_with_cols)}] {asin} ({col or 'new'}) → {row['Check_Status']} / "
-              f"{row.get('Check_Suggest', '')} {row.get('Check_Coupon', '')} {row.get('Check_Cart', '')}  ({time.time() - t0:.0f}s)")
-        target = suggested_column(profile_name, row.get("Check_Suggest", ""))
-        prev = load_verdicts().get(asin) or {}
-        blocked = bool(move and target and col and target != col
-                       and not may_move(row.get("Check_Status", ""), col, _bot_owned(prev, col), mode))
-        if blocked:
-            print(f"    · {asin} stays in {col} (human placement; no priority coupon) — verdict recorded only")
-            target = col
-        moved = False
-        with _write_lock:
-            if move and target and target != col:
+            try:
+                row = check_one(driver, asin, sku_map, pri, cache=cache, mod=mod)
+            except Exception as e:
+                row = {"Check_ASIN": asin, "Check_At": _now(), "Check_Status": "ERROR", "Check_Suggest": "Re-check later",
+                       "Check_Coupon": "", "Check_Cart": "", "Check_Note": str(e)[:120]}
+            row["Check_Profile"] = profile_name
+            row["Check_Note"] = "; ".join(filter(None, [f"was in {col}" if col else "new", row.get("Check_Note", "")]))
+            results.append(row)
+            try:
+                from utils import decision_log as _dl
+                _dl.log("check", profile=profile_name, asin=asin, sku=((sku_map.get(asin) or {}).get("zoro_code") or ""),
+                        action=row.get("Check_Status"), coupon=row.get("Check_Coupon", ""), reason=row.get("Check_Note", ""),
+                        verdict={"status": row.get("Check_Status"), "suggest": row.get("Check_Suggest"), "note": row.get("Check_Note")},
+                        cart_text=row.get("Check_Cart", ""), was_in=col, move=move, mode=mode, priority_codes=pri)
+            except Exception:
+                pass
+            print(f"  [{i}/{len(asins_with_cols)}] {asin} ({col or 'new'}) → {row['Check_Status']} / "
+                  f"{row.get('Check_Suggest', '')} {row.get('Check_Coupon', '')} {row.get('Check_Cart', '')}  ({time.time() - t0:.0f}s)")
+            target = suggested_column(profile_name, row.get("Check_Suggest", ""))
+            prev = load_verdicts().get(asin) or {}
+            blocked = bool(move and target and col and target != col
+                           and not may_move(row.get("Check_Status", ""), col, _bot_owned(prev, col), mode))
+            if blocked:
+                print(f"    · {asin} stays in {col} (human placement; no priority coupon) — verdict recorded only")
+                target = col
+            moved = False
+            with _write_lock:
+                if move and target and target != col:
+                    try:
+                        headers, rows = read_tab(svc)              # fresh: never trust a snapshot for a write
+                        moved = move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name))
+                        if moved:
+                            print(f"    ↪ {asin}: {col or '—'} → {target}")
+                            headers, rows = read_tab(svc)
+                    except Exception as e:
+                        print(f"    ⚠️ move failed: {e}")
                 try:
-                    moved = move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name))
-                    if moved:
-                        print(f"    ↪ {asin}: {col or '—'} → {target}")
+                    save_verdict(asin, row, target if (moved or not move or target == col) else col,
+                                 "bot" if moved else ("human" if blocked else None))
+                except Exception as e:
+                    print(f"    ⚠️ verdict memory not written for {asin}: {e}")
+                if notes:
+                    try:
+                        upsert_check_row(wsvc, headers, rows, row)
                         headers, rows = read_tab(svc)
-                except Exception as e:
-                    print(f"    ⚠️ move failed: {e}")
-            save_verdict(asin, row, target if (moved or not move or target == col) else col,
-                         "bot" if moved else ("human" if blocked else None))
-            if notes:
+                    except Exception as e:
+                        print(f"    ⚠️ could not write the verdict row for {asin}: {e}")
+        except Exception as e:
+            print(f"    ⚠️ {asin}: {e} — skipped this time (it stays queued for the next run if it was queued)")
+        finally:
+            if on_done is not None:
                 try:
-                    upsert_check_row(wsvc, headers, rows, row)
-                    headers, rows = read_tab(svc)
+                    on_done(asin)
                 except Exception as e:
-                    print(f"    ⚠️ could not write the verdict row for {asin}: {e}")
+                    print(f"    ⚠️ queue bookkeeping failed for {asin}: {e}")
     print(f"  ✅ {len(results)} verdict(s) recorded" + (f" (+ Check_* columns in '{TAB}')" if notes else " in data/priority_verdicts.json"))
     try:
-        os.makedirs(DATA, exist_ok=True)
-        with open(STATE_PATH, "w", encoding="utf-8") as f:
-            json.dump({"last_run": _now(), "profile": profile_name, "checked": len(results), "results": results}, f, indent=1)
+        write_json_atomic(_state_path(profile_name),
+                          {"last_run": _now(), "profile": profile_name, "checked": len(results), "mode": mode,
+                           "results": results}, indent=1)
     except Exception:
         pass
     return results
@@ -558,9 +583,13 @@ def run_check(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
     todo = []
     for asin, meta in targets.items():
         prev = existing.get(asin)
-        if only_new and prev and (prev.get("at") or "") >= cutoff and prev.get("status") not in ("TRANSIENT", "ERROR", "", None):
+        if only_new and prev and (prev.get("at") or "") >= cutoff and prev.get("status") not in (
+                "TRANSIENT", "ERROR", "OOS", "UNMAPPED", "", None):
             continue
         todo.append((asin, meta["column"]))
+    # never-checked first, then the oldest verdicts — so a hand-added ASIN in the last
+    # column is not starved behind a pile of transient re-tries
+    todo.sort(key=lambda t: ((existing.get(t[0]) or {}).get("at") or ""))
     todo = todo[:max_asins]
     print(f"\n🧪 PRIORITY CHECK ({profile_name}): {len(targets)} ASIN(s) in sheet, {len(todo)} to test now, "
           f"{len(pri)} priority coupon(s), move={'on' if move else 'off'}")
@@ -576,16 +605,22 @@ def _queue_path(profile_name: str) -> str:
 
 
 def queue_size(profile_name: str) -> int:
-    try:
-        with open(_queue_path(profile_name), encoding="utf-8") as f:
-            return len((json.load(f) or {}).get("asins") or [])
-    except Exception:
+    """Pending ASINs; -1 when the file exists but cannot be parsed (run_queue rebuilds it)."""
+    p = _queue_path(profile_name)
+    if not os.path.exists(p):
         return 0
+    q = read_json(p, None)                    # a corrupt file is moved aside → None
+    if not isinstance(q, dict):
+        return -1
+    return len(q.get("asins") or [])
 
 
 def enqueue_recheck(profile_name: str, reason: str, mod=None, include_ineligible: bool = False) -> int:
-    """Queue every coupon-dependent ASIN of this store for a re-test. Permanent
-    PDP-ineligible ASINs are skipped unless include_ineligible (reset & rebuild)."""
+    """Queue EVERY ASIN of this store for a re-test with the current priority coupons
+    (a coupon change means every earlier verdict is stale, so the list is always the
+    full store — resuming a half-done pass would miss the new coupon). Permanent
+    PDP-ineligible ASINs are skipped unless include_ineligible (reset & rebuild), and
+    a pending reset is never downgraded by a later coupon-change queue."""
     if mod is None:
         from engine import orders as mod  # noqa: F811
     headers, rows = read_tab(mod._get_sheets_service())
@@ -594,16 +629,34 @@ def enqueue_recheck(profile_name: str, reason: str, mod=None, include_ineligible
         sku_map = mod.load_sku_map() or {}
     except Exception:
         sku_map = {}
-    asins = []
-    for asin, meta in targets.items():
-        if not include_ineligible and is_permanent(asin, sku_map):
-            continue
-        asins.append([asin, meta["column"]])
+    p = _queue_path(profile_name)
     os.makedirs(DATA, exist_ok=True)
-    with open(_queue_path(profile_name), "w", encoding="utf-8") as f:
-        json.dump({"reason": reason, "queued_at": _now(), "profile": profile_name, "asins": asins,
-                   "mode": "reset" if include_ineligible else "recheck"}, f, indent=1)
+    with locked(p):
+        prev_q = read_json(p, None)
+        prev_reset = isinstance(prev_q, dict) and prev_q.get("mode") == "reset"
+        include = include_ineligible or prev_reset
+        verdicts = load_verdicts()
+        asins = []
+        for asin, meta in targets.items():
+            if not include and is_permanent(asin, sku_map, verdicts):
+                continue
+            asins.append([asin, meta["column"]])
+        if isinstance(prev_q, dict) and prev_q.get("asins"):
+            reason = f"{reason} (replaces pending: {prev_q.get('reason', '')})"
+        write_json_atomic(p, {"reason": reason, "queued_at": _now(), "profile": profile_name, "asins": asins,
+                              "mode": "reset" if include else "recheck"}, indent=1)
     return len(asins)
+
+
+def _queue_remove(p: str, asin: str) -> None:
+    """Drop ONE finished ASIN from the queue file (atomic, under the lock) so a crash
+    mid-batch loses at most the ASIN being tested, never the whole batch."""
+    with locked(p):
+        q = read_json(p, None)
+        if not isinstance(q, dict):
+            return
+        q["asins"] = [x for x in (q.get("asins") or []) if (x[0] if isinstance(x, list) else x) != asin]
+        write_json_atomic(p, q, indent=1)
 
 
 def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=None, mod=None, max_asins: int = 15) -> list:
@@ -611,11 +664,17 @@ def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
     if mod is None:
         from engine import orders as mod  # noqa: F811
     p = _queue_path(profile_name)
-    try:
-        with open(p, encoding="utf-8") as f:
-            q = json.load(f) or {}
-    except Exception:
+    if not os.path.exists(p):
         return []
+    q = read_json(p, None, quarantine=True)          # a corrupt queue is kept aside, then rebuilt
+    if not isinstance(q, dict):
+        print(f"  ⚠️  re-check queue for {profile_name} was unreadable — rebuilding it (full store)")
+        try:
+            enqueue_recheck(profile_name, "queue file was unreadable — rebuilt", mod=mod)
+        except Exception as e:
+            print(f"  ⚠️  could not rebuild the queue: {e}")
+            return []
+        q = read_json(p, None) or {}
     pending = q.get("asins") or []
     if not pending:
         try:
@@ -623,18 +682,21 @@ def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
         except OSError:
             pass
         return []
-    batch, rest = pending[:max_asins], pending[max_asins:]
+    batch = pending[:max_asins]
     svc, wsvc = mod._get_sheets_service(), mod._get_sheets_write_service()
     headers, rows = read_tab(svc)
+    current_cols = {a: m["column"] for a, m in collect_asins(headers, rows, profile_name).items()}
     sku_map = sku_map if sku_map is not None else (mod.load_sku_map() or {})
     pri = _priority_codes(mod, coupon_codes)
     print(f"\n🔁 PRIORITY RE-CHECK ({profile_name}): {len(batch)} of {len(pending)} queued — {q.get('reason', '')}")
+    if not pri:
+        print("  ⏸️  no priority coupons loaded right now — the queue waits (nothing is tested or moved)")
+        return []
     results = _run_batch(driver, profile_name, [tuple(x) for x in batch], sku_map, pri, cache, mod, svc, wsvc,
-                         headers, rows, _auto_assign(mod), mode=q.get("mode") or "recheck")
-    q["asins"] = rest
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(q, f, indent=1)
-    if not rest:
+                         headers, rows, _auto_assign(mod), mode=q.get("mode") or "recheck",
+                         on_done=lambda a: _queue_remove(p, a), current_cols=current_cols)
+    left = queue_size(profile_name)
+    if left == 0:
         print(f"  ✅ re-check queue drained ({q.get('reason', '')})")
         try:
             os.remove(p)
