@@ -773,11 +773,13 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
         print(f"  ✅ {how}: {code} (discount: ${discount:.2f})")
         if cache_key:
             working_pairs[cache_key] = code
+        _cache.pop("last_fail", None)
         _time("_apply_coupons_api (total)", t0)
         return "SUCCESS", code
 
     known = working_pairs.get(cache_key) if cache_key else None
     tried = set()
+    kinds_all = []                      # every rejection kind, so the placer can decide what a FAIL means
 
     # ── 0. remembered PRIORITY code — only when it is already the best one ──
     if known and pri and known == pri[0]:
@@ -786,7 +788,7 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
         tried.add(known)
         if ok:
             return _win(known, "Remembered priority coupon worked")
-        _note_reject(known, res, _cache, priority=True)
+        kinds_all.append(_note_reject(known, res, _cache, priority=True))
 
     # ── 1. priority coupons, best % first ──
     if pri:
@@ -799,6 +801,7 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
             if ok:
                 return _win(code, "Priority coupon worked")
             kinds.append(_note_reject(code, res, _cache, priority=True))
+            kinds_all.append(kinds[-1])
         if kinds and all(k in ("token", "transient") for k in kinds):
             print("  ⏸️  Every priority coupon failed on a session/transient error — NOT falling back "
                   "to regular coupons; the order waits for the next cycle")
@@ -819,10 +822,18 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
             ok, res = _apply_coupon_api(driver, cart_id, code)
             if ok:
                 return _win(code, "Regular coupon worked")
-            _note_reject(code, res, _cache)
+            kinds_all.append(_note_reject(code, res, _cache))
 
+    from collections import Counter as _Counter
+    _cnt = _Counter(kinds_all)
+    # Why nothing applied — read by engine/orders.py to decide between 'this item can never
+    # take a coupon → reseller', 'cart too small → reseller if its margin is fine' and 'wait'.
+    _cache["last_fail"] = {"total": len(kinds_all), "item": _cnt.get("item", 0), "min_order": _cnt.get("min_order", 0),
+                           "dead": _cnt.get("dead", 0), "transient": _cnt.get("transient", 0) + _cnt.get("token", 0),
+                           "unknown": _cnt.get("unknown", 0), "priority": len(pri), "regular_available": len(reg)}
     _time("_apply_coupons_api (total)", t0)
-    print("  ❌ No coupons worked")
+    print(f"  ❌ No coupons worked ({_cnt.get('item', 0)} not-for-item, {_cnt.get('min_order', 0)} cart-minimum, "
+          f"{_cnt.get('transient', 0) + _cnt.get('token', 0)} transient; {len(reg)} regular in the pool)")
     return "COUPON FAIL", None
 
 

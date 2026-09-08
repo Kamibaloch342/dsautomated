@@ -1211,6 +1211,46 @@ def _watch_priority_coupon_set(coupon_codes):
 
 _PRIORITY_CHECK_LAST = [time.time()]    # first scheduled check only after every_hours
 _CART_FAILS = {}                        # amazon_id -> {"n": consecutive cart-add failures, "last": epoch}
+_COUPON_WAITS = {}                      # amazon_id -> {"last": epoch, "pool": coupon-pool signature, "reason"}
+COUPON_WAIT_MIN = float(ROUTING.get("coupon_wait_cooldown_min", 45) or 0)
+
+
+def _coupon_pool_sig(coupon_codes):
+    """Signature of today's coupon pool — a parked 'waiting for a coupon' order is retried as
+    soon as the pool changes (a new scrape / a new priority code), not before."""
+    try:
+        pri, reg = coupon_codes if isinstance(coupon_codes, tuple) else ([], coupon_codes or [])
+        return "|".join(sorted({str((c or {}).get("code") or "") for c in (pri or [])}) + sorted(str(c) for c in (reg or [])))
+    except Exception:
+        return ""
+
+
+def _coupon_fail_decision(last_fail, raw_cart_cost, earnings, all_zoro_select, small_fee, free_threshold, min_margin):
+    """What a checkout 'COUPON FAIL' means for a Coupon-column order (pure; unit-tested):
+      • every code says 'not valid for this item' while regular codes existed → this item can
+        never take a coupon → reseller, and it is definitive (promo-ineligible memory);
+      • every attempt was a session/API error → wait (retry next cycle);
+      • all Zoro Select and no priority code applies → reseller (it already has 10 %);
+      • cart under the free-shipping line, nothing fits it, reseller margin ≥ min_margin → reseller;
+      • otherwise → wait for the next coupon scrape (the owner's rule: never list price)."""
+    lf = last_fail or {}
+    total = int(lf.get("total") or 0); item = int(lf.get("item") or 0); mo = int(lf.get("min_order") or 0)
+    tr = int(lf.get("transient") or 0); regs = int(lf.get("regular_available") or 0)
+    res_cost = (raw_cart_cost or 0.0) + (small_fee if (raw_cart_cost or 0.0) < free_threshold else 0.0)
+    res_margin = ((earnings - res_cost) / res_cost) if (earnings and res_cost > 0) else None
+    if total and item == total and regs > 0:
+        return {"action": "route_reseller", "definitive": True,
+                "reason": f"all {total} coupons rejected this item — coupons never apply; reseller places it"}
+    if total and tr == total:
+        return {"action": "wait", "definitive": False, "reason": "coupon API trouble on every code — retry next cycle"}
+    if all_zoro_select and total and (item + mo) == total:
+        return {"action": "route_reseller", "definitive": False,
+                "reason": "Zoro Select and no priority coupon applies — the reseller already has 10 % off"}
+    if (raw_cart_cost or 0.0) < free_threshold and total and (item + mo) == total and res_margin is not None and res_margin >= min_margin:
+        return {"action": "route_reseller", "definitive": False,
+                "reason": f"cart ${raw_cart_cost:.2f} is below every coupon minimum; reseller margin {res_margin:.1%} is fine"}
+    why = "no regular coupon left in today's pool" if regs == 0 else "no coupon fits this cart yet"
+    return {"action": "wait", "definitive": False, "reason": why + " — waiting for the next coupon scrape"}
 
 
 def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
@@ -2774,6 +2814,21 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                         "notes": f"cart add failed {_cf['n']} times in a row — parked 2 h; check the Zoro item / quantity"})
         return "skipped"
 
+    # ── Coupon-wait parking: an order waiting for a coupon is NOT rebuilt every cycle ──
+    # (one order was carted and coupon-tested 66 times in a night). It is retried when the
+    # cooldown passes OR as soon as the coupon pool changes (new scrape / new priority code).
+    _cw = _COUPON_WAITS.get(amazon_id)
+    if _cw and COUPON_WAIT_MIN > 0:
+        if _coupon_pool_sig(coupon_codes) == _cw.get("pool") and time.time() - _cw["last"] < COUPON_WAIT_MIN * 60:
+            if not _cw.get("announced"):
+                _cw["announced"] = True
+                print(f"  ⏸️  {amazon_id}: {_cw.get('reason', 'waiting for a coupon')} — parked "
+                      f"{COUPON_WAIT_MIN:.0f} min or until the coupon list changes")
+                _log_order({"amazon_id": amazon_id, "status": "COUPON_WAIT_PARKED",
+                            "notes": f"{_cw.get('reason', '')}; retried after {COUPON_WAIT_MIN:.0f} min or when coupons change"})
+            return "skipped"
+        _COUPON_WAITS.pop(amazon_id, None)          # pool changed or cooldown over → try again now
+
     # ── HARD LOCAL DEDUP LOCK (authoritative, checked FIRST) ──────
     # Our own record of what we've already bought — deterministic and immune to the
     # Amazon-UI re-scrape flakiness / Gmail lag that let the same order be re-bought 41x.
@@ -2949,6 +3004,20 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             print(f"  📦 Shipping: ${shipping_amt:.2f}")
         if amazon_fees:
             print(f"  🏷️  Amazon Fees: ${amazon_fees:.2f}")
+
+    # ── HARD RULE (owner, 8 Sep 2026): an order is NEVER placed without a known profit ──
+    # No earnings (Gmail service down, email not parsed, zero) → no checkout, no blind buy,
+    # whatever the label or override says. The order is retried next cycle.
+    try:
+        _earn_ok = earnings is not None and float(earnings) > 0
+    except (TypeError, ValueError):
+        _earn_ok = False
+    if not _earn_ok:
+        print(f"  ⛔ Earnings unknown ({earnings!r}) — never placed blind; retried when the 'Sold, ship now' data is available")
+        _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                    "buyer": buyer, "city": city, "state": state, "status": "EARNINGS_UNKNOWN",
+                    "notes": "no earnings data at checkout time — never placed blind (owner's rule)"})
+        return "pending"
 
     # Amazon seller SKU for the note: prefer the SKU scraped from the order page
     # (shown right under the ASIN); fall back to the Sold-Ship-Now email's SKU.
@@ -3352,6 +3421,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             # left UNLABELLED on purpose: picked up again next cycle (wait = needs a coupon
             # and none is left today; retry = Zoro API/session trouble)
             print(f"  🧑‍⚖️ SUPERVISOR: {_dec['reason']} — left unlabelled, next cycle")
+            if _dec["action"] == "wait":
+                _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes),
+                                            "reason": "supervisor: " + _dec["reason"]}
             _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
                         "buyer": buyer, "city": city, "state": state,
                         "status": "SUPERVISOR_WAIT_COUPONS" if _dec["action"] == "wait" else "SUPERVISOR_RETRY",
@@ -3486,6 +3558,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
                     "buyer": buyer, "city": city, "state": state, "status": "NO_COUPONS_WAIT",
                     "notes": "; ".join(filter(None, ["no priority or regular coupons loaded — waiting", order_note]))})
+        _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": "no coupons in the pool"}
         return "failed"
 
     # ── Checkout ──────────────────────────────────────────────────
@@ -3789,6 +3862,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 
     # ── Result handling ───────────────────────────────────────────
     margin_str = str(int(round(margin * 100))) if earnings else "0"
+    _cf_route = None            # set when a COUPON FAIL means "the reseller should place this"
 
     if result_status == "SUCCESS" and (result_id.startswith("WB") or " " in result_id):
         # Money has been spent. CONFIRM the local claim FIRST so this order can never be
@@ -4028,10 +4102,23 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         status_note = (f"Coupon API / session trouble on every priority coupon — retry next cycle"
                        if result_status == "COUPON_RETRY" else f"No coupon worked — skipping (will retry next cycle)")
         if result_status == "COUPON FAIL" and IS_COUPON_PROFILE and not skip_coupons:
-            # one strike towards promo-ineligible (strikes ≥ 10 min apart; at
-            # routing.promo_ineligible_min_fails the ASIN routes to the reseller)
-            _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), False,
-                                 cache=asin_coupon_cache)
+            from utils.config import ZORO_SMALL_ORDER_FEE as _cf_fee, FREE_SHIPPING_THRESHOLD as _cf_free
+            _lf = (asin_coupon_cache or {}).get("last_fail") or {}
+            _cf = _coupon_fail_decision(_lf, raw_cart_cost, earnings,
+                                        all(it.get("is_zoro_select") for it in resolved_items),
+                                        _cf_fee, _cf_free, DECIDING_MIN_MARGIN)
+            _DLOG.log("coupon_fail", profile=PROFILE_NAME, amazon_id=amazon_id, asin=asin_field, sku=sku_field,
+                      qty=qty_field, cart=raw_cart_cost, earnings=earnings, action=_cf["action"], reason=_cf["reason"],
+                      definitive=bool(_cf.get("definitive")), last_fail=_lf)
+            status_note = f"No coupon worked — {_cf['reason']}"
+            if _cf.get("definitive"):
+                # every code rejected the item itself → promo-ineligible now, not after two strikes
+                _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), False,
+                                     cache=asin_coupon_cache, definitive=True, source="checkout")
+            if _cf["action"] == "route_reseller" and not manual_override:
+                _cf_route = _cf["reason"]
+            else:
+                _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": _cf["reason"]}
     else:
         status_note = f"Placement failed: {result_status}"
     
@@ -4045,6 +4132,20 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     if _HAS_LOCK and not DRY_RUN:
         if result_status in _SAFE_PREPAYMENT:
             plock.release(amazon_id, f"pre-payment failure: {result_status}")
+            if _cf_route:
+                # claim released → hand the order to the reseller profile (label only, never a buy)
+                _route_to_sibling(driver, amazon_id, "reseller", "Coupons: " + _cf_route,
+                                  dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
+                                       city=city, state=state, order_note=order_note))
+                _lf2 = (asin_coupon_cache or {}).get("last_fail") or {}
+                _sel = all(it.get("is_zoro_select") for it in resolved_items)
+                _record_asin_verdict(primary_item.get("asin"),
+                                     {"status": "PROMO_INELIGIBLE", "suggest": "Reseller", "note": "every coupon rejected the item at checkout"}
+                                     if _lf2 and _lf2.get("item") == _lf2.get("total") and _lf2.get("regular_available")
+                                     else {"status": "SELECT", "suggest": "Reseller", "note": "Zoro Select, no priority coupon at checkout"}
+                                     if _sel else {"status": "NO_PRIORITY", "suggest": "Deciding", "note": "no coupon fits this cart at checkout"},
+                                     f"${raw_cart_cost:.2f} ({sku_field})", "")
+                return "skipped"
         else:
             # Unknown / post-submit failure — money MAY have been spent (Zoro may have committed
             # the order but returned no WB). Before locking, run the STANDARD duplicate check:
@@ -4499,7 +4600,10 @@ def main():
                     needs_priority_flagged = 0   # unlabelled + non-priority → Needs Priority panel
                     supervised_added = 0         # unlabelled + mapped → supervisor queue (coupon profiles)
                     sorted_elsewhere = 0         # ASIN sits in another column of this store → not ours
-                    _mapped_upper = {str(k).strip().upper() for k in (sku_map or {})}
+                    unmapped_priority = 0        # priority/deciding ASIN with no Zoro code → skipped cheaply
+                    _unmapped_seen = set()
+                    _mapped_upper = {str(k).strip().upper() for k, v in (sku_map or {}).items()
+                                     if str((v or {}).get("zoro_code") or "").strip()}
                     _supervise_ok = SUPERVISE_UNLABELLED and bool(STORE_SORTED_ASINS)
                     for fo in fav_orders:
                         if fo["amazon_id"] in seen_ids:
@@ -4549,6 +4653,19 @@ def main():
                         if (fo.get("seller_order_id") or "").strip():
                             skipped_label += 1
                             continue                       # already labelled → skip
+                        if _fo_asin and _fo_asin not in _mapped_upper:
+                            # An unmapped priority ASIN cannot be placed; scraping its order pages every
+                            # cycle only burns time (926 page loads for one ASIN on 8 Sep). Flag it ONCE per
+                            # cycle so the Unmapped panel still shows it, and move on.
+                            unmapped_priority += 1
+                            if _fo_asin not in _unmapped_seen:
+                                _unmapped_seen.add(_fo_asin)
+                                print(f"    ⚠️  priority ASIN {_fo_asin} has no Zoro code in the verified SKU sheet — "
+                                      f"its orders are skipped until it is mapped")
+                                _log_order({"amazon_id": fo.get("amazon_id", ""), "asin": _fo_asin, "sku": "UNKNOWN",
+                                            "qty": fo.get("qty") or 1, "buyer": fo.get("buyer", ""), "status": "UNMAPPED_ASIN",
+                                            "notes": "priority ASIN not in verified SKU sheet — map it (orders skipped without page loads)"})
+                            continue
                         if is_deciding:
                             # Routed per-order later: cart ≥ threshold → relabelled
                             # for the coupon profile instead of placed here.
@@ -4564,7 +4681,8 @@ def main():
                           f"+ {supervised_added} unlabelled → supervisor "
                           f"(skipped {skipped_asin} non-priority [{needs_priority_flagged} unlabelled → "
                           f"flagged Needs-Priority, {sorted_elsewhere} sorted in another column], "
-                          f"{skipped_label} already labelled)")
+                          f"{skipped_label} already labelled"
+                          + (f", {unmapped_priority} priority order(s) of unmapped ASINs skipped" if unmapped_priority else "") + ")")
                     if not fav_orders:
                         print("    ⚠️  Favorites view returned 0 orders — if this is wrong, the saved "
                               "view/URL may have changed; set use_favorites_discovery=False to fall back.")

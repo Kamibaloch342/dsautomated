@@ -177,6 +177,19 @@ are enforced in code, not by convention:
 * **A sheet outage never hides orders.** If the priority column is unreadable the last
   known list is kept; with no last-known copy, discovery is off for that cycle instead of
   treating the profile's own ASINs as "sorted elsewhere".
+* **Never placed blind.** An order whose earnings are unknown (Gmail service down, "Sold, ship
+  now" not parsed, zero) is never checked out, whatever the label or override says; it is logged
+  `EARNINGS_UNKNOWN` and retried next cycle (owner's rule, 8 Sep 2026).
+* **A coupon failure is a decision, not a loop.** When no coupon applies to a Coupon-column
+  order the checkout leaves a `last_fail` summary and `_coupon_fail_decision` acts on it: every
+  code rejected the item itself (regulars existed) → promo-ineligible now and the reseller places
+  it; all Zoro Select with no priority code → reseller; cart below every minimum with a healthy
+  reseller margin → reseller; otherwise the order waits. A waiting order is **parked**
+  (`routing.coupon_wait_cooldown_min`, default 45 min) and retried the moment the coupon pool
+  changes — one order was carted and coupon-tested 66 times in a night before this.
+* **Unmapped priority ASINs cost nothing.** Discovery skips orders whose priority/deciding ASIN
+  has no Zoro code in the verified SKU sheet, flagging the ASIN once per cycle for the Unmapped
+  panel instead of loading every order page (926 loads for one ASIN on 8 Sep).
 * **Dashboard checks reach both stores.** `Priority check / Re-check all / Reset` write one
   request file per coupon profile (`priority_check.<PROFILE>.request`).
 

@@ -38,7 +38,7 @@ from checkout.true_api import classify_promo_error  # noqa: E402  (pure function
 WANT = ["_deciding_verdict", "_supervise_coupon_decision", "_learn_promo_outcome",
         "_refresh_promo_ineligible", "_is_promo_ineligible", "_route_to_sibling",
         "_sort_orders_for_processing", "_load_coupon_intel", "_save_coupon_intel",
-        "_append_asin_to_sheet_column", "_watch_priority_coupon_set"]
+        "_append_asin_to_sheet_column", "_watch_priority_coupon_set", "_coupon_fail_decision", "_coupon_pool_sig"]
 
 ITEM = "{'cartErrors': [{'detail': {'error': 'Promo code is not valid for the item(s) in your cart.'}, 'status': 400}]}"
 CAT = "{'cartErrors': [{'detail': {'error': 'To qualify for this 15% off coupon, your order needs to include at least one eligible Electrical Supplies item.'}}]}"
@@ -198,6 +198,34 @@ def main():
     check("checkout: 'no longer available' retires a REGULAR code but NEVER a priority code (counted instead)",
           st == "COUPON FAIL" and retired == [("REG1", "INVALID")] and cache.get("priority_dead_replies", {}).get("PRI20") == 1,
           f"{retired} {cache}")
+    lf = cache.get("last_fail") or {}
+    check("checkout: a COUPON FAIL leaves a 'last_fail' summary (2 attempts, 2 dead, 1 regular in the pool)",
+          lf.get("total") == 2 and lf.get("dead") == 2 and lf.get("regular_available") == 1 and lf.get("priority") == 1, str(lf))
+    calls.clear(); TA._apply_coupon_api = fake_zoro({"PRI20": "OK"})
+    TA._apply_coupons_api(None, "c", ["PRI20"], ["PRI20"], "B0X", cache, zoro_code="G1")
+    check("checkout: a success clears 'last_fail'", "last_fail" not in cache)
+
+    # ── what a COUPON FAIL means for a Coupon-column order (pure decision) ──────
+    D = ns["_coupon_fail_decision"]
+    fee, free, mm = 5.99, 50.0, 0.05
+    d = D({"total": 6, "item": 6, "min_order": 0, "transient": 0, "regular_available": 2}, 80.0, 100.0, False, fee, free, mm)
+    check("coupon-fail: every code rejected the ITEM with regulars available → reseller, definitive", d["action"] == "route_reseller" and d["definitive"], str(d))
+    d = D({"total": 4, "item": 0, "min_order": 0, "transient": 4, "regular_available": 0}, 80.0, 100.0, False, fee, free, mm)
+    check("coupon-fail: all transient → wait", d["action"] == "wait" and not d["definitive"])
+    d = D({"total": 4, "item": 3, "min_order": 1, "transient": 0, "regular_available": 0}, 30.0, 45.0, True, fee, free, mm)
+    check("coupon-fail: Zoro Select, no priority code applies → reseller (not definitive)", d["action"] == "route_reseller" and not d["definitive"])
+    d = D({"total": 4, "item": 3, "min_order": 1, "transient": 0, "regular_available": 0}, 42.49, 48.42, False, fee, free, mm)
+    check("coupon-fail: the 8 Sep loop order (cart $42.49, reseller margin −0.1 %, pool empty) → wait for the scrape",
+          d["action"] == "wait" and "no regular coupon left" in d["reason"], str(d))
+    d = D({"total": 4, "item": 3, "min_order": 1, "transient": 0, "regular_available": 0}, 40.0, 60.0, False, fee, free, mm)
+    check("coupon-fail: cart below every minimum but reseller margin 30 % → reseller places it", d["action"] == "route_reseller", str(d))
+    d = D({"total": 5, "item": 4, "min_order": 1, "transient": 0, "regular_available": 3}, 80.0, 100.0, False, fee, free, mm)
+    check("coupon-fail: cart ≥ $50, one code only needed a bigger cart, regulars exist → wait (not ineligible)", d["action"] == "wait" and not d["definitive"], str(d))
+    sig = ns["_coupon_pool_sig"]
+    a = sig(([{"code": "FACILITY8M26"}, {"code": "POWER8X726"}], ["R2", "R1"]))
+    b = sig(([{"code": "POWER8X726"}, {"code": "FACILITY8M26"}], ["R1", "R2"]))
+    c2 = sig(([{"code": "POWER8X726"}, {"code": "FACILITY8M26"}], ["R1", "R2", "R3"]))
+    check("pool signature: order-insensitive, changes when a coupon is added", a == b and a != c2)
 
     # ── _deciding_verdict ────────────────────────────────────────────────
     dv = ns["_deciding_verdict"]
