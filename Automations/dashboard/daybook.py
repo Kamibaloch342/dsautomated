@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AUTO = os.path.dirname(HERE)
-DB = os.path.join(AUTO, "data", "automations_unified.db")
+DB = os.environ.get("CLOUD_DB_PATH") if (os.environ.get("CLOUD_MODE") == "1" and os.environ.get("CLOUD_DB_PATH")) else os.path.join(AUTO, "data", "automations_unified.db")
 
 DELIVERED = ("Delivered", "AllDelivered")
 FINAL_LABELS = ("Completed", "Loss", "Refunded", "Cancelled", "NotPlaced")
@@ -28,8 +28,8 @@ FINAL_LABELS = ("Completed", "Loss", "Refunded", "Cancelled", "NotPlaced")
 
 # ── helpers ──────────────────────────────────────────────────────────────
 def _ro():
-    c = sqlite3.connect(DB, timeout=8)
-    c.execute("PRAGMA busy_timeout=8000")
+    c = sqlite3.connect(DB, timeout=30)
+    c.execute("PRAGMA busy_timeout=30000")
     c.execute("PRAGMA query_only=ON")
     c.row_factory = sqlite3.Row
     return c

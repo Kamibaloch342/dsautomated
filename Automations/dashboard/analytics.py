@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 AUTO = os.path.join(ROOT, "Automations")
-DB = os.path.join(AUTO, "data", "automations_unified.db")
+DB = os.environ.get("CLOUD_DB_PATH") if (os.environ.get("CLOUD_MODE") == "1" and os.environ.get("CLOUD_DB_PATH")) else os.path.join(AUTO, "data", "automations_unified.db")
 CATALOG = os.path.join(ROOT, "TSV Files", "combined_reports.db")
 DELIVERED = ("Delivered", "AllDelivered")
 MARGIN_FLOOR = 12.0

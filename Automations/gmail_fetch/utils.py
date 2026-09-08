@@ -67,20 +67,30 @@ def get_gmail_service(account_name: str):
 
     creds = None
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, GMAIL_SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(token_path, GMAIL_SCOPES)
+        except Exception:
+            creds = None
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             logger.info("Refreshing expired token for %s", account_name)
-            creds.refresh(Request())
+            try:
+                creds.refresh(Request())
+                with open(token_path, "w") as f:
+                    f.write(creds.to_json())
+            except Exception as e:
+                logger.warning("Token refresh failed for %s: %s. Skipping without stopping.", account_name, e)
+                return None
         else:
-            logger.info("No valid token for %s — initiating OAuth flow", account_name)
-            flow = InstalledAppFlow.from_client_secrets_file(creds_path, GMAIL_SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open(token_path, "w") as f:
-            f.write(creds.to_json())
+            logger.warning("No valid token for %s — skipping account without stopping.", account_name)
+            return None
 
-    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+    try:
+        return build("gmail", "v1", credentials=creds, cache_discovery=False)
+    except Exception as e:
+        logger.warning("Failed to build Gmail service for %s: %s", account_name, e)
+        return None
 
 
 def search_gmail(service, query: str, max_results: int | None = None):

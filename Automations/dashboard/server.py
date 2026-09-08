@@ -60,6 +60,8 @@ except Exception:
     pass
 import insights as INS
 import analytics as AN
+INS.DB = DB
+AN.DB = DB
 try:
     import repricer_engine as REPRICER      # needs pandas + the local offers reports
 except ImportError as _e:                   # cloud mode ships without pandas: repricer is local-only
@@ -272,18 +274,22 @@ def ro():
 
 def rw():
     c = sqlite3.connect(DB, timeout=30)
+    try:
+        c.execute("PRAGMA journal_mode=WAL")
+    except Exception:
+        pass
     c.execute("PRAGMA busy_timeout=30000")
     c.row_factory = sqlite3.Row
     return c
 
 
 def _retry_write(fn):
-    for i in range(8):
+    for i in range(12):
         try:
             return fn()
         except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower() and i < 7:
-                time.sleep(0.4 * (i + 1)); continue
+            if "locked" in str(e).lower() and i < 11:
+                time.sleep(0.3 * (i + 1)); continue
             raise
 
 
@@ -313,10 +319,15 @@ def _f(v):
 
 # ── read views ────────────────────────────────────────────────────────────
 def overview(q):
+    if not _has_table("closing_orders"):
+        return {"kpi": {"earnings": 0, "profit": 0, "margin": 0, "units": 0, "orders": 0},
+                "series": [], "top": [], "labels": {}, "status": "syncing"}
     where, args, *_ = _filters(q)
     c = ro()
-    rows = [dict(r) for r in c.execute(f"SELECT * FROM closing_orders WHERE {where}", args)]
-    c.close()
+    try:
+        rows = [dict(r) for r in c.execute(f"SELECT * FROM closing_orders WHERE {where}", args)]
+    finally:
+        c.close()
     earn = sum(_f(r.get("earnings")) for r in rows)
     profit = sum(_f(r.get("profit_dollars")) for r in rows)
     units = sum(_f(r.get("quantity")) for r in rows)
@@ -350,10 +361,14 @@ def overview(q):
 
 
 def asin_list(q):
+    if not _has_table("closing_orders"):
+        return {"asins": []}
     where, args, *_ = _filters(q)
     c = ro()
-    rows = [dict(r) for r in c.execute(f"SELECT * FROM closing_orders WHERE {where}", args)]
-    c.close()
+    try:
+        rows = [dict(r) for r in c.execute(f"SELECT * FROM closing_orders WHERE {where}", args)]
+    finally:
+        c.close()
     cutoff = (date.today() - timedelta(days=7)).isoformat()
     agg = {}
     for r in rows:
@@ -646,54 +661,55 @@ def orders(q):
         where += " AND profile_name=?"; args.append(prof)
     # On Unresolved, attach a gmail_refund flag (refund seen in archive_returns) so the
     # UI can badge it even when closing hasn't set refund_done on the row yet.
+    if not _has_table("v_orders_all"):
+        return {"orders": [], "count": 0}
     c = ro()
-    sel = _select_cols(c, "v_orders_all", q)
-    if flag == "unresolved":
-        sel += (", (SELECT 1 FROM archive_returns ar WHERE ar.amazon_order_id=v_orders_all.amazon_order_id "
-                "AND ar.refund_done='Yes') AS gmail_refund")
-    # v_orders_all = closing_orders ∪ placed-but-unclosed (order_label='Pending') from
-    # order_placer_orders, so the browse list still shows placed orders awaiting closing.
-    rows = [dict(r) for r in c.execute(
-        f"SELECT {sel} FROM v_orders_all WHERE {where} ORDER BY {dc} DESC LIMIT 3000", args)]
-    _apply_crm_overlay(c, rows)
-    c.close()
+    try:
+        sel = _select_cols(c, "v_orders_all", q)
+        if flag == "unresolved":
+            sel += (", (SELECT 1 FROM archive_returns ar WHERE ar.amazon_order_id=v_orders_all.amazon_order_id "
+                    "AND ar.refund_done='Yes') AS gmail_refund")
+        rows = [dict(r) for r in c.execute(
+            f"SELECT {sel} FROM v_orders_all WHERE {where} ORDER BY {dc} DESC LIMIT 3000", args)]
+        _apply_crm_overlay(c, rows)
+    finally:
+        c.close()
     return {"orders": rows, "count": len(rows)}
 
 
 def order_detail(oid):
+    if not _has_table("v_orders_all"):
+        return {"order": None, "notes": [], "returns": []}
     c = ro()
-    # v_orders_all so a placed-but-unclosed (Pending) order can still be opened.
-    r = c.execute("SELECT * FROM v_orders_all WHERE amazon_order_id=?", (oid,)).fetchone()
-    order = dict(r) if r else None
-    if order:
-        _apply_crm_overlay(c, [order])
-        # split-order parse: ALL WB legs live in merchant_order_id (wb_order_id keeps only the first);
-        # the WB\d+ token regex handles the mashed no-space cases too. tracking_ids is comma-separated.
-        seen = set(); wb = []
-        for w in re.findall(r"WB\d+", str(order.get("merchant_order_id") or "").upper()):
-            if w not in seen:
-                seen.add(w); wb.append(w)
-        tseen = set(); tids = []
-        for t in str(order.get("tracking_ids") or "").replace(";", ",").split(","):
-            t = t.strip()
-            if t and t not in tseen:
-                tseen.add(t); tids.append(t)
-        order["wb_ids_all"] = wb
-        order["tracking_ids_all"] = tids
     try:
-        notes = [dict(x) for x in c.execute(
-            "SELECT * FROM crm_notes WHERE amazon_order_id=? ORDER BY created_at DESC", (oid,))]
-    except sqlite3.OperationalError:
-        notes = []   # crm_notes not migrated yet
-    # Live Gmail refunds/returns (archive_returns mirror) — shown even if no closing run
-    # has processed this order yet, so urgent refunds are actionable immediately.
-    try:
-        returns = [dict(x) for x in c.execute(
-            "SELECT refund_done, refund_amount, refund_date, return_reason, return_requested, email_timestamp "
-            "FROM archive_returns WHERE amazon_order_id=? ORDER BY email_timestamp DESC", (oid,))]
-    except sqlite3.OperationalError:
-        returns = []
-    c.close()
+        r = c.execute("SELECT * FROM v_orders_all WHERE amazon_order_id=?", (oid,)).fetchone()
+        order = dict(r) if r else None
+        if order:
+            _apply_crm_overlay(c, [order])
+            seen = set(); wb = []
+            for w in re.findall(r"WB\d+", str(order.get("merchant_order_id") or "").upper()):
+                if w not in seen:
+                    seen.add(w); wb.append(w)
+            tseen = set(); tids = []
+            for t in str(order.get("tracking_ids") or "").replace(";", ",").split(","):
+                t = t.strip()
+                if t and t not in tseen:
+                    tseen.add(t); tids.append(t)
+            order["wb_ids_all"] = wb
+            order["tracking_ids_all"] = tids
+        try:
+            notes = [dict(x) for x in c.execute(
+                "SELECT * FROM crm_notes WHERE amazon_order_id=? ORDER BY created_at DESC", (oid,))]
+        except sqlite3.OperationalError:
+            notes = []
+        try:
+            returns = [dict(x) for x in c.execute(
+                "SELECT refund_done, refund_amount, refund_date, return_reason, return_requested, email_timestamp "
+                "FROM archive_returns WHERE amazon_order_id=? ORDER BY email_timestamp DESC", (oid,))]
+        except sqlite3.OperationalError:
+            returns = []
+    finally:
+        c.close()
     return {"order": order, "notes": notes, "returns": returns}
 
 
@@ -707,26 +723,28 @@ def facets():
         return _FACETS_CACHE["data"]
     try:
         c = ro()
-        accts = [r[0] for r in c.execute(
-            "SELECT DISTINCT account FROM closing_orders WHERE COALESCE(account,'')!='' ORDER BY account")]
-        zaccts = [r[0] for r in c.execute(
-            "SELECT DISTINCT zoro_account_name FROM closing_orders WHERE COALESCE(zoro_account_name,'')!='' ORDER BY zoro_account_name")]
-        profs = [r[0] for r in c.execute(
-            "SELECT DISTINCT profile_name FROM order_placer_orders WHERE COALESCE(profile_name,'')!='' ORDER BY profile_name")]
-        states = [r[0] for r in c.execute(
-            "SELECT DISTINCT ship_state FROM v_orders_all WHERE COALESCE(ship_state,'')!='' ORDER BY ship_state")]
-        # every tag in use (order_crm.tags is a comma list; standard + custom) for the Tag filter
-        tags, seen = [], set()
         try:
-            for (t,) in c.execute("SELECT tags FROM order_crm WHERE COALESCE(tags,'')!=''"):
-                for x in str(t).split(","):
-                    x = x.strip()
-                    if x and x.lower() not in seen:
-                        seen.add(x.lower()); tags.append(x)
-            tags.sort(key=str.lower)
-        except sqlite3.OperationalError:
-            pass   # order_crm not migrated yet
-        c.close()
+            accts = [r[0] for r in c.execute(
+                "SELECT DISTINCT account FROM closing_orders WHERE COALESCE(account,'')!='' ORDER BY account")] if _has_table("closing_orders") else []
+            zaccts = [r[0] for r in c.execute(
+                "SELECT DISTINCT zoro_account_name FROM closing_orders WHERE COALESCE(zoro_account_name,'')!='' ORDER BY zoro_account_name")] if _has_table("closing_orders") else []
+            profs = [r[0] for r in c.execute(
+                "SELECT DISTINCT profile_name FROM order_placer_orders WHERE COALESCE(profile_name,'')!='' ORDER BY profile_name")] if _has_table("order_placer_orders") else []
+            states = [r[0] for r in c.execute(
+                "SELECT DISTINCT ship_state FROM v_orders_all WHERE COALESCE(ship_state,'')!='' ORDER BY ship_state")] if _has_table("v_orders_all") else []
+            tags, seen = [], set()
+            try:
+                if _has_table("order_crm"):
+                    for (t,) in c.execute("SELECT tags FROM order_crm WHERE COALESCE(tags,'')!=''"):
+                        for x in str(t).split(","):
+                            x = x.strip()
+                            if x and x.lower() not in seen:
+                                seen.add(x.lower()); tags.append(x)
+                    tags.sort(key=str.lower)
+            except sqlite3.OperationalError:
+                pass
+        finally:
+            c.close()
         res = {"accounts": accts, "zoro_accounts": zaccts, "profiles": profs, "states": states, "tags": tags}
         _FACETS_CACHE["ts"] = now
         _FACETS_CACHE["data"] = res
@@ -734,7 +752,7 @@ def facets():
     except Exception:
         if _FACETS_CACHE["data"]:
             return _FACETS_CACHE["data"]
-        raise
+        return {"accounts": [], "zoro_accounts": [], "profiles": [], "states": [], "tags": []}
 
 
 _WATCH_DDL = ("CREATE TABLE IF NOT EXISTS zoro_watch(zoro_code TEXT PRIMARY KEY, label TEXT, "
@@ -953,9 +971,13 @@ def watch_add(body):
         return {"ok": False, "error": "code required"}
     label = (body.get("label") or "").strip()
     def w():
-        c = rw(); c.execute(_WATCH_DDL)
-        c.execute("INSERT OR IGNORE INTO zoro_watch(zoro_code,label) VALUES(?,?)", (code, label))
-        c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute(_WATCH_DDL)
+            c.execute("INSERT OR IGNORE INTO zoro_watch(zoro_code,label) VALUES(?,?)", (code, label))
+            c.commit()
+        finally:
+            c.close()
     _retry_write(w)
     return {"ok": True}
 
@@ -963,7 +985,12 @@ def watch_add(body):
 def watch_del(body):
     code = (body.get("code") or "").strip().upper()
     def w():
-        c = rw(); c.execute("DELETE FROM zoro_watch WHERE zoro_code=?", (code,)); c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute("DELETE FROM zoro_watch WHERE zoro_code=?", (code,))
+            c.commit()
+        finally:
+            c.close()
     _retry_write(w)
     return {"ok": True}
 
@@ -971,8 +998,12 @@ def watch_del(body):
 def watch_clear(body):
     code = (body.get("code") or "").strip().upper()
     def w():
-        c = rw(); c.execute("UPDATE zoro_watch SET alert=NULL, alert_at=NULL WHERE zoro_code=?", (code,))
-        c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute("UPDATE zoro_watch SET alert=NULL, alert_at=NULL WHERE zoro_code=?", (code,))
+            c.commit()
+        finally:
+            c.close()
     _retry_write(w)
     return {"ok": True}
 
@@ -984,8 +1015,13 @@ def add_note(body):
         return {"ok": False, "error": "order_id+note required"}
     author = str(body.get("author") or "me")[:60]
     def w():
-        c = rw(); c.execute("INSERT INTO crm_notes(amazon_order_id, author, note) VALUES (?,?,?)",
-                            (oid, author, note)); c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute("INSERT INTO crm_notes(amazon_order_id, author, note) VALUES (?,?,?)",
+                      (oid, author, note))
+            c.commit()
+        finally:
+            c.close()
     try:
         _retry_write(w)              # cloud mode: also lands in the local slim copy (instant feedback)
     except Exception:
@@ -1040,30 +1076,33 @@ def update_order(body):
     def w():
         nonlocal old
         c = rw()
-        c.execute(_CRM_DDL)
-        try:                                   # live table predates the tags column
-            c.execute("ALTER TABLE order_crm ADD COLUMN tags TEXT")
-        except Exception:
-            pass
-        try:                                   # previous values → append-only history
-            r = c.execute("SELECT * FROM order_crm WHERE amazon_order_id=?", (oid,)).fetchone()
-            old = dict(r) if r else {}
-        except Exception:
-            old = {}
-        cols = ["amazon_order_id"] + list(fields)
-        ph = ",".join("?" * len(cols))
-        upd = ", ".join(f"{k}=excluded.{k}" for k in fields)
-        c.execute(f"INSERT INTO order_crm({','.join(cols)}) VALUES({ph}) "
-                  f"ON CONFLICT(amazon_order_id) DO UPDATE SET {upd}, updated_at=CURRENT_TIMESTAMP",
-                  [oid] + list(fields.values()))
-        # mirror onto closing_orders too (a no-op for Pending) so existing closing reads stay in sync
         try:
-            sets = ", ".join(f"{k}=?" for k in fields)
-            c.execute(f"UPDATE closing_orders SET {sets} WHERE amazon_order_id=?",
-                      list(fields.values()) + [oid])
-        except Exception:
-            pass
-        c.commit(); c.close()
+            c.execute(_CRM_DDL)
+            try:                                   # live table predates the tags column
+                c.execute("ALTER TABLE order_crm ADD COLUMN tags TEXT")
+            except Exception:
+                pass
+            try:                                   # previous values → append-only history
+                r = c.execute("SELECT * FROM order_crm WHERE amazon_order_id=?", (oid,)).fetchone()
+                old = dict(r) if r else {}
+            except Exception:
+                old = {}
+            cols = ["amazon_order_id"] + list(fields)
+            ph = ",".join("?" * len(cols))
+            upd = ", ".join(f"{k}=excluded.{k}" for k in fields)
+            c.execute(f"INSERT INTO order_crm({','.join(cols)}) VALUES({ph}) "
+                      f"ON CONFLICT(amazon_order_id) DO UPDATE SET {upd}, updated_at=CURRENT_TIMESTAMP",
+                      [oid] + list(fields.values()))
+            # mirror onto closing_orders too (a no-op for Pending) so existing closing reads stay in sync
+            try:
+                sets = ", ".join(f"{k}=?" for k in fields)
+                c.execute(f"UPDATE closing_orders SET {sets} WHERE amazon_order_id=?",
+                          list(fields.values()) + [oid])
+            except Exception:
+                pass
+            c.commit()
+        finally:
+            c.close()
     try:
         _retry_write(w)
     except Exception:
@@ -1097,11 +1136,13 @@ def get_whoami(key, fallback_key=None):
     name = ""
     if _has_table("dash_prefs"):
         c = ro()
-        row = c.execute("SELECT name FROM dash_prefs WHERE client_key=?", (key,)).fetchone()
-        if (not row or not row[0]) and fallback_key and fallback_key != key:
-            row = c.execute("SELECT name FROM dash_prefs WHERE client_key=?", (fallback_key,)).fetchone()
-        c.close()
-        name = row[0] if row else ""
+        try:
+            row = c.execute("SELECT name FROM dash_prefs WHERE client_key=?", (key,)).fetchone()
+            if (not row or not row[0]) and fallback_key and fallback_key != key:
+                row = c.execute("SELECT name FROM dash_prefs WHERE client_key=?", (fallback_key,)).fetchone()
+            name = row[0] if row else ""
+        finally:
+            c.close()
     return {"name": name or ""}
 
 
@@ -1110,16 +1151,21 @@ def set_whoami(body, client_ip):
     if not name:
         return {"ok": False, "error": "name required"}
     def w():
-        c = rw(); c.execute(_PREFS_DDL)
-        c.execute("INSERT INTO dash_prefs(client_key,name) VALUES(?,?) "
-                  "ON CONFLICT(client_key) DO UPDATE SET name=excluded.name, updated_at=CURRENT_TIMESTAMP",
-                  (client_ip, name))
-        c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute(_PREFS_DDL)
+            c.execute("INSERT INTO dash_prefs(client_key,name) VALUES(?,?) "
+                      "ON CONFLICT(client_key) DO UPDATE SET name=excluded.name, updated_at=CURRENT_TIMESTAMP",
+                      (client_ip, name))
+            c.commit()
+        finally:
+            c.close()
     try:
         _retry_write(w)
-    except Exception:
+    except Exception as e:
         if not OPS.CLOUD_MODE:
             raise
+        print(f"[set_whoami] Local write warning: {e}")
     if OPS.CLOUD_MODE:
         try:
             OPS.push_crm_event("set_whoami", client_ip, {"name": name}, name)
@@ -1332,13 +1378,17 @@ def reminder_add(body):
         return {"ok": False, "error": "title required"}
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     def w():
-        c = rw(); c.execute(_REM_DDL)
-        c.execute("INSERT INTO dash_reminders(title,notes,due_at,assignee,created_by,created_at) "
-                  "VALUES(?,?,?,?,?,?)",
-                  (title, (body.get("notes") or "").strip()[:2000],
-                   (body.get("due_at") or "").strip(), (body.get("assignee") or "").strip()[:40],
-                   (body.get("created_by") or "").strip()[:40], ts))
-        c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute(_REM_DDL)
+            c.execute("INSERT INTO dash_reminders(title,notes,due_at,assignee,created_by,created_at) "
+                      "VALUES(?,?,?,?,?,?)",
+                      (title, (body.get("notes") or "").strip()[:2000],
+                       (body.get("due_at") or "").strip(), (body.get("assignee") or "").strip()[:40],
+                       (body.get("created_by") or "").strip()[:40], ts))
+            c.commit()
+        finally:
+            c.close()
     _retry_write(w)
     return {"ok": True}
 
@@ -1349,7 +1399,12 @@ def reminder_update(body):
         return {"ok": False, "error": "id required"}
     if body.get("delete"):
         def w():
-            c = rw(); c.execute("DELETE FROM dash_reminders WHERE id=?", (rid,)); c.commit(); c.close()
+            c = rw()
+            try:
+                c.execute("DELETE FROM dash_reminders WHERE id=?", (rid,))
+                c.commit()
+            finally:
+                c.close()
         _retry_write(w)
         return {"ok": True}
     sets, vals = [], []
@@ -1364,8 +1419,12 @@ def reminder_update(body):
     if not sets:
         return {"ok": False, "error": "nothing to update"}
     def w():
-        c = rw(); c.execute(f"UPDATE dash_reminders SET {', '.join(sets)} WHERE id=?", vals + [rid])
-        c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute(f"UPDATE dash_reminders SET {', '.join(sets)} WHERE id=?", vals + [rid])
+            c.commit()
+        finally:
+            c.close()
     _retry_write(w)
     return {"ok": True}
 
@@ -1406,9 +1465,13 @@ def _pnl_view(r):
 def get_pnl(q):
     month = (q.get("month", [""])[0] or "").strip()
     def rd():
-        c = rw(); c.execute(_PNL_DDL); c.commit()
-        h = [_pnl_view(r) for r in c.execute("SELECT * FROM monthly_pnl ORDER BY month DESC")]
-        c.close(); return h
+        c = rw()
+        try:
+            c.execute(_PNL_DDL)
+            c.commit()
+            return [_pnl_view(r) for r in c.execute("SELECT * FROM monthly_pnl ORDER BY month DESC")]
+        finally:
+            c.close()
     hist = _retry_write(rd)
     cur = next((h for h in hist if h["month"] == month), None) if month else (hist[0] if hist else None)
     if not cur:
@@ -1425,13 +1488,17 @@ def save_pnl(body):
             "personal": _f(body.get("personal")) or 0, "amazon": _f(body.get("amazon")) or 0,
             "splits": json.dumps(body.get("splits") or _DEFAULT_SPLITS)}
     def w():
-        c = rw(); c.execute(_PNL_DDL)
-        cols = ["month"] + list(vals)
-        upd = ", ".join(f"{k}=excluded.{k}" for k in vals)
-        c.execute(f"INSERT INTO monthly_pnl({','.join(cols)}) VALUES({','.join('?'*len(cols))}) "
-                  f"ON CONFLICT(month) DO UPDATE SET {upd}, updated_at=CURRENT_TIMESTAMP",
-                  [month] + list(vals.values()))
-        c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute(_PNL_DDL)
+            cols = ["month"] + list(vals)
+            upd = ", ".join(f"{k}=excluded.{k}" for k in vals)
+            c.execute(f"INSERT INTO monthly_pnl({','.join(cols)}) VALUES({','.join('?'*len(cols))}) "
+                      f"ON CONFLICT(month) DO UPDATE SET {upd}, updated_at=CURRENT_TIMESTAMP",
+                      [month] + list(vals.values()))
+            c.commit()
+        finally:
+            c.close()
     _retry_write(w)
     return get_pnl({"month": [month]})
 
@@ -1461,9 +1528,13 @@ def _pnl_hoank_view(r):
 def get_pnl_hoank(q):
     month = (q.get("month", [""])[0] or "").strip()
     def rd():
-        c = rw(); c.execute(_PNL_HOANK_DDL); c.commit()
-        h = [_pnl_hoank_view(r) for r in c.execute("SELECT * FROM hoank_pnl ORDER BY month DESC")]
-        c.close(); return h
+        c = rw()
+        try:
+            c.execute(_PNL_HOANK_DDL)
+            c.commit()
+            return [_pnl_hoank_view(r) for r in c.execute("SELECT * FROM hoank_pnl ORDER BY month DESC")]
+        finally:
+            c.close()
     hist = _retry_write(rd)
     cur = next((h for h in hist if h["month"] == month), None) if month else (hist[0] if hist else None)
     if not cur:
@@ -1478,13 +1549,17 @@ def save_pnl_hoank(body):
         return {"ok": False, "error": "month required"}
     vals = {k: (_f(body.get(k)) or 0) for k in _PNL_HOANK_FIELDS}
     def w():
-        c = rw(); c.execute(_PNL_HOANK_DDL)
-        cols = ["month"] + list(vals)
-        upd = ", ".join(f"{k}=excluded.{k}" for k in vals)
-        c.execute(f"INSERT INTO hoank_pnl({','.join(cols)}) VALUES({','.join('?'*len(cols))}) "
-                  f"ON CONFLICT(month) DO UPDATE SET {upd}, updated_at=CURRENT_TIMESTAMP",
-                  [month] + list(vals.values()))
-        c.commit(); c.close()
+        c = rw()
+        try:
+            c.execute(_PNL_HOANK_DDL)
+            cols = ["month"] + list(vals)
+            upd = ", ".join(f"{k}=excluded.{k}" for k in vals)
+            c.execute(f"INSERT INTO hoank_pnl({','.join(cols)}) VALUES({','.join('?'*len(cols))}) "
+                      f"ON CONFLICT(month) DO UPDATE SET {upd}, updated_at=CURRENT_TIMESTAMP",
+                      [month] + list(vals.values()))
+            c.commit()
+        finally:
+            c.close()
     _retry_write(w)
     return get_pnl_hoank({"month": [month]})
 
@@ -2125,14 +2200,17 @@ class H(BaseHTTPRequestHandler):
                 return self._send(orders(q))
             if p == "/api/daybook":
                 import daybook as _dbk
+                _dbk.DB = DB
                 return self._send(_dbk.daybook(q))
             if p == "/api/daybook.csv":
                 import daybook as _dbk
+                _dbk.DB = DB
                 _csv, _name = _dbk.daybook_csv(q)
                 return self._send(_csv.encode("utf-8-sig"), ctype="text/csv; charset=utf-8",
                                   hdrs=[("Content-Disposition", f'attachment; filename="{_name}"')])
             if p == "/api/growth":
                 import daybook as _dbk
+                _dbk.DB = DB
                 return self._send(_dbk.growth(q))
             if p == "/api/listings":
                 return self._send(listings(q))

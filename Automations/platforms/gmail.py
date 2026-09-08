@@ -25,32 +25,63 @@ print = functools.partial(print, flush=True)
 DUP_CHECK_FAILED = "__DUP_CHECK_FAILED__"
 
 
-def authenticate_gmail_account(account_name):
-    """Authenticate a Gmail account via OAuth2 token file. Returns API service."""
+def authenticate_gmail_account(account_name, interactive=False):
+    """Authenticate a Gmail account via OAuth2 token file. Returns API service or None.
+    
+    If the token is expired, revoked, or missing, logs a warning and returns None
+    so the launcher and background processes can continue uninterrupted.
+    """
     token_file = f"{TOKEN_DIRECTORY}/{account_name}_token.json"
     creds = None
 
     import os
     if os.path.exists(token_file):
-        creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+        except Exception as e:
+            print(f"⚠️  [GMAIL WARNING] Corrupt token file for '{account_name}': {e}. Skipping.")
+            creds = None
+    else:
+        if not interactive:
+            print(f"⚠️  [GMAIL WARNING] Token for '{account_name}' not found ({account_name}_token.json). Skipping without stopping launcher.")
+            return None
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
+                with open(token_file, "w") as token:
+                    token.write(creds.to_json())
             except RefreshError as e:
-                print(f"⚠️  Token refresh failed for {account_name}: {e}")
-                print(f"   Deleting old token and re-authenticating...")
-                os.remove(token_file)
+                print(f"⚠️  [GMAIL WARNING] Token for '{account_name}' is revoked or expired: {e}")
+                print(f"   Continuing launcher without '{account_name}'. (Run 'scripts/reauth_gmail.py {account_name}' to re-auth).")
+                try:
+                    os.remove(token_file)
+                except OSError:
+                    pass
+                creds = None
+            except Exception as e:
+                print(f"⚠️  [GMAIL WARNING] Token refresh error for '{account_name}': {e}. Continuing without it.")
                 creds = None
 
         if not creds:
-            flow = InstalledAppFlow.from_client_secrets_file(MASTER_CREDENTIALS_FILE, SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open(token_file, "w") as token:
-            token.write(creds.to_json())
+            if interactive:
+                try:
+                    flow = InstalledAppFlow.from_client_secrets_file(MASTER_CREDENTIALS_FILE, SCOPES)
+                    creds = flow.run_local_server(port=0)
+                    with open(token_file, "w") as token:
+                        token.write(creds.to_json())
+                except Exception as e:
+                    print(f"❌ [GMAIL] Interactive auth failed for '{account_name}': {e}")
+                    return None
+            else:
+                return None
 
-    return build("gmail", "v1", credentials=creds)
+    try:
+        return build("gmail", "v1", credentials=creds)
+    except Exception as e:
+        print(f"⚠️  [GMAIL WARNING] Failed to build Gmail service for '{account_name}': {e}. Continuing without it.")
+        return None
 
 
 def clean_html(raw_html):

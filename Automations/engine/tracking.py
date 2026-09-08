@@ -587,18 +587,28 @@ def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_t
 def get_gmail_service(credentials_path, token_path):
     creds = None
     if os.path.exists(token_path):
-        creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        try:
+            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+        except Exception:
+            creds = None
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
-            print(f"- Refreshing expired token: {os.path.basename(token_path)}")
-            creds.refresh(Request())
+            try:
+                print(f"- Refreshing expired token: {os.path.basename(token_path)}")
+                creds.refresh(Request())
+                with open(token_path, "w") as token:
+                    token.write(creds.to_json())
+            except Exception as e:
+                print(f"⚠️  [GMAIL WARNING] Token refresh failed for {os.path.basename(token_path)}: {e}. Skipping inbox.")
+                return None
         else:
-            print(f"- No valid token found for {os.path.basename(token_path)}. Initiating new authentication flow.")
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open(token_path, "w") as token:
-            token.write(creds.to_json())
-    return build("gmail", "v1", credentials=creds)
+            print(f"⚠️  [GMAIL WARNING] No valid token found for {os.path.basename(token_path)}. Skipping without blocking.")
+            return None
+    try:
+        return build("gmail", "v1", credentials=creds)
+    except Exception as e:
+        print(f"⚠️  [GMAIL WARNING] Could not build service for {os.path.basename(token_path)}: {e}. Skipping.")
+        return None
 
 def get_email_body(message):
     payload = message.get('payload', {})
@@ -806,6 +816,9 @@ def check_for_cancellation_request(service, amazon_order_id):
     """
     Checks if there is an email with the specific 'Order cancelation request' subject.
     """
+    if not service:
+        return False
+
     # Search for the specific subject line including the Amazon Order ID
     query = f'subject:"Order cancelation request for Order ID: {amazon_order_id}"'
     
@@ -907,6 +920,8 @@ def _prefetch_batch_tracking(batch_wbs, gmail_services):
         TRACKING_ID_REGEX = r"\b\d{12}\b"
         or_block = " OR ".join(f'"{w}"' for w in remaining)
         for account_name, service in gmail_services.items():
+            if not service:
+                continue
             todo = [w for w in remaining if w not in found]
             if not todo:
                 break
@@ -1005,6 +1020,9 @@ def find_all_tracking_in_emails(service, order_number):
     Searches Gmail for a specific order number and extracts ALL tracking IDs.
     Returns: (list_of_tracking_ids, shipped_email_time_str or None)
     """
+    if not service:
+        return [], None
+
     query = f'"{order_number}"'
     all_tracking_ids = set() # Use a set to avoid duplicates
     shipped_email_time = None
@@ -1429,7 +1447,8 @@ def main_workflow(account_config, passed_driver=None):
             for account in ACCOUNTS:
                 try:
                     service = get_gmail_service(account['credentials_file'], account['token_file'])
-                    gmail_services[account['name']] = service
+                    if service:
+                        gmail_services[account['name']] = service
                 except Exception as e:
                     print(f"  ⚠️  Could not connect to Gmail account '{account['name']}': {e}")
 

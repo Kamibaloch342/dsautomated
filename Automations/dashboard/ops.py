@@ -134,8 +134,22 @@ def cloud_db_refresh(force: bool = False) -> dict:
             man = s.get_json(KEY_DB_MANIFEST) or {}
             fp = man.get("fingerprint") or man.get("uploaded_at")
             if force or fp != _cloud["fingerprint"] or not os.path.exists(CLOUD_DB_PATH):
-                ok = s.get_file(man.get("key") or KEY_SLIM_GZ, CLOUD_DB_PATH, gunzip=True)
+                tmp_dl = CLOUD_DB_PATH + ".dl"
+                ok = s.get_file(man.get("key") or KEY_SLIM_GZ, tmp_dl, gunzip=True)
                 if ok:
+                    if not os.path.exists(CLOUD_DB_PATH) or os.path.getsize(CLOUD_DB_PATH) == 0:
+                        os.replace(tmp_dl, CLOUD_DB_PATH)
+                    else:
+                        try:
+                            with sqlite3.connect(tmp_dl, timeout=15) as src, sqlite3.connect(CLOUD_DB_PATH, timeout=30) as dst:
+                                src.backup(dst)
+                                dst.commit()
+                        finally:
+                            if os.path.exists(tmp_dl):
+                                try:
+                                    os.remove(tmp_dl)
+                                except Exception:
+                                    pass
                     try:
                         with sqlite3.connect(CLOUD_DB_PATH, timeout=15) as conn:
                             conn.execute("PRAGMA journal_mode=WAL")

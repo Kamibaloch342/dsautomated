@@ -22,7 +22,7 @@ services:
       - key: R2_BUCKET
         value: dsautomated
       - key: R2_ENDPOINT
-        sync: false
+        value: https://2523c94574d38321c829fecaf5c7eb6e.r2.cloudflarestorage.com
       - key: R2_ACCESS_KEY
         sync: false
       - key: R2_SECRET_KEY
