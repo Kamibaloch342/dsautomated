@@ -1644,6 +1644,7 @@ def main_workflow(account_config, passed_driver=None):
                             # Track message outcome for the audit log
                             _msg_sent = False
                             _msg_type = None
+                            _need_seller_note = False
 
                             if should_send_messages:
                                 existing_msg = message_log.get(amazon_id, {})
@@ -1677,12 +1678,10 @@ def main_workflow(account_config, passed_driver=None):
                                     # Update seller note when the buyer was told the
                                     # tracking — either the tracking-confirmation OR the
                                     # cancellation-denial (which also includes the tracking ID).
+                                    # We defer note updating to the order page load below so both
+                                    # note writing and tracking upload happen on the same page load.
                                     if sent and msg_type in ("tracking_confirmation", "cancellation_denial"):
-                                        try:
-                                            print(f"     📝  Updating seller note for {amazon_id}...")
-                                            write_seller_note(driver, amazon_id, skip_navigate=False)
-                                        except Exception as e:
-                                            print(f"     ⚠️  Could not update seller note: {e}")
+                                        _need_seller_note = True
                             else:
                                 print(f"     ⏩  Messaging disabled for {store_name}.")
 
@@ -1691,13 +1690,27 @@ def main_workflow(account_config, passed_driver=None):
                                 order_page_url = f"https://sellercentral.amazon.com/orders-v3/order/{amazon_id}"
                                 driver.get(order_page_url)
 
+                                # Update seller note on the same page load before confirming shipment
+                                if _need_seller_note:
+                                    try:
+                                        print(f"     📝  Updating seller note for {amazon_id}...")
+                                        write_seller_note(driver, amazon_id, skip_navigate=True)
+                                    except Exception as e:
+                                        print(f"     ⚠️  Could not update seller note: {e}")
+
                                 # Quick check on the freshly loaded page first (saves the
                                 # 20s confirm-button wait for stale rows); if the page was
                                 # slow to render, the post-timeout re-check still catches it.
                                 _already_shipped = _page_shows_already_shipped(driver)
                                 if not _already_shipped:
                                     try:
-                                        wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, INITIAL_CONFIRM_SHIPMENT_BUTTON_SELECTOR))).click()
+                                        confirm_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, INITIAL_CONFIRM_SHIPMENT_BUTTON_SELECTOR)))
+                                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", confirm_btn)
+                                        time.sleep(0.2)
+                                        try:
+                                            confirm_btn.click()
+                                        except Exception:
+                                            driver.execute_script("arguments[0].click();", confirm_btn)
                                     except TimeoutException:
                                         _already_shipped = _page_shows_already_shipped(driver)
                                 if _already_shipped:
