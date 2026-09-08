@@ -698,11 +698,64 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
     time.sleep(2)
 
     # --- STEP 3: Click Send ---
+    js_click_send = """
+    function clickSend() {
+        const candidates = document.querySelectorAll('kat-button, button, input[type="submit"], a[role="button"]');
+        for (let el of candidates) {
+            const label = (el.getAttribute('label') || '').trim().toLowerCase();
+            const text = (el.textContent || el.innerText || '').trim().toLowerCase();
+            const val = (el.getAttribute('value') || '').trim().toLowerCase();
+            const ariaLabel = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+
+            if (label === 'send' || label.startsWith('send ') ||
+                text === 'send' || text.startsWith('send ') ||
+                val === 'send' || val.startsWith('send ') ||
+                ariaLabel === 'send' || ariaLabel.startsWith('send ')) {
+
+                if (el.shadowRoot) {
+                    const inner = el.shadowRoot.querySelector('button');
+                    if (inner && !inner.disabled) {
+                        inner.click();
+                        return true;
+                    }
+                }
+                if (!el.disabled) {
+                    el.click();
+                    return true;
+                }
+            }
+        }
+
+        // Fallback: Any primary kat-button on the page or in the footer
+        const primaryKat = document.querySelector('kat-button[variant="primary"]') ||
+                            document.querySelector('.ayb-contact-buyer-footer kat-button');
+        if (primaryKat) {
+            if (primaryKat.shadowRoot) {
+                const inner = primaryKat.shadowRoot.querySelector('button');
+                if (inner && !inner.disabled) {
+                    inner.click();
+                    return true;
+                }
+            }
+            if (!primaryKat.disabled) {
+                primaryKat.click();
+                return true;
+            }
+        }
+
+        // Fallback: Standard submit button
+        const submitBtn = document.querySelector('button[type="submit"], button.a-button-primary');
+        if (submitBtn && !submitBtn.disabled) {
+            submitBtn.click();
+            return true;
+        }
+
+        return false;
+    }
+    return clickSend();
+    """
     try:
-        driver.execute_script(
-            "document.querySelector('kat-button[variant=\"primary\"][label=\"Send\"]')"
-            ".shadowRoot.querySelector('button').click();"
-        )
+        wait.until(lambda d: d.execute_script(js_click_send))
         time.sleep(random.uniform(2.5, 4.0))
     except Exception as e:
         print(f"     ❌  Send button error for {order_id}: {e}")
@@ -1213,9 +1266,9 @@ The {store_name} Team"""
         # to sympathy. Use Amazon's own "Request a Review" button instead — it
         # sends their neutral, policy-compliant template. Do not re-add it.
 
-        # Tracking confirmation: prefer "Other" → fallback "Notify of a problem"
+        # Tracking confirmation: prefer "Notify of a problem" → fallback "Other"
         success = _click_radio_and_type(driver, wait, order_id, message_template,
-                                        radio_priority=['contactBuyer', 'unexpectedProblem'])
+                                        radio_priority=['unexpectedProblem', 'contactBuyer'])
         if success:
             print(f"     ✅  Tracking confirmation message sent for: {order_id}")
         return success

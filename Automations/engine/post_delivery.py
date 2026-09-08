@@ -379,7 +379,7 @@ def send_amazon_message(driver, order_id: str, message_text: str, store_name: st
     # Use tracking.py's battle-tested helper
     wait = WebDriverWait(driver, 15)
     success = _click_radio_and_type(driver, wait, order_id, message_text,
-                                     radio_priority=['contactBuyer', 'unexpectedProblem'])
+                                     radio_priority=['unexpectedProblem', 'contactBuyer'])
     if not success:
         # Distinguish between "no permission" and outright failure
         page_src_lower = driver.page_source.lower()
