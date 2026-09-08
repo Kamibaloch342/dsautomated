@@ -213,6 +213,7 @@ def init(seed_log=True):
 
     Returns True on success. If it returns False, reserve() will still fail-closed per call,
     but the caller should treat a failed init as a reason to halt rather than run blind."""
+    c = None
     try:
         c = _conn()
         _ensure(c)
@@ -236,6 +237,7 @@ def init(seed_log=True):
         ):
             _MEM.add(amz)
         c.close()
+        c = None
         # Heal any PLACING claims orphaned by a crashed prior run → FAILED_KEPT (visible for review).
         reconcile_orphans()
         print(f"   [LOCK] ready — {len(_MEM)} amazon_ids blocked "
@@ -244,6 +246,12 @@ def init(seed_log=True):
     except Exception as e:
         print(f"   [LOCK] init FAILED — fail-closed will apply to every order: {e}")
         return False
+    finally:
+        if c is not None:
+            try:
+                c.close()
+            except Exception:
+                pass
 
 
 def already_seen(amazon_id):
@@ -367,6 +375,7 @@ def reconcile_orphans(max_age_minutes=10):
     stuck blocking its order forever while being invisible. Any PLACING older than
     max_age_minutes (a real placement reconciles in ~20-30s) is marked FAILED_KEPT so it surfaces
     in the Locked Orders tab for review. Call each cycle + at startup. Returns count healed."""
+    c = None
     try:
         from datetime import timedelta
         c = _conn()
@@ -381,12 +390,19 @@ def reconcile_orphans(max_age_minutes=10):
                 (now, cutoff))
             n = cur.rowcount
         c.close()
+        c = None
         if n:
             print(f"   [LOCK] reconciled {n} orphaned PLACING claim(s) → FAILED_KEPT (held for review)")
         return n
     except Exception as e:
         print(f"   [LOCK] reconcile_orphans FAILED: {e}")
         return 0
+    finally:
+        if c is not None:
+            try:
+                c.close()
+            except Exception:
+                pass
 
 
 def locked_orders(stale_placing_minutes=10):
@@ -396,6 +412,7 @@ def locked_orders(stale_placing_minutes=10):
         stale_placing_minutes (stuck mid-placement).
     Both are blocking the order and need a human to verify on Zoro and unlock. Returns dicts with
     amazon_order_id, profile, claimed_at, reconciled_at, note, status."""
+    c = None
     try:
         from datetime import timedelta
         c = _conn()
@@ -414,10 +431,17 @@ def locked_orders(stale_placing_minutes=10):
                              note="stuck mid-placement (no outcome) — verify on Zoro before unlocking",
                              status="PLACING(stuck)"))
         c.close()
+        c = None
         return rows
     except Exception as e:
         print(f"   [LOCK] locked_orders FAILED: {e}")
         return []
+    finally:
+        if c is not None:
+            try:
+                c.close()
+            except Exception:
+                pass
 
 
 def _update(amazon_id, status, wb=None, note=""):
