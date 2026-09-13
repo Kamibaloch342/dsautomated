@@ -155,7 +155,16 @@ gui_cfg = load_gui_config()
 apply_gui_overrides(gui_cfg)
 
 cli_arg = None
-for _a in sys.argv[1:]:
+CLI_FOCUS_COUPON = None
+_skip_next = False
+for _idx, _a in enumerate(sys.argv[1:]):
+    if _skip_next:
+        _skip_next = False
+        continue
+    if _a in ("--focus-coupon", "--focus-prio", "--focus-priority-coupon") and _idx + 2 < len(sys.argv):
+        CLI_FOCUS_COUPON = sys.argv[_idx + 2].strip()
+        _skip_next = True                      # the code itself is not a profile / ASIN argument
+        continue
     if _a.startswith("--"):
         continue
     if _a.isdigit() or _a.upper() in PROFILES:
@@ -1908,6 +1917,153 @@ def _format_asin_batch_summary(orders, asin_counts, limit=10):
     return ", ".join(parts) + (" ..." if remaining else "")
 
 
+# ── FOCUS PRIORITY COUPON ("Place with Priority") ────────────────────────
+# Owner's purpose (14 Sep 2026): a priority coupon is about to expire → place EVERY order that
+# can be placed with it, and only those, until the box is unticked. Reliability rules:
+#   • the code is resolved against TODAY's Coupons tab (shorthand 'facility' → FACILITY8M26),
+#     never against a hard-coded list — a typo or an expired code places nothing and says so;
+#   • an ASIN is kept when the bot's memory says this coupon works on it; an ASIN with no
+#     memory (or a stale one) is PROBED live on a scratch cart with the focus coupon before
+#     its orders are queued — memory alone would miss every human-placed Coupon ASIN;
+#   • an ASIN whose recent verdict is another coupon / Select / no-priority is deferred
+#     (nothing is lost: its orders place normally once focus is off);
+#   • at checkout the focus coupon is tried FIRST; if it fails on the live cart the normal
+#     order (other priority codes, then regular) still applies — the order is never dropped.
+FOCUS_PROBE_TTL_S = 6 * 3600
+FOCUS_VERDICT_MAX_AGE_DAYS = 7
+_FOCUS_PROBED = {}          # asin -> {"ok": bool, "at": epoch}
+
+
+def _focus_query() -> str:
+    """The focus query if 'Place with Priority' is on for this profile (CLI flag wins), else ''.
+    Read from bot_config every time so ticking the box in the launcher applies at the next cycle."""
+    if CLI_FOCUS_COUPON:
+        return CLI_FOCUS_COUPON
+    try:
+        p = (load_gui_config().get("profiles") or {}).get(PROFILE_NAME) or {}
+        if p.get("focus_priority_coupon_enabled"):
+            return str(p.get("focus_priority_coupon") or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def _focus_active_codes(loaded_priority_codes) -> list:
+    q = _focus_query()
+    return _focus_codes(q, loaded_priority_codes) if q else []
+
+
+def _focus_codes(focus_query: str, loaded_priority_codes) -> list:
+    """Resolve 'FACILITY8M26' / 'facility' / 'facility, hardware' against the priority codes
+    loaded from the Coupons tab this cycle. Unknown queries resolve to nothing."""
+    codes = [str((c or {}).get("code") if isinstance(c, dict) else c or "").strip().upper()
+             for c in (loaded_priority_codes or [])]
+    codes = [c for c in codes if c]
+    out = []
+    for q in re.split(r"[,;\s]+", (focus_query or "").upper()):
+        q = q.strip()
+        if not q:
+            continue
+        hit = [c for c in codes if c == q] or [c for c in codes if c.startswith(q)] or [c for c in codes if q in c]
+        for c in hit:
+            if c not in out:
+                out.append(c)
+    return out
+
+
+def _focus_decision(verdict, codes, now=None) -> str:
+    """'keep' | 'skip' | 'probe' for one ASIN from the bot's memory (pure; unit-tested)."""
+    now = now if now is not None else time.time()
+    codes = [c.upper() for c in (codes or [])]
+    if not isinstance(verdict, dict) or not verdict:
+        return "probe"
+    status = str(verdict.get("status") or "").upper()
+    coupon = str(verdict.get("coupon") or "").upper()
+    if status == "PROMO_INELIGIBLE":
+        return "skip"
+    if status == "COUPON_OK" and any(c in coupon for c in codes):
+        return "keep"
+    try:
+        age_days = (now - time.mktime(time.strptime(str(verdict.get("at") or "")[:16], "%Y-%m-%d %H:%M"))) / 86400.0
+    except Exception:
+        age_days = 999.0
+    if age_days > FOCUS_VERDICT_MAX_AGE_DAYS:
+        return "probe"                       # tested before this coupon (or too long ago)
+    if status == "COUPON_OK":
+        return "skip"                        # another priority coupon works — nothing is lost
+    if status in ("SELECT", "NO_PRIORITY", "REGULAR_OK"):
+        return "skip"                        # recently tested with every priority code: no
+    return "probe"
+
+
+def _focus_probe(driver, zoro_code, qty, codes) -> bool:
+    """Does one of the focus coupons apply to this SKU right now? Scratch cart, then cleared.
+    No order, no single-use coupon touched (priority codes are multi-use)."""
+    from platforms.zoro import clear_cart_and_add
+    from checkout.true_api import _get_cart_id, _apply_coupon_api, _clear_cart_api
+    try:
+        from engine.priority_check import zoro_session_ready
+        if not zoro_session_ready(driver):
+            return False
+        ok, _price = clear_cart_and_add(driver, zoro_code, max(1, int(qty or 1)))
+        if not ok:
+            return False
+        cart_id = _get_cart_id(driver)
+        if not cart_id:
+            return False
+        for c in codes:
+            okc, res = _apply_coupon_api(driver, cart_id, c)
+            if okc and (res or 0) > 0:
+                return True
+        return False
+    except Exception as e:
+        print(f"  ⚠️ focus probe {zoro_code}: {e}")
+        return False
+    finally:
+        try:
+            _clear_cart_api(driver)
+        except Exception:
+            pass
+
+
+def _focus_filter(driver, scraped_orders, codes, sku_map):
+    """Keep only the orders whose ASIN takes one of the focus coupons. Returns (kept, deferred, probed)."""
+    from engine import priority_check as _pc
+    verdicts = _pc.load_verdicts()
+    by_asin = {}
+    for o in scraped_orders:
+        by_asin.setdefault((o.get("asin") or "").strip().upper(), []).append(o)
+    kept, deferred, probed = [], [], 0
+    now = time.time()
+    for asin, orders in by_asin.items():
+        v = verdicts.get(asin) if asin else None
+        d = _focus_decision(v, codes, now) if asin else "skip"
+        if d == "probe":
+            pr = _FOCUS_PROBED.get(asin)
+            if pr and now - pr["at"] < FOCUS_PROBE_TTL_S:
+                d = "keep" if pr["ok"] else "skip"
+            else:
+                m = (sku_map or {}).get(asin) or {}
+                code = str(m.get("zoro_code") or "").strip()
+                if not code:
+                    d = "skip"                                     # unmapped: cannot be placed anyway
+                else:
+                    try:
+                        qty = max(1, int(float(m.get("qty_multiplier") or 1) * int(m.get("zoro_multiple") or 1)))
+                    except Exception:
+                        qty = 1
+                    ok = _focus_probe(driver, code, qty, codes)
+                    probed += 1
+                    _FOCUS_PROBED[asin] = {"ok": ok, "at": now}
+                    print(f"    🎯 probe {asin} ({code}): {'✅ ' + '/'.join(codes) + ' applies' if ok else '✖ no focus coupon'}")
+                    if ok:
+                        _record_asin_verdict(asin, {"status": "COUPON_OK", "suggest": "Coupon",
+                                                    "note": f"priority {codes[0]} works (focus probe)"}, "", codes[0])
+                    d = "keep" if ok else "skip"
+        (kept if d == "keep" else deferred).extend(orders)
+    return kept, deferred, probed
+
+
 # ══════════════════════════════════════════════════════════════════
 #  STEP 2: SCRAPE ORDER DETAILS (ASIN, QTY, ADDRESS)
 # ══════════════════════════════════════════════════════════════════
@@ -3648,6 +3804,14 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             if code not in seen_codes:
                 seen_codes.add(code)
                 priority_codes_for_checkout.append(code)
+
+        # Focus Priority Coupon: try the focus code(s) FIRST at checkout (only codes that exist in
+        # today's list — an unknown query never becomes a bogus coupon attempt).
+        _foc_codes = _focus_active_codes(priority_coupons_with_pct)
+        if _foc_codes and not skip_priority:
+            priority_codes_for_checkout = _foc_codes + [c for c in priority_codes_for_checkout if c not in _foc_codes]
+            print(f"  🎯 Focus coupon(s) first at checkout: {', '.join(_foc_codes)}")
+
         coupon_arg = priority_codes_for_checkout + regular_coupon_codes
 
     # Build coupon metadata map for checkout-time ratio-split detection
@@ -4846,6 +5010,33 @@ def main():
                 scraped_orders = [o for o in scraped_orders if o["amazon_id"] not in BLOCKED_ORDER_IDS]
                 if len(scraped_orders) < before:
                     print(f"  ⛔ Filtered {before - len(scraped_orders)} blocked order(s)")
+
+            # ── Focus Priority Coupon ("Place with Priority"): only orders this coupon can take ──
+            _foc_q = _focus_query()
+            if _foc_q and IS_COUPON_PROFILE:
+                _pri_loaded = coupon_codes[0] if isinstance(coupon_codes, tuple) else []
+                _foc_codes = _focus_codes(_foc_q, _pri_loaded)
+                if not _foc_codes:
+                    print(f"\n  🎯 FOCUS PRIORITY COUPON '{_foc_q}' is NOT in today's Coupons tab "
+                          f"({', '.join(str((c or {}).get('code')) for c in _pri_loaded) or 'no priority coupons loaded'}) "
+                          f"— nothing is placed in focus mode; fix the code or untick 'Place with Priority'")
+                    scraped_orders = []
+                else:
+                    kept, deferred, probed = _focus_filter(driver, scraped_orders, _foc_codes, sku_map)
+                    print(f"\n  🎯 FOCUS PRIORITY COUPON ACTIVE: {', '.join(_foc_codes)} — kept {len(kept)} order(s), "
+                          f"deferred {len(deferred)} (placed normally once focus is off), probed {probed} ASIN(s) live")
+                    _DLOG.log("focus", profile=PROFILE_NAME, action="filter", coupon=",".join(_foc_codes),
+                              reason=f"kept {len(kept)}, deferred {len(deferred)}, probed {probed}",
+                              kept=[o.get("amazon_id") for o in kept], deferred=[o.get("amazon_id") for o in deferred])
+                    scraped_orders = kept
+                if not scraped_orders:
+                    _run_log["orders_scraped"] = 0
+                    _save_log()
+                    if SINGLE_CYCLE:
+                        return
+                    print("   -> focus mode: nothing to place right now — next cycle in 60 s")
+                    time.sleep(60)
+                    continue
 
             scraped_orders, asin_counts = _sort_orders_for_processing(scraped_orders)
             if PRIORITY_ASINS:

@@ -166,9 +166,9 @@ def _profile_key_from_choice(choice):
 DEFAULT_CFG = {
     "priority_coupons": ["CLEANUP426", "ORGANIZE326"],
     "profiles": {
-        "DM_COUPON":   {"target_label": "MR",      "priority_asins": [], "min_margin": -20, "order_limit": 0},
+        "DM_COUPON":   {"target_label": "MR",      "priority_asins": [], "min_margin": -20, "order_limit": 0, "focus_priority_coupon": "FACILITY8M26", "focus_priority_coupon_enabled": False},
         "DM_RESELLER": {"target_label": "AB ECOM", "priority_asins": [], "min_margin": -20, "order_limit": 0},
-        "HS_COUPON":   {"target_label": "MR",      "priority_asins": [], "min_margin": -20, "order_limit": 0},
+        "HS_COUPON":   {"target_label": "MR",      "priority_asins": [], "min_margin": -20, "order_limit": 0, "focus_priority_coupon": "FACILITY8M26", "focus_priority_coupon_enabled": False},
         "HS_RESELLER": {"target_label": "Rajar",   "priority_asins": [], "min_margin": -20, "order_limit": 0, "payment_method": "CREDIT_CARD"},
     },
     "velocity": {"max_per_cycle": 0, "inter_order_delay": 0, "cycle_sleep": 120},
@@ -1137,6 +1137,8 @@ class App(tk.Tk):
         self._prush = {}
         self._prush_batch = {}
         self._ppayment = {}  # HS_RESELLER only: "Credit Card" | "Net 30"
+        self._pfocus_priority_enabled = {}
+        self._pfocus_priority_code = {}
 
         positions = [(0, 0), (0, 1), (1, 0), (1, 1)]
         for (row, col), pk in zip(positions, PROFILES):
@@ -1267,6 +1269,44 @@ class App(tk.Tk):
                 margin2_var = tk.StringVar(value="-20")
                 self._entry(fg2, var=margin2_var, w=5).grid(row=0, column=3, sticky="w", padx=(0, 16))
                 self._pmargin2[pk] = margin2_var
+
+                # ── Row 2: Focus Priority Coupon (COUPON only) ──────
+                fg3 = tk.Frame(card, bg=self.CARD)
+                fg3.grid(row=3, column=0, sticky="ew", padx=12, pady=(2, 6))
+
+                foc_en_var = tk.BooleanVar(value=False)
+                foc_cb = ttk.Checkbutton(fg3, text="🎯 Place with Priority", variable=foc_en_var)
+                foc_cb.pack(side="left", padx=(0, 6))
+                self._tip(foc_cb, "FOCUS PRIORITY COUPON MODE:\n"
+                                  "When checked, loads and places ONLY orders whose ASIN has this\n"
+                                  "specific priority coupon working (e.g. FACILITY8M26 expiring soon).\n"
+                                  "When unchecked, normal order processing runs across all orders.")
+                self._pfocus_priority_enabled[pk] = foc_en_var
+
+                foc_code_var = tk.StringVar(value="FACILITY8M26")
+                foc_combo = ttk.Combobox(
+                    fg3,
+                    textvariable=foc_code_var,
+                    values=[
+                        "FACILITY8M26",
+                        "HARDWARE8926",
+                        "facility, hardware",
+                        "POWER8X726",
+                        "CLEAN9U26",
+                        "DEWALTG3926",
+                        "FACILITY",
+                        "HARDWARE",
+                        "POWER",
+                        "CLEAN",
+                        "DEWALT",
+                    ],
+                    width=14,
+                    font=(self.FONT, 9)
+                )
+                foc_combo.pack(side="left")
+                self._tip(foc_combo, "Enter or select the priority coupon to focus on (e.g. FACILITY8M26, HARDWARE8926, or shorthand facility, hardware).\n"
+                                     "Only orders for ASINs where this coupon works will be loaded and placed.")
+                self._pfocus_priority_code[pk] = foc_code_var
 
             # (Priority ASINs now loaded from Google Sheets — no local UI)
 
@@ -3680,6 +3720,10 @@ class App(tk.Tk):
                 
             if pk in self._pskip_priority:
                 self._pskip_priority[pk].set(pd_.get("skip_priority_coupons", False))
+            if pk in self._pfocus_priority_enabled:
+                self._pfocus_priority_enabled[pk].set(pd_.get("focus_priority_coupon_enabled", False))
+            if pk in self._pfocus_priority_code:
+                self._pfocus_priority_code[pk].set(str(pd_.get("focus_priority_coupon", "FACILITY8M26")))
             if pk in self._plabels_only:
                 self._plabels_only[pk].set(pd_.get("labels_only", False))
             if pk in self._prush:
@@ -3723,6 +3767,10 @@ class App(tk.Tk):
 
             if pk in self._pskip_priority:
                 pdata["skip_priority_coupons"] = self._pskip_priority[pk].get()
+            if pk in self._pfocus_priority_enabled:
+                pdata["focus_priority_coupon_enabled"] = self._pfocus_priority_enabled[pk].get()
+            if pk in self._pfocus_priority_code:
+                pdata["focus_priority_coupon"] = self._pfocus_priority_code[pk].get().strip()
             pdata["est_margin_only"] = self._pest_margin_only[pk].get()
             pdata["labels_only"] = self._plabels_only[pk].get()
             pdata["rush_mode"] = self._prush[pk].get()
@@ -3963,6 +4011,10 @@ class App(tk.Tk):
     def _start_orders_key(self, key):
         """Start one placer profile (the GUI button and remote commands share this).
         Returns True if started, False if it was already running."""
+        try:
+            self._save_config()
+        except Exception:
+            pass
         pkey = f"orders_{key}"
         if pkey in self._procs:
             return False

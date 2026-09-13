@@ -192,6 +192,8 @@ PROFILES = {
         "gmail_duplicates_list": DM_DUPLICATE_CHECK_LIST,
         "blocked_order_ids": [],
         "billing_address": DM_COUPON_BILLING,
+        "focus_priority_coupon": "FACILITY8M26",
+        "focus_priority_coupon_enabled": False,
     },
     "DM_RESELLER": {
         "port": 9222,
@@ -214,6 +216,8 @@ PROFILES = {
         "gmail_duplicates_list": HS_DUPLICATE_CHECK_LIST,
         "blocked_order_ids": [],
         "billing_address": HS_COUPON_BILLING,
+        "focus_priority_coupon": "FACILITY8M26",
+        "focus_priority_coupon_enabled": False,
     },
     "HS_RESELLER": {
         "port": 9224,
@@ -379,6 +383,10 @@ def apply_gui_overrides(gui_cfg):
                 # saved credit card. Normalize to "NET30" / "CREDIT_CARD".
                 _pm = str(pvals["payment_method"] or "").upper().replace(" ", "").replace("-", "").replace("_", "")
                 PROFILES[pname]["payment_method"] = "NET30" if _pm == "NET30" else "CREDIT_CARD"
+            if "focus_priority_coupon" in pvals:
+                PROFILES[pname]["focus_priority_coupon"] = str(pvals["focus_priority_coupon"] or "").strip()
+            if "focus_priority_coupon_enabled" in pvals:
+                PROFILES[pname]["focus_priority_coupon_enabled"] = bool(pvals["focus_priority_coupon_enabled"])
             if "blocked_order_ids" in pvals:
                 PROFILES[pname]["blocked_order_ids"] = pvals["blocked_order_ids"]
     # Apply global blocked_order_ids from GUI

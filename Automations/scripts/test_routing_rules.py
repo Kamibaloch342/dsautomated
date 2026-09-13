@@ -38,7 +38,7 @@ from checkout.true_api import classify_promo_error  # noqa: E402  (pure function
 WANT = ["_deciding_verdict", "_supervise_coupon_decision", "_learn_promo_outcome",
         "_refresh_promo_ineligible", "_is_promo_ineligible", "_route_to_sibling",
         "_sort_orders_for_processing", "_load_coupon_intel", "_save_coupon_intel",
-        "_append_asin_to_sheet_column", "_watch_priority_coupon_set", "_coupon_fail_decision", "_coupon_pool_sig"]
+        "_append_asin_to_sheet_column", "_watch_priority_coupon_set", "_coupon_fail_decision", "_coupon_pool_sig", "_focus_codes", "_focus_decision"]
 
 ITEM = "{'cartErrors': [{'detail': {'error': 'Promo code is not valid for the item(s) in your cart.'}, 'status': 400}]}"
 CAT = "{'cartErrors': [{'detail': {'error': 'To qualify for this 15% off coupon, your order needs to include at least one eligible Electrical Supplies item.'}}]}"
@@ -226,6 +226,22 @@ def main():
     b = sig(([{"code": "POWER8X726"}, {"code": "FACILITY8M26"}], ["R1", "R2"]))
     c2 = sig(([{"code": "POWER8X726"}, {"code": "FACILITY8M26"}], ["R1", "R2", "R3"]))
     check("pool signature: order-insensitive, changes when a coupon is added", a == b and a != c2)
+
+    # ── Place with Priority (focus coupon) ─────────────────────────────────
+    ns.update({"re": __import__("re"), "time": __import__("time")})   # module globals the helpers use
+    FC, FD = ns["_focus_codes"], ns["_focus_decision"]
+    loaded = [{"code": "HARDWARE8926", "pct": 20}, {"code": "FACILITY8M26", "pct": 15}, {"code": "POWER8X726", "pct": 15}]
+    check("focus: exact code, shorthand and a comma list resolve against TODAY's coupons only",
+          FC("FACILITY8M26", loaded) == ["FACILITY8M26"] and FC("facility", loaded) == ["FACILITY8M26"]
+          and FC("facility, hardware", loaded) == ["FACILITY8M26", "HARDWARE8926"] and FC("MKETOOL", loaded) == [], str(FC("facility, hardware", loaded)))
+    import time as _t
+    fresh = _t.strftime("%Y-%m-%d %H:%M"); old = "2026-08-01 10:00"
+    check("focus: memory says this coupon works → keep", FD({"status": "COUPON_OK", "coupon": "FACILITY8M26", "at": fresh}, ["FACILITY8M26"]) == "keep")
+    check("focus: no memory → probe live (human-placed Coupon ASINs must not be skipped)", FD(None, ["FACILITY8M26"]) == "probe" and FD({}, ["FACILITY8M26"]) == "probe")
+    check("focus: page-ineligible → skip", FD({"status": "PROMO_INELIGIBLE", "at": fresh}, ["FACILITY8M26"]) == "skip")
+    check("focus: another priority coupon works (recent) → skip, nothing is lost", FD({"status": "COUPON_OK", "coupon": "HARDWARE8926", "at": fresh}, ["FACILITY8M26"]) == "skip")
+    check("focus: recent SELECT / NO_PRIORITY verdict → skip", FD({"status": "SELECT", "at": fresh}, ["FACILITY8M26"]) == "skip" and FD({"status": "NO_PRIORITY", "at": fresh}, ["FACILITY8M26"]) == "skip")
+    check("focus: a stale verdict (older than the coupon) → probe again", FD({"status": "SELECT", "at": old}, ["FACILITY8M26"]) == "probe" and FD({"status": "COUPON_OK", "coupon": "POWER8X726", "at": old}, ["FACILITY8M26"]) == "probe")
 
     # ── 14 Sep: dead codes are not verdicts; priority codes retire after 3 dead replies ──
     _EXPIRED = "{'cartErrors': [{'detail': {'error': 'Promo code has expired.'}}]}"

@@ -193,6 +193,15 @@ are enforced in code, not by convention:
   with a live token (cold start used to answer `no_token` for the first batch). Realistic speed:
   about 10–25 s per ASIN, so a 200-ASIN store takes roughly 30–80 minutes, during which the reseller
   waits rather than guesses.
+* **Place with Priority (focus coupon).** Launcher checkbox per coupon profile (`profiles.<P>.
+  focus_priority_coupon_enabled` + `focus_priority_coupon`, or `--focus-coupon CODE` on the command
+  line). While on, the coupon placer queues ONLY orders whose ASIN takes that coupon: kept when the
+  bot's memory says so, probed live on a scratch cart when there is no fresh memory (human-placed
+  Coupon ASINs included), deferred when a recent verdict says another coupon / Select / none. The
+  code is resolved against today's Coupons tab (shorthand `facility` works; an unknown code places
+  nothing and says so). At checkout the focus coupon is tried first; if it fails on the live cart
+  the normal order still applies. Use it when a code is about to expire; untick it afterwards —
+  deferred orders are placed normally then.
 * **Dead codes are not verdicts.** The checkout's failure summary is per tier; an expired code says
   nothing about the item. A priority code that three different carts report as expired is retired
   (marked INVALID) and should be removed from the tab. When no LIVE regular code is left and no
