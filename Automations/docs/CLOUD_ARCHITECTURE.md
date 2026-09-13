@@ -223,6 +223,40 @@ are enforced in code, not by convention:
 * **DB slimming**: `python scripts/slim_database.py` (dry run) / `--apply` — backup first,
   drops raw email bodies (originals stay in `gmail_archive.db`), purges old logs, VACUUM.
 
+## 6b. Two computers: master + secondary (DB sync, 14 Sep 2026)
+
+One machine is the **master**: its `data/automations_unified.db` feeds the dashboard (slim
+export), the hourly backup and the CRM replay. Any other computer that runs the launcher or
+closing is a **secondary**. Both run the same agent; the only difference is
+`data/agent_config.json → "role"`.
+
+```
+python scripts/cloud_agent.py --role secondary   # on the other computer (once)
+python scripts/cloud_agent.py --seed-from-cloud  # if it has no data/automations_unified.db yet
+python scripts/cloud_agent.py --install          # then the agent runs at login as usual
+python scripts/cloud_agent.py --status           # role + sync state of every machine
+```
+
+`utils/sync_journal.py` keeps the two databases in step through R2 (`sync/events/<host>/…`):
+
+* triggers journal every INSERT/UPDATE on the order, closing, archive, claim, CRM and
+  decision tables; the agent pushes batches every minute and pulls the other machines' batches;
+* rows are matched by **natural key** (order id, WB id, run id …), never by autoincrement id;
+* an UPDATE applies only the columns that changed there, so closing's tracking columns and the
+  placer's placement columns on the same `orders` row never overwrite each other; an INSERT of
+  a row both machines already have only fills empty columns; append-only tables (enrichment log,
+  decisions, notes) arrive exactly once;
+* nothing is ever deleted by sync; a change never bounces back to its origin; each batch is
+  applied once (receipts in `sync_applied`).
+
+So: place orders on the master, run closing on the secondary — within about a minute the
+master's DB (and therefore the dashboard) has the tracking numbers, delivery states and
+enrichment the secondary produced, and the secondary sees the master's new placements.
+Not synced (by design): files under `data/` other than the DB (order_log.txt, run files,
+console logs), Chrome profiles, Gmail/Sheets tokens — copy those once by hand. Only one
+machine may place at a time (the R2 lease), and both must run the same git revision
+(columns unknown to the receiver are skipped and reported in the agent log).
+
 ## 7. Repository & secrets
 
 * `data/`, `*.db`, logs, TSV feeds, token files and passwords are git-ignored; the

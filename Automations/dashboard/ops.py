@@ -60,7 +60,17 @@ def priority_request_paths(args):
     return [os.path.join(DATA, "control", f"priority_check.{p}.request") for p in profs]
 CFG_PATH = os.path.join(AUTO, "bot_config.json")
 KEY_SLIM_GZ = "db/dashboard.db.gz"
-CLOUD_DB_PATH = os.environ.get("CLOUD_DB_PATH") or os.path.join(
+def _clean_env_path(v: str) -> str:
+    """Env values pasted into hosting dashboards often arrive wrapped in quotes
+    ('"/tmp/x.db"'); a path with literal quote characters can never be created and the
+    slim DB then 'never loads'. Strip quotes and whitespace."""
+    v = (v or "").strip()
+    while len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        v = v[1:-1].strip()
+    return v
+
+
+CLOUD_DB_PATH = _clean_env_path(os.environ.get("CLOUD_DB_PATH", "")) or os.path.join(
     os.environ.get("TMPDIR", "/tmp"), "zuhra_dashboard.db")
 
 _r2: R2Store | None = None

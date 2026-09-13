@@ -549,26 +549,15 @@ def process_dataset(
 
 
 def is_record_profitable(r: Dict[str, Any]) -> bool:
-    """Strictly determines if a record qualifies for the ONLY PROFITABLE LISTINGS tab."""
+    """Strictly determines if a record qualifies for the ONLY PROFITABLE LISTINGS tab (Std Margin >= 1.0%)."""
     if not r.get("is_pack_match"):
         return False
     if r.get("total_sellers", 0) == 0:
         return False
 
     std_m = r.get("std_mfn_profit", {}).get("net_margin")
-    fs_m = r.get("fs_mfn_profit", {}).get("net_margin")
-    cp_m = r.get("cp_mfn_profit", {}).get("net_margin")
-    rr_m = r.get("rr_profit", {}).get("net_margin")
-    bb_m = r.get("std_bb_profit", {}).get("net_margin")
+    return std_m is not None and std_m >= 1.0
 
-    best = max(
-        std_m if std_m is not None else -999.0,
-        fs_m if fs_m is not None else -999.0,
-        cp_m if cp_m is not None else -999.0,
-        rr_m if rr_m is not None else -999.0,
-        bb_m if bb_m is not None else -999.0,
-    )
-    return best >= 0.0
 
 
 def create_excel_report(

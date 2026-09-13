@@ -1,0 +1,6375 @@
+[
+  {
+    "asin": "B00IELFF52",
+    "author": null,
+    "availabilityAmazon": 0,
+    "availabilityAmazonDelay": [
+      0,
+      0
+    ],
+    "binding": null,
+    "brand": "Brady",
+    "brandStoreName": "Brady",
+    "brandStoreUrl": "/stores/BradyCorp/page/BF068660-105A-4AAF-BB44-F1E1DA8C7C8F",
+    "brandStoreUrlName": "BradyCorp",
+    "buyBoxEligibleOfferCounts": [
+      1,
+      11,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    "buyBoxSellerIdHistory": null,
+    "categories": [
+      226182,
+      10332520011
+    ],
+    "categoryTree": [
+      {
+        "catId": 172282,
+        "name": "Electronics"
+      },
+      {
+        "catId": 281407,
+        "name": "Accessories & Supplies"
+      },
+      {
+        "catId": 172575,
+        "name": "Office Electronics Accessories"
+      },
+      {
+        "catId": 226182,
+        "name": "Labeling Tapes"
+      }
+    ],
+    "color": "White on Black",
+    "competitivePriceThreshold": 3568,
+    "coupon": null,
+    "csv": null,
+    "description": "Brady leads the way in high performance identification solutions.\n\nAt Brady, we have a steadfast commitment to providing our customers with innovative products and identification solutions. We use customer feedback to continually design, improve, and innovate our products to serve all of your needs, from general identification solutions to custom-engineered labels.\n\nMaterial developed in-house, by our experts.\n\nHighly focused on identification solutions, Brady's team of scientists and engineers work to provide you with products of the highest technological quality. At Brady's Tobey Research Center, material scientists rigorously test all label materials in-house to ensure high performance, industry compliance, durability, and reliability.\n\nMore than 200 technologists in laboratory sites around the world More than 20 label material patents and growing Electro-mechanical, materials, and software development teams Materials designed to last and engineered to perform.\n\nThe materials developed by Brady scientists are designed for a wide spectrum of applications and environments. Brady's in-depth knowledge of the conditions that products face requires extensive testing in harsh environments.\n\nOur products are not only designed to withstand the harshest of environments, but also designed with the user in mind. We spend time getting to know our customers in order to understand your needs.",
+    "domainId": 1,
+    "eanList": [
+      "0754473930530"
+    ],
+    "ebayListingIds": null,
+    "edition": null,
+    "fbaFees": {
+      "lastUpdate": 8239812,
+      "pickAndPackFee": 386
+    },
+    "features": [
+      "Indoor/outdoor vinyl adheres to irregular, rough and curved surfaces",
+      "Stands up to grease, oil and most industrial chemicals",
+      "8-10 years average outdoor durability in temps from -40\u00b0C to 82\u00b0C",
+      "Designed for M210, M210-LAB, M211, BMP21-PLUS and BMP21-LAB Label Printers (sold separately)",
+      "Operating temperature of -40\u00b0F to 180\u00b0F (-40\u00b0C to 82\u00b0C)"
+    ],
+    "format": null,
+    "frequentlyBoughtTogether": [
+      "B09WZBQWN1",
+      "B003XU7SPY"
+    ],
+    "g": 1697,
+    "hasReviews": true,
+    "images": [
+      {
+        "l": "61dwIip-dcL.jpg",
+        "lH": 1618,
+        "lW": 1863,
+        "m": "410-7NSYpLL.jpg",
+        "mH": 434,
+        "mW": 500,
+        "variant": "MAIN"
+      },
+      {
+        "l": "41oVFmV56IL.jpg",
+        "lH": 565,
+        "lW": 1253,
+        "m": "21B6UBWvAoL.jpg",
+        "mH": 225,
+        "mW": 500,
+        "variant": "PT01"
+      },
+      {
+        "l": "51L6qzDXxpL.jpg",
+        "lH": 2400,
+        "lW": 2400,
+        "m": "31LLFxUx-5L.jpg",
+        "mH": 500,
+        "mW": 500,
+        "variant": "PT02"
+      },
+      {
+        "l": "81bJzem6SpL.jpg",
+        "lH": 1700,
+        "lW": 2560,
+        "m": "41vTCiJxSuL.jpg",
+        "mH": 332,
+        "mW": 500,
+        "variant": "PT03"
+      },
+      {
+        "l": "61Kr12CDHNL.jpg",
+        "lH": 800,
+        "lW": 1200,
+        "m": "41PkjbtIDxL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT04"
+      },
+      {
+        "l": "61SsqF3gy5L.jpg",
+        "lH": 800,
+        "lW": 1200,
+        "m": "41ed9aT1OZL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT05"
+      },
+      {
+        "l": "819ZLtH6MUL.jpg",
+        "lH": 2560,
+        "lW": 2560,
+        "variant": "PT10"
+      },
+      {
+        "l": "31fWFt293AL.jpg",
+        "lH": 500,
+        "lW": 375,
+        "variant": "PT12"
+      }
+    ],
+    "isAdultProduct": false,
+    "isEligibleForSuperSaverShipping": true,
+    "isEligibleForTradeIn": false,
+    "isHeatSensitive": false,
+    "isRedirectASIN": false,
+    "isSNS": true,
+    "itemHeight": 19,
+    "itemLength": 53,
+    "itemTypeKeyword": "industrial-labeling-tape",
+    "itemWeight": 64,
+    "itemWidth": 29,
+    "languages": null,
+    "lastEbayUpdate": -1,
+    "lastPriceChange": 8240671,
+    "lastRatingUpdate": 8244756,
+    "lastSoldUpdate": 8244756,
+    "lastUpdate": 8249650,
+    "launchpad": false,
+    "listedSince": 1813773,
+    "liveOffersOrder": null,
+    "manufacturer": "Brady",
+    "material": "Vinyl",
+    "materials": [
+      "Vinyl"
+    ],
+    "model": "M21-500-595-BK",
+    "monthlySold": 100,
+    "numberOfItems": 1,
+    "numberOfPages": -1,
+    "offersSuccessful": false,
+    "packageHeight": 47,
+    "packageLength": 132,
+    "packageQuantity": 1,
+    "packageWeight": 68,
+    "packageWidth": 69,
+    "parentAsin": "B08KRPRMT5",
+    "parentTitle": "BradyGrip Authentic (M21-250-414) Print-on Hook Labels with Ribbon featuring VELCRO\u00ae Brand Hook for M21 Printers - 0.25\"",
+    "partNumber": "M21-500-595-BK",
+    "productGroup": null,
+    "productType": 0,
+    "promotions": [
+      {
+        "amount": -1,
+        "discountPercent": 5,
+        "sellerId": null,
+        "snsBulkDiscountPercent": 0,
+        "type": "SNS"
+      }
+    ],
+    "publicationDate": 0,
+    "referralFeePercent": 15,
+    "referralFeePercentage": 14.99,
+    "releaseDate": 20140328,
+    "rootCategory": 172282,
+    "salesRankDisplayGroup": "biss_display_on_website",
+    "salesRankReference": 16310091,
+    "salesRankReferenceHistory": null,
+    "salesRanks": {
+      "172575": [
+        6298130,
+        -1
+      ],
+      "226182": [
+        8249650,
+        35
+      ],
+      "16310091": [
+        8249650,
+        915
+      ],
+      "490540011": [
+        6400734,
+        -1
+      ],
+      "10332520011": [
+        6529462,
+        1
+      ]
+    },
+    "size": ".5\"",
+    "style": "Label",
+    "title": "Brady Authentic (M21-500-595-BK) All-Weather Vinyl Label for Indoor/Outdoor ID, Lab and Equipment Labeling, White on Black- For M210, M210-LAB, M211, BMP21-PLUS and BMP21-LAB Printers, .5\" W, 21' L",
+    "trackingSince": 2992668,
+    "type": "LABEL",
+    "unitCount": {
+      "unitType": "Foot",
+      "unitValue": 21.0
+    },
+    "upcList": [
+      "754473930530"
+    ],
+    "urlSlug": "Brady-M21-250-595-WT-All-Weather-Identification-Laboratory",
+    "variations": [
+      {
+        "asin": "B003XU7T4Y",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLL96",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B08L9QR5R4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B005HE0S88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELG858",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0B4GPZ5C1",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "Bundle: .75\" + .5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label + Label .5\" Width, 21' Length"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B0063JLOWA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B00IELEPBW",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELEKEE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNTO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFF52",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B00IELFJNK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLO9S",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B005HE0S4C",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELF76E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B00IELEUN0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B0063JLMEA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDGD45R",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNBC",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B002UOFUXQ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLLXM",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0DCDYHX2G",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W x .5\" H"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFNUO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B00IELF36I",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B0DCDB9QR7",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" H, 1\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELEZDK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLKR4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B003XU7T58",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLU88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0063JLPMY",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B00IELG466",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B005HTWA8O",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Music"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFS3Q",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0063JLRE0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFWFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B003XU7T44",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Transluc/White Vinyl"
+          }
+        ],
+        "image": "517nxEtsrfL.jpg"
+      },
+      {
+        "asin": "B08L9NBD14",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Polyester Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLRY0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B00IELG0CE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLV00",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDF396K",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DC7RTZ9V",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L (Pack of 2)"
+          },
+          {
+            "dimension": "Style",
+            "value": "Simple, Functional"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B003XU7T4E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DCDDL1GJ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x2\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLQFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B08L9Q7QBZ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "19.05mm x 3.048m"
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      }
+    ],
+    "websiteDisplayGroup": "biss_basic_display_on_website",
+    "websiteDisplayGroupName": "BISS Basic"
+  },
+  {
+    "asin": "B005HE0S88",
+    "author": null,
+    "availabilityAmazon": 0,
+    "availabilityAmazonDelay": [
+      0,
+      0
+    ],
+    "binding": null,
+    "brand": "Brady",
+    "brandStoreName": "Brady",
+    "brandStoreUrl": "/stores/BradyCorp/page/BF068660-105A-4AAF-BB44-F1E1DA8C7C8F",
+    "brandStoreUrlName": "BradyCorp",
+    "buyBoxEligibleOfferCounts": [
+      2,
+      17,
+      0,
+      2,
+      0,
+      0,
+      0,
+      0
+    ],
+    "buyBoxSellerIdHistory": null,
+    "categories": [
+      10332520011
+    ],
+    "categoryTree": [
+      {
+        "catId": 16310091,
+        "name": "Industrial & Scientific"
+      },
+      {
+        "catId": 8553197011,
+        "name": "Packaging & Shipping Supplies"
+      },
+      {
+        "catId": 8553202011,
+        "name": "Labels & Labeling Equipment"
+      },
+      {
+        "catId": 10332520011,
+        "name": "Industrial Labeling Tape"
+      }
+    ],
+    "color": "Black on White",
+    "competitivePriceThreshold": 3378,
+    "coupon": null,
+    "csv": null,
+    "description": "The Brady label cartridge for use with BMP21 Series, ID PAL, and LABPAL printers contains 21 continuous feet of 0.75\"-wide tape for labeling on smooth or textured surfaces in freezer environments. The tape is made of orange vinyl film and is coated with permanent adhesive on one side. Text prints in black.Brady manufactures signs, labels, lockout/tagout, safety devices, and printing systems and software used in the electronics, telecommunications, manufacturing, electrical, construction, education, and medical industries. The company, founded in 1914, is headquartered in Milwaukee, WI.",
+    "domainId": 1,
+    "eanList": [
+      "0662820966616"
+    ],
+    "ebayListingIds": [
+      2294322703,
+      0
+    ],
+    "edition": null,
+    "fbaFees": {
+      "lastUpdate": 8249068,
+      "pickAndPackFee": 386
+    },
+    "features": [
+      "Made from Brady's B 595 vinyl material with permanent acrylic adhesive that keeps labeling tape adhered in harsh climates including in autoclave, freezer, and liquid nitrogen environments",
+      "Vinyl tape with multiple use cases including pipe marking, arrow tape, warehouse marking, warning panels, safety signs, arc flash and visual workplace labels in both indoor and outdoor use",
+      "Permanent adhesive tape adheres well to surfaces that are smooth, rough, highly textured, or powder coated, as well as to irregular surfaces or surfaces with low surface energy",
+      "Prints black text on white vinyl background with a clean gloss finish that is resistant to exposure to chemicals, grease, oil, and cleaning agents",
+      "Pre packaged in a ready to use, all in one cartridge that includes printing ribbon and label supply, easy to install in compatible label makers"
+    ],
+    "format": null,
+    "frequentlyBoughtTogether": [
+      "B09WZBQWN1",
+      "B003XU7SPY"
+    ],
+    "g": 3405,
+    "gtinList": [
+      "00662820966616"
+    ],
+    "hasReviews": true,
+    "images": [
+      {
+        "l": "61arGReT19L.jpg",
+        "lH": 1620,
+        "lW": 1938,
+        "m": "412GndNrzDL.jpg",
+        "mH": 418,
+        "mW": 500,
+        "variant": "MAIN"
+      },
+      {
+        "l": "31akyoEQIvL.jpg",
+        "lH": 406,
+        "lW": 1698,
+        "m": "21rNRm9uobL.jpg",
+        "mH": 120,
+        "mW": 500,
+        "variant": "PT01"
+      },
+      {
+        "l": "51L6qzDXxpL.jpg",
+        "lH": 2400,
+        "lW": 2400,
+        "m": "31LLFxUx-5L.jpg",
+        "mH": 500,
+        "mW": 500,
+        "variant": "PT02"
+      },
+      {
+        "l": "81mxVmj2AIL.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "41hgnC-dEfL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT03"
+      },
+      {
+        "l": "91FSjxcXCFL.jpg",
+        "lH": 2560,
+        "lW": 1707,
+        "m": "51EIJYzlAsL.jpg",
+        "mH": 500,
+        "mW": 333,
+        "variant": "PT04"
+      },
+      {
+        "l": "819ZLtH6MUL.jpg",
+        "lH": 2560,
+        "lW": 2560,
+        "variant": "PT10"
+      }
+    ],
+    "isAdultProduct": false,
+    "isEligibleForSuperSaverShipping": true,
+    "isEligibleForTradeIn": false,
+    "isHeatSensitive": false,
+    "isRedirectASIN": false,
+    "isSNS": true,
+    "itemHeight": 19,
+    "itemLength": 53,
+    "itemTypeKeyword": "industrial-labeling-tape",
+    "itemWeight": 68,
+    "itemWidth": 29,
+    "languages": null,
+    "lastEbayUpdate": 8148364,
+    "lastPriceChange": 8248205,
+    "lastRatingUpdate": 8249617,
+    "lastSoldUpdate": 8249617,
+    "lastUpdate": 8249617,
+    "launchpad": false,
+    "listedSince": -618389,
+    "liveOffersOrder": null,
+    "manufacturer": "Brady",
+    "material": "Vinyl",
+    "materials": [
+      "Vinyl"
+    ],
+    "model": "M21-500-595-WT",
+    "monthlySold": 2000,
+    "numberOfItems": 1,
+    "numberOfPages": -1,
+    "offersSuccessful": false,
+    "packageHeight": 44,
+    "packageLength": 132,
+    "packageQuantity": 1,
+    "packageWeight": 75,
+    "packageWidth": 71,
+    "parentAsin": "B08KRPRMT5",
+    "parentTitle": "BradyGrip Authentic (M21-250-414) Print-on Hook Labels with Ribbon featuring VELCRO\u00ae Brand Hook for M21 Printers - 0.25\"",
+    "partNumber": "M21-500-595-WT",
+    "productGroup": null,
+    "productType": 0,
+    "promotions": [
+      {
+        "amount": -1,
+        "discountPercent": 5,
+        "sellerId": null,
+        "snsBulkDiscountPercent": 15,
+        "type": "SNS"
+      }
+    ],
+    "publicationDate": 0,
+    "referralFeePercent": 15,
+    "referralFeePercentage": 15.01,
+    "releaseDate": 20200901,
+    "rootCategory": 16310091,
+    "salesRankDisplayGroup": "biss_display_on_website",
+    "salesRankReference": 16310091,
+    "salesRankReferenceHistory": null,
+    "salesRanks": {
+      "226182": [
+        7432208,
+        -1
+      ],
+      "16310091": [
+        8249068,
+        673
+      ],
+      "490540011": [
+        6402644,
+        -1
+      ],
+      "10332520011": [
+        6459730,
+        1
+      ]
+    },
+    "size": ".5\"",
+    "style": "Label",
+    "title": "Brady Authentic (M21-500-595-WT) All-Weather Vinyl Label for Indoor/Outdoor ID, Lab and Equipment Labeling, Black on White- For M210, M210-LAB, M211, BMP21-PLUS and BMP21-LAB Printers, .5\" W 21' L",
+    "trackingSince": 377460,
+    "type": "LABEL",
+    "unitCount": {
+      "unitType": "Count",
+      "unitValue": 1.0
+    },
+    "upcList": [
+      "662820966616"
+    ],
+    "urlSlug": "Brady-M21-250-595-WT-All-Weather-Identification-Laboratory",
+    "variations": [
+      {
+        "asin": "B003XU7T4Y",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLL96",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B08L9QR5R4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B005HE0S88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELG858",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0B4GPZ5C1",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "Bundle: .75\" + .5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label + Label .5\" Width, 21' Length"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B0063JLOWA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B00IELEPBW",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELEKEE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNTO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFF52",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B00IELFJNK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLO9S",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B005HE0S4C",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELF76E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B00IELEUN0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B0063JLMEA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDGD45R",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNBC",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B002UOFUXQ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLLXM",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0DCDYHX2G",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W x .5\" H"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFNUO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B00IELF36I",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B0DCDB9QR7",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" H, 1\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELEZDK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLKR4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B003XU7T58",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLU88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0063JLPMY",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B00IELG466",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B005HTWA8O",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Music"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFS3Q",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0063JLRE0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFWFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B003XU7T44",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Transluc/White Vinyl"
+          }
+        ],
+        "image": "517nxEtsrfL.jpg"
+      },
+      {
+        "asin": "B08L9NBD14",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Polyester Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLRY0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B00IELG0CE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLV00",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDF396K",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DC7RTZ9V",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L (Pack of 2)"
+          },
+          {
+            "dimension": "Style",
+            "value": "Simple, Functional"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B003XU7T4E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DCDDL1GJ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x2\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLQFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B08L9Q7QBZ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "19.05mm x 3.048m"
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      }
+    ],
+    "websiteDisplayGroup": "biss_basic_display_on_website",
+    "websiteDisplayGroupName": "BISS Basic"
+  },
+  {
+    "asin": "B003XU7T58",
+    "author": null,
+    "availabilityAmazon": 0,
+    "availabilityAmazonDelay": [
+      0,
+      0
+    ],
+    "binding": null,
+    "brand": "Brady",
+    "brandStoreName": "Brady",
+    "brandStoreUrl": "/stores/BradyCorp/page/BF068660-105A-4AAF-BB44-F1E1DA8C7C8F",
+    "brandStoreUrlName": "BradyCorp",
+    "buyBoxEligibleOfferCounts": [
+      1,
+      18,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    "buyBoxSellerIdHistory": null,
+    "categories": [
+      10332520011
+    ],
+    "categoryTree": [
+      {
+        "catId": 16310091,
+        "name": "Industrial & Scientific"
+      },
+      {
+        "catId": 8553197011,
+        "name": "Packaging & Shipping Supplies"
+      },
+      {
+        "catId": 8553202011,
+        "name": "Labels & Labeling Equipment"
+      },
+      {
+        "catId": 10332520011,
+        "name": "Industrial Labeling Tape"
+      }
+    ],
+    "color": "Black on White",
+    "competitivePriceThreshold": 4988,
+    "coupon": null,
+    "csv": null,
+    "description": "Brady\u2019s self-laminating vinyl material is excellent for wire and cable identification. Designed with a clear protective layer to cover the printed text, B-427 material provides superb protection from abrasion, dirt, oils, solvents, water and excess handling.",
+    "domainId": 1,
+    "eanList": [
+      "0662820900009"
+    ],
+    "ebayListingIds": [
+      9014552926,
+      9014552926
+    ],
+    "edition": null,
+    "fbaFees": {
+      "lastUpdate": 8248078,
+      "pickAndPackFee": 386
+    },
+    "features": [
+      "Label tape made from Brady's B 427 Self Laminating Vinyl material, which provides a protective layer over text for excellent resistance to abrasion, dirt, oils, solvents, water and excess handling",
+      "Labeling tape with self laminating vinyl for multiple use cases including cable and wire labeling, voice data identification, and panel marking",
+      "Permanent acrylic tape adheres well to surfaces that are smooth, rough, highly textured, or powder coated, as well as to irregular surfaces or surfaces with low surface energy",
+      "Labeling tape with a self laminated format with a white printable zone, prints in black text on a white background with translucent overlaminating area to protect text",
+      "RoHS compliant to 2005/618/EC MCV amendment to RoHS Directive 2002/95/EC; UL approved; CSA accepted.Always use official Brady labels designed for use with BMP21-PLUS, BMP21-LAB, IDPAL and LABPAL Label Printers"
+    ],
+    "format": null,
+    "frequentlyBoughtTogether": null,
+    "g": 3318,
+    "gtinList": [
+      "00662820900009"
+    ],
+    "hasReviews": true,
+    "images": [
+      {
+        "l": "61mVb-2P0nL.jpg",
+        "lH": 1747,
+        "lW": 2123,
+        "m": "415x9vhfCkL.jpg",
+        "mH": 411,
+        "mW": 500,
+        "variant": "MAIN"
+      },
+      {
+        "l": "81HLEcN8S6L.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "31KXKBgAqiL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT01"
+      },
+      {
+        "l": "61ogAuvik4L.jpg",
+        "lH": 1455,
+        "lW": 1500,
+        "m": "41Xusy4egJL.jpg",
+        "mH": 485,
+        "mW": 500,
+        "variant": "PT02"
+      },
+      {
+        "m": "51a-v4y56QL.jpg",
+        "mH": 385,
+        "mW": 500,
+        "variant": "PT03"
+      },
+      {
+        "l": "918pqyT+4GL.jpg",
+        "lH": 2560,
+        "lW": 1707,
+        "m": "51LUiKvUPEL.jpg",
+        "mH": 500,
+        "mW": 333,
+        "variant": "PT04"
+      },
+      {
+        "l": "71gbaAyMGIL.jpg",
+        "lH": 1398,
+        "lW": 2560,
+        "m": "315IU+gmSXL.jpg",
+        "mH": 273,
+        "mW": 500,
+        "variant": "PT05"
+      },
+      {
+        "l": "71Fo+nhghLL.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "41wjaRGMi7L.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT06"
+      },
+      {
+        "l": "819ZLtH6MUL.jpg",
+        "lH": 2560,
+        "lW": 2560,
+        "variant": "PT10"
+      }
+    ],
+    "isAdultProduct": false,
+    "isEligibleForSuperSaverShipping": true,
+    "isEligibleForTradeIn": false,
+    "isHeatSensitive": false,
+    "isRedirectASIN": false,
+    "isSNS": false,
+    "itemHeight": 10,
+    "itemLength": 41,
+    "itemTypeKeyword": "industrial-labeling-tape",
+    "itemWeight": 68,
+    "itemWidth": 38,
+    "languages": null,
+    "lastEbayUpdate": 8246615,
+    "lastPriceChange": 8249053,
+    "lastRatingUpdate": 8249211,
+    "lastSoldUpdate": 8242423,
+    "lastUpdate": 8249482,
+    "launchpad": false,
+    "listedSince": -223200,
+    "liveOffersOrder": null,
+    "manufacturer": "Brady",
+    "material": "Vinyl",
+    "materials": [
+      "Vinyl"
+    ],
+    "model": "M21-1500-427",
+    "monthlySold": 300,
+    "numberOfItems": 1,
+    "numberOfPages": -1,
+    "offersSuccessful": false,
+    "packageHeight": 47,
+    "packageLength": 133,
+    "packageQuantity": 1,
+    "packageWeight": 82,
+    "packageWidth": 69,
+    "parentAsin": "B08KRPRMT5",
+    "parentTitle": "BradyGrip Authentic (M21-250-414) Print-on Hook Labels with Ribbon featuring VELCRO\u00ae Brand Hook for M21 Printers - 0.25\"",
+    "partNumber": "M21-1500-427",
+    "pattern": "Solid Color",
+    "productGroup": null,
+    "productType": 0,
+    "promotions": null,
+    "publicationDate": 0,
+    "referralFeePercent": 15,
+    "referralFeePercentage": 14.99,
+    "releaseDate": 20230123,
+    "rootCategory": 16310091,
+    "salesRankDisplayGroup": "biss_display_on_website",
+    "salesRankReference": 16310091,
+    "salesRankReferenceHistory": null,
+    "salesRanks": {
+      "226182": [
+        7150352,
+        -1
+      ],
+      "1069410": [
+        6381932,
+        -1
+      ],
+      "16310091": [
+        8249053,
+        673
+      ],
+      "490540011": [
+        6383156,
+        -1
+      ],
+      "10332520011": [
+        7252992,
+        1
+      ]
+    },
+    "size": "1.5\"",
+    "style": "Label",
+    "title": "Brady Authentic (M21-1500-427) Self-Laminating Wire Wrap for Control and Electrical Panels, Datacom Cables, Black on White- For M210, M210-LAB, M211, BMP21-PLUS and BMP21-LAB Printers, 1.5\" W 14' L",
+    "trackingSince": 141780,
+    "type": "LABEL",
+    "unitCount": {
+      "unitType": "Count",
+      "unitValue": 1.0
+    },
+    "upcList": [
+      "662820900009"
+    ],
+    "urlSlug": "Brady-M21-250-595-WT-All-Weather-Identification-Laboratory",
+    "variations": [
+      {
+        "asin": "B003XU7T4Y",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLL96",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B08L9QR5R4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B005HE0S88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELG858",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0B4GPZ5C1",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "Bundle: .75\" + .5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label + Label .5\" Width, 21' Length"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B0063JLOWA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B00IELEPBW",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELEKEE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNTO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFF52",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B00IELFJNK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLO9S",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B005HE0S4C",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELF76E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B00IELEUN0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B0063JLMEA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDGD45R",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNBC",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B002UOFUXQ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLLXM",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0DCDYHX2G",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W x .5\" H"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFNUO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B00IELF36I",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B0DCDB9QR7",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" H, 1\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELEZDK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLKR4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B003XU7T58",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLU88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0063JLPMY",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B00IELG466",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B005HTWA8O",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Music"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFS3Q",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0063JLRE0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFWFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B003XU7T44",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Transluc/White Vinyl"
+          }
+        ],
+        "image": "517nxEtsrfL.jpg"
+      },
+      {
+        "asin": "B08L9NBD14",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Polyester Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLRY0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B00IELG0CE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLV00",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDF396K",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DC7RTZ9V",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L (Pack of 2)"
+          },
+          {
+            "dimension": "Style",
+            "value": "Simple, Functional"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B003XU7T4E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DCDDL1GJ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x2\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLQFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B08L9Q7QBZ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "19.05mm x 3.048m"
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      }
+    ],
+    "websiteDisplayGroup": "biss_basic_display_on_website",
+    "websiteDisplayGroupName": "BISS Basic"
+  },
+  {
+    "asin": "B0063JLU88",
+    "author": null,
+    "availabilityAmazon": 0,
+    "availabilityAmazonDelay": [
+      0,
+      0
+    ],
+    "binding": null,
+    "brand": "Brady",
+    "brandStoreName": "Brady",
+    "brandStoreUrl": "/stores/BradyCorp/page/BF068660-105A-4AAF-BB44-F1E1DA8C7C8F",
+    "brandStoreUrlName": "BradyCorp",
+    "buyBoxEligibleOfferCounts": [
+      1,
+      22,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    "buyBoxSellerIdHistory": null,
+    "categories": [
+      226182,
+      10332520011
+    ],
+    "categoryTree": [
+      {
+        "catId": 172282,
+        "name": "Electronics"
+      },
+      {
+        "catId": 281407,
+        "name": "Accessories & Supplies"
+      },
+      {
+        "catId": 172575,
+        "name": "Office Electronics Accessories"
+      },
+      {
+        "catId": 226182,
+        "name": "Labeling Tapes"
+      }
+    ],
+    "color": "Black on Orange",
+    "competitivePriceThreshold": 3518,
+    "coupon": null,
+    "csv": null,
+    "description": "With the ability to last up to 10 years in an outdoor environment, Brady\u2019s low shrink vinyl with ultra-aggressive adhesive (B-595) is ideal for a wide range of identification applications.",
+    "domainId": 1,
+    "eanList": [
+      "0662820966586"
+    ],
+    "ebayListingIds": null,
+    "edition": null,
+    "fbaFees": {
+      "lastUpdate": 8244359,
+      "pickAndPackFee": 386
+    },
+    "features": [
+      "Label cartridge contains 21 continuous feet of 0.75\"-wide tape for use on smooth or textured surfaces in freezer environments",
+      "Tape is made of vinyl film and one side is coated with permanent adhesive",
+      "Labels print in black text on the orange tape",
+      "Works with Brady BMP21 Series, ID PAL, and LABPAL label printers (sold separately)"
+    ],
+    "format": null,
+    "frequentlyBoughtTogether": [
+      "B09WZBQWN1",
+      "B003XU7SPY"
+    ],
+    "g": 3143,
+    "gtinList": [
+      "00662820966586"
+    ],
+    "hasReviews": true,
+    "images": [
+      {
+        "l": "61isjBiS2IL.jpg",
+        "lH": 1758,
+        "lW": 1844,
+        "m": "41-8gN5I2hL.jpg",
+        "mH": 477,
+        "mW": 500,
+        "variant": "MAIN"
+      },
+      {
+        "l": "41QCe+nER+L.jpg",
+        "lH": 565,
+        "lW": 1253,
+        "m": "217iqbnYC+L.jpg",
+        "mH": 225,
+        "mW": 500,
+        "variant": "PT01"
+      },
+      {
+        "l": "51W6oXUnH0L.jpg",
+        "lH": 2400,
+        "lW": 2400,
+        "m": "31MlXaA63pL.jpg",
+        "mH": 500,
+        "mW": 500,
+        "variant": "PT02"
+      },
+      {
+        "l": "91p8Y8laifL.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "41GZEGsiQTL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT03"
+      },
+      {
+        "l": "9138NhWdgCL.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "51uq5DwJZRL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT04"
+      },
+      {
+        "l": "71XZQ7ORnUL.jpg",
+        "lH": 800,
+        "lW": 1200,
+        "m": "51Su+cspAkL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT05"
+      },
+      {
+        "l": "819ZLtH6MUL.jpg",
+        "lH": 2560,
+        "lW": 2560,
+        "variant": "PT10"
+      }
+    ],
+    "isAdultProduct": false,
+    "isEligibleForSuperSaverShipping": true,
+    "isEligibleForTradeIn": false,
+    "isHeatSensitive": false,
+    "isRedirectASIN": false,
+    "isSNS": true,
+    "itemHeight": 10,
+    "itemLength": 18,
+    "itemTypeKeyword": "industrial-labeling-tape",
+    "itemWeight": 68,
+    "itemWidth": 19,
+    "languages": null,
+    "lastEbayUpdate": -1,
+    "lastPriceChange": 8184006,
+    "lastRatingUpdate": 8248571,
+    "lastSoldUpdate": 8248571,
+    "lastUpdate": 8249434,
+    "launchpad": false,
+    "listedSince": 444960,
+    "liveOffersOrder": null,
+    "manufacturer": "Brady",
+    "material": "Vinyl",
+    "materials": [
+      "Vinyl"
+    ],
+    "model": "M21-750-595-OR",
+    "monthlySold": 200,
+    "numberOfItems": 1,
+    "numberOfPages": -1,
+    "offersSuccessful": false,
+    "packageHeight": 48,
+    "packageLength": 131,
+    "packageQuantity": 1,
+    "packageWeight": 80,
+    "packageWidth": 72,
+    "parentAsin": "B08KRPRMT5",
+    "parentTitle": "BradyGrip Authentic (M21-250-414) Print-on Hook Labels with Ribbon featuring VELCRO\u00ae Brand Hook for M21 Printers - 0.25\"",
+    "partNumber": "M21-750-595-OR",
+    "pattern": "Solid",
+    "productGroup": null,
+    "productType": 0,
+    "promotions": [
+      {
+        "amount": -1,
+        "discountPercent": 5,
+        "sellerId": null,
+        "snsBulkDiscountPercent": 0,
+        "type": "SNS"
+      }
+    ],
+    "publicationDate": 0,
+    "referralFeePercent": 15,
+    "referralFeePercentage": 15.01,
+    "releaseDate": 20230123,
+    "rootCategory": 172282,
+    "salesRankDisplayGroup": "biss_display_on_website",
+    "salesRankReference": 16310091,
+    "salesRankReferenceHistory": null,
+    "salesRanks": {
+      "226182": [
+        8248205,
+        37
+      ],
+      "16310091": [
+        8249292,
+        673
+      ],
+      "490540011": [
+        6403012,
+        -1
+      ],
+      "10332520011": [
+        6460062,
+        1
+      ]
+    },
+    "size": ".75\"",
+    "style": "Label",
+    "title": "Brady Authentic (M21-750-595-OR) All-Weather Vinyl Label for Indoor/Outdoor ID, Lab and Equipment Labeling, Black on Orange- For M210, M210-LAB, M211, BMP21-PLUS and BMP21-LAB Printers, .75\" W, 21' L",
+    "trackingSince": 758280,
+    "type": "LABEL",
+    "unitCount": {
+      "unitType": "Count",
+      "unitValue": 1.0
+    },
+    "upcList": [
+      "662820966586"
+    ],
+    "urlSlug": "Brady-M21-250-595-WT-All-Weather-Identification-Laboratory",
+    "variations": [
+      {
+        "asin": "B003XU7T4Y",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLL96",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B08L9QR5R4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B005HE0S88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELG858",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0B4GPZ5C1",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "Bundle: .75\" + .5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label + Label .5\" Width, 21' Length"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B0063JLOWA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B00IELEPBW",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELEKEE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNTO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFF52",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B00IELFJNK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLO9S",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B005HE0S4C",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELF76E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B00IELEUN0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B0063JLMEA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDGD45R",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNBC",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B002UOFUXQ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLLXM",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0DCDYHX2G",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W x .5\" H"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFNUO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B00IELF36I",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B0DCDB9QR7",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" H, 1\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELEZDK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLKR4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B003XU7T58",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLU88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0063JLPMY",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B00IELG466",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B005HTWA8O",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Music"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFS3Q",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0063JLRE0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFWFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B003XU7T44",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Transluc/White Vinyl"
+          }
+        ],
+        "image": "517nxEtsrfL.jpg"
+      },
+      {
+        "asin": "B08L9NBD14",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Polyester Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLRY0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B00IELG0CE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLV00",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDF396K",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DC7RTZ9V",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L (Pack of 2)"
+          },
+          {
+            "dimension": "Style",
+            "value": "Simple, Functional"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B003XU7T4E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DCDDL1GJ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x2\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLQFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B08L9Q7QBZ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "19.05mm x 3.048m"
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      }
+    ],
+    "websiteDisplayGroup": "biss_basic_display_on_website",
+    "websiteDisplayGroupName": "BISS Basic"
+  },
+  {
+    "asin": "B0063JLQFK",
+    "author": null,
+    "availabilityAmazon": 0,
+    "availabilityAmazonDelay": [
+      0,
+      0
+    ],
+    "binding": null,
+    "brand": "Brady",
+    "brandStoreName": "Brady",
+    "brandStoreUrl": "/stores/BradyCorp/page/BF068660-105A-4AAF-BB44-F1E1DA8C7C8F",
+    "brandStoreUrlName": "BradyCorp",
+    "buyBoxEligibleOfferCounts": [
+      1,
+      16,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    "buyBoxSellerIdHistory": null,
+    "categories": [
+      226182,
+      10332520011
+    ],
+    "categoryTree": [
+      {
+        "catId": 172282,
+        "name": "Electronics"
+      },
+      {
+        "catId": 281407,
+        "name": "Accessories & Supplies"
+      },
+      {
+        "catId": 172575,
+        "name": "Office Electronics Accessories"
+      },
+      {
+        "catId": 226182,
+        "name": "Labeling Tapes"
+      }
+    ],
+    "color": "Black on Yellow",
+    "competitivePriceThreshold": 3399,
+    "coupon": null,
+    "csv": null,
+    "description": "The Brady M21-500-595-YL label cartridge for use with BMP21 Series, ID PAL, and LABPAL printers contains 21 continuous feet of 0. 75\"-wide tape for labeling on smooth or textured surfaces in freezer environments. The tape is made of yellow vinyl film and is coated with permanent adhesive on one side. Text prints in black.",
+    "domainId": 1,
+    "eanList": [
+      "0662820966531",
+      "5554442239771"
+    ],
+    "ebayListingIds": null,
+    "edition": null,
+    "fbaFees": {
+      "lastUpdate": 8249074,
+      "pickAndPackFee": 409
+    },
+    "features": [
+      "Highly pliable material with high-tack permanent adhesive for rough, highly textured, dirty and harsh environment surfaces--including outdoors",
+      "Conforms and adheres to \"difficult\" surfaces like painted cinder blocks, painted wood, textured plastic, paper-jacketed pipes and blow-molded cases",
+      "Resistant to exposure to chemicals, greases and oils, salt spray, cleaners and detergents and general industrial grime",
+      "All-in-one cartridge includes ribbon and label supply",
+      "ALWAYS USE OFFICIAL BRADY LABELS designed for use with BMP21-PLUS, BMP21-LAB, IDPAL and LABPAL Label Printers"
+    ],
+    "format": null,
+    "frequentlyBoughtTogether": [
+      "B09WZBQWN1",
+      "B003XU7SPY"
+    ],
+    "g": 1830,
+    "gtinList": [
+      "00662820966531"
+    ],
+    "hasReviews": true,
+    "images": [
+      {
+        "l": "61NWP0hJYnL.jpg",
+        "lH": 1514,
+        "lW": 1776,
+        "m": "41bWwwCzO5L.jpg",
+        "mH": 426,
+        "mW": 500,
+        "variant": "MAIN"
+      },
+      {
+        "l": "417peWk1zJL.jpg",
+        "lH": 565,
+        "lW": 1253,
+        "m": "21Zn+yC-HrL.jpg",
+        "mH": 225,
+        "mW": 500,
+        "variant": "PT01"
+      },
+      {
+        "l": "51L6qzDXxpL.jpg",
+        "lH": 2400,
+        "lW": 2400,
+        "m": "31LLFxUx-5L.jpg",
+        "mH": 500,
+        "mW": 500,
+        "variant": "PT02"
+      },
+      {
+        "l": "914wA4UMLRL.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "51Rgm0byY4L.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT03"
+      },
+      {
+        "l": "91NJxvPh1NL.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "51ZrMHKFneL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT04"
+      },
+      {
+        "l": "91vyvOeo0nL.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "41lsBaFraYL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT05"
+      },
+      {
+        "l": "819ZLtH6MUL.jpg",
+        "lH": 2560,
+        "lW": 2560,
+        "variant": "PT10"
+      }
+    ],
+    "isAdultProduct": false,
+    "isEligibleForSuperSaverShipping": true,
+    "isEligibleForTradeIn": false,
+    "isHeatSensitive": false,
+    "isRedirectASIN": false,
+    "isSNS": true,
+    "itemHeight": 10,
+    "itemLength": 17,
+    "itemTypeKeyword": "industrial-labeling-tape",
+    "itemWeight": 0,
+    "itemWidth": 13,
+    "languages": null,
+    "lastEbayUpdate": -1,
+    "lastPriceChange": 8184228,
+    "lastRatingUpdate": 8244358,
+    "lastSoldUpdate": 8244358,
+    "lastUpdate": 8249650,
+    "launchpad": false,
+    "listedSince": 444960,
+    "liveOffersOrder": null,
+    "manufacturer": "Brady",
+    "material": "Vinyl",
+    "materials": [
+      "Vinyl"
+    ],
+    "model": "M21-500-595-YL",
+    "monthlySold": 100,
+    "numberOfItems": 1,
+    "numberOfPages": -1,
+    "offersSuccessful": false,
+    "packageHeight": 69,
+    "packageLength": 121,
+    "packageQuantity": 1,
+    "packageWeight": 68,
+    "packageWidth": 77,
+    "parentAsin": "B08KRPRMT5",
+    "parentTitle": "BradyGrip Authentic (M21-250-414) Print-on Hook Labels with Ribbon featuring VELCRO\u00ae Brand Hook for M21 Printers - 0.25\"",
+    "partNumber": "M21-500-595-YL",
+    "pattern": "No Pattern",
+    "productGroup": null,
+    "productType": 0,
+    "promotions": [
+      {
+        "amount": -1,
+        "discountPercent": 5,
+        "sellerId": null,
+        "snsBulkDiscountPercent": 0,
+        "type": "SNS"
+      }
+    ],
+    "publicationDate": 0,
+    "referralFeePercent": 15,
+    "referralFeePercentage": 15.01,
+    "releaseDate": 20111106,
+    "rootCategory": 172282,
+    "salesRankDisplayGroup": "biss_display_on_website",
+    "salesRankReference": 16310091,
+    "salesRankReferenceHistory": null,
+    "salesRanks": {
+      "226182": [
+        8249650,
+        35
+      ],
+      "16310091": [
+        8249650,
+        915
+      ],
+      "490540011": [
+        6398204,
+        -1
+      ],
+      "10332520011": [
+        6418820,
+        1
+      ]
+    },
+    "size": ".5\" W",
+    "style": "Label",
+    "title": "Brady Authentic (M21-500-595-YL) All-Weather Vinyl Label for Indoor/Outdoor ID, Lab and Equipment Labeling, Black on Yellow- For M210, M210-LAB, M211, BMP21-PLUS and BMP21-LAB Printers, .5\" W 21' L",
+    "trackingSince": 778620,
+    "type": "LABEL",
+    "unitCount": {
+      "unitType": "Count",
+      "unitValue": 1.0
+    },
+    "upcList": [
+      "662820966531"
+    ],
+    "urlSlug": "Brady-M21-250-595-WT-All-Weather-Identification-Laboratory",
+    "variations": [
+      {
+        "asin": "B003XU7T4Y",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLL96",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B08L9QR5R4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B005HE0S88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELG858",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0B4GPZ5C1",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "Bundle: .75\" + .5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label + Label .5\" Width, 21' Length"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B0063JLOWA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B00IELEPBW",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELEKEE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNTO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFF52",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B00IELFJNK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLO9S",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B005HE0S4C",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELF76E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B00IELEUN0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B0063JLMEA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDGD45R",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNBC",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B002UOFUXQ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLLXM",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0DCDYHX2G",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W x .5\" H"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFNUO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B00IELF36I",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B0DCDB9QR7",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" H, 1\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELEZDK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLKR4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B003XU7T58",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLU88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0063JLPMY",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B00IELG466",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B005HTWA8O",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Music"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFS3Q",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0063JLRE0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFWFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B003XU7T44",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Transluc/White Vinyl"
+          }
+        ],
+        "image": "517nxEtsrfL.jpg"
+      },
+      {
+        "asin": "B08L9NBD14",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Polyester Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLRY0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B00IELG0CE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLV00",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDF396K",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DC7RTZ9V",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L (Pack of 2)"
+          },
+          {
+            "dimension": "Style",
+            "value": "Simple, Functional"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B003XU7T4E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DCDDL1GJ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x2\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLQFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B08L9Q7QBZ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "19.05mm x 3.048m"
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      }
+    ],
+    "websiteDisplayGroup": "biss_basic_display_on_website",
+    "websiteDisplayGroupName": "BISS Basic"
+  },
+  {
+    "asin": "B003XU7T4Y",
+    "author": null,
+    "availabilityAmazon": 0,
+    "availabilityAmazonDelay": [
+      0,
+      0
+    ],
+    "binding": null,
+    "brand": "Brady",
+    "brandStoreName": "Brady",
+    "brandStoreUrl": "/stores/BradyCorp/page/BF068660-105A-4AAF-BB44-F1E1DA8C7C8F",
+    "brandStoreUrlName": "BradyCorp",
+    "buyBoxEligibleOfferCounts": [
+      5,
+      23,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0
+    ],
+    "buyBoxSellerIdHistory": null,
+    "categories": [
+      10332520011
+    ],
+    "categoryTree": [
+      {
+        "catId": 16310091,
+        "name": "Industrial & Scientific"
+      },
+      {
+        "catId": 8553197011,
+        "name": "Packaging & Shipping Supplies"
+      },
+      {
+        "catId": 8553202011,
+        "name": "Labels & Labeling Equipment"
+      },
+      {
+        "catId": 10332520011,
+        "name": "Industrial Labeling Tape"
+      }
+    ],
+    "color": "Black on White",
+    "competitivePriceThreshold": 5078,
+    "coupon": null,
+    "csv": null,
+    "description": "Brady\u2019s self-laminating vinyl material is excellent for wire and cable identification. Designed with a clear protective layer to cover the printed text, B-427 material provides superb protection from abrasion, dirt, oils, solvents, water and excess handling.",
+    "domainId": 1,
+    "eanList": [
+      "0662820899990"
+    ],
+    "ebayListingIds": null,
+    "edition": null,
+    "fbaFees": {
+      "lastUpdate": 8248137,
+      "pickAndPackFee": 386
+    },
+    "features": [
+      "Excellent Adhesion \u2013 adheres well to surfaces that are smooth, rough or powder coated, and to irregular surfaces or surfaces with low surface energy",
+      "Superior Protection \u2013 Abrasion resistant, Outdoor durable, Alcohol resistant, Fuel and Oil resistant, Self-extinguishing",
+      "Printable area is 0.5 inches (12.7mm) and typically fits wires from 10 - 4 gauge",
+      "Certifications \u2013 UL Recognized to UL 2238, RoHS compliant to 2011/65/EU (Pass 2015/863)",
+      "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+    ],
+    "format": null,
+    "frequentlyBoughtTogether": [
+      "B09WZBQWN1",
+      "B003XU7SPY"
+    ],
+    "g": 1911,
+    "hasReviews": true,
+    "images": [
+      {
+        "l": "614za1FBGcL.jpg",
+        "lH": 1656,
+        "lW": 1975,
+        "m": "41jYWBZyx-L.jpg",
+        "mH": 419,
+        "mW": 500,
+        "variant": "MAIN"
+      },
+      {
+        "l": "81HLEcN8S6L.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "31KXKBgAqiL.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT01"
+      },
+      {
+        "m": "51a-v4y56QL.jpg",
+        "mH": 385,
+        "mW": 500,
+        "variant": "PT02"
+      },
+      {
+        "l": "918pqyT+4GL.jpg",
+        "lH": 2560,
+        "lW": 1707,
+        "m": "51LUiKvUPEL.jpg",
+        "mH": 500,
+        "mW": 333,
+        "variant": "PT03"
+      },
+      {
+        "l": "71gbaAyMGIL.jpg",
+        "lH": 1398,
+        "lW": 2560,
+        "m": "315IU+gmSXL.jpg",
+        "mH": 273,
+        "mW": 500,
+        "variant": "PT04"
+      },
+      {
+        "l": "71Fo+nhghLL.jpg",
+        "lH": 1707,
+        "lW": 2560,
+        "m": "41wjaRGMi7L.jpg",
+        "mH": 333,
+        "mW": 500,
+        "variant": "PT05"
+      },
+      {
+        "l": "61Pb4KgwjvL.jpg",
+        "lH": 1200,
+        "lW": 1200,
+        "m": "41vXsSim3kL.jpg",
+        "mH": 500,
+        "mW": 500,
+        "variant": "PT06"
+      },
+      {
+        "l": "819ZLtH6MUL.jpg",
+        "lH": 2560,
+        "lW": 2560,
+        "variant": "PT10"
+      }
+    ],
+    "isAdultProduct": false,
+    "isEligibleForSuperSaverShipping": true,
+    "isEligibleForTradeIn": false,
+    "isHeatSensitive": false,
+    "isRedirectASIN": false,
+    "isSNS": true,
+    "itemHeight": 1,
+    "itemLength": 10,
+    "itemTypeKeyword": "industrial-labeling-tape",
+    "itemWeight": 0,
+    "itemWidth": 25,
+    "languages": null,
+    "lastEbayUpdate": -1,
+    "lastPriceChange": 8247059,
+    "lastRatingUpdate": 8248435,
+    "lastSoldUpdate": 8248435,
+    "lastUpdate": 8249650,
+    "launchpad": false,
+    "listedSince": -618388,
+    "liveOffersOrder": null,
+    "manufacturer": "Brady",
+    "material": "Vinyl",
+    "materials": [
+      "Vinyl"
+    ],
+    "model": "M21-1250-427",
+    "monthlySold": 100,
+    "numberOfItems": 1,
+    "numberOfPages": -1,
+    "offersSuccessful": false,
+    "packageHeight": 47,
+    "packageLength": 133,
+    "packageQuantity": 1,
+    "packageWeight": 82,
+    "packageWidth": 70,
+    "parentAsin": "B08KRPRMT5",
+    "parentTitle": "BradyGrip Authentic (M21-250-414) Print-on Hook Labels with Ribbon featuring VELCRO\u00ae Brand Hook for M21 Printers - 0.25\"",
+    "partNumber": "M21-1250-427",
+    "pattern": "Solid Color",
+    "productGroup": null,
+    "productType": 0,
+    "promotions": [
+      {
+        "amount": -1,
+        "discountPercent": 5,
+        "sellerId": null,
+        "snsBulkDiscountPercent": 15,
+        "type": "SNS"
+      }
+    ],
+    "publicationDate": 0,
+    "referralFeePercent": 15,
+    "referralFeePercentage": 14.99,
+    "releaseDate": 20230123,
+    "rootCategory": 16310091,
+    "salesRankDisplayGroup": "biss_display_on_website",
+    "salesRankReference": 16310091,
+    "salesRankReferenceHistory": null,
+    "salesRanks": {
+      "226182": [
+        6701484,
+        -1
+      ],
+      "1069410": [
+        6384692,
+        -1
+      ],
+      "16310091": [
+        8249394,
+        673
+      ],
+      "10332520011": [
+        8222052,
+        1
+      ]
+    },
+    "size": "1.25\"",
+    "style": "Wrap",
+    "title": "Brady Authentic (M21-1250-427) Self-Laminating Wire Wrap for Control and Electrical Panels, Datacom Cable, Black on White- For M210, M210-LAB, M211, BMP21-PLUS and BMP21-LAB Printers, 1.25\" W 14' L",
+    "trackingSince": 119040,
+    "type": "LABEL",
+    "unitCount": {
+      "unitType": "Count",
+      "unitValue": 1.0
+    },
+    "upcList": [
+      "662820899990"
+    ],
+    "urlSlug": "Brady-Authentic-M21-1000-427-Self-Laminating-Electrical",
+    "variations": [
+      {
+        "asin": "B003XU7T4Y",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLL96",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B08L9QR5R4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B005HE0S88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELG858",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0B4GPZ5C1",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "Bundle: .75\" + .5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label + Label .5\" Width, 21' Length"
+          },
+          {
+            "dimension": "Color",
+            "value": "White"
+          }
+        ],
+        "image": "31KHYB7aSxL.jpg"
+      },
+      {
+        "asin": "B0063JLOWA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B00IELEPBW",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELEKEE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNTO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFF52",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B00IELFJNK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLO9S",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B005HE0S4C",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B00IELF76E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B00IELEUN0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B0063JLMEA",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDGD45R",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLNBC",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B002UOFUXQ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLLXM",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0DCDYHX2G",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W x .5\" H"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFNUO",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B00IELF36I",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B0DCDB9QR7",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" H, 1\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELEZDK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLKR4",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B003XU7T58",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1.5\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLU88",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Orange"
+          }
+        ],
+        "image": "41-8gN5I2hL.jpg"
+      },
+      {
+        "asin": "B0063JLPMY",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B00IELG466",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Gray"
+          }
+        ],
+        "image": "41LkET6yqCL.jpg"
+      },
+      {
+        "asin": "B005HTWA8O",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Music"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B00IELFS3Q",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W, 21\\' L"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Purple"
+          }
+        ],
+        "image": "41MnebeZo5L.jpg"
+      },
+      {
+        "asin": "B0063JLRE0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Blue"
+          }
+        ],
+        "image": "11sQoxt5GwL.jpg"
+      },
+      {
+        "asin": "B00IELFWFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Black"
+          }
+        ],
+        "image": "11V8zLeLWBL.jpg"
+      },
+      {
+        "asin": "B003XU7T44",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Transluc/White Vinyl"
+          }
+        ],
+        "image": "517nxEtsrfL.jpg"
+      },
+      {
+        "asin": "B08L9NBD14",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".25\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Polyester Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLRY0",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Green"
+          }
+        ],
+        "image": "41dTBeBXHiL.jpg"
+      },
+      {
+        "asin": "B00IELG0CE",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B0063JLV00",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Red"
+          }
+        ],
+        "image": "411fjjDNm7L.jpg"
+      },
+      {
+        "asin": "B0DCDF396K",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DC7RTZ9V",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".375\" W, 21\\' L (Pack of 2)"
+          },
+          {
+            "dimension": "Style",
+            "value": "Simple, Functional"
+          },
+          {
+            "dimension": "Color",
+            "value": "White on Brown"
+          }
+        ],
+        "image": "1163UnGxYNL.jpg"
+      },
+      {
+        "asin": "B003XU7T4E",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "1\""
+          },
+          {
+            "dimension": "Style",
+            "value": "Wrap"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0DCDDL1GJ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".75\"x2\""
+          },
+          {
+            "dimension": "Style",
+            "value": "For material specific performance and properties, please refer to the Technical Data Sheet (TDS)"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      },
+      {
+        "asin": "B0063JLQFK",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": ".5\" W"
+          },
+          {
+            "dimension": "Style",
+            "value": "Label"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on Yellow"
+          }
+        ],
+        "image": "113Oh-pxYvL.jpg"
+      },
+      {
+        "asin": "B08L9Q7QBZ",
+        "attributes": [
+          {
+            "dimension": "Size",
+            "value": "19.05mm x 3.048m"
+          },
+          {
+            "dimension": "Style",
+            "value": "Contemporary"
+          },
+          {
+            "dimension": "Color",
+            "value": "Black on White"
+          }
+        ],
+        "image": "51FK7EnVu8L.jpg"
+      }
+    ],
+    "websiteDisplayGroup": "biss_basic_display_on_website",
+    "websiteDisplayGroupName": "BISS Basic"
+  }
+]

@@ -32,6 +32,9 @@ Usage:
     python scripts/cloud_agent.py --once            # one pass of every task, then exit
     python scripts/cloud_agent.py --status          # what R2 knows about every machine
     python scripts/cloud_agent.py --install         # macOS LaunchAgent / Windows logon task
+    python scripts/cloud_agent.py --role secondary  # this computer is NOT the master (closing / spare launcher)
+    python scripts/cloud_agent.py --seed-from-cloud # new machine: start from the slim DB in R2
+    python scripts/cloud_agent.py --sync-now        # push/pull DB changes once and show the sync state
     python scripts/cloud_agent.py --uninstall
     python scripts/cloud_agent.py --check           # credentials + bucket usage
 
@@ -61,6 +64,7 @@ sys.path.insert(0, AUTO)
 
 from utils.r2_store import (R2Store, machine_id, utcnow, KEY_DB_MANIFEST,  # noqa: E402
                             KEY_MASTER_BACKUP, PREFIX_CMD_DONE, PREFIX_CRM_APPLIED)
+from utils import sync_journal  # noqa: E402
 
 IS_WIN = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
@@ -108,7 +112,13 @@ _DEFAULT_CFG = {
     "livelog_s": 10,
     "command_s": 10,
     "crm_s": 30,
+    # ROLE: "master" = the machine whose DB feeds the dashboard (slim export, backups, CRM
+    # replay). "secondary" = any other computer running the launcher / closing; it only
+    # exchanges DB changes with the master through the sync journal. Exactly ONE master.
+    "role": "master",
+    "sync_s": 60,
 }
+MASTER_ONLY = ("slim_sync", "backup", "crm_replay")
 
 
 def log(msg: str) -> None:
@@ -241,6 +251,7 @@ def dashboard_up(port: int) -> bool:
 class Agent:
     def __init__(self, cfg: dict):
         self.cfg = cfg
+        self.role = str(cfg.get("role") or "master").strip().lower()
         self.host = machine_id()
         self.r2 = R2Store()
         self.started = utcnow()
@@ -293,6 +304,8 @@ class Agent:
             "placers_running": placers,
             "memory": memory_stats(),
             "dashboard": {"local_up": dashboard_up(port), "port": port, "urls": dict(self._tunnel_urls)},
+            "role": self.role,
+            "sync": self._sync_summary(),
             "db": {"master_mb": round(os.path.getsize(MASTER_DB) / 1048576, 1) if os.path.exists(MASTER_DB) else None,
                    "slim_mb": round(os.path.getsize(SLIM_DB) / 1048576, 1) if os.path.exists(SLIM_DB) else None,
                    "last_slim_upload": self.state.get("last_slim_upload"),
@@ -755,9 +768,53 @@ class Agent:
                     return
 
     # ── scheduler ─────────────────────────────────────────────────────────
+    # ── DB sync between machines (journal → R2 → other machines) ──────────
+    def _sync_summary(self) -> dict:
+        try:
+            if not os.path.exists(MASTER_DB):
+                return {"installed": False}
+            s = sync_journal.summary(MASTER_DB)
+            s["last_push"] = self.state.get("last_sync_push")
+            s["last_pull"] = self.state.get("last_sync_pull")
+            return s
+        except Exception as e:
+            return {"error": str(e)[:80]}
+
+    def sync_install(self) -> None:
+        if not os.path.exists(MASTER_DB):
+            log("ℹ️ no local DB yet — run `cloud_agent.py --seed-from-cloud` on a new machine")
+            return
+        r = sync_journal.install(MASTER_DB)
+        log(f"🔗 sync journal on {len(r['tables'])} table(s) (role {self.role})")
+
+    def sync_push(self) -> None:
+        if not os.path.exists(MASTER_DB):
+            return
+        r = sync_journal.push(MASTER_DB, self.r2, self.host)
+        if r["events"]:
+            self.state["last_sync_push"] = utcnow()
+            self._save_state()
+            log(f"⇡ sync push: {r['events']} change(s) in {r['files']} batch(es)")
+
+    def sync_pull(self) -> None:
+        if not os.path.exists(MASTER_DB):
+            return
+        r = sync_journal.pull(MASTER_DB, self.r2, self.host)
+        if r["files"]:
+            self.state["last_sync_pull"] = utcnow()
+            self._save_state()
+            skipped = {t: sorted(c) for t, c in (r.get("skipped_cols") or {}).items()}
+            log(f"⇣ sync pull: {r['events']} change(s) from {r['files']} batch(es)"
+                + (f", {r['errors']} error(s)" if r["errors"] else "")
+                + (f", columns unknown here: {skipped}" if skipped else ""))
+
     def run_once(self) -> None:
+        self.sync_install()
         for name, fn in (("heartbeat", self.heartbeat), ("live_logs", self.live_logs),
-                         ("commands", self.commands), ("crm_replay", self.crm_replay)):
+                         ("commands", self.commands), ("crm_replay", self.crm_replay),
+                         ("sync_push", self.sync_push), ("sync_pull", self.sync_pull)):
+            if self.role != "master" and name in MASTER_ONLY:
+                continue
             try:
                 fn()
                 log(f"✓ {name}")
@@ -773,9 +830,15 @@ class Agent:
         if not self.r2.available():
             log("❌ R2 credentials not configured — set R2_* env vars, data/All_Tokens/r2.json, "
                 "or the LaunchAgent EnvironmentVariables")
-        log(f"🚀 cloud agent up on '{self.host}' (git {self.git_sha}, py {platform.python_version()})")
+        log(f"🚀 cloud agent up on '{self.host}' as {self.role.upper()} (git {self.git_sha}, py {platform.python_version()})")
+        try:
+            self.sync_install()
+        except Exception as e:
+            log(f"⚠️ sync journal install: {e}")
         c = self.cfg
         sched = {
+            "sync_push": [float(c.get("sync_s", 60)), 20.0, self.sync_push, True],
+            "sync_pull": [float(c.get("sync_s", 60)), 40.0, self.sync_pull, True],
             "heartbeat": [float(c["heartbeat_s"]), 0.0, self.heartbeat, False],
             "live_logs": [float(c["livelog_s"]), 0.0, self.live_logs, False],
             "commands": [float(c["command_s"]), 0.0, self.commands, False],
@@ -797,6 +860,8 @@ class Agent:
                 sched[name][1] = now + interval
                 if not self.r2.available() and name not in ("dashboard", "tunnels"):
                     continue
+                if self.role != "master" and name in MASTER_ONLY:
+                    continue                     # only the master feeds the dashboard / backups
                 if threaded:
                     self._single_flight(name, fn)
                 else:
@@ -809,6 +874,13 @@ class Agent:
     def _prune(self) -> None:
         self.r2.prune(PREFIX_CMD_DONE, 300)
         self.r2.prune(PREFIX_CRM_APPLIED, 2000)
+        if self.role == "master":
+            try:
+                n = sync_journal.prune_remote(self.r2, days=14)
+                if n:
+                    log(f"🧹 pruned {n} old sync batch(es)")
+            except Exception as e:
+                log(f"⚠️ sync prune: {e}")
 
 
 # ── install / status ─────────────────────────────────────────────────────
@@ -900,16 +972,49 @@ def status() -> None:
     print("lease holder:", s.lease_holder())
     for m in s.machines():
         ln = m.get("launcher", {})
+        sy = m.get("sync") or {}
         print(f"  • {m.get('host'):18} {'ONLINE ' if m.get('online') else 'offline'} age {m.get('age_s')}s  "
-              f"launcher={'up' if ln.get('alive') else 'down'} placers={m.get('placers_running')} "
-              f"git={m.get('git_sha')} dash={'up' if (m.get('dashboard') or {}).get('local_up') else 'down'}")
+              f"role={m.get('role', '?')} launcher={'up' if ln.get('alive') else 'down'} placers={m.get('placers_running')} "
+              f"git={m.get('git_sha')} dash={'up' if (m.get('dashboard') or {}).get('local_up') else 'down'} "
+              f"sync(pending={sy.get('pending')}, pull={sy.get('last_pull')})")
     man = s.get_json(KEY_DB_MANIFEST) or {}
     print("slim DB in R2:", man.get("db_mb"), "MB, uploaded", man.get("uploaded_at"), "from", man.get("host"))
     print("usage:", json.dumps(s.usage()))
 
 
+def _set_role(role: str) -> None:
+    role = role.strip().lower()
+    if role not in ("master", "secondary"):
+        raise SystemExit("role must be master or secondary")
+    cfg = {}
+    try:
+        with open(AGENT_CFG, "r", encoding="utf-8") as f:
+            cfg = json.load(f) or {}
+    except Exception:
+        pass
+    cfg["role"] = role
+    os.makedirs(os.path.dirname(AGENT_CFG), exist_ok=True)
+    with open(AGENT_CFG, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2)
+    print(f"role set to {role} in {AGENT_CFG} — restart the agent (or `launchctl kickstart`) to apply")
+
+
 def main() -> None:
     cfg = load_cfg()
+    if "--role" in sys.argv:
+        _set_role(sys.argv[sys.argv.index("--role") + 1] if len(sys.argv) > sys.argv.index("--role") + 1 else "")
+        return
+    if "--seed-from-cloud" in sys.argv:
+        s = R2Store()
+        print("downloading the slim DB from R2 as the local database…")
+        print("→", sync_journal.seed_from_cloud(MASTER_DB, s))
+        print(json.dumps(sync_journal.install(MASTER_DB)))
+        return
+    if "--sync-now" in sys.argv:
+        a = Agent(cfg)
+        a.sync_install(); a.sync_push(); a.sync_pull()
+        print(json.dumps(a._sync_summary(), indent=1))
+        return
     if "--install" in sys.argv:
         install()
         return

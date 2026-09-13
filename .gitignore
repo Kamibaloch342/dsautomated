@@ -66,3 +66,7 @@ page_source_tmp.html
 **/.venv/
 **/node_modules/
 **/.cache/
+
+# Keepa / hunting: local key + response cache
+Amazon_DS_Hunting/.keepa_key
+Amazon_DS_Hunting/.keepa_cache/

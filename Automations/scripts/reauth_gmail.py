@@ -40,12 +40,27 @@ def reauth(account: str) -> bool:
         os.remove(token_file)
 
     # 2) fresh consent flow (opens a browser)
-    print("  🔑 opening browser for Google sign-in — pick the RIGHT account…")
+    print("  🔑 Starting local OAuth server and opening browser for Google sign-in...", flush=True)
     flow = InstalledAppFlow.from_client_secrets_file(str(MASTER_CREDENTIALS_FILE), SCOPES)
-    creds = flow.run_local_server(port=0)
+    creds = flow.run_local_server(
+        port=0,
+        authorization_prompt_message=(
+            "\n=======================================================\n"
+            "👉 Please visit this URL to authorize on your Mac:\n"
+            "{url}\n"
+            "=======================================================\n"
+        ),
+        success_message="Authentication successful! You can close this browser tab.",
+        open_browser=True
+    )
     with open(token_file, "w") as f:
         f.write(creds.to_json())
-    print("  ✓ new token saved")
+    print("  ✓ new token saved", flush=True)
+    if account in ("wrenchly", "wrenchlyllc"):
+        alt_name = "wrenchly" if account == "wrenchlyllc" else "wrenchlyllc"
+        alt_file = os.path.join(TOKEN_DIRECTORY, f"{alt_name}_token.json")
+        shutil.copy2(token_file, alt_file)
+        print(f"  ✓ mirrored to {os.path.basename(alt_file)}")
 
     # 3) verify with a real API call
     try:
