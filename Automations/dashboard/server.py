@@ -482,10 +482,11 @@ def asin_detail(asin, q):
 
 
 def _has_table(name):
-    """True if the table exists (CRM/chat tables are created lazily on first write)."""
+    """True if the table OR VIEW exists (CRM tables are created lazily; v_orders_all / v_closing
+    are views — checking type='table' alone hid every order list from 8 to 14 Sep 2026)."""
     c = ro()
     try:
-        ok = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+        ok = c.execute("SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?",
                        (name,)).fetchone() is not None
     except Exception:
         ok = False
