@@ -228,7 +228,7 @@ def main():
     check("pool signature: order-insensitive, changes when a coupon is added", a == b and a != c2)
 
     # ── Place with Priority (focus coupon) ─────────────────────────────────
-    ns.update({"re": __import__("re"), "time": __import__("time")})   # module globals the helpers use
+    ns.update({"re": __import__("re"), "time": __import__("time"), "FOCUS_VERDICT_MAX_AGE_DAYS": 7, "FOCUS_PROBE_TTL_S": 21600})
     FC, FD = ns["_focus_codes"], ns["_focus_decision"]
     loaded = [{"code": "HARDWARE8926", "pct": 20}, {"code": "FACILITY8M26", "pct": 15}, {"code": "POWER8X726", "pct": 15}]
     check("focus: exact code, shorthand and a comma list resolve against TODAY's coupons only",
