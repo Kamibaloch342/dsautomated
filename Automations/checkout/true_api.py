@@ -640,6 +640,9 @@ def classify_promo_error(err):
     return ("unknown", None)
 
 
+PRIORITY_DEAD_RETIRE_AT = 3      # dead replies on distinct carts before a priority code is retired
+
+
 def _note_reject(code, result, cache=None, priority=False):
     """Log one rejected coupon by kind and act on it (retire dead REGULAR coupons,
     remember cart minimums). Returns the kind so callers can decide what counts.
@@ -658,8 +661,21 @@ def _note_reject(code, result, cache=None, priority=False):
                 d = cache.setdefault("priority_dead_replies", {})
                 d[code] = int(d.get(code, 0) or 0) + 1
                 n = d[code]
-            print(f"  ⚠️  {code}: PRIORITY coupon answered '{str(result)[:60]}' (reply #{n}) — "
-                  f"NOT retired automatically; if it really expired, remove it from the Coupons tab")
+            if n >= PRIORITY_DEAD_RETIRE_AT:
+                # Three separate carts said the code no longer exists — it has expired. Keeping
+                # it in the list only costs every later order a wasted attempt (owner, 14 Sep).
+                update_coupon_status(code, "INVALID")
+                print(f"  🪦 {code}: PRIORITY coupon declared dead by Zoro on {n} different carts "
+                      f"('{str(result)[:50]}') — retired (marked INVALID); remove it from the Coupons tab")
+                try:
+                    from utils import decision_log as _dl
+                    _dl.log("learn", profile="", asin="", sku="", action="priority_coupon_retired", coupon=code,
+                            reason=f"dead reply on {n} carts: {str(result)[:120]}")
+                except Exception:
+                    pass
+            else:
+                print(f"  ⚠️  {code}: PRIORITY coupon answered '{str(result)[:60]}' (dead reply #{n} of "
+                      f"{PRIORITY_DEAD_RETIRE_AT} before it is retired)")
         else:
             update_coupon_status(code, "INVALID")          # dead everywhere → never tried again
             print(f"  ⏭️  {code}: coupon is dead (no longer available / expired) — marked INVALID")
@@ -779,7 +795,7 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
 
     known = working_pairs.get(cache_key) if cache_key else None
     tried = set()
-    kinds_all = []                      # every rejection kind, so the placer can decide what a FAIL means
+    kinds_all = []                      # (tier, kind) of every rejection, so the placer can decide what a FAIL means
 
     # ── 0. remembered PRIORITY code — only when it is already the best one ──
     if known and pri and known == pri[0]:
@@ -788,7 +804,7 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
         tried.add(known)
         if ok:
             return _win(known, "Remembered priority coupon worked")
-        kinds_all.append(_note_reject(known, res, _cache, priority=True))
+        kinds_all.append(("priority", _note_reject(known, res, _cache, priority=True)))
 
     # ── 1. priority coupons, best % first ──
     if pri:
@@ -801,7 +817,7 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
             if ok:
                 return _win(code, "Priority coupon worked")
             kinds.append(_note_reject(code, res, _cache, priority=True))
-            kinds_all.append(kinds[-1])
+            kinds_all.append(("priority", kinds[-1]))
         if kinds and all(k in ("token", "transient") for k in kinds):
             print("  ⏸️  Every priority coupon failed on a session/transient error — NOT falling back "
                   "to regular coupons; the order waits for the next cycle")
@@ -822,15 +838,22 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
             ok, res = _apply_coupon_api(driver, cart_id, code)
             if ok:
                 return _win(code, "Regular coupon worked")
-            kinds_all.append(_note_reject(code, res, _cache))
+            kinds_all.append(("regular", _note_reject(code, res, _cache)))
 
     from collections import Counter as _Counter
-    _cnt = _Counter(kinds_all)
+    _cnt = _Counter(k for _, k in kinds_all)
+    def _tier(t, k):
+        return sum(1 for tt, kk in kinds_all if tt == t and (kk == k or (k == "transient" and kk == "token")))
     # Why nothing applied — read by engine/orders.py to decide between 'this item can never
     # take a coupon → reseller', 'cart too small → reseller if its margin is fine' and 'wait'.
+    # Per-tier counters let it ignore DEAD codes: an expired code is not a verdict on the item.
     _cache["last_fail"] = {"total": len(kinds_all), "item": _cnt.get("item", 0), "min_order": _cnt.get("min_order", 0),
                            "dead": _cnt.get("dead", 0), "transient": _cnt.get("transient", 0) + _cnt.get("token", 0),
-                           "unknown": _cnt.get("unknown", 0), "priority": len(pri), "regular_available": len(reg)}
+                           "unknown": _cnt.get("unknown", 0), "priority": len(pri), "regular_available": len(reg),
+                           "regular_item": _tier("regular", "item"), "regular_dead": _tier("regular", "dead"),
+                           "regular_min_order": _tier("regular", "min_order"), "regular_transient": _tier("regular", "transient"),
+                           "priority_item": _tier("priority", "item"), "priority_dead": _tier("priority", "dead"),
+                           "priority_min_order": _tier("priority", "min_order"), "priority_transient": _tier("priority", "transient")}
     _time("_apply_coupons_api (total)", t0)
     print(f"  ❌ No coupons worked ({_cnt.get('item', 0)} not-for-item, {_cnt.get('min_order', 0)} cart-minimum, "
           f"{_cnt.get('transient', 0) + _cnt.get('token', 0)} transient; {len(reg)} regular in the pool)")

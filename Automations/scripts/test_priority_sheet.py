@@ -143,6 +143,7 @@ def main():
     pc.STATE_PATH = os.path.join(tmp, "state.json")
     import utils.decision_log as _dl
     _dl.log = lambda *a, **k: None                      # never touch the live decision log from a test
+    pc.zoro_session_ready = lambda d: True              # no browser in tests
     verdicts = {"B0HUMAN": ("SELECT", "Reseller"), "B0NEWONE": ("NO_PRIORITY", "Deciding"),
                 "B0PROMO": ("COUPON_OK", "Coupon"), "B0BOT": ("SELECT", "Reseller"), "B0CDEP": ("SELECT", "Reseller")}
     pc.check_one = lambda driver, asin, sku_map, pri, cache=None, mod=None: {
@@ -246,6 +247,35 @@ def main():
     check("is_permanent: uses the preloaded verdict dict",
           pc.is_permanent("B0PERM", {}, {"B0PERM": {"status": "PROMO_INELIGIBLE", "note": "Zoro's best price badge (PDP)"}})
           and not pc.is_permanent("B0PERM", {}, {}))
+
+    # ── 14 Sep: best-% order, sweep modes, column-scoped queues ─────────────
+    cache = {}
+    order = pc._priority_codes(None, ([{"code": "FACILITY", "pct": 15}, {"code": "HARDWARE", "pct": 20},
+                                       {"code": "SAFETY", "fixed_amount": 10, "min_order": 50}, {"code": "FACILITY", "pct": 15}], []), cache)
+    check("priority codes: 20 % before 15 %, fixed-amount last, duplicates dropped, sheet minimum remembered",
+          order == ["HARDWARE", "FACILITY", "SAFETY"] and cache["coupon_min_order"]["SAFETY"] == 50.0, str((order, cache)))
+    check("policy: sweep after a REMOVED code may re-sort the Coupon column; an ADDED-code sweep never demotes Reseller/Deciding",
+          pc.may_move("SELECT", "HS_Coupon", False, "sweep_removed") and pc.may_move("NO_PRIORITY", "HS_Coupon", False, "sweep_removed")
+          and not pc.may_move("SELECT", "HS_Reseller", False, "sweep_added") and pc.may_move("COUPON_OK", "HS_Deciding", False, "sweep_added"))
+    import types as _types, json as _json
+    hdr6 = ["DM_Reseller", "DM_Coupon", "HS_Reseller", "HS_Coupon", "DM_Deciding", "HS_Deciding"]
+    grid = [hdr6, ["", "", "B0R1000001", "B0C1000001", "", "B0D1000001"], ["", "", "B0R2000002", "B0C2000002", "", ""]]
+    m2 = _types.SimpleNamespace(_get_sheets_service=lambda: FakeSheets([list(r) for r in grid]), load_sku_map=lambda: {})
+    qp = pc._queue_path("HS_COUPON")
+    try: os.remove(qp)
+    except OSError: pass
+    n = pc.enqueue_recheck("HS_COUPON", "added", mod=m2, columns=("_Reseller", "_Deciding"), mode="sweep_added")
+    q = _json.load(open(qp))
+    check("queue: an ADDED-code sweep queues only Reseller + Deciding ASINs",
+          n == 3 and sorted(a for a, _ in q["asins"]) == ["B0D1000001", "B0R1000001", "B0R2000002"] and q["mode"] == "sweep_added", str(q))
+    n = pc.enqueue_recheck("HS_COUPON", "removed", mod=m2, columns=("_Coupon",), mode="sweep_removed")
+    q = _json.load(open(qp))
+    check("queue: a REMOVED-code sweep queues the Coupon column and keeps the still-pending Reseller/Deciding ASINs",
+          sorted(a for a, _ in q["asins"]) == ["B0C1000001", "B0C2000002", "B0D1000001", "B0R1000001", "B0R2000002"], str(q))
+    os.remove(qp)
+    n = pc.enqueue_recheck("HS_COUPON", "both", mod=m2, columns=None, mode="recheck")
+    check("queue: a change in both directions queues the whole store", n == 5)
+    os.remove(qp)
 
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:

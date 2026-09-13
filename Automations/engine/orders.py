@@ -1164,7 +1164,40 @@ def _record_asin_verdict(asin, verdict, cart_text="", coupon=""):
 
 
 _PRI_SET_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "dataset", f"priority_coupon_set_{PROFILE_NAME}.json")
-RECHECK_PER_CYCLE = max(1, int(((gui_cfg.get("automation") or {}).get("priority_check") or {}).get("recheck_per_cycle", 15) or 15))
+_PC_CFG = ((gui_cfg.get("automation") or {}).get("priority_check") or {})
+RECHECK_PER_CYCLE = max(1, int(_PC_CFG.get("recheck_per_cycle", 15) or 15))     # legacy trickle (unused by sweeps)
+SWEEP_MAX = max(1, int(_PC_CFG.get("sweep_max", 250) or 250))                     # one coupon-change sweep = the whole store
+SWEEP_HOLD_MAX_MIN = float(_PC_CFG.get("sweep_hold_max_min", 90) or 90)           # reseller ignores a sweep flag older than this
+_STORE = "DM" if PROFILE_NAME.upper().startswith("DM") else "HS"
+_SWEEP_FLAG = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "dataset", f"priority_sweep_{_STORE}.json")
+
+
+def _sweep_mark(active: bool, reason: str = "", pending: int = 0) -> None:
+    """Store-level 'sweep in progress' flag. The coupon profile sets it while it re-tests the
+    store after a coupon change; the reseller profile HOLDS its priority/deciding discovery
+    while it is set, so no order is bought at reseller price minutes before its ASIN is
+    promoted to the Coupon column."""
+    try:
+        from utils.jsonstore import write_json_atomic
+        os.makedirs(os.path.dirname(_SWEEP_FLAG), exist_ok=True)
+        write_json_atomic(_SWEEP_FLAG, {"active": bool(active), "reason": reason, "pending": int(pending),
+                                        "profile": PROFILE_NAME, "at": time.time(),
+                                        "at_text": time.strftime("%Y-%m-%d %H:%M:%S")})
+    except Exception as e:
+        print(f"  ⚠️ sweep flag not written: {e}")
+
+
+def _sweep_active():
+    """Reason text if a fresh sweep flag is set for this store, else None (a flag older than
+    SWEEP_HOLD_MAX_MIN is ignored: a killed placer must never hold the reseller forever)."""
+    try:
+        from utils.jsonstore import read_json
+        d = read_json(_SWEEP_FLAG, None)
+        if isinstance(d, dict) and d.get("active") and time.time() - float(d.get("at") or 0) < SWEEP_HOLD_MAX_MIN * 60:
+            return f"{d.get('reason', 'coupon change')} ({d.get('pending', '?')} ASIN(s) pending, started {d.get('at_text', '')})"
+    except Exception:
+        pass
+    return None
 
 
 def _watch_priority_coupon_set(coupon_codes):
@@ -1198,10 +1231,22 @@ def _watch_priority_coupon_set(coupon_codes):
             # rule: "when FACILITY expires, all those 100 have to be checked again").
             what = (f"new: {', '.join(new)}" if new else "") + (" | " if new and gone else "") + \
                    (f"expired/removed: {', '.join(gone)}" if gone else "")
-            print(f"  🎟️  Priority coupon set changed ({what}) — queueing a re-check of every coupon-dependent ASIN")
+            # Scenario 1 — a code was ADDED: only Reseller/Deciding ASINs can change (promotion).
+            # Scenario 2 — a code EXPIRED: only Coupon-column ASINs can change (re-sort).
+            # Both at once: the whole store.
+            if new and not gone:
+                cols, mode, scope = ("_Reseller", "_Deciding"), "sweep_added", "every Reseller + Deciding ASIN"
+            elif gone and not new:
+                cols, mode, scope = ("_Coupon",), "sweep_removed", "every Coupon-column ASIN"
+            else:
+                cols, mode, scope = None, "recheck", "every ASIN of the store"
+            print(f"  🎟️  Priority coupon set changed ({what}) — sweeping {scope} NOW, before any order is placed")
             from engine import priority_check as _pc
-            n = _pc.enqueue_recheck(PROFILE_NAME, f"priority coupon change — {what}", mod=sys.modules[__name__])
-            print(f"     {n} ASIN(s) queued — {RECHECK_PER_CYCLE} re-tested per cycle between placements")
+            n = _pc.enqueue_recheck(PROFILE_NAME, f"priority coupon change — {what}", mod=sys.modules[__name__],
+                                    columns=cols, mode=mode)
+            _sweep_mark(True, f"priority coupon change — {what}", n)
+            print(f"     {n} ASIN(s) queued — swept in one pass (up to {SWEEP_MAX}); the reseller holds its "
+                  f"priority/deciding discovery until the sweep is done")
         if cur != prev:
             with open(_PRI_SET_PATH, "w", encoding="utf-8") as f:
                 json.dump({"codes": cur, "at": time.strftime("%Y-%m-%d %H:%M")}, f)
@@ -1234,22 +1279,57 @@ def _coupon_fail_decision(last_fail, raw_cart_cost, earnings, all_zoro_select, s
       • cart under the free-shipping line, nothing fits it, reseller margin ≥ min_margin → reseller;
       • otherwise → wait for the next coupon scrape (the owner's rule: never list price)."""
     lf = last_fail or {}
-    total = int(lf.get("total") or 0); item = int(lf.get("item") or 0); mo = int(lf.get("min_order") or 0)
-    tr = int(lf.get("transient") or 0); regs = int(lf.get("regular_available") or 0)
+    g = lambda k: int(lf.get(k) or 0)
+    total, item, mo, tr, dead = g("total"), g("item"), g("min_order"), g("transient"), g("dead")
+    regs, pri = g("regular_available"), g("priority")
     res_cost = (raw_cart_cost or 0.0) + (small_fee if (raw_cart_cost or 0.0) < free_threshold else 0.0)
     res_margin = ((earnings - res_cost) / res_cost) if (earnings and res_cost > 0) else None
-    if total and item == total and regs > 0:
-        return {"action": "route_reseller", "definitive": True,
-                "reason": f"all {total} coupons rejected this item — coupons never apply; reseller places it"}
+    mtxt = f"{res_margin:.1%}" if res_margin is not None else "unknown"
     if total and tr == total:
         return {"action": "wait", "definitive": False, "reason": "coupon API trouble on every code — retry next cycle"}
-    if all_zoro_select and total and (item + mo) == total:
+    tiered = "regular_dead" in lf or "priority_dead" in lf
+    if not tiered:                                   # summaries written before 14 Sep 2026
+        if total and item == total and regs > 0:
+            return {"action": "route_reseller", "definitive": True,
+                    "reason": f"all {total} coupons rejected this item — coupons never apply; reseller places it"}
+        if all_zoro_select and total and (item + mo) == total:
+            return {"action": "route_reseller", "definitive": False,
+                    "reason": "Zoro Select and no priority coupon applies — the reseller already has 10 % off"}
+        if (raw_cart_cost or 0.0) < free_threshold and total and (item + mo) == total and res_margin is not None and res_margin >= min_margin:
+            return {"action": "route_reseller", "definitive": False,
+                    "reason": f"cart ${raw_cart_cost:.2f} is below every coupon minimum; reseller margin {mtxt} is fine"}
+        why = "no regular coupon left in today's pool" if regs == 0 else "no coupon fits this cart yet"
+        return {"action": "wait", "definitive": False, "reason": why + " — waiting for the next coupon scrape"}
+    # ── tiered summary: a DEAD (expired) code is not a verdict on the item ──
+    r_item, r_dead, r_mo, r_tr = g("regular_item"), g("regular_dead"), g("regular_min_order"), g("regular_transient")
+    p_item, p_dead, p_mo, p_tr = g("priority_item"), g("priority_dead"), g("priority_min_order"), g("priority_transient")
+    live_regs = max(0, regs - r_dead)                # regular codes Zoro did not declare dead
+    live_pri = max(0, pri - p_dead)
+    valid = total - tr - dead                        # attempts that were a real answer for THIS cart
+    pri_rejected = live_pri == 0 or (p_tr == 0 and (p_item + p_mo) >= live_pri)
+    if live_regs > 0 and r_tr == 0 and r_item > 0 and r_item >= live_regs and pri_rejected:
+        return {"action": "route_reseller", "definitive": True,
+                "reason": f"every live coupon ({r_item} regular, {p_item + p_mo} priority) rejected this item — "
+                          f"coupons never apply; reseller places it"}
+    if r_tr or p_tr:
+        # a live code answered with a session/API error: not a verdict either way → next cycle
+        return {"action": "wait", "definitive": False,
+                "reason": f"{r_tr + p_tr} live coupon(s) answered with API errors — retry next cycle"}
+    if all_zoro_select and pri_rejected and valid > 0:
         return {"action": "route_reseller", "definitive": False,
                 "reason": "Zoro Select and no priority coupon applies — the reseller already has 10 % off"}
-    if (raw_cart_cost or 0.0) < free_threshold and total and (item + mo) == total and res_margin is not None and res_margin >= min_margin:
+    if live_regs == 0 and pri_rejected and valid > 0:
+        if res_margin is not None and res_margin >= min_margin:
+            return {"action": "route_reseller", "definitive": False,
+                    "reason": f"no live regular coupon in the pool ({r_dead} dead) and no priority code applies; "
+                              f"reseller margin {mtxt} is fine"}
+        return {"action": "wait", "definitive": False,
+                "reason": f"no live regular coupon in the pool ({r_dead} dead); reseller margin {mtxt} too thin — "
+                          f"waiting for the next coupon scrape"}
+    if (raw_cart_cost or 0.0) < free_threshold and valid > 0 and (item + mo) >= valid and res_margin is not None and res_margin >= min_margin:
         return {"action": "route_reseller", "definitive": False,
-                "reason": f"cart ${raw_cart_cost:.2f} is below every coupon minimum; reseller margin {res_margin:.1%} is fine"}
-    why = "no regular coupon left in today's pool" if regs == 0 else "no coupon fits this cart yet"
+                "reason": f"cart ${raw_cart_cost:.2f} is below every coupon minimum; reseller margin {mtxt} is fine"}
+    why = "no live regular coupon in the pool" if live_regs == 0 else "no coupon fits this cart yet"
     return {"action": "wait", "definitive": False, "reason": why + " — waiting for the next coupon scrape"}
 
 
@@ -1259,18 +1339,45 @@ def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
     data/control/priority_check.request. Uses THIS placer's Zoro session, so it
     never fights a running checkout for the cart."""
     if not IS_COUPON_PROFILE or DRY_RUN or ASIN_SEARCH:
-        return
+        return False
     pc = (gui_cfg.get("automation") or {}).get("priority_check") or {}
     try:
         from engine import priority_check as _pc
     except Exception as e:
         print(f"  ⚠️ priority check module unavailable: {e}")
-        return
-    # 1) drain the re-check queue (new weekly coupon → every coupon-dependent ASIN)
+        return False
+    moved_any = False
+
+    def _drain(reason):
+        """Sweep the WHOLE queue now (not 15 per cycle): the sheet must be right before the
+        first order of this cycle is placed. Returns True if any ASIN changed column."""
+        nonlocal moved_any
+        pending = _pc.queue_size(PROFILE_NAME)
+        if not pending:
+            _sweep_mark(False)
+            return False
+        _sweep_mark(True, reason, pending)
+        t0 = time.time()
+        try:
+            res = _pc.run_queue(driver, PROFILE_NAME, sku_map=sku_map, coupon_codes=coupon_codes, cache=cache,
+                                mod=sys.modules[__name__], max_asins=SWEEP_MAX) or []
+        finally:
+            left = _pc.queue_size(PROFILE_NAME)
+            if left:
+                _sweep_mark(True, reason, left)          # interrupted / transient: still pending
+            else:
+                _sweep_mark(False)
+        moved = [r for r in res if r.get("Check_Moved")]
+        if moved:
+            moved_any = True
+        print(f"  🧹 sweep: {len(res)} ASIN(s) tested in {(time.time() - t0) / 60:.1f} min, "
+              f"{len(moved)} moved" + (f", {left} still pending" if left else "") + "  — " + reason)
+        return bool(moved)
+
+    # 1) drain the re-check queue (coupon change / reset) — the whole thing, right now
     try:
-        if _pc.queue_size(PROFILE_NAME):
-            _pc.run_queue(driver, PROFILE_NAME, sku_map=sku_map, coupon_codes=coupon_codes, cache=cache,
-                          mod=sys.modules[__name__], max_asins=RECHECK_PER_CYCLE)
+        _q = _pc.read_json(_pc._queue_path(PROFILE_NAME), None) if os.path.exists(_pc._queue_path(PROFILE_NAME)) else None
+        _drain((_q or {}).get("reason") or "re-check queue" if isinstance(_q, dict) else "re-check queue")
     except Exception as e:
         print(f"  ⚠️ priority re-check queue: {e}")
     # 2) scheduled / on-demand check of new ASINs
@@ -1286,7 +1393,7 @@ def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
     due = os.path.exists(req) or (pc.get("enabled", True) and every > 0
                                   and time.time() - _PRIORITY_CHECK_LAST[0] >= every * 3600)
     if not due:
-        return
+        return moved_any
     _PRIORITY_CHECK_LAST[0] = time.time()
     try:
         os.remove(req)
@@ -1296,13 +1403,17 @@ def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
         if args.get("reset"):
             n = _pc.enqueue_recheck(PROFILE_NAME, f"reset & rebuild requested by {args.get('author', 'dashboard')}",
                                     mod=sys.modules[__name__], include_ineligible=True)
-            print(f"  🔁 RESET: {n} ASIN(s) queued for a full re-check ({RECHECK_PER_CYCLE} per cycle)")
-            return
-        _pc.run_check(driver, PROFILE_NAME, sku_map=sku_map, coupon_codes=coupon_codes, cache=cache,
-                      mod=sys.modules[__name__], only_new=not args.get("all"),
-                      max_asins=int(args.get("max") or pc.get("max_per_run", 25) or 25))
+            print(f"  🔁 RESET: {n} ASIN(s) queued — rebuilding the store in one sweep now")
+            _drain(f"reset & rebuild ({args.get('author', 'dashboard')})")
+            return moved_any
+        res = _pc.run_check(driver, PROFILE_NAME, sku_map=sku_map, coupon_codes=coupon_codes, cache=cache,
+                            mod=sys.modules[__name__], only_new=not args.get("all"),
+                            max_asins=int(args.get("max") or pc.get("max_per_run", 25) or 25)) or []
+        if any(r.get("Check_Moved") for r in res):
+            moved_any = True
     except Exception as e:
         print(f"  ⚠️ priority check failed: {e}")
+    return moved_any
 
 
 def _rush_scrape_batch(driver, batch):
@@ -4522,8 +4633,10 @@ def main():
                 elif not STORE_SORTED_ASINS:
                     print("  ⚠️  Sorted-ASIN list unavailable and no last-known copy — supervisor paused this cycle")
 
-            # ── Priority-ASIN auto-check (coupon profiles, between cycles) ────
-            _maybe_run_priority_check(driver, sku_map, coupon_codes, asin_coupon_cache)
+            # ── Priority-ASIN sweep / auto-check (coupon profiles) — BEFORE any placement ──
+            if _maybe_run_priority_check(driver, sku_map, coupon_codes, asin_coupon_cache):
+                print("  🔁 the sweep changed Priority ASIN Control — restarting the cycle with fresh columns")
+                continue
 
             # ── Scrape orders from Amazon SC ──────────────────────
             if ASIN_SEARCH:
@@ -4582,7 +4695,13 @@ def main():
                     print(f"    (none)")
 
             # ── Discover priority-ASIN orders (pending/unlabelled) ──────────────
-            if (PRIORITY_ASINS or DECIDING_ASINS or SUPERVISE_UNLABELLED) and not ASIN_SEARCH and not _priority_load_failed:
+            _hold_reason = _sweep_active() if IS_RESELLER_PROFILE else None
+            if _hold_reason:
+                print(f"\n  ⏸️  Coupon sweep in progress for the {_STORE} store — {_hold_reason}. "
+                      f"Priority/Deciding discovery is HELD this cycle so nothing is bought at reseller price "
+                      f"minutes before its ASIN moves to the Coupon column; labelled orders still run.")
+            if (PRIORITY_ASINS or DECIDING_ASINS or SUPERVISE_UNLABELLED) and not ASIN_SEARCH and not _priority_load_failed \
+                    and not _hold_reason:
                 seen_ids = {o["amazon_id"] for o in scraped_orders}
                 priority_set = {pa.strip().upper() for pa in PRIORITY_ASINS if pa and pa.strip()}
                 deciding_set = {da.strip().upper() for da in DECIDING_ASINS if da and da.strip()}

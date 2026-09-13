@@ -227,6 +227,45 @@ def main():
     c2 = sig(([{"code": "POWER8X726"}, {"code": "FACILITY8M26"}], ["R1", "R2", "R3"]))
     check("pool signature: order-insensitive, changes when a coupon is added", a == b and a != c2)
 
+    # ── 14 Sep: dead codes are not verdicts; priority codes retire after 3 dead replies ──
+    _EXPIRED = "{'cartErrors': [{'detail': {'error': 'Promo code has expired.'}}]}"
+    calls.clear(); retired.clear(); cache2 = {}
+    TA._apply_coupon_api = fake_zoro({"PRI20": _EXPIRED, "PRI15": ITEM, "REG1": _EXPIRED, "REG2": _EXPIRED})
+    st, _ = TA._apply_coupons_api(None, "c", ["PRI20", "PRI15", "REG1", "REG2"], ["PRI20", "PRI15"], "B0X", cache2, zoro_code="G2")
+    lf = cache2.get("last_fail") or {}
+    check("checkout: last_fail is tiered (1 priority dead, 1 priority item, 2 regular dead, 2 regular in pool)",
+          st == "COUPON FAIL" and lf.get("priority_dead") == 1 and lf.get("priority_item") == 1
+          and lf.get("regular_dead") == 2 and lf.get("regular_available") == 2 and lf.get("regular_item") == 0, str(lf))
+    check("checkout: the dead REGULAR codes were retired, the dead PRIORITY code only counted (reply #1)",
+          ("REG1", "INVALID") in retired and ("REG2", "INVALID") in retired and ("PRI20", "INVALID") not in retired
+          and cache2["priority_dead_replies"]["PRI20"] == 1, str(retired))
+    TA._note_reject("PRI20", _EXPIRED, cache2, priority=True)
+    check("checkout: second dead reply still does not retire a priority code", ("PRI20", "INVALID") not in retired)
+    TA._note_reject("PRI20", _EXPIRED, cache2, priority=True)
+    check("checkout: third dead reply on a third cart retires the priority code (marked INVALID)", ("PRI20", "INVALID") in retired, str(retired))
+
+    T = lambda **kw: {**{"total": 0, "item": 0, "min_order": 0, "dead": 0, "transient": 0, "regular_available": 0, "priority": 0,
+                          "regular_item": 0, "regular_dead": 0, "regular_min_order": 0, "regular_transient": 0,
+                          "priority_item": 0, "priority_dead": 0, "priority_min_order": 0, "priority_transient": 0}, **kw}
+    bugc = T(total=15, item=4, dead=11, regular_available=9, priority=6, regular_dead=9, priority_item=4, priority_dead=2)
+    d = D(bugc, 146.99, 178.49, False, fee, free, mm)
+    check("coupon-fail (14 Sep case): 9 dead regulars + 2 dead priority, 4 item-rejects, reseller margin 21 % → reseller",
+          d["action"] == "route_reseller" and not d["definitive"] and "no live regular" in d["reason"], str(d))
+    d = D(bugc, 146.99, 150.00, False, fee, free, mm)
+    check("coupon-fail: same but reseller margin 2 % → wait (never a thin reseller order)", d["action"] == "wait", str(d))
+    d = D(T(total=6, item=6, regular_available=2, priority=4, regular_item=2, priority_item=4), 80.0, 100.0, False, fee, free, mm)
+    check("coupon-fail (tiered): every LIVE regular and priority code rejected the item → definitive ineligible", d["action"] == "route_reseller" and d["definitive"], str(d))
+    d = D(T(total=6, item=4, dead=2, regular_available=2, priority=4, regular_dead=2, priority_item=4), 80.0, 100.0, False, fee, free, mm)
+    check("coupon-fail (tiered): only priority codes rejected the item, regulars all dead → NOT definitive (reseller if margin ok)",
+          d["action"] == "route_reseller" and not d["definitive"], str(d))
+    d = D(T(total=4, item=3, min_order=1, priority=4, priority_item=3, priority_min_order=1), 42.49, 48.42, False, fee, free, mm)
+    check("coupon-fail (tiered): the 8 Sep loop order (pool empty, margin −0.1 %) still waits", d["action"] == "wait", str(d))
+    d = D(T(total=4, item=3, min_order=1, priority=4, priority_item=3, priority_min_order=1), 30.0, 45.0, True, fee, free, mm)
+    check("coupon-fail (tiered): Zoro Select, no priority code → reseller", d["action"] == "route_reseller" and not d["definitive"], str(d))
+    d = D(T(total=5, item=1, min_order=1, dead=0, transient=3, regular_available=2, priority=3, regular_item=1, regular_transient=1,
+            priority_min_order=1, priority_transient=2), 80.0, 100.0, False, fee, free, mm)
+    check("coupon-fail (tiered): a live regular code answered transiently → not definitive, waits", d["action"] == "wait" and not d["definitive"], str(d))
+
     # ── _deciding_verdict ────────────────────────────────────────────────
     dv = ns["_deciding_verdict"]
     v = dv(60.0, 54.0, 70.0, promo_bad=False, all_zoro_select=False, small_fee=5.99, free_threshold=50.0)
@@ -444,10 +483,14 @@ def main():
     import types as _types
     import engine.priority_check as PC
     queued = []
-    PC.enqueue_recheck = lambda profile, reason, mod=None, include_ineligible=False: (queued.append(reason), 7)[1]
+    scopes = []
+    PC.enqueue_recheck = lambda profile, reason, mod=None, include_ineligible=False, columns=None, mode=None: \
+        (queued.append(reason), scopes.append((tuple(columns or ()), mode)), 7)[2]
     sys.modules["engine.orders_under_test"] = _types.SimpleNamespace()
     nsw = make_ns(Recorder(), tempfile.mkdtemp())
+    flags = []
     nsw.update({"IS_COUPON_PROFILE": True, "LABELS_ONLY": False, "DRY_RUN": False, "RECHECK_PER_CYCLE": 15,
+                "SWEEP_MAX": 250, "_sweep_mark": lambda active, reason="", pending=0: flags.append((active, pending)),
                 "__name__": "engine.orders_under_test",
                 "_PRI_SET_PATH": os.path.join(tempfile.mkdtemp(), "priority_coupon_set_HS_COUPON.json")})
     W = nsw["_watch_priority_coupon_set"]
@@ -458,10 +501,14 @@ def main():
     check("watch: an EMPTY read while codes existed queues nothing and keeps the memory",
           queued == [] and json.load(open(nsw["_PRI_SET_PATH"]))["codes"] == ["FACILITY8M26", "POWER8X726"], str(queued))
     W(([{"code": "FACILITY8M26", "pct": 15}, {"code": "POWER8X726", "pct": 15}, {"code": "ZSELECT", "pct": 20}], []))
-    check("watch: a NEW code queues a full re-check", len(queued) == 1 and "new: ZSELECT" in queued[-1], str(queued))
+    check("watch: a NEW code sweeps Reseller + Deciding (promotions) and raises the reseller-hold flag",
+          len(queued) == 1 and "new: ZSELECT" in queued[-1] and scopes[-1] == (("_Reseller", "_Deciding"), "sweep_added")
+          and flags[-1] == (True, 7), str((queued, scopes, flags)))
     W(([{"code": "POWER8X726", "pct": 15}, {"code": "ZSELECT", "pct": 20}], []))
-    check("watch: an EXPIRED/removed code queues a full re-check too",
-          len(queued) == 2 and "expired/removed: FACILITY8M26" in queued[-1], str(queued))
+    check("watch: an EXPIRED/removed code sweeps the Coupon column (re-sort)",
+          len(queued) == 2 and "expired/removed: FACILITY8M26" in queued[-1] and scopes[-1] == (("_Coupon",), "sweep_removed"), str(scopes))
+    W(([{"code": "ZSELECT", "pct": 20}, {"code": "CLEAN9U26", "pct": 15}], []))
+    check("watch: added AND removed in one edit sweeps the whole store", scopes[-1] == ((), "recheck"), str(scopes))
 
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:

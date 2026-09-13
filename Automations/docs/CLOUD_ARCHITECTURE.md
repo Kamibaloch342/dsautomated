@@ -177,6 +177,27 @@ are enforced in code, not by convention:
 * **A sheet outage never hides orders.** If the priority column is unreadable the last
   known list is kept; with no last-known copy, discovery is off for that cycle instead of
   treating the profile's own ASINs as "sorted elsewhere".
+* **Priority coupon lifecycle (14 Sep 2026).** The moment the Coupons tab changes, the coupon
+  placer sweeps the store in ONE pass before it places anything (`automation.priority_check.sweep_max`,
+  default 250): a code was **added** → every Reseller and Deciding ASIN is tested with the codes,
+  highest percentage first (20 % before 15 %), and promoted to Coupon where one applies; a code
+  **expired or was removed** → every Coupon-column ASIN is re-tested: another priority code works →
+  stays; Zoro Select or the page badge → Reseller; otherwise → Deciding (whatever the unit price —
+  the reseller hands a cart at/above $50 to the coupon profile per order and gets it back if the
+  regular pool is dead, so nothing is left waiting). While the sweep runs, a store-level flag
+  (`data/dataset/priority_sweep_<STORE>.json`) makes the RESELLER hold its priority/deciding
+  discovery, so no order is bought at reseller price minutes before its ASIN moves; labelled orders
+  still run, and a flag older than `sweep_hold_max_min` (90) is ignored. A sweep that changed the
+  sheet restarts the coupon placer's cycle with fresh columns. Moves carry a Sheets cell note
+  ("ZUHRA · time · reason · by profile"). Every checker call first makes sure Chrome is on zoro.com
+  with a live token (cold start used to answer `no_token` for the first batch). Realistic speed:
+  about 10–25 s per ASIN, so a 200-ASIN store takes roughly 30–80 minutes, during which the reseller
+  waits rather than guesses.
+* **Dead codes are not verdicts.** The checkout's failure summary is per tier; an expired code says
+  nothing about the item. A priority code that three different carts report as expired is retired
+  (marked INVALID) and should be removed from the tab. When no LIVE regular code is left and no
+  priority code applies, an order goes to the reseller if the reseller margin is at least
+  `deciding_min_margin_pct`, otherwise it waits — this amends rule 6 above (owner, 14 Sep 2026).
 * **Never placed blind.** An order whose earnings are unknown (Gmail service down, "Sold, ship
   now" not parsed, zero) is never checked out, whatever the label or override says; it is logged
   `EARNINGS_UNKNOWN` and retried next cycle (owner's rule, 8 Sep 2026).

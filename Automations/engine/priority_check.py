@@ -255,7 +255,8 @@ def move_asin(wsvc, headers, rows, asin: str, to_col: str, store: str, profile_n
                         },
                         "rows": [{
                             "values": [{
-                                "note": "ZUHRA"
+                                "note": ("ZUHRA · " + _now() + (" · " + note_reason[:180] if note_reason else "")
+                                         + (" · by " + profile_name if profile_name else ""))
                             }]
                         }],
                         "fields": "note"
@@ -351,7 +352,7 @@ def may_move(status: str, current_col: str, bot_owned: bool, mode: str = "new") 
         return True
     if bot_owned or mode == "reset":
         return True
-    if mode in ("recheck", "all") and current_col.upper().endswith("_COUPON"):
+    if mode in ("recheck", "all", "sweep_added", "sweep_removed") and current_col.upper().endswith("_COUPON"):
         return True
     return False
 
@@ -426,6 +427,7 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
     if not code:
         row.update(Check_Status="UNMAPPED", Check_Suggest="Map it first", Check_Note="not in Verified_SKU_Dataset")
         return row
+    zoro_session_ready(driver)                      # never call Zoro's API from chrome://new-tab-page
     try:
         qty = max(1, int(float(m.get("qty_multiplier") or 1) * int(m.get("zoro_multiple") or 1)))
     except Exception:
@@ -470,8 +472,14 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
     tried = transient = item_rejects = 0
     worked = None
     min_order = None
+    known_min = (cache or {}).get("coupon_min_order") or {}
     if cart_id:
         for c in priority_codes:
+            km = known_min.get(c)
+            if km and float(km) > cart + 0.005:      # known minimum above this cart: no API call needed
+                tried += 1
+                min_order = min(min_order or float(km), float(km))
+                continue
             tried += 1
             okc, res = _apply_coupon_api(driver, cart_id, c)
             if okc and (res or 0) > 0:
@@ -485,9 +493,14 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
             elif kind == "min_order" and extra:
                 min_order = min(min_order or extra, extra)
     try:
-        clear_cart_selenium(driver)
+        from checkout.true_api import _clear_cart_api
+        if not _clear_cart_api(driver):
+            clear_cart_selenium(driver)
     except Exception:
-        pass
+        try:
+            clear_cart_selenium(driver)
+        except Exception:
+            pass
     sel_note = "Zoro Select" if is_select else f"unit ${unit:.2f}"
     if worked:
         row["Check_Coupon"] = f"{worked} (priority)"
@@ -502,29 +515,60 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
     elif is_select:
         row.update(Check_Status="SELECT", Check_Suggest="Reseller",
                    Check_Note="Zoro Select, no priority coupon" + (f" (one applies from ${min_order:.0f})" if min_order else ""))
-    elif unit >= CART_THRESHOLD:
-        row.update(Check_Status="NO_PRIORITY", Check_Suggest="Coupon",
-                   Check_Note=f"no priority coupon; unit ≥ ${CART_THRESHOLD:.0f} → regular 10 %")
     else:
+        # No priority coupon: the RESELLER decides per order (Deciding) whatever the unit price —
+        # a cart at/above $50 is handed to the coupon profile for a regular 10 % code at order time,
+        # and falls back to the reseller when the regular pool is dead, so nothing is left in 'wait'.
         row.update(Check_Status="NO_PRIORITY", Check_Suggest="Deciding",
-                   Check_Note=f"no priority coupon; unit < ${CART_THRESHOLD:.0f} → per-order (qty / margin)"
+                   Check_Note=f"no priority coupon; unit ${unit:.2f} → per-order (qty / regular coupon / margin)"
                               + (f"; a priority coupon applies from ${min_order:.0f}" if min_order else ""))
     if not tried:
         row["Check_Note"] = "no priority coupons loaded; " + row["Check_Note"]
     return row
 
 
+def zoro_session_ready(driver) -> bool:
+    """Make sure the driver is on zoro.com with a live Okta token before any inventory / cart /
+    promo API call. On a cold start the managed Chrome sits on chrome://new-tab-page and every
+    API call answers 'no_token' (15 TRANSIENT verdicts in a row on 10 Sep)."""
+    try:
+        from platforms.zoro import ensure_on_site, ensure_token
+        if "zoro.com" not in (driver.current_url or ""):
+            ensure_on_site(driver)
+        ensure_token(driver)
+        return True
+    except Exception as e:
+        print(f"  ⚠️  Zoro session not ready: {e}")
+        return False
+
+
 # ── batches ───────────────────────────────────────────────────────────────
-def _priority_codes(mod, coupon_codes):
+def _priority_codes(mod, coupon_codes, cache=None):
+    """Priority codes to test, HIGHEST percentage first (20 % before 15 %), fixed-amount
+    codes last. A fixed-amount code's sheet minimum (e.g. '10:50') seeds the known
+    cart-minimum memory so the checker never wastes an attempt below it."""
     if coupon_codes is None:
         coupon_codes = mod.load_coupon_codes()
-    pri = []
+    seen, items = set(), []
     if isinstance(coupon_codes, tuple) and len(coupon_codes) == 2:
         for c in coupon_codes[0] or []:
-            cd = str((c or {}).get("code") or "").strip()
-            if cd and cd not in pri:
-                pri.append(cd)
-    return pri
+            c = c or {}
+            cd = str(c.get("code") or "").strip()
+            if not cd:
+                continue
+            if cache is not None and c.get("min_order"):
+                try:
+                    mins = cache.setdefault("coupon_min_order", {})
+                    mins[cd] = max(float(c["min_order"]), float(mins.get(cd) or 0))
+                except Exception:
+                    pass
+            if cd in seen:
+                continue
+            seen.add(cd)
+            pct = c.get("pct")
+            items.append((0 if pct is not None else 1, -float(pct or 0), len(items), cd))
+    items.sort()
+    return [cd for _, _, _, cd in items]
 
 
 def _state_path(profile_name: str) -> str:
@@ -549,9 +593,14 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
     if move and not pri:
         print("  ⚠️  no priority coupons loaded — verdicts are recorded but NOTHING is moved this run")
         move = False
+    if not zoro_session_ready(driver):
+        print("  ⏸️  Zoro session unavailable — nothing tested this run (ASINs stay queued)")
+        return []
     results = []
     for i, (asin, col) in enumerate(asins_with_cols, 1):
         t0 = time.time()
+        if i % 25 == 0:
+            zoro_session_ready(driver)                # token refresh on long sweeps
         col = (current_cols or {}).get(asin, col) if current_cols is not None else col
         try:
             try:
@@ -588,6 +637,7 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
                         moved = move_asin(wsvc, headers, rows, asin, target, store_prefix(profile_name),
                                           profile_name=profile_name, note_reason=reason)
                         if moved:
+                            row["Check_Moved"] = f"{col or '—'} → {target}"
                             print(f"    ↪ {asin}: {col or '—'} → {target}")
                             headers, rows = read_tab(svc)
                     except Exception as e:
@@ -632,7 +682,7 @@ def run_check(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
         print("  ⚠️ priority check: sheet tab empty/unreadable")
         return []
     sku_map = sku_map if sku_map is not None else (mod.load_sku_map() or {})
-    pri = _priority_codes(mod, coupon_codes)
+    pri = _priority_codes(mod, coupon_codes, cache)
     move = _auto_assign(mod) if auto_assign is None else bool(auto_assign)
     existing = load_verdicts()                      # local memory, not the sheet
     targets = collect_asins(headers, rows, profile_name)
@@ -684,7 +734,8 @@ def queue_size(profile_name: str) -> int:
     return len(q.get("asins") or [])
 
 
-def enqueue_recheck(profile_name: str, reason: str, mod=None, include_ineligible: bool = False) -> int:
+def enqueue_recheck(profile_name: str, reason: str, mod=None, include_ineligible: bool = False,
+                    columns=None, mode: str | None = None) -> int:
     """Queue EVERY ASIN of this store for a re-test with the current priority coupons
     (a coupon change means every earlier verdict is stale, so the list is always the
     full store — resuming a half-done pass would miss the new coupon). Permanent
@@ -705,15 +756,25 @@ def enqueue_recheck(profile_name: str, reason: str, mod=None, include_ineligible
         prev_reset = isinstance(prev_q, dict) and prev_q.get("mode") == "reset"
         include = include_ineligible or prev_reset
         verdicts = load_verdicts()
+        wanted = tuple(c.upper() for c in (columns or ()))     # e.g. ("_RESELLER", "_DECIDING") or ("_COUPON",)
         asins = []
         for asin, meta in targets.items():
+            if wanted and not any(str(meta["column"]).upper().endswith(w) for w in wanted):
+                continue
             if not include and is_permanent(asin, sku_map, verdicts):
                 continue
             asins.append([asin, meta["column"]])
         if isinstance(prev_q, dict) and prev_q.get("asins"):
             reason = f"{reason} (replaces pending: {prev_q.get('reason', '')})"
+            # a wider pending queue must not shrink to a narrower one: keep its ASINs too
+            if wanted:
+                have = {a[0] for a in asins}
+                for x in prev_q["asins"]:
+                    a = x[0] if isinstance(x, list) else x
+                    if a not in have:
+                        asins.append([a, x[1] if isinstance(x, list) and len(x) > 1 else ""])
         write_json_atomic(p, {"reason": reason, "queued_at": _now(), "profile": profile_name, "asins": asins,
-                              "mode": "reset" if include else "recheck"}, indent=1)
+                              "mode": "reset" if include else (mode or "recheck"), "columns": list(columns or [])}, indent=1)
     return len(asins)
 
 
@@ -756,7 +817,7 @@ def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
     headers, rows = read_tab(svc)
     current_cols = {a: m["column"] for a, m in collect_asins(headers, rows, profile_name).items()}
     sku_map = sku_map if sku_map is not None else (mod.load_sku_map() or {})
-    pri = _priority_codes(mod, coupon_codes)
+    pri = _priority_codes(mod, coupon_codes, cache)
     print(f"\n🔁 PRIORITY RE-CHECK ({profile_name}): {len(batch)} of {len(pending)} queued — {q.get('reason', '')}")
     if not pri:
         print("  ⏸️  no priority coupons loaded right now — the queue waits (nothing is tested or moved)")
