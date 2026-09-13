@@ -1931,7 +1931,7 @@ def _format_asin_batch_summary(orders, asin_counts, limit=10):
 #     order (other priority codes, then regular) still applies — the order is never dropped.
 FOCUS_PROBE_TTL_S = 24 * 3600                       # a probe answer is trusted for a day (survives restarts)
 FOCUS_VERDICT_MAX_AGE_DAYS = 7
-FOCUS_PROBES_PER_CYCLE = max(1, int(ROUTING.get("focus_probes_per_cycle", 20) or 20))
+_FOCUS_TO_PROBE = []                                # (asin, zoro_code, qty) waiting for the one-pass probe
 _FOCUS_PROBE_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "dataset", "focus_probes.json")
 
 
@@ -2051,10 +2051,10 @@ def _focus_probe(driver, zoro_code, qty, codes) -> bool:
 def _focus_filter(driver, scraped_orders, codes, sku_map):
     """Keep only the orders whose ASIN takes one of the focus coupons.
     Per ASIN (not per order): memory says the coupon works → kept, no test; a fresh memory of
-    anything else → deferred, no test; no fresh memory → probed live, at most
-    FOCUS_PROBES_PER_CYCLE per cycle so the orders already known good are placed NOW and the
-    unknown ASINs are cleared a batch per cycle. Probe answers are remembered for a day.
-    Returns (kept, deferred, probed)."""
+    anything else → deferred, no test; no fresh memory → queued for the ONE-PASS probe that runs
+    right after this cycle's known-good orders are placed (owner: place the known ones, then
+    check all the rest in one go). Probe answers are remembered for a day.
+    Returns (kept, deferred, to_probe_count)."""
     from engine import priority_check as _pc
     verdicts = _pc.load_verdicts()
     probe_mem = _focus_probe_cache()
@@ -2062,7 +2062,8 @@ def _focus_filter(driver, scraped_orders, codes, sku_map):
     by_asin = {}
     for o in scraped_orders:
         by_asin.setdefault((o.get("asin") or "").strip().upper(), []).append(o)
-    kept, deferred, probed, waiting = [], [], 0, 0
+    kept, deferred = [], []
+    _FOCUS_TO_PROBE.clear()
     now = time.time()
     for asin, orders in by_asin.items():
         v = verdicts.get(asin) if asin else None
@@ -2071,31 +2072,44 @@ def _focus_filter(driver, scraped_orders, codes, sku_map):
             pr = probe_mem.get(f"{asin}|{ckey}")
             if pr and now - float(pr.get("at") or 0) < FOCUS_PROBE_TTL_S:
                 d = "keep" if pr.get("ok") else "skip"
-            elif probed >= FOCUS_PROBES_PER_CYCLE:
-                waiting += 1
-                d = "skip"                                         # probed in one of the next cycles
             else:
                 m = (sku_map or {}).get(asin) or {}
                 code = str(m.get("zoro_code") or "").strip()
-                if not code:
-                    d = "skip"                                     # unmapped: cannot be placed anyway
-                else:
+                if code:
                     try:
                         qty = max(1, int(float(m.get("qty_multiplier") or 1) * int(m.get("zoro_multiple") or 1)))
                     except Exception:
                         qty = 1
-                    ok = _focus_probe(driver, code, qty, codes)
-                    probed += 1
-                    _focus_probe_remember(f"{asin}|{ckey}", ok)
-                    print(f"    🎯 probe {asin} ({code}): {'✅ ' + '/'.join(codes) + ' applies' if ok else '✖ no focus coupon'}")
-                    if ok:
-                        _record_asin_verdict(asin, {"status": "COUPON_OK", "suggest": "Coupon",
-                                                    "note": f"priority {codes[0]} works (focus probe)"}, "", codes[0])
-                    d = "keep" if ok else "skip"
+                    _FOCUS_TO_PROBE.append((asin, code, qty))
+                d = "skip"                                         # this cycle: known-good first
         (kept if d == "keep" else deferred).extend(orders)
-    if waiting:
-        print(f"    🎯 {waiting} ASIN(s) still to probe — {FOCUS_PROBES_PER_CYCLE} per cycle, known-good orders go first")
-    return kept, deferred, probed
+    return kept, deferred, len(_FOCUS_TO_PROBE)
+
+
+def _focus_probe_all(driver, codes) -> tuple:
+    """After the known-good orders are placed: test EVERY unknown ASIN in one pass (no cap),
+    remember each answer, and record a Coupon verdict where the coupon works. Returns (ok, no)."""
+    ckey = "|".join(codes)
+    todo = list(_FOCUS_TO_PROBE)
+    _FOCUS_TO_PROBE.clear()
+    if not todo:
+        return 0, 0
+    print(f"\n  🎯 FOCUS: known-good orders done — testing {len(todo)} unknown ASIN(s) with {'/'.join(codes)} in one pass")
+    t0 = time.time()
+    ok_n = no_n = 0
+    for i, (asin, code, qty) in enumerate(todo, 1):
+        ok = _focus_probe(driver, code, qty, codes)
+        _focus_probe_remember(f"{asin}|{ckey}", ok)
+        print(f"    [{i}/{len(todo)}] {asin} ({code}): {'✅ applies' if ok else '✖ no'}")
+        if ok:
+            ok_n += 1
+            _record_asin_verdict(asin, {"status": "COUPON_OK", "suggest": "Coupon",
+                                        "note": f"priority {codes[0]} works (focus probe)"}, "", codes[0])
+        else:
+            no_n += 1
+    print(f"  🎯 FOCUS probe pass: {ok_n} ASIN(s) take the coupon, {no_n} do not — {(time.time() - t0) / 60:.1f} min; "
+          f"placing the new ones now")
+    return ok_n, no_n
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -5056,16 +5070,20 @@ def main():
                           f"— nothing is placed in focus mode; fix the code or untick 'Place with Priority'")
                     scraped_orders = []
                 else:
-                    kept, deferred, probed = _focus_filter(driver, scraped_orders, _foc_codes, sku_map)
-                    print(f"\n  🎯 FOCUS PRIORITY COUPON ACTIVE: {', '.join(_foc_codes)} — kept {len(kept)} order(s), "
-                          f"deferred {len(deferred)} (placed normally once focus is off), probed {probed} ASIN(s) live")
+                    kept, deferred, to_probe = _focus_filter(driver, scraped_orders, _foc_codes, sku_map)
+                    print(f"\n  🎯 FOCUS PRIORITY COUPON ACTIVE: {', '.join(_foc_codes)} — placing {len(kept)} known-good order(s) first; "
+                          f"{to_probe} unknown ASIN(s) will be tested in one pass right after; "
+                          f"{len(deferred) - sum(1 for o in deferred if (o.get('asin') or '').strip().upper() in {a for a, _, _ in _FOCUS_TO_PROBE})} deferred (placed normally once focus is off)")
                     _DLOG.log("focus", profile=PROFILE_NAME, action="filter", coupon=",".join(_foc_codes),
-                              reason=f"kept {len(kept)}, deferred {len(deferred)}, probed {probed}",
+                              reason=f"kept {len(kept)}, deferred {len(deferred)}, to_probe {to_probe}",
                               kept=[o.get("amazon_id") for o in kept], deferred=[o.get("amazon_id") for o in deferred])
                     scraped_orders = kept
                 if not scraped_orders:
                     _run_log["orders_scraped"] = 0
                     _save_log()
+                    if _FOCUS_TO_PROBE and _foc_codes:
+                        _focus_probe_all(driver, _foc_codes)        # nothing known yet → test everything now
+                        continue                                    # and place the passers immediately
                     if SINGLE_CYCLE:
                         return
                     print("   -> focus mode: nothing to place right now — next cycle in 60 s")
@@ -5521,6 +5539,18 @@ def main():
         print_rich_summary(PROFILE_NAME, total_orders, processed_count,
                            success_count, failed_count, low_profit_count,
                            "Cycle Complete." + ("" if SINGLE_CYCLE else " Waiting 10 seconds..."))
+
+        # Focus coupon: the known-good orders are placed — now test every unknown ASIN in ONE pass
+        # and start the next cycle at once so the ones that pass are placed without waiting.
+        if _FOCUS_TO_PROBE and IS_COUPON_PROFILE:
+            try:
+                _fc = _focus_active_codes(coupon_codes[0] if isinstance(coupon_codes, tuple) else [])
+                if _fc:
+                    _focus_probe_all(driver, _fc)
+                    if not SINGLE_CYCLE:
+                        continue
+            except Exception as e:
+                print(f"  ⚠️ focus probe pass: {e}")
 
         if SINGLE_CYCLE:
             print(f"\n  📋 Log: {_log_file}")

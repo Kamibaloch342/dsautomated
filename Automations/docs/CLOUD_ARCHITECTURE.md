@@ -196,8 +196,9 @@ are enforced in code, not by convention:
 * **Place with Priority (focus coupon).** Launcher checkbox per coupon profile (`profiles.<P>.
   focus_priority_coupon_enabled` + `focus_priority_coupon`, or `--focus-coupon CODE` on the command
   line). While on, the coupon placer queues ONLY orders whose ASIN takes that coupon: kept when the
-  bot's memory says so, probed live on a scratch cart when there is no fresh memory (human-placed
-  Coupon ASINs included), deferred when a recent verdict says another coupon / Select / none. The
+  bot's memory says so (placed first), then EVERY ASIN without fresh memory is probed live on a
+  scratch cart in one pass and the passers are placed immediately; deferred when a recent verdict
+  says another coupon / Select / none. The
   code is resolved against today's Coupons tab (shorthand `facility` works; an unknown code places
   nothing and says so). At checkout the focus coupon is tried first; if it fails on the live cart
   the normal order still applies. Use it when a code is about to expire; untick it afterwards —
