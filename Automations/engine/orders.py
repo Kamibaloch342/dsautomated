@@ -1929,9 +1929,31 @@ def _format_asin_batch_summary(orders, asin_counts, limit=10):
 #     (nothing is lost: its orders place normally once focus is off);
 #   • at checkout the focus coupon is tried FIRST; if it fails on the live cart the normal
 #     order (other priority codes, then regular) still applies — the order is never dropped.
-FOCUS_PROBE_TTL_S = 6 * 3600
+FOCUS_PROBE_TTL_S = 24 * 3600                       # a probe answer is trusted for a day (survives restarts)
 FOCUS_VERDICT_MAX_AGE_DAYS = 7
-_FOCUS_PROBED = {}          # asin -> {"ok": bool, "at": epoch}
+FOCUS_PROBES_PER_CYCLE = max(1, int(ROUTING.get("focus_probes_per_cycle", 20) or 20))
+_FOCUS_PROBE_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "dataset", "focus_probes.json")
+
+
+def _focus_probe_cache() -> dict:
+    try:
+        from utils.jsonstore import read_json
+        return read_json(_FOCUS_PROBE_PATH, {}) or {}
+    except Exception:
+        return {}
+
+
+def _focus_probe_remember(key: str, ok: bool) -> None:
+    try:
+        from utils.jsonstore import mutate_json
+        def _m(d):
+            d = d or {}
+            d[key] = {"ok": bool(ok), "at": time.time()}
+            cutoff = time.time() - 7 * 86400
+            return {k: v for k, v in d.items() if float((v or {}).get("at") or 0) > cutoff}
+        mutate_json(_FOCUS_PROBE_PATH, _m, {})
+    except Exception as e:
+        print(f"  ⚠️ focus probe memory: {e}")
 
 
 def _focus_query() -> str:
@@ -2027,21 +2049,31 @@ def _focus_probe(driver, zoro_code, qty, codes) -> bool:
 
 
 def _focus_filter(driver, scraped_orders, codes, sku_map):
-    """Keep only the orders whose ASIN takes one of the focus coupons. Returns (kept, deferred, probed)."""
+    """Keep only the orders whose ASIN takes one of the focus coupons.
+    Per ASIN (not per order): memory says the coupon works → kept, no test; a fresh memory of
+    anything else → deferred, no test; no fresh memory → probed live, at most
+    FOCUS_PROBES_PER_CYCLE per cycle so the orders already known good are placed NOW and the
+    unknown ASINs are cleared a batch per cycle. Probe answers are remembered for a day.
+    Returns (kept, deferred, probed)."""
     from engine import priority_check as _pc
     verdicts = _pc.load_verdicts()
+    probe_mem = _focus_probe_cache()
+    ckey = "|".join(codes)
     by_asin = {}
     for o in scraped_orders:
         by_asin.setdefault((o.get("asin") or "").strip().upper(), []).append(o)
-    kept, deferred, probed = [], [], 0
+    kept, deferred, probed, waiting = [], [], 0, 0
     now = time.time()
     for asin, orders in by_asin.items():
         v = verdicts.get(asin) if asin else None
         d = _focus_decision(v, codes, now) if asin else "skip"
         if d == "probe":
-            pr = _FOCUS_PROBED.get(asin)
-            if pr and now - pr["at"] < FOCUS_PROBE_TTL_S:
-                d = "keep" if pr["ok"] else "skip"
+            pr = probe_mem.get(f"{asin}|{ckey}")
+            if pr and now - float(pr.get("at") or 0) < FOCUS_PROBE_TTL_S:
+                d = "keep" if pr.get("ok") else "skip"
+            elif probed >= FOCUS_PROBES_PER_CYCLE:
+                waiting += 1
+                d = "skip"                                         # probed in one of the next cycles
             else:
                 m = (sku_map or {}).get(asin) or {}
                 code = str(m.get("zoro_code") or "").strip()
@@ -2054,13 +2086,15 @@ def _focus_filter(driver, scraped_orders, codes, sku_map):
                         qty = 1
                     ok = _focus_probe(driver, code, qty, codes)
                     probed += 1
-                    _FOCUS_PROBED[asin] = {"ok": ok, "at": now}
+                    _focus_probe_remember(f"{asin}|{ckey}", ok)
                     print(f"    🎯 probe {asin} ({code}): {'✅ ' + '/'.join(codes) + ' applies' if ok else '✖ no focus coupon'}")
                     if ok:
                         _record_asin_verdict(asin, {"status": "COUPON_OK", "suggest": "Coupon",
                                                     "note": f"priority {codes[0]} works (focus probe)"}, "", codes[0])
                     d = "keep" if ok else "skip"
         (kept if d == "keep" else deferred).extend(orders)
+    if waiting:
+        print(f"    🎯 {waiting} ASIN(s) still to probe — {FOCUS_PROBES_PER_CYCLE} per cycle, known-good orders go first")
     return kept, deferred, probed
 
 
