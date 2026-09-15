@@ -1010,8 +1010,30 @@ def watch_clear(body):
 
 
 # ── writes ──────────────────────────────────────────────────────────────────
+def _resolve_amazon_oid(oid):
+    if not oid:
+        return oid
+    oid_s = str(oid).strip()
+    import re as _re
+    if _re.match(r"^(?:WB|SO)\d+$", oid_s.upper()):
+        c = ro()
+        try:
+            row = c.execute("SELECT amazon_order_id FROM closing_orders WHERE wb_order_id=? OR merchant_order_id LIKE ? LIMIT 1",
+                            (oid_s.upper(), f"%{oid_s.upper()}%")).fetchone()
+            if not row and _has_table("order_placer_orders"):
+                row = c.execute("SELECT amazon_order_id FROM order_placer_orders WHERE wb_order_id=? LIMIT 1",
+                                (oid_s.upper(),)).fetchone()
+            if row and row[0]:
+                return row[0]
+        except Exception:
+            pass
+        finally:
+            c.close()
+    return oid_s
+
+
 def add_note(body):
-    oid = body.get("order_id"); note = (body.get("note") or "").strip()
+    oid = _resolve_amazon_oid(body.get("order_id")); note = (body.get("note") or "").strip()
     if not oid or not note:
         return {"ok": False, "error": "order_id+note required"}
     author = str(body.get("author") or "me")[:60]
@@ -1066,7 +1088,7 @@ def _apply_crm_overlay(c, rows):
 
 
 def update_order(body):
-    oid = body.get("order_id")
+    oid = _resolve_amazon_oid(body.get("order_id"))
     if not oid:
         return {"ok": False, "error": "order_id required"}
     fields = {k: v for k, v in body.items() if k in ALLOWED}
@@ -1635,41 +1657,147 @@ def order_zoro(q):
     if not key:
         return {"error": "id required"}
     c = ro()
-    co = c.execute("SELECT * FROM closing_orders WHERE amazon_order_id=?", (key,)).fetchone()
+    
+    # 1. Look up in closing_orders (by Amazon ID or WB ID)
+    co = None
+    try:
+        co = c.execute("SELECT * FROM closing_orders WHERE amazon_order_id=?", (key,)).fetchone()
+        if not co and _re.match(r"(?:WB|SO)\d+$", key.upper()):
+            co = c.execute("SELECT * FROM closing_orders WHERE wb_order_id=? OR merchant_order_id LIKE ? LIMIT 1",
+                           (key.upper(), f"%{key.upper()}%")).fetchone()
+    except Exception:
+        co = None
+
+    # If still not found in closing_orders, check order_placer_orders
+    po = None
+    if not co and _has_table("order_placer_orders"):
+        try:
+            po = c.execute("SELECT * FROM order_placer_orders WHERE amazon_order_id=? OR wb_order_id=? LIMIT 1",
+                           (key, key.upper())).fetchone()
+        except Exception:
+            po = None
+
     if co:
         co = dict(co)
         ids = _re.findall(r"(?:WB|SO)\d+", (co.get("merchant_order_id") or "").upper())
         if not ids and co.get("wb_order_id"):
             ids = [co["wb_order_id"]]
+    elif po:
+        po = dict(po)
+        co = {
+            "amazon_order_id": po.get("amazon_order_id"),
+            "merchant_order_id": po.get("wb_order_id"),
+            "account": po.get("account"),
+            "profile_name": po.get("profile_name"),
+            "order_status": "Placed",
+            "order_label": "Incomplete",
+            "asin": po.get("asin"),
+            "sku": po.get("sku"),
+            "title": po.get("title"),
+            "quantity": po.get("quantity"),
+            "earnings": po.get("earnings"),
+            "zoro_order_total": po.get("zoro_order_total"),
+            "profit_dollars": po.get("profit_dollars"),
+            "profit_percent": po.get("profit_percent"),
+            "tracking_ids": po.get("tracking_ids"),
+            "ship_name": po.get("ship_name"),
+            "ship_street": po.get("ship_street"),
+            "ship_city": po.get("ship_city"),
+            "ship_state": po.get("ship_state"),
+            "ship_postal_code": po.get("ship_postal_code"),
+            "ship_phone": po.get("ship_phone"),
+            "purchase_date": po.get("purchase_date"),
+            "wb_order_id": po.get("wb_order_id"),
+        }
+        ids = [po["wb_order_id"]] if po.get("wb_order_id") else []
     else:
         co = None
         ids = [key.upper()] if _re.match(r"(?:WB|SO)\d+$", key.upper()) else []
+
+    target_oid = (co.get("amazon_order_id") if co else None) or key
+
+    has_zoro = _has_table("archive_zoro")
+    has_trk = _has_table("archive_tracking")
+
     legs, seen = [], set()
     for leg in ids:
         if leg in seen:
             continue
         seen.add(leg)
-        z = c.execute("SELECT wb_order_id, gmail_account, zoro_account_name, order_total, subtotal, tax, "
-                      "shipping_cost, coupon_savings, sku, qty, payment_method, payment_card_last4, ship_zip, "
-                      "order_date, email_timestamp FROM archive_zoro WHERE wb_order_id=? ORDER BY email_timestamp DESC LIMIT 1", (leg,)).fetchone()
-        t = c.execute("SELECT tracking_ids, carrier, email_timestamp FROM archive_tracking WHERE wb_order_id=? "
-                      "ORDER BY email_timestamp DESC LIMIT 1", (leg,)).fetchone()
-        cap = c.execute("SELECT amazon_order_id FROM closing_orders WHERE merchant_order_id LIKE ? OR wb_order_id=? LIMIT 1",
-                        (f"%{leg}%", leg)).fetchone()
-        legs.append({"wb": leg, "zoro": dict(z) if z else None, "tracking": dict(t) if t else None,
-                     "captured_in": cap[0] if cap else None})
-    try:
-        crm = c.execute("SELECT * FROM order_crm WHERE amazon_order_id=?", (key,)).fetchone()
-        crm = dict(crm) if crm else None
-    except Exception:
-        crm = None
-    try:
-        notes = [dict(r) for r in c.execute("SELECT author, note, created_at FROM crm_notes WHERE amazon_order_id=? ORDER BY created_at DESC", (key,))]
-    except Exception:
-        notes = []
+        z = None
+        if has_zoro:
+            try:
+                rz = c.execute("SELECT wb_order_id, gmail_account, zoro_account_name, order_total, subtotal, tax, "
+                               "shipping_cost, coupon_savings, sku, qty, payment_method, payment_card_last4, ship_zip, "
+                               "order_date, email_timestamp FROM archive_zoro WHERE wb_order_id=? ORDER BY email_timestamp DESC LIMIT 1", (leg,)).fetchone()
+                z = dict(rz) if rz else None
+            except Exception:
+                z = None
+
+        t = None
+        if has_trk:
+            try:
+                rt = c.execute("SELECT tracking_ids, carrier, email_timestamp FROM archive_tracking WHERE wb_order_id=? "
+                               "ORDER BY email_timestamp DESC LIMIT 1", (leg,)).fetchone()
+                t = dict(rt) if rt else None
+            except Exception:
+                t = None
+
+        # Fallback synthesis from closing_orders or order_placer_orders (Cloud Mode / slim DB)
+        if not z and co and (co.get("wb_order_id") == leg or leg in (co.get("merchant_order_id") or "")):
+            z = {
+                "wb_order_id": leg,
+                "gmail_account": co.get("zoro_gmail_account") or co.get("zoro_account_name"),
+                "zoro_account_name": co.get("zoro_account_name") or "Zoro",
+                "order_total": co.get("zoro_order_total"),
+                "subtotal": co.get("zoro_subtotal"),
+                "tax": co.get("zoro_tax"),
+                "shipping_cost": co.get("zoro_shipping"),
+                "coupon_savings": co.get("coupon_savings"),
+                "sku": co.get("zoro_sku") or co.get("sku"),
+                "qty": co.get("zoro_qty") or co.get("quantity"),
+                "payment_method": co.get("zoro_payment_method"),
+                "payment_card_last4": co.get("zoro_payment_card"),
+                "ship_zip": co.get("zoro_buyer_zip") or co.get("ship_postal_code"),
+                "order_date": co.get("zoro_order_date") or (str(co.get("purchase_date") or "")[:10]),
+                "email_timestamp": co.get("zoro_email_ts") or co.get("sold_email_time"),
+            }
+        if not t and co and (co.get("wb_order_id") == leg or leg in (co.get("merchant_order_id") or "")) and co.get("tracking_ids"):
+            t = {
+                "tracking_ids": co.get("tracking_ids"),
+                "carrier": co.get("carrier") or "FedEx",
+                "email_timestamp": co.get("shipped_email_time") or co.get("delivery_date"),
+            }
+
+        cap_id = co.get("amazon_order_id") if co else None
+        if not cap_id:
+            try:
+                cap = c.execute("SELECT amazon_order_id FROM closing_orders WHERE merchant_order_id LIKE ? OR wb_order_id=? LIMIT 1",
+                                (f"%{leg}%", leg)).fetchone()
+                cap_id = cap[0] if cap else None
+            except Exception:
+                cap_id = None
+
+        legs.append({"wb": leg, "zoro": z, "tracking": t, "captured_in": cap_id})
+
+    crm = None
+    if _has_table("order_crm"):
+        try:
+            rcrm = c.execute("SELECT * FROM order_crm WHERE amazon_order_id=?", (target_oid,)).fetchone()
+            crm = dict(rcrm) if rcrm else None
+        except Exception:
+            crm = None
+
+    notes = []
+    if _has_table("crm_notes"):
+        try:
+            notes = [dict(r) for r in c.execute("SELECT author, note, created_at FROM crm_notes WHERE amazon_order_id=? ORDER BY created_at DESC", (target_oid,))]
+        except Exception:
+            notes = []
+
     c.close()
     return {"key": key, "order": co, "legs": legs, "crm": crm, "notes": notes,
-            "zoro_total": round(sum((l["zoro"]["order_total"] or 0) for l in legs if l["zoro"]), 2)}
+            "zoro_total": round(sum(((l.get("zoro") or {}).get("order_total") or 0) for l in legs if l.get("zoro")), 2)}
 
 
 # ── ZORO CATALOG (daily TSV build → combined_reports.db) ────────────────────

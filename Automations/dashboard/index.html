@@ -163,6 +163,46 @@
   @keyframes popIn{from{transform:scale(.97);opacity:0}to{transform:scale(1);opacity:1}}
   @keyframes rise{from{transform:translateY(7px);opacity:0}to{transform:translateY(0);opacity:1}}
   @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(180,35,24,0)}50%{box-shadow:0 0 0 4px rgba(180,35,24,.18)}}
+
+  /* Enhanced Modal & Commenting styles */
+  .zbadge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;letter-spacing:.02em}
+  .zbadge-acct{background:#e0e7ff;color:#3730a3}
+  .zbadge-green{background:#dcfce7;color:#15803d}
+  .zbadge-amber{background:#fef3c7;color:#b45309}
+  .zbadge-blue{background:#e0f2fe;color:#0369a1}
+  .zbadge-purple{background:#f3e8ff;color:#7e22ce}
+
+  .zcard{background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px 16px;box-shadow:var(--shadow)}
+  .zgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 16px;font-size:12px}
+  .zitem{display:flex;flex-direction:column;gap:1px}
+  .zlbl{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
+  .zval{font-size:12.5px;font-weight:600;color:var(--ink);word-break:break-word}
+
+  .ztable{width:100%;border-collapse:collapse;font-size:12px}
+  .ztable th{background:#f8fafc;color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+  .ztable td{padding:7px 8px;border-bottom:1px solid var(--line)}
+
+  .cfeed-list{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;padding-right:4px;margin-bottom:12px}
+  .cfeed-item{display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:9px 12px;transition:background .12s}
+  .cfeed-item:hover{background:#f1f5f9}
+  .cfeed-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#2544c2);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+  .cfeed-body{flex:1;min-width:0}
+  .cfeed-meta{display:flex;justify-content:space-between;align-items:center;font-size:11px;margin-bottom:2px}
+  .cfeed-author{font-weight:700;color:var(--ink)}
+  .cfeed-time{color:var(--muted);font-size:10.5px}
+  .cfeed-text{font-size:12.5px;color:var(--ink);line-height:1.45;word-break:break-word}
+
+  .qchips-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+  .qchip{background:#f8fafc;border:1px solid var(--line);border-radius:16px;padding:4px 10px;font-size:11.5px;font-weight:600;color:var(--ink);cursor:pointer;transition:all .12s;display:inline-flex;align-items:center;gap:4px;font-family:inherit}
+  .qchip:hover{background:var(--accsoft);border-color:var(--accent);color:var(--accent);transform:translateY(-1px)}
+  .qchip:active{transform:translateY(0)}
+
+  .cinput-wrap{position:relative}
+  .cinput-box{width:100%;min-height:64px;max-height:140px;padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-family:inherit;font-size:12.5px;line-height:1.4;resize:vertical;transition:border-color .15s,box-shadow .15s;box-sizing:border-box}
+  .cinput-box:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accsoft)}
+  .cbtn-submit{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:7px 15px;font-weight:700;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;transition:opacity .15s,transform .1s}
+  .cbtn-submit:hover{opacity:.9}
+  .cbtn-submit:active{transform:scale(.98)}
   #ov,#aov{animation:fadeIn .15s ease}
   #dw{animation:slideIn .22s cubic-bezier(.2,.8,.2,1)}
   #adw{animation:popIn .2s cubic-bezier(.2,.8,.2,1)}
@@ -1212,64 +1252,163 @@ function renderSevere(){
   </div>`;
   loadRefundIssues();   // renders into the nested #refunds div above
 }
+function quickNote(txt){
+  const el=$("#znote");
+  if(!el)return;
+  const cur=el.value.trim();
+  el.value = cur ? (cur + " · " + txt) : txt;
+  el.focus();
+}
+
 async function openZoro(id){
   const r=await api("/api/order_zoro?id="+encodeURIComponent(id)).catch(()=>({legs:[]}));
   const o=r.order,legs=r.legs||[];
-  const fld=(k,v)=>`<span style="color:var(--muted)">${k}:</span> <b>${esc(v==null||v===''?'—':v)}</b>`;
-  const head=`<h2>${esc(r.key)} ${o?'':'<span style="font-size:12px;color:#b42318">· WB not captured in any Amazon order</span>'}</h2>`;
+  const fld=(k,v)=>`<div class="zitem"><span class="zlbl">${k}</span><span class="zval">${esc(v==null||v===''?'—':v)}</span></div>`;
+  
+  // Header with badges
+  const head=`
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
+      <h2 style="margin:0;font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-.01em">${esc(r.key)}</h2>
+      ${o?`
+        <span class="zbadge zbadge-acct">${esc(o.account||'STORE')}</span>
+        <span class="zbadge ${o.order_status==='Shipped'?'zbadge-green':'zbadge-amber'}">${esc(o.order_status||'Status')}</span>
+        ${o.order_label?`<span class="zbadge zbadge-blue">${esc(o.order_label)}</span>`:''}
+        ${o.merchant_order_id?`<span class="zbadge zbadge-purple">${esc(o.merchant_order_id)}</span>`:''}
+      `:`<span style="font-size:12px;color:#b42318;font-weight:600">· WB not captured in any Amazon order</span>`}
+    </div>
+  `;
+
   let summary="";
-  if(o){const g=fld;summary=`<div class="sub">${esc(o.account)} · ${esc(o.order_status||'')} · label <b>${esc(o.order_label||'')}</b> · ${esc(o.merchant_order_id||'')}</div>
-    ${o.title?`<div style="font-size:13px;font-weight:600;margin:8px 0 2px">${esc(o.title)}</div>`:""}
-    <div class="sect" style="margin-top:6px">Amazon order details</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px 18px;font-size:12px;margin:6px 0">
-      ${g('ASIN',o.asin)} ${g('SKU',o.sku)} ${g('Qty',o.quantity)}
-      ${g('Purchased',o.purchase_date)} ${g('Sold (ship-now)',o.sold_email_time)} ${g('Ship-by',o.ship_by_date)}
-      ${g('Earnings',o.earnings)} ${g('Zoro cost',o.zoro_order_total)} ${g('Profit',o.profit_dollars!=null?('$'+o.profit_dollars+' ('+(o.profit_percent||0)+'%)'):'')}
-      ${g('Refund',o.refund_done==='Yes'?('Yes $'+(o.refund_amount||'')+(o.refund_date?(' '+(''+o.refund_date).slice(0,10)):'')):'No')} ${g('Net after refund',o.net_profit_after_refund)} ${g('Return',o.return_requested==='Yes'?('Yes — '+(o.return_reason||'')):'No')}
-      ${g('Tracking',o.tracking_ids)} ${g('Carrier',o.carrier)} ${g('Delivery',o.delivery_status)}
-      ${g('Deliver-by',o.deliver_by_date)} ${g('Delivered',o.delivery_date)} ${g('On-time',o.on_time)}
-      ${g('Placement spd',o.placement_speed)} ${g('Zoro ship spd',o.zoro_ship_speed)} ${g('Zoro acct',o.zoro_account_name)}
-      ${g('Payment',(o.zoro_payment_method||'')+(o.zoro_payment_card?(' •'+o.zoro_payment_card):''))} ${g('Coupon',o.coupon_savings)} ${g('Buyer zip',o.zoro_buyer_zip||o.ship_postal_code)}
-      ${g('Ship to',o.ship_name)} ${g('City/State',((o.ship_city||'')+' '+(o.ship_state||'')).trim())} ${g('Phone',o.ship_phone)}</div>`;}
+  if(o){
+    const g=fld;
+    summary=`
+      ${o.title?`<div style="font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.4;margin:6px 0 10px">${esc(o.title)}</div>`:""}
+      <div class="zcard" style="margin-bottom:12px">
+        <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px">
+          📦 Amazon Order Details
+        </div>
+        <div class="zgrid">
+          ${g('ASIN',o.asin)} ${g('SKU',o.sku)} ${g('Qty',o.quantity)}
+          ${g('Purchased',o.purchase_date)} ${g('Sold (ship-now)',o.sold_email_time)} ${g('Ship-by',o.ship_by_date)}
+          ${g('Earnings',o.earnings!=null?usd(o.earnings):'—')} ${g('Zoro cost',o.zoro_order_total!=null?usd(o.zoro_order_total):'—')} ${g('Profit',o.profit_dollars!=null?('$'+o.profit_dollars+' ('+(o.profit_percent||0)+'%)'):'—')}
+          ${g('Refund',o.refund_done==='Yes'?('Yes $'+(o.refund_amount||'')+(o.refund_date?(' '+(''+o.refund_date).slice(0,10)):'')):'No')} ${g('Net after refund',o.net_profit_after_refund!=null?usd(o.net_profit_after_refund):'—')} ${g('Return',o.return_requested==='Yes'?('Yes — '+(o.return_reason||'')):'No')}
+          ${g('Tracking',o.tracking_ids)} ${g('Carrier',o.carrier)} ${g('Delivery',o.delivery_status)}
+          ${g('Deliver-by',o.deliver_by_date)} ${g('Delivered',o.delivery_date)} ${g('On-time',o.on_time)}
+          ${g('Placement spd',o.placement_speed)} ${g('Zoro ship spd',o.zoro_ship_speed)} ${g('Zoro acct',o.zoro_account_name)}
+          ${g('Payment',(o.zoro_payment_method||'')+(o.zoro_payment_card?(' •'+o.zoro_payment_card):''))} ${g('Coupon',o.coupon_savings!=null?usd(o.coupon_savings):'—')} ${g('Buyer zip',o.zoro_buyer_zip||o.ship_postal_code)}
+          ${g('Ship to',o.ship_name)} ${g('City/State',((o.ship_city||'')+' '+(o.ship_state||'')).trim())} ${g('Phone',o.ship_phone)}
+        </div>
+      </div>
+    `;
+  }
+
   const rows=legs.map(l=>{const z=l.zoro||{},t=l.tracking||{};return `<tr>
     <td><b>${esc(l.wb)}</b></td><td>${esc(z.zoro_account_name||z.gmail_account||'—')}</td>
     <td style="text-align:right">${z.order_total!=null?usd(z.order_total):'—'}</td>
     <td>${esc(z.payment_method||'')} ${z.payment_card_last4?('•'+esc(z.payment_card_last4)):''}</td>
     <td>${esc(z.sku||'')}${z.qty?(' ×'+z.qty):''}</td><td>${esc(z.order_date||(z.email_timestamp||'').slice(0,10))}</td>
     <td>${esc(t.tracking_ids||'')}</td>
-    <td>${l.captured_in?('✓ '+esc(l.captured_in)):'<span style="color:#b42318">✗ not captured</span>'}</td></tr>`;}).join("");
+    <td>${l.captured_in?('<span style="color:var(--green);font-weight:600">✓ '+esc(l.captured_in)+'</span>'):'<span style="color:var(--red);font-weight:600">✗ not captured</span>'}</td></tr>`;}).join("");
+
   const cr=r.crm||{}, notes=r.notes||[];
-  const flags=["#b42318","#eab308","#067647"].map(col=>`<button onclick="zoroAct('${esc(r.key)}',{flag_color:'${col}'})" style="background:${col};width:22px;height:22px;border-radius:50%;padding:0;border:0;cursor:pointer;${cr.flag_color===col?'outline:2px solid #111;outline-offset:1px':''}"></button>`).join("")+` <button onclick="zoroAct('${esc(r.key)}',{flag_color:''})">clear</button>`;
+  const targetOid = (o && o.amazon_order_id) ? o.amazon_order_id : r.key;
+  const flags=["#b42318","#eab308","#067647"].map(col=>`<button onclick="zoroAct('${esc(targetOid)}',{flag_color:'${col}'})" style="background:${col};width:22px;height:22px;border-radius:50%;padding:0;border:0;cursor:pointer;${cr.flag_color===col?'outline:2px solid #111;outline-offset:2px':''};transition:transform .1s" title="${col} flag"></button>`).join("")+` <button onclick="zoroAct('${esc(targetOid)}',{flag_color:''})" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:11.5px;text-decoration:underline">clear</button>`;
   const opts=["","Open","Resolved","Filed with Zoro","Won","Lost","Ignored"];
+
   const crmBlock=`
-    <div class="sect" style="margin-top:16px">📌 Track / diary — your record for this item</div>
-    <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:6px 0">
-      <span style="font-size:12px;color:var(--muted)">Flag:</span> ${flags}
-      <span style="font-size:12px;color:var(--muted);margin-left:8px">Status:</span>
-      <select onchange="zoroAct('${esc(r.key)}',{case_status:this.value})">${opts.map(o=>`<option ${cr.case_status===o?'selected':''}>${o}</option>`).join("")}</select>
+    <div class="cdiary-box">
+      <div class="cdiary-header">
+        <span class="cdiary-title">📌 Track / Diary & Activity Notes</span>
+        ${cr.reminder_at?`<span style="font-size:11.5px;font-weight:600;color:var(--amber)">⏰ Follow up: ${esc(cr.reminder_at.slice(0,10))}${cr.reminder_note?(' ('+esc(cr.reminder_note)+')'):''}</span>`:''}
+      </div>
+
+      <!-- Controls row: Flag, Status, Reminder -->
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding-bottom:12px;margin-bottom:12px;border-bottom:1px solid var(--line)">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:11.5px;font-weight:600;color:var(--muted)">Flag:</span>
+          ${flags}
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="font-size:11.5px;font-weight:600;color:var(--muted)">Status:</span>
+          <select onchange="zoroAct('${esc(targetOid)}',{case_status:this.value})" style="padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12px;font-weight:600;color:var(--ink)">
+            ${opts.map(o=>`<option ${cr.case_status===o?'selected':''}>${o||'— No Status —'}</option>`).join("")}
+          </select>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex:1;min-width:260px">
+          <span style="font-size:11.5px;font-weight:600;color:var(--muted)">Reminder:</span>
+          <input id="zrem_date" type="date" value="${esc((cr.reminder_at||'').slice(0,10))}" style="padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-size:11.5px">
+          <input id="zrem_note" placeholder="Follow-up task / memo..." value="${esc(cr.reminder_note||'')}" style="flex:1;min-width:120px;padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-size:11.5px">
+          <button class="ghost" style="padding:4px 10px;font-size:11.5px" onclick="zoroAct('${esc(targetOid)}',{reminder_at:$('#zrem_date').value,reminder_note:$('#zrem_note').value})">Save</button>
+        </div>
+      </div>
+
+      <!-- Feed of existing notes -->
+      <div style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px">
+        Team Notes & History (${notes.length})
+      </div>
+      <div class="cfeed-list">
+        ${notes.length ? notes.map(n=>{
+          const author = n.author || 'User';
+          const initials = author.split(' ').map(x=>x[0]).join('').slice(0,2).toUpperCase() || 'U';
+          return `
+            <div class="cfeed-item">
+              <div class="cfeed-avatar">${esc(initials)}</div>
+              <div class="cfeed-body">
+                <div class="cfeed-meta">
+                  <span class="cfeed-author">${esc(author)}</span>
+                  <span class="cfeed-time">${esc((n.created_at||'').slice(0,16))}</span>
+                </div>
+                <div class="cfeed-text">${esc(n.note)}</div>
+              </div>
+            </div>
+          `;
+        }).join("") : `
+          <div style="padding:14px;text-align:center;color:var(--muted);font-size:12px;background:#f8fafc;border-radius:8px;border:1px dashed var(--line)">
+            💬 No notes yet. Use the quick presets below or type a note to save to this order.
+          </div>
+        `}
+      </div>
+
+      <!-- Quick Preset Chips -->
+      <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:5px">⚡ Quick Presets (Click to insert):</div>
+      <div class="qchips-row">
+        <button type="button" class="qchip" onclick="quickNote('Order never received')">⚠️ Order not received</button>
+        <button type="button" class="qchip" onclick="quickNote('Please issue return label')">🔄 Return label requested</button>
+        <button type="button" class="qchip" onclick="quickNote('Replacement requested from Zoro')">📦 Replacement requested</button>
+        <button type="button" class="qchip" onclick="quickNote('Refund pending from Zoro')">💰 Refund pending</button>
+        <button type="button" class="qchip" onclick="quickNote('Contacted Zoro support')">📞 Contacted Zoro</button>
+        <button type="button" class="qchip" onclick="quickNote('Customer resolved / satisfied')">✅ Issue resolved</button>
+      </div>
+
+      <!-- Comment Box with Cmd+Enter submission -->
+      <div class="cinput-wrap">
+        <textarea id="znote" class="cinput-box" placeholder="Add a comment to yourself or team (Cmd+Enter to post)…"
+          onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();zoroNote('${esc(targetOid)}');}"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+          <span style="font-size:11px;color:var(--muted)">Tip: Press <b>⌘+Enter</b> or <b>Ctrl+Enter</b> to post instantly</span>
+          <button class="cbtn-submit" onclick="zoroNote('${esc(targetOid)}')">💬 Post Comment</button>
+        </div>
+      </div>
     </div>
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-      <span style="font-size:12px;color:var(--muted)">Follow up:</span>
-      <input id="zrem_date" type="date" value="${esc((cr.reminder_at||'').slice(0,10))}" style="padding:5px;border:1px solid var(--line);border-radius:7px">
-      <input id="zrem_note" placeholder="e.g. contact buyer / file with Zoro later" value="${esc(cr.reminder_note||'')}" style="flex:1;min-width:200px;padding:6px 9px;border:1px solid var(--line);border-radius:7px">
-      <button class="save" onclick="zoroAct('${esc(r.key)}',{reminder_at:$('#zrem_date').value,reminder_note:$('#zrem_note').value})">⏰ Keep track</button>
-    </div>
-    ${cr.reminder_at?`<div style="font-size:12px;color:#b54708;margin-bottom:6px">⏰ Follow up ${esc(cr.reminder_at.slice(0,10))}${cr.reminder_note?(' — '+esc(cr.reminder_note)):''}</div>`:""}
-    <div style="font-size:12px;color:var(--muted);margin:8px 0 3px">Comments (saved for you)</div>
-    <div style="max-height:160px;overflow:auto">${notes.map(n=>`<div class="note">${esc(n.note)}<br><small>${esc(n.author||'me')} · ${esc((n.created_at||'').slice(0,16))}</small></div>`).join("")||'<div style="color:var(--muted);font-size:12px">No comments yet.</div>'}</div>
-    <textarea id="znote" placeholder="Add a comment to yourself (e.g. 'contact later about refund')…"></textarea>
-    <div class="actions"><button class="save" onclick="zoroNote('${esc(r.key)}')">Add comment</button></div>`;
+  `;
+
   $("#zdw").innerHTML=`<span class="close" onclick="closeZoro()">×</span>${head}${summary}
-    <div class="sect">Zoro legs (${legs.length}) — total ${usd(r.zoro_total)}</div>
-    <table style="font-size:12px"><thead><tr><th>WB</th><th>Zoro account</th><th style="text-align:right">cost</th><th>payment</th><th>SKU</th><th>date</th><th>tracking</th><th>captured?</th></tr></thead>
-      <tbody>${rows||'<tr><td colspan=8 style="color:var(--muted)">no Zoro receipt found for this id</td></tr>'}</tbody></table>
-    ${o?`<div class="actions" style="margin-top:10px"><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(r.key)}" target="_blank" rel="noopener">↗ Seller Central</a></div>`:""}
+    <div class="zcard" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">
+          🛒 Zoro Legs (${legs.length}) — Total ${usd(r.zoro_total)}
+        </span>
+        ${o?`<a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(r.key)}" target="_blank" rel="noopener" style="font-size:11px;padding:3px 9px">↗ Seller Central</a>`:""}
+      </div>
+      <table class="ztable"><thead><tr><th>WB</th><th>Zoro account</th><th style="text-align:right">cost</th><th>payment</th><th>SKU</th><th>date</th><th>tracking</th><th>captured?</th></tr></thead>
+        <tbody>${rows||'<tr><td colspan=8 style="color:var(--muted);text-align:center;padding:12px">no Zoro receipt found for this id</td></tr>'}</tbody></table>
+    </div>
     ${crmBlock}`;
   $("#zov").style.display="flex";
 }
 function closeZoro(){$("#zov").style.display="none";}
 async function zoroAct(key,fields){await api("/api/order_update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({order_id:key},fields))});openZoro(key);if(TAB==='severe')loadSevere();if(TAB==='tracker')loadTracker();}
-async function zoroNote(key){const t=$("#znote").value.trim();if(!t)return;await api("/api/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id:key,note:t,author:ensureProfile()})});openZoro(key);}
+async function zoroNote(key){const el=$("#znote");if(!el)return;const t=el.value.trim();if(!t)return;el.value="";await api("/api/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id:key,note:t,author:ensureProfile()})});openZoro(key);}
 let _DFILT={}, _dtmr;
 function dataParams(){
   const p=new URLSearchParams();
