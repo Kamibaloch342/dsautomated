@@ -399,15 +399,29 @@ const PLACED_COLS = ["placed_at","amazon_order_id","account","profile_name","pur
 const MONEY = new Set(["earnings","zoro_order_total","zoro_subtotal","zoro_shipping","zoro_tax",
  "profit_dollars","net_profit_after_refund","refund_amount","item_price","shipping_price","amazon_fees","coupon_savings"]);
 const DELIV = new Set(["Delivered","AllDelivered"]);
-const INAMES={item_price_change:"Item price changed",zoro_price_change:"Zoro base price changed",
- wrong_qty:"Wrong quantity",zoro_code_change:"Zoro code changed",low_margin:"Low margin",
- shipping_change:"Shipping changed",zip_mismatch:"Zip mismatch",undelivered:"Undelivered (past due)",
- refunded:"Refunded",wb_unmatched:"WB not in placed orders",
- zoro_deliver_mismatch:"Zoro vs Amazon delivery",low_zoro_stock:"Low Zoro stock",
- shipped_late:"Shipped late (vs ship-by)",zoro_slow_risk:"Zoro slower than promise (late risk)",
- earnings_unit_change:"Earnings/unit changed",shipping_amt_change:"Amazon shipping/unit changed",
- handling_time_change:"Handling time changed",zoro_ship_rule:"Zoro shipping ≠ rule ($50 free / $5.99)",
- zoro_unit_cost_change:"Zoro unit cost changed"};
+const INAMES = {
+  earnings_increase: "Earnings increased ↑",
+  earnings_decrease: "Earnings decreased ↓",
+  shipping_change: "Buyer shipping changed",
+  zoro_price_increase: "Zoro price increased ↑",
+  zoro_price_decrease: "Zoro price decreased ↓",
+  zoro_ship_rule: "Zoro shipping ≠ rule ($50 / $5.99)",
+  handling_time_tune: "Handling-time tuner",
+  oos_alert: "Out of stock / Alt SKU",
+  low_margin: "Low margin (<8%)",
+  low_zoro_stock: "Low Zoro stock (<20)",
+  zip_mismatch: "Zip mismatch",
+  undelivered: "Undelivered (past due)",
+  refunded: "Refunded",
+  wrong_qty: "Wrong quantity",
+  shipped_late: "Shipped late (vs ship-by)",
+  wb_unmatched: "WB not in placed orders",
+  earnings_unit_change: "Earnings/unit changed",
+  zoro_price_change: "Zoro base price changed",
+  item_price_change: "Item price changed",
+  zoro_slow_risk: "Zoro slower than promise (late risk)",
+  handling_time_change: "Handling time changed"
+};
 const TODAY=new Date().toISOString().slice(0,10);
 let TAB="orders", LABEL="", ISSUES=false, REASON="", ICAT="", ROWS=[], DATE_FROM="", DATE_TO="";
 let MARGIN_MIN="", MARGIN_MAX="", TAXONLY=false, NOTAX=false, STATEF="", STATES=[], DATECOL="purchase_date";
