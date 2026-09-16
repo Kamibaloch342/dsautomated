@@ -22,6 +22,13 @@ import gc
 _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CONFIG_FILE = os.path.join(_SCRIPT_DIR, "bot_config.json")
 
+DEFAULT_GROUPS = {
+    "hoank_orders": "120363410664445868@g.us",
+    "hoank_insights": "120363429340767368@g.us",
+    "hathoro_orders": "120363412233188303@g.us",
+    "hathoro_insights": "120363413450875187@g.us",
+}
+
 
 def get_whatsapp_config() -> dict:
     """Read fresh WhatsApp configuration from bot_config.json."""
@@ -33,6 +40,27 @@ def get_whatsapp_config() -> dict:
     except Exception as e:
         print(f"  [WhatsApp] ⚠️ Config read error: {e}")
     return {}
+
+
+def get_whatsapp_group(account_or_profile: str = "", kind: str = "orders") -> str:
+    """Resolve target WhatsApp group JID based on store account and channel ('orders' vs 'insights').
+
+    Channels:
+      • HOANK Orders Alerts   -> 120363410664445868@g.us
+      • HOANK Insights        -> 120363429340767368@g.us
+      • Hathoro Orders Alerts -> 120363412233188303@g.us
+      • Hathoro Insights      -> 120363413450875187@g.us
+    """
+    cfg = get_whatsapp_config()
+    groups = cfg.get("groups") or DEFAULT_GROUPS
+
+    acc = str(account_or_profile or "").strip().lower()
+    if any(k in acc for k in ("hathoro", "dm_", "dm-", "abecom", "abe")):
+        key = f"hathoro_{kind}"
+    else:
+        key = f"hoank_{kind}"
+
+    return groups.get(key) or DEFAULT_GROUPS.get(key) or cfg.get("recipient_phone") or ""
 
 
 def is_whatsapp_enabled() -> bool:
@@ -183,15 +211,96 @@ def send_whatsapp_photo(photo_bytes: bytes, caption: str = "", to: str = None, b
 #  HIGH-LEVEL BUSINESS ALERTS & NOTIFICATIONS
 # ══════════════════════════════════════════════════════════════════════
 
-def notify_order_oos(order: dict, screenshot_bytes: bytes = None) -> bool:
-    """Send out of stock alert with product photo/screenshot."""
+def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, account: str = "") -> bool:
+    """Send live order placement alert to WhatsApp (ALL orders, no margin suppression).
+
+    Routes directly to:
+      • HOANK Orders Alerts   (120363410664445868@g.us) for HOANK orders
+      • Hathoro Orders Alerts (120363412233188303@g.us) for Hathoro orders
+    """
+    if not is_whatsapp_enabled():
+        return False
+
+    acc = account or order_data.get("account") or order_data.get("profile") or order_data.get("profile_name") or ""
+    target_group = get_whatsapp_group(acc, kind="orders")
+
+    cost = order_data.get("tc") or order_data.get("zoro_price") or order_data.get("cost")
+    earnings = order_data.get("earnings")
+    profit = order_data.get("pm") or order_data.get("profit")
+
+    try:
+        cost_val = float(cost) if cost is not None and str(cost).strip() != "" else 0.0
+    except (ValueError, TypeError):
+        cost_val = 0.0
+
+    try:
+        earn_val = float(earnings) if earnings is not None and str(earnings).strip() != "" else 0.0
+    except (ValueError, TypeError):
+        earn_val = 0.0
+
+    if profit is not None and str(profit).strip() != "":
+        try:
+            profit_val = float(profit)
+        except (ValueError, TypeError):
+            profit_val = earn_val - cost_val
+    else:
+        profit_val = earn_val - cost_val
+
+    tax_val = float(order_data.get("tax") or order_data.get("zoro_tax") or 0.0)
+    cost_no_tax = max(0.01, cost_val - tax_val)
+    margin_no_tax = ((earn_val - cost_no_tax) / cost_no_tax) if (earn_val and cost_no_tax > 0) else None
+
+    pp = order_data.get("pp")
+    if pp is None and cost_val > 0:
+        pp = (profit_val / cost_val) * 100.0
+    elif pp is not None:
+        try:
+            pp = float(pp)
+        except (ValueError, TypeError):
+            pp = 0.0
+
+    margin_decimal = (pp / 100.0) if pp is not None else 0.0
+    pp_display = f"{pp:.1f}%" if pp is not None else "N/A"
+
+    is_low_margin = (margin_decimal < 0.08) or (margin_no_tax is not None and margin_no_tax < 0.08)
+    is_high_profit = (margin_decimal >= 0.20)
+
+    store_name = "Hathoro" if any(k in acc.lower() for k in ("hathoro", "dm_", "dm-", "abecom")) else "HOANK"
+    if is_low_margin:
+        wa_header = f"⚠️ *LOW MARGIN ORDER (< 8% PRE-TAX): {pp_display}* — {store_name}"
+    elif is_high_profit:
+        wa_header = f"🎉 *PROFIT ORDER (+{pp_display})* 🔥 — {store_name}"
+    else:
+        wa_header = f"✅ *ORDER PLACED (+{pp_display})* 🟢 — {store_name}"
+
+    try:
+        from utils.telegram import format_boss_note_text
+        boss_text = format_boss_note_text(order_data)
+    except Exception:
+        boss_text = (
+            f"Amazon Order: {order_data.get('amazon_id', 'N/A')}\n"
+            f"WB Order: {order_data.get('wb_id', 'N/A')}\n"
+            f"ASIN: {order_data.get('asin', 'N/A')}\n"
+            f"Earnings: ${earn_val:.2f} | Cost: ${cost_val:.2f} | Profit: ${profit_val:.2f} ({pp_display})"
+        )
+
+    caption = f"{wa_header}\n\n{boss_text}"
+
+    if screenshot_bytes:
+        return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group, background=True)
+    return send_whatsapp_message(caption, to=target_group, background=True)
+
+
+def notify_order_oos(order: dict, screenshot_bytes: bytes = None, account: str = "") -> bool:
+    """Send out of stock alert with product photo/screenshot to the store's Orders Alerts group."""
     amz_id = order.get("amazon_id") or order.get("amazon_order_id") or "N/A"
     asin = order.get("asin") or "N/A"
     sku = order.get("sku") or order.get("zoro_code") or "N/A"
     qty = order.get("qty") or order.get("quantity") or 1
     title = (order.get("title") or order.get("item_title") or asin)[:60]
-    profile = order.get("profile") or order.get("profile_name") or ""
+    profile = account or order.get("profile") or order.get("profile_name") or ""
     buyer = order.get("buyer") or ""
+    target_group = get_whatsapp_group(profile, kind="orders")
 
     caption = (
         f"🚨 *OUT OF STOCK ALERT (OOS)*\n"
@@ -205,17 +314,18 @@ def notify_order_oos(order: dict, screenshot_bytes: bytes = None) -> bool:
         f"• Action        : Supplier is OOS — check alternatives or notify customer."
     )
     if screenshot_bytes:
-        return send_whatsapp_photo(screenshot_bytes, caption=caption)
-    return send_whatsapp_message(caption)
+        return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group)
+    return send_whatsapp_message(caption, to=target_group)
 
 
-def notify_low_margin(order: dict, margin_pct: float, screenshot_bytes: bytes = None) -> bool:
-    """Send low-margin warning alert (< 8.0% pre-tax) with order screenshot."""
+def notify_low_margin(order: dict, margin_pct: float, screenshot_bytes: bytes = None, account: str = "") -> bool:
+    """Send low-margin warning alert (< 8.0% pre-tax) with order screenshot to Orders Alerts group."""
     amz_id = order.get("amazon_id") or order.get("amazon_order_id") or "N/A"
     asin = order.get("asin") or "N/A"
     sku = order.get("sku") or "N/A"
     title = (order.get("title") or asin)[:60]
-    profile = order.get("profile") or ""
+    profile = account or order.get("profile") or order.get("profile_name") or ""
+    target_group = get_whatsapp_group(profile, kind="orders")
     payout = float(order.get("earnings") or 0.0)
     cost = float(order.get("cost") or order.get("zoro_price") or 0.0)
     profit = float(order.get("profit") or (payout - cost))
@@ -235,24 +345,25 @@ def notify_low_margin(order: dict, margin_pct: float, screenshot_bytes: bytes = 
         f"• Note          : Thin profit margin — review selling price."
     )
     if screenshot_bytes:
-        return send_whatsapp_photo(screenshot_bytes, caption=caption)
-    return send_whatsapp_message(caption)
+        return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group)
+    return send_whatsapp_message(caption, to=target_group)
 
 
-def notify_high_profit(order: dict, margin_pct: float, screenshot_bytes: bytes = None) -> bool:
-    """Send high-profit celebration alert (> 30.0%) with order screenshot."""
+def notify_high_profit(order: dict, margin_pct: float, screenshot_bytes: bytes = None, account: str = "") -> bool:
+    """Send high-profit celebration alert (> 20.0%) with order screenshot to Orders Alerts group."""
     amz_id = order.get("amazon_id") or order.get("amazon_order_id") or "N/A"
     asin = order.get("asin") or "N/A"
     sku = order.get("sku") or "N/A"
     title = (order.get("title") or asin)[:60]
-    profile = order.get("profile") or ""
+    profile = account or order.get("profile") or order.get("profile_name") or ""
+    target_group = get_whatsapp_group(profile, kind="orders")
     payout = float(order.get("earnings") or 0.0)
     cost = float(order.get("cost") or order.get("zoro_price") or 0.0)
     profit = float(order.get("profit") or (payout - cost))
     coupon = order.get("coupon_used") or order.get("coupon") or "None"
 
     caption = (
-        f"🎉 *MEGA PROFIT ORDER (> 30%)*\n"
+        f"🎉 *PROFIT ORDER (> 20%)*\n"
         f"• Store Profile : {profile or 'Active Store'}\n"
         f"• Amazon Order  : `{amz_id}`\n"
         f"• ASIN          : `{asin}`\n"
@@ -264,20 +375,27 @@ def notify_high_profit(order: dict, margin_pct: float, screenshot_bytes: bytes =
         f"• Coupon Used   : {coupon}"
     )
     if screenshot_bytes:
-        return send_whatsapp_photo(screenshot_bytes, caption=caption)
-    return send_whatsapp_message(caption)
+        return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group)
+    return send_whatsapp_message(caption, to=target_group)
 
 
-def notify_insight(insight: dict) -> bool:
-    """Send an operational insight alert text to WhatsApp."""
-    summary = insight.get("summary") or ""
+def notify_insight(insight: dict, account: str = "") -> bool:
+    """Send an operational insight alert text to WhatsApp, routed to the store's Insights group.
+
+    Routes directly to:
+      • HOANK Insights   (120363429340767368@g.us) for HOANK
+      • Hathoro Insights (120363413450875187@g.us) for Hathoro
+    """
+    summary = insight.get("summary") or insight.get("message") or ""
     if not summary:
         return False
-    return send_whatsapp_message(summary)
+    acct = account or insight.get("account") or ""
+    target_group = get_whatsapp_group(acct, kind="insights")
+    return send_whatsapp_message(summary, to=target_group, background=True)
 
 
 def notify_hijack(details: dict, screenshot_bytes: bytes = None) -> bool:
-    """Send listing hijack alert when our rank is #2 or #3."""
+    """Send listing hijack alert when our rank is #2 or #3 to Insights group."""
     store = details.get("store") or "Amazon Store"
     asin = details.get("asin") or "N/A"
     title = (details.get("title") or "Tracked Product")[:60]
@@ -285,6 +403,7 @@ def notify_hijack(details: dict, screenshot_bytes: bytes = None) -> bool:
     winner_name = details.get("winner_name") or "Competitor"
     winner_price = details.get("winner_price") or "N/A"
     our_price = details.get("our_price") or "N/A"
+    target_group = get_whatsapp_group(store, kind="insights")
 
     caption = (
         f"🚨 *LISTING HIJACK ALERT: Position Dropped!*\n"
@@ -297,6 +416,6 @@ def notify_hijack(details: dict, screenshot_bytes: bytes = None) -> bool:
         f"• Action      : Check Repricer / Inventory immediately."
     )
     if screenshot_bytes:
-        return send_whatsapp_photo(screenshot_bytes, caption=caption)
-    return send_whatsapp_message(caption)
+        return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group)
+    return send_whatsapp_message(caption, to=target_group)
 

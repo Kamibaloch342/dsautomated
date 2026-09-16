@@ -87,6 +87,12 @@ def main():
         sync(verbose=False)
     step("placer_to_closing", c)
 
+    def ins():
+        from scripts.send_insights_alerts import dispatch_account_insights
+        dispatch_account_insights(account="HOANK", days=3, limit=10)
+        dispatch_account_insights(account="Hathoro", days=3, limit=10)
+    step("whatsapp_insights", ins)
+
 
 if __name__ == "__main__":
     main()

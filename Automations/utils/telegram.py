@@ -210,9 +210,6 @@ def format_boss_note_text(data: dict) -> str:
 def notify_order_placed(order_data: dict, driver=None, account: str = ""):
     """Capture Amazon SC Order Details page screenshot and send with profit + 'Copy for boss' text.
     Dispatches in background thread and immediately cleans up memory once sent."""
-    if not is_telegram_enabled():
-        return
-
     amazon_id = order_data.get("amazon_id", "")
     wb_id = order_data.get("wb_id", "WB Pending")
     asin = order_data.get("asin", "N/A")
@@ -291,29 +288,11 @@ def notify_order_placed(order_data: dict, driver=None, account: str = ""):
             full_msg = f"{caption}\n\n{followup}" if followup else caption
             send_telegram_message(full_msg, background=True)
 
-    # Dispatch to WhatsApp if enabled (Quietness rule: < 8% and > 30% only with photo; 8-20% suppressed)
+    # Dispatch to WhatsApp if enabled (ALL orders, routed to HOANK vs Hathoro Orders Alerts group)
     try:
-        from utils.whatsapp import is_whatsapp_enabled, send_whatsapp_photo, send_whatsapp_message
+        from utils.whatsapp import is_whatsapp_enabled, notify_order_placed_wa
         if is_whatsapp_enabled():
-            _tax_val = float(order_data.get("tax") or order_data.get("zoro_tax") or 0.0)
-            _cost_val = float(cost) if cost else 0.0
-            _earn_val = float(earnings) if earnings else 0.0
-            _cost_no_tax = max(0.01, _cost_val - _tax_val)
-            _margin_no_tax = ((_earn_val - _cost_no_tax) / _cost_no_tax) if (_earn_val and _cost_no_tax > 0) else margin_decimal
-
-            is_low_margin = (margin_decimal is not None and margin_decimal < 0.08) or (_margin_no_tax is not None and _margin_no_tax < 0.08)
-            is_mega_profit = (margin_decimal is not None and margin_decimal > 0.30)
-
-            if is_low_margin or is_mega_profit:
-                wa_header = "⚠️ *LOW MARGIN ORDER (< 8% PRE-TAX)*" if is_low_margin else "🎉 *MEGA PROFIT ORDER (> 30%)* 🔥"
-                wa_caption = f"{wa_header}\n\n{boss_text}"
-                if screenshot_bytes:
-                    send_whatsapp_photo(screenshot_bytes, caption=wa_caption, background=True)
-                else:
-                    send_whatsapp_message(wa_caption, background=True)
-            else:
-                # Orders placed between 8% and 20% (and up to 30%) are intentionally suppressed to keep chat clean
-                pass
+            notify_order_placed_wa(order_data, screenshot_bytes=screenshot_bytes, account=account)
     except Exception as _wae:
         print(f"  [WhatsApp] ⚠️ Notification error: {_wae}")
 
@@ -323,7 +302,8 @@ def notify_order_placed(order_data: dict, driver=None, account: str = ""):
 
 def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
                                earnings: float, cost: float, margin: float,
-                               reason: str = "", min_margin: float = None):
+                               reason: str = "", min_margin: float = None,
+                               account: str = ""):
     """Alert when an order is skipped/rejected due to negative or thin margin."""
     pfx = "+" if (earnings - cost) >= 0 else ""
     dollar_diff = earnings - cost if (earnings is not None and cost is not None) else 0.0
@@ -344,10 +324,12 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
         send_telegram_message(msg, background=True)
 
     try:
-        from utils.whatsapp import is_whatsapp_enabled, send_whatsapp_message
+        from utils.whatsapp import is_whatsapp_enabled, get_whatsapp_group, send_whatsapp_message
         if is_whatsapp_enabled():
+            target_wa_group = get_whatsapp_group(account, kind="orders")
             wa_msg = (
                 f"⛔ *ORDER REJECTED — LOW PROFIT*\n\n"
+                f"*Account:* {account or 'ZUHRA Store'}\n"
                 f"*Title:* {title[:70] if title else 'N/A'}\n"
                 f"*Amazon ID:* {amazon_id}\n"
                 f"*ASIN:* {asin} | *SKU:* {sku}\n"
@@ -356,7 +338,7 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
                 f"*Threshold:* Min required {thresh_pct}\n"
                 f"*Status:* Skipped / Marked {reason or 'LOSS'}"
             )
-            send_whatsapp_message(wa_msg, background=True)
+            send_whatsapp_message(wa_msg, to=target_wa_group, background=True)
     except Exception:
         pass
 
@@ -387,22 +369,23 @@ def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
             send_telegram_message(msg, background=True)
 
     try:
-        from utils.whatsapp import is_whatsapp_enabled, send_whatsapp_photo, send_whatsapp_message
+        from utils.whatsapp import is_whatsapp_enabled, get_whatsapp_group, send_whatsapp_photo, send_whatsapp_message
         if is_whatsapp_enabled():
+            target_wa_group = get_whatsapp_group(account, kind="orders")
             wa_msg = (
                 f"🚨 *OUT OF STOCK (OOS) ALERT*\n\n"
+                f"*Store:* {account or 'ZUHRA'}\n"
                 f"*Title:* {title[:80] if title else 'N/A'}\n"
                 f"*ASIN:* {asin}\n"
                 f"*SKU:* {sku}\n"
                 f"*Zoro Code:* {zoro_code}\n"
                 f"*Amazon Order:* {amazon_id}\n"
-                f"*Account:* {account or 'ZUHRA'}\n"
                 f"*Action:* Marked 'OOS' on Amazon Seller Central"
             )
             if screenshot_bytes:
-                send_whatsapp_photo(screenshot_bytes, caption=wa_msg, background=True)
+                send_whatsapp_photo(screenshot_bytes, caption=wa_msg, to=target_wa_group, background=True)
             else:
-                send_whatsapp_message(wa_msg, background=True)
+                send_whatsapp_message(wa_msg, to=target_wa_group, background=True)
     except Exception:
         pass
 

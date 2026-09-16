@@ -4481,10 +4481,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 insight_data["deliver_by_date"] = db
                 insight_data["amazon_fees"] = amazon_fees
                 insight_data["shipping_amt"] = shipping_amt
+                order_acct = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
+                insight_data["account"] = order_acct
                 triggered_insights = analyze_order_insights(insight_data)
                 for ins in triggered_insights:
+                    ins["account"] = order_acct
                     print(f"   💡 [Insight] Triggered: {ins.get('title')} ({ins.get('code')})")
-                    notify_insight(ins)
+                    notify_insight(ins, account=order_acct)
             except Exception as _ie:
                 print(f"   💡 [Insight] ⚠️ Analysis error: {_ie}")
         else:
@@ -4589,10 +4592,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             if last_checkout_result:
                 insight_data["zoro_stock"] = last_checkout_result.get("stock_level") or last_checkout_result.get("zoro_stock")
                 insight_data["zoro_deliver_by"] = last_checkout_result.get("est_delivery") or last_checkout_result.get("zoro_deliver_by")
+            order_acct = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
+            insight_data["account"] = order_acct
             triggered_insights = analyze_order_insights(insight_data)
             for ins in triggered_insights:
+                ins["account"] = order_acct
                 print(f"   💡 [Insight] Triggered: {ins.get('title')} ({ins.get('code')})")
-                notify_insight(ins)
+                notify_insight(ins, account=order_acct)
         except Exception as _ie:
             print(f"   💡 [Insight] ⚠️ Analysis error: {_ie}")
         # Delete used regular coupon from Google Sheet so colleagues don't reuse it.
@@ -4639,7 +4645,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 cost=logged_cost or 0.0,
                 margin=margin,
                 reason="Loss-Kamran checking",
-                min_margin=checkout_min_margin or MIN_MARGIN
+                min_margin=checkout_min_margin or MIN_MARGIN,
+                account=PROFILE_NAME
             )
         except Exception as _tge:
             print(f"   [Telegram] ⚠️ Low profit alert error: {_tge}")
