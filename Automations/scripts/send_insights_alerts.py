@@ -140,11 +140,16 @@ def dispatch_account_insights(
     print(f"  🎯 Target Group: {target_group}")
     print(f"=======================================================")
 
+    today_str = datetime.date.today().isoformat()
     date_from = None
-    if not all_time and days > 0:
-        d = datetime.date.today() - datetime.timedelta(days=days)
-        date_from = d.isoformat()
-        print(f"  📅 Window: {date_from} to today ({days} days)")
+    if not all_time:
+        if days > 0:
+            d = datetime.date.today() - datetime.timedelta(days=days)
+            date_from = d.isoformat()
+            print(f"  📅 Window: {date_from} to today ({days} days)")
+        else:
+            date_from = today_str
+            print(f"  📅 Window: Today only ({today_str})")
     else:
         print(f"  📅 Window: All Time")
 
@@ -168,6 +173,11 @@ def dispatch_account_insights(
         for item in items:
             ref_key = item.get("ref_key")
             if not ref_key or ref_key in already_sent:
+                continue
+
+            # USER MANDATE: Only send NEW ones (today's alerts), never historical backlogs
+            d_str = str(item.get("date") or "")[:10]
+            if not all_time and d_str and d_str < today_str:
                 continue
 
             msg_body = item.get("message") or "Insight alert"
@@ -198,9 +208,7 @@ def dispatch_account_insights(
                 except Exception:
                     pass
 
-            d_str = item.get("date") or ""
-
-            lines = [header, f"• Store: *{account}*"]
+            lines = [header]
             lines.append(f"• Title: *{title[:80] if title else 'Product Listing'}*")
             lines.append(f"• SKU: `{sku if sku else 'N/A'}`")
             if asin:
@@ -241,7 +249,7 @@ def dispatch_account_insights(
 def main():
     parser = argparse.ArgumentParser(description="Dispatch operational insights to WhatsApp groups.")
     parser.add_argument("--account", choices=["HOANK", "Hathoro", "all"], default="all", help="Target store account")
-    parser.add_argument("--days", type=int, default=7, help="Lookback window in days (default: 7)")
+    parser.add_argument("--days", type=int, default=0, help="Lookback window in days (default: 0 = today only)")
     parser.add_argument("--all-time", action="store_true", help="Process all-time insights without date cutoff")
     parser.add_argument("--limit", type=int, default=25, help="Max alerts to send per account per run (default: 25, 0 = unlimited)")
     parser.add_argument("--category", type=str, default=None, help="Filter by specific category key (e.g. oos_alert)")

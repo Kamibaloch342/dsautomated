@@ -134,7 +134,9 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     asin = (order.get("asin") or "").strip().upper()
     zoro_code = (order.get("sku") or "").strip().upper()
     current_amz_id = str(order.get("amazon_id") or order.get("amazon_order_id") or "")
-    qty = max(1, int(order.get("qty") or order.get("quantity") or 1))
+    amazon_qty = max(1, int(order.get("amazon_qty") or order.get("order_qty") or order.get("quantity") or 1))
+    zoro_qty = max(1, int(order.get("zoro_qty") or order.get("qty") or 1))
+    qty = amazon_qty
     title = str(order.get("title") or order.get("item_title") or "").strip()
     sku = str(order.get("seller_sku") or order.get("sku") or zoro_code).strip()
 
@@ -154,8 +156,23 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     # Current financial numbers
     earnings = float(order.get("earnings") or 0.0)
     shipping_amt = float(order.get("shipping_amt") or 0.0)
-    zoro_unit_cost = float(order.get("unit_cost") or order.get("zoro_price") or order.get("cost") or 0.0)
-    item_price = float(order.get("item_price") or order.get("unit_price") or 0.0)
+    raw_zoro_cost = float(order.get("unit_cost") or order.get("zoro_price") or order.get("cost") or 0.0)
+    # If raw_zoro_cost was total order cost, convert to per-unit cost
+    if order.get("unit_cost"):
+        zoro_unit_cost = float(order.get("unit_cost"))
+    elif raw_zoro_cost > 0 and zoro_qty > 1:
+        zoro_unit_cost = round(raw_zoro_cost / zoro_qty, 2)
+    else:
+        zoro_unit_cost = raw_zoro_cost
+
+    raw_item_price = float(order.get("item_price") or order.get("unit_price") or 0.0)
+    # If item_price was total line revenue, convert to per-unit price using amazon_qty
+    if order.get("unit_price"):
+        item_unit_price = float(order.get("unit_price"))
+    elif raw_item_price > 0 and amazon_qty > 1:
+        item_unit_price = round(raw_item_price / amazon_qty, 2)
+    else:
+        item_unit_price = raw_item_price
 
     # Dates
     purchase_date_str = order.get("purchase_date")
@@ -172,20 +189,21 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     # -------------------------------------------------------------
     # 1. Amazon Item Price Changed
     # -------------------------------------------------------------
-    if item_price > 0 and last_order:
+    if item_unit_price > 0 and last_order:
         last_item_price = float(last_order.get("item_price") or 0.0)
-        # If item_price wasn't directly in orders, compute from earnings / qty
-        if last_item_price == 0 and float(last_order.get("earnings") or 0.0) > 0:
-            last_qty = max(1, int(last_order.get("quantity") or 1))
+        last_qty = max(1, int(last_order.get("amazon_qty") or last_order.get("quantity") or 1))
+        if last_item_price > 0:
+            last_item_unit_price = round(last_item_price / last_qty, 2)
+        else:
+            # If item_price wasn't directly in orders, compute from earnings / qty
             last_earn = float(last_order.get("earnings") or 0.0)
             last_fees = float(last_order.get("amazon_fees") or 0.0)
             last_ship = float(last_order.get("shipping_amt") or 0.0)
-            # Estimate gross item price: (earnings + fees - ship) / qty
-            last_item_price = round((last_earn + last_fees - last_ship) / last_qty, 2)
+            last_item_unit_price = round((last_earn + last_fees - last_ship) / last_qty, 2)
 
-        if last_item_price > 0 and abs(item_price - last_item_price) >= 0.50:
-            delta = item_price - last_item_price
-            pct = (delta / last_item_price) * 100.0
+        if last_item_unit_price > 0 and abs(item_unit_price - last_item_unit_price) >= 0.50:
+            delta = item_unit_price - last_item_unit_price
+            pct = (delta / last_item_unit_price) * 100.0
             last_date_str = last_order.get("purchase_date") or last_order.get("placed_at") or "earlier"
             direction = "INCREASED" if delta > 0 else "DECREASED"
             emoji = "📈" if delta > 0 else "📉"
@@ -202,13 +220,13 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                     f"• Title: *{title_str}*\n"
                     f"• SKU: `{sku_str}`\n"
                     f"• ASIN: `{asin}`\n"
-                    f"• Current Price: *${item_price:.2f}* (Order: `{current_amz_id}`)\n"
-                    f"• Previous Price: *${last_item_price:.2f}* ({last_date_str})\n"
-                    f"• Shift: *{'+$' if delta >= 0 else '-$'}{abs(delta):.2f}* ({pct:+.1f}%)"
+                    f"• Current Price: *${item_unit_price:.2f}* / unit (Order: `{current_amz_id}`)\n"
+                    f"• Previous Price: *${last_item_unit_price:.2f}* / unit ({last_date_str})\n"
+                    f"• Shift: *{'+$' if delta >= 0 else '-$'}{abs(delta):.2f}* / unit ({pct:+.1f}%)"
                 ),
                 "data": {
-                    "current_price": item_price,
-                    "last_price": last_item_price,
+                    "current_price": item_unit_price,
+                    "last_price": last_item_unit_price,
                     "delta": delta,
                     "pct": pct,
                     "last_date": last_date_str,
@@ -261,8 +279,18 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     # -------------------------------------------------------------
     # 3. Zoro Code Changed (Alternative SKU Triggered)
     # -------------------------------------------------------------
-    alt_used = order.get("alt_used") or order.get("alt_of") or ("ALT" in str(order.get("notes") or "").upper())
-    main_sku = order.get("alt_of") or order.get("main_sku") or "Primary SKU"
+    alt_used = order.get("alt_used") or order.get("alt_of") or ("ALT" in str(order.get("notes") or "").upper()) or ("- ALT" in str(order.get("code") or "").upper())
+    main_sku = order.get("alt_of") or order.get("main_sku")
+    if not main_sku or main_sku == "Primary SKU":
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            _, db_sku = _lookup_title_and_sku(asin)
+            if db_sku and db_sku != zoro_code:
+                main_sku = db_sku
+        except Exception:
+            pass
+    main_sku = main_sku or "Primary SKU"
+
     if alt_used:
         insights.append({
             "code": "ALT_CODE_USED",
@@ -278,7 +306,7 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                 f"• SKU: `{sku_str}`\n"
                 f"• ASIN: `{asin}`\n"
                 f"• Primary Zoro Code: `{main_sku}` (❌ Out of Stock)\n"
-                f"• Fulfilled By Alt: `{zoro_code}` (✅ Available)\n"
+                f"• Placed by Alternative: `{zoro_code}` (✅ Available)\n"
                 f"• Quantity: {qty} units"
             ),
             "data": {
@@ -385,11 +413,11 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     # -------------------------------------------------------------
     # 7. Clean Net Earnings / Unit Changed (Excl Shipping & Tax)
     # -------------------------------------------------------------
-    if earnings > 0 and qty > 0 and last_order:
-        current_clean_unit = round((earnings - shipping_amt) / qty, 2)
+    if earnings > 0 and amazon_qty > 0 and last_order:
+        current_clean_unit = round((earnings - shipping_amt) / amazon_qty, 2)
         last_earn = float(last_order.get("earnings") or 0.0)
         last_ship = float(last_order.get("shipping_amt") or 0.0)
-        last_qty = max(1, int(last_order.get("quantity") or 1))
+        last_qty = max(1, int(last_order.get("amazon_qty") or last_order.get("quantity") or 1))
         if last_earn > 0:
             last_clean_unit = round((last_earn - last_ship) / last_qty, 2)
             if last_clean_unit > 0 and abs(current_clean_unit - last_clean_unit) >= 1.00:

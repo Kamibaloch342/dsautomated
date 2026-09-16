@@ -89,8 +89,8 @@ def main():
 
     def ins():
         from scripts.send_insights_alerts import dispatch_account_insights
-        dispatch_account_insights(account="HOANK", days=3, limit=10)
-        dispatch_account_insights(account="Hathoro", days=3, limit=10)
+        dispatch_account_insights(account="HOANK", days=0, limit=10)
+        dispatch_account_insights(account="Hathoro", days=0, limit=10)
     step("whatsapp_insights", ins)
 
 

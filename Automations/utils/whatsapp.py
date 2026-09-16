@@ -265,13 +265,12 @@ def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, acc
     is_low_margin = (margin_decimal < 0.08) or (margin_no_tax is not None and margin_no_tax < 0.08)
     is_high_profit = (margin_decimal >= 0.20)
 
-    store_name = "Hathoro" if any(k in acc.lower() for k in ("hathoro", "dm_", "dm-", "abecom")) else "HOANK"
     if is_low_margin:
-        wa_header = f"⚠️ *LOW MARGIN ORDER (< 8% PRE-TAX): {pp_display}* — {store_name}"
+        wa_header = f"⚠️ *LOW MARGIN ORDER (< 8% PRE-TAX): {pp_display}*"
     elif is_high_profit:
-        wa_header = f"🎉 *PROFIT ORDER (+{pp_display})* 🔥 — {store_name}"
+        wa_header = f"🎉 *PROFIT ORDER (+{pp_display})* 🔥"
     else:
-        wa_header = f"✅ *ORDER PLACED (+{pp_display})* 🟢 — {store_name}"
+        wa_header = f"✅ *ORDER PLACED (+{pp_display})* 🟢"
 
     try:
         from utils.telegram import format_boss_note_text
@@ -321,7 +320,6 @@ def notify_order_oos(order: dict, screenshot_bytes: bytes = None, account: str =
 
     caption = (
         f"🚨 *OUT OF STOCK ALERT (OOS)*\n"
-        f"• Store Profile : {profile or 'Active Store'}\n"
         f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
         f"• SKU           : `{sku if sku else 'N/A'}`\n"
         f"• ASIN          : `{asin}`\n"
@@ -361,7 +359,6 @@ def notify_low_margin(order: dict, margin_pct: float, screenshot_bytes: bytes = 
 
     caption = (
         f"⚠️ *LOW PROFIT MARGIN WARNING (< 8%)*\n"
-        f"• Store Profile : {profile or 'Active Store'}\n"
         f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
         f"• SKU           : `{sku if sku else 'N/A'}`\n"
         f"• ASIN          : `{asin}`\n"
@@ -402,7 +399,6 @@ def notify_high_profit(order: dict, margin_pct: float, screenshot_bytes: bytes =
 
     caption = (
         f"🎉 *PROFIT ORDER (> 20%)*\n"
-        f"• Store Profile : {profile or 'Active Store'}\n"
         f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
         f"• SKU           : `{sku if sku else 'N/A'}`\n"
         f"• ASIN          : `{asin}`\n"
@@ -462,10 +458,10 @@ def notify_insight(insight: dict, account: str = "") -> bool:
 
 def notify_hijack(details: dict, screenshot_bytes: bytes = None) -> bool:
     """Send listing hijack alert when our rank is #2 or #3 to Insights group."""
-    store = details.get("store") or "Amazon Store"
     asin = str(details.get("asin") or "N/A").strip().upper()
     sku = str(details.get("sku") or "").strip()
     title = str(details.get("title") or "").strip()
+    store = details.get("store") or ""
 
     if (not title or not sku) and asin and asin != "N/A":
         try:
@@ -484,7 +480,6 @@ def notify_hijack(details: dict, screenshot_bytes: bytes = None) -> bool:
 
     caption = (
         f"🚨 *LISTING HIJACK ALERT: Position Dropped!*\n"
-        f"• Store       : {store}\n"
         f"• Title       : *{title[:80] if title else 'Tracked Product'}*\n"
         f"• SKU         : `{sku if sku else 'N/A'}`\n"
         f"• ASIN        : `{asin}`\n"

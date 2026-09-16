@@ -188,7 +188,7 @@ def format_boss_note_text(data: dict) -> str:
             sku = db_sku or code
         
     qty = data.get("qty", 1)
-    tracking = data.get("tracking_sent", "No")
+    tracking = "No"  # By default for just-placed orders, tracking msg sent is always No
     
     tc = data.get("tc") or data.get("zoro_price")
     tc_str = f"${float(tc):.2f}" if tc is not None and str(tc).strip() != "" else "N/A"
@@ -210,13 +210,13 @@ def format_boss_note_text(data: dict) -> str:
             pp = None
     pp_str = f"{float(pp):.1f}%" if pp is not None else "N/A"
     
-    # Coupon string
+    # Coupon string - FULL coupon code written out
     cu = str(data.get("coupon_code") or data.get("coupon") or "").strip()
     c_off = data.get("coupon_off")
-    if cu and cu not in ("None", "N/A", "False", ""):
-        sfx = f" - {cu[:3].upper()}" if cu.upper() != "AUTO_APPLIED" else ""
+    if cu and cu not in ("None", "N/A", "False", "0", ""):
+        sfx = f" - {cu.upper()}" if cu.upper() != "AUTO_APPLIED" else ""
         if c_off:
-            c_str = f"Used ( ${float(c_off):.2f} ){sfx}"
+            c_str = f"Used{sfx} ( -${float(c_off):.2f} )"
         else:
             c_str = f"Used{sfx}"
     else:
@@ -235,7 +235,6 @@ def format_boss_note_text(data: dict) -> str:
         f"Profit Margin: {pm_str}",
         f"Profit Percentage: {pp_str}",
         f"Coupon: {c_str}",
-        "\nComments: "
     ]
     
     return "\n".join(lines)
@@ -371,15 +370,14 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
             target_wa_group = get_whatsapp_group(account, kind="orders")
             wa_msg = (
                 f"⛔ *ORDER REJECTED — LOW PROFIT*\n\n"
-                f"*Store:* {account or 'ZUHRA Store'}\n"
-                f"*Title:* *{title[:80] if title else 'Product Listing'}*\n"
-                f"*SKU:* `{sku if sku else 'N/A'}`\n"
-                f"*ASIN:* `{asin}`\n"
-                f"*Amazon ID:* `{amazon_id}`\n"
-                f"*Earnings:* ${earnings:.2f} | *Cost:* ${cost:.2f}\n"
-                f"*Projected Profit:* {pfx}${dollar_diff:.2f} ({margin_pct})\n"
-                f"*Threshold:* Min required {thresh_pct}\n"
-                f"*Status:* Skipped / Marked {reason or 'LOSS'}"
+                f"• Title: *{title[:80] if title else 'Product Listing'}*\n"
+                f"• SKU: `{sku if sku else 'N/A'}`\n"
+                f"• ASIN: `{asin}`\n"
+                f"• Amazon ID: `{amazon_id}`\n"
+                f"• Earnings: ${earnings:.2f} | Cost: ${cost:.2f}\n"
+                f"• Projected Profit: {pfx}${dollar_diff:.2f} ({margin_pct})\n"
+                f"• Threshold: Min required {thresh_pct}\n"
+                f"• Status: Skipped / Marked {reason or 'LOSS'}"
             )
             send_whatsapp_message(wa_msg, to=target_wa_group, background=True)
     except Exception:
@@ -424,11 +422,10 @@ def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
             target_wa_group = get_whatsapp_group(account, kind="orders")
             wa_msg = (
                 f"🚨 *OUT OF STOCK (OOS) ALERT*\n\n"
-                f"*Store:* {account or 'ZUHRA'}\n"
-                f"*Title:* *{title[:80] if title else 'Product Listing'}*\n"
-                f"*SKU:* `{sku if sku else 'N/A'}`\n"
-                f"*ASIN:* `{asin}`\n"
-                f"*Zoro Code:* `{zoro_code}`\n"
+                f"• Title: *{title[:80] if title else 'Product Listing'}*\n"
+                f"• SKU: `{sku if sku else 'N/A'}`\n"
+                f"• ASIN: `{asin}`\n"
+                f"• Zoro Code: `{zoro_code}`\n"
                 f"*Amazon Order:* `{amazon_id}`\n"
                 f"*Action:* Marked 'OOS' on Amazon Seller Central"
             )

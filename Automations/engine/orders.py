@@ -2631,9 +2631,12 @@ def _extract_order_details(driver, amazon_order_id, fallback_qty=None):
 #  STEP 3: LOAD SKU MAP
 # ══════════════════════════════════════════════════════════════════
 
-def _get_sheets_service():
+_SKU_MAP_CACHE = {}
+_SKU_MAP_LAST_LOAD = 0.0
+
+def _get_sheets_service(force_new=False):
     """Build Google Sheets API v4 client (service account, cached — read-only)."""
-    if not hasattr(_get_sheets_service, "_svc"):
+    if force_new or not hasattr(_get_sheets_service, "_svc") or _get_sheets_service._svc is None:
         from google.oauth2 import service_account as _sa
         from googleapiclient.discovery import build as _build
         creds = _sa.Credentials.from_service_account_file(
@@ -2673,30 +2676,51 @@ def _extract_alt_sku(row_dict, zoro_code, asin):
         if str(key).strip().lower().replace(" ", "_") in _ALT_SKU_HEADERS:
             raw = str(val or "").strip()
             break
-    if not raw or raw.lower() in ("nan", "none"):
+    if not raw or raw in ("None", "N/A", "nan", "-"):
         return ""
     if not re.match(r'^G\d+$', raw):
-        print(f"  ⚠️  Invalid alternative_SKU '{raw}' for ASIN {asin} — ignoring alternative")
+        if raw != "OOS":
+            print(f"  ⚠️  Invalid alternative Zoro Code '{raw}' for ASIN {asin} — ignored")
         return ""
     if raw == zoro_code:
         return ""
     return raw
 
 
+def _execute_sheets_get(spreadsheetId, range_name, force_new=False):
+    """Execute a Google Sheets values.get with automatic SSL reconnect retry."""
+    for attempt in range(2):
+        try:
+            svc = _get_sheets_service(force_new=(force_new or attempt > 0))
+            return svc.spreadsheets().values().get(
+                spreadsheetId=spreadsheetId,
+                range=range_name,
+            ).execute()
+        except Exception as e:
+            if hasattr(_get_sheets_service, "_svc"):
+                _get_sheets_service._svc = None
+            if attempt == 0:
+                time.sleep(0.5)
+                continue
+            raise e
+
+
 def load_sku_map():
     """Load ASIN→Zoro mapping via Google Sheets API (fast, 1-2s).
+    Caches in memory for 5 minutes (300s) to prevent constant sheet querying.
     Falls back to CSV download if API fails."""
+    global _SKU_MAP_CACHE, _SKU_MAP_LAST_LOAD
+    now = time.time()
+    if _SKU_MAP_CACHE and (now - _SKU_MAP_LAST_LOAD < 300):
+        return dict(_SKU_MAP_CACHE)
+
     print("\n📦 Loading SKU map from Google Sheets...")
     try:
-        svc = _get_sheets_service()
-        result = svc.spreadsheets().values().get(
-            spreadsheetId=GOOGLE_SHEET_ID,
-            range=f"'{GOOGLE_SHEET_SKU_TAB}'!A:H",
-        ).execute()
+        result = _execute_sheets_get(GOOGLE_SHEET_ID, f"'{GOOGLE_SHEET_SKU_TAB}'!A:H")
         rows = result.get("values", [])
         if len(rows) < 2:
             print("  ⚠️  Sheet returned no data rows")
-            return {}
+            return dict(_SKU_MAP_CACHE) if _SKU_MAP_CACHE else {}
         headers = [h.strip() for h in rows[0]]
         sku_map = {}
         for row in rows[1:]:
@@ -2727,7 +2751,9 @@ def load_sku_map():
                 "alt_sku": _extract_alt_sku(d, zoro_code, asin),
             }
         print(f"  ✅ Loaded {len(sku_map)} ASIN→SKU mappings")
-        return sku_map
+        _SKU_MAP_CACHE = sku_map
+        _SKU_MAP_LAST_LOAD = time.time()
+        return dict(_SKU_MAP_CACHE)
     except Exception as e:
         print(f"  ⚠️  Sheets API failed ({e}) — falling back to CSV...")
 
@@ -2819,11 +2845,7 @@ _PROFILE_TO_DECIDING_COLUMN = {
 def _load_asin_column_from_sheet(col_name, what):
     """Read one column of ASINs from the 'Priority_ASIN_Control' tab by header name."""
     try:
-        svc = _get_sheets_service()
-        result = svc.spreadsheets().values().get(
-            spreadsheetId=GOOGLE_SHEET_ID,
-            range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:AZ500",
-        ).execute()
+        result = _execute_sheets_get(GOOGLE_SHEET_ID, f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:AZ500")
         rows = result.get("values", [])
         if len(rows) < 2:
             return []
@@ -2869,11 +2891,7 @@ def load_store_sorted_asins(profile_name):
     API failure (caller keeps the last-known set)."""
     pref = "DM" if profile_name.upper().startswith("DM") else "HS"
     try:
-        svc = _get_sheets_service()
-        result = svc.spreadsheets().values().get(
-            spreadsheetId=GOOGLE_SHEET_ID,
-            range=f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:AZ500",
-        ).execute()
+        result = _execute_sheets_get(GOOGLE_SHEET_ID, f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:AZ500")
         rows = result.get("values", [])
         if len(rows) < 2:
             return set()
@@ -4500,6 +4518,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 insight_data["deliver_by_date"] = db
                 insight_data["amazon_fees"] = amazon_fees
                 insight_data["shipping_amt"] = shipping_amt
+                insight_data["amazon_qty"] = primary_item.get("order_qty") or 1
+                insight_data["quantity"] = primary_item.get("order_qty") or 1
+                insight_data["zoro_qty"] = primary_item.get("final_qty") or qty_field or 1
+                insight_data["qty_multiplier"] = primary_item.get("qty_multiplier") or 1
+                insight_data["alt_used"] = alt_used_any
+                insight_data["alt_of"] = alt_main_sku
+                insight_data["main_sku"] = alt_main_sku
                 order_acct = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
                 insight_data["account"] = order_acct
                 triggered_insights = analyze_order_insights(insight_data)
@@ -4608,6 +4633,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             insight_data["deliver_by_date"] = db
             insight_data["amazon_fees"] = amazon_fees
             insight_data["shipping_amt"] = shipping_amt
+            insight_data["amazon_qty"] = primary_item.get("order_qty") or 1
+            insight_data["quantity"] = primary_item.get("order_qty") or 1
+            insight_data["zoro_qty"] = primary_item.get("final_qty") or qty_field or 1
+            insight_data["qty_multiplier"] = primary_item.get("qty_multiplier") or 1
+            insight_data["alt_used"] = alt_used_any
+            insight_data["alt_of"] = alt_main_sku
+            insight_data["main_sku"] = alt_main_sku
             if last_checkout_result:
                 insight_data["zoro_stock"] = last_checkout_result.get("stock_level") or last_checkout_result.get("zoro_stock")
                 insight_data["zoro_deliver_by"] = last_checkout_result.get("est_delivery") or last_checkout_result.get("zoro_deliver_by")
@@ -4883,11 +4915,7 @@ def load_coupon_codes():
         metadata = {}
 
     try:
-        svc = _get_sheets_service()
-        result = svc.spreadsheets().values().get(
-            spreadsheetId=GOOGLE_SHEET_ID,
-            range=f"'{GOOGLE_SHEET_COUPON_TAB}'!A:B",
-        ).execute()
+        result = _execute_sheets_get(GOOGLE_SHEET_ID, f"'{GOOGLE_SHEET_COUPON_TAB}'!A:B")
         rows = result.get("values", [])
         if len(rows) < 2:
             print("  ⚠️  Coupon sheet came back EMPTY — treated as a failed load (this profile never places without coupons)")
