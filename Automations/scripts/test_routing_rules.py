@@ -241,6 +241,7 @@ def main():
     check("focus: page-ineligible → skip", FD({"status": "PROMO_INELIGIBLE", "at": fresh}, ["FACILITY8M26"]) == "skip")
     check("focus: another priority coupon works (recent) → skip, nothing is lost", FD({"status": "COUPON_OK", "coupon": "HARDWARE8926", "at": fresh}, ["FACILITY8M26"]) == "skip")
     check("focus: recent SELECT / NO_PRIORITY verdict → skip", FD({"status": "SELECT", "at": fresh}, ["FACILITY8M26"]) == "skip" and FD({"status": "NO_PRIORITY", "at": fresh}, ["FACILITY8M26"]) == "skip")
+    check("focus: ZSELECT coupon probes recent SELECT item", FD({"status": "SELECT", "at": fresh}, ["ZSELECT9MA26"]) == "probe")
     check("focus: a stale verdict (older than the coupon) → probe again", FD({"status": "SELECT", "at": old}, ["FACILITY8M26"]) == "probe" and FD({"status": "COUPON_OK", "coupon": "POWER8X726", "at": old}, ["FACILITY8M26"]) == "probe")
 
     # ── 14 Sep: dead codes are not verdicts; priority codes retire after 3 dead replies ──
@@ -281,6 +282,8 @@ def main():
     d = D(T(total=5, item=1, min_order=1, dead=0, transient=3, regular_available=2, priority=3, regular_item=1, regular_transient=1,
             priority_min_order=1, priority_transient=2), 80.0, 100.0, False, fee, free, mm)
     check("coupon-fail (tiered): a live regular code answered transiently → not definitive, waits", d["action"] == "wait" and not d["definitive"], str(d))
+    d = D(T(total=2, item=2), 850.0, 1000.0, False, fee, free, mm)
+    check("coupon-fail: cart ≥ $800 → call_zoro_20 (never reseller or wait)", d["action"] == "call_zoro_20", str(d))
 
     # ── _deciding_verdict ────────────────────────────────────────────────
     dv = ns["_deciding_verdict"]
@@ -317,6 +320,17 @@ def main():
     d = sup(None, items, 80.0, pri, reg, cache, all_zoro_select=True)
     check("supervisor: Zoro Select, no priority coupon → reseller, regular NOT tested even at $80",
           d["action"] == "reseller" and "REG1" not in rec.coupon_calls and d["verdict"]["status"] == "SELECT")
+
+    rec.coupon_results = {"PRI20": (True, 170.0)}
+    d = sup(None, items, 850.0, pri, reg, cache, unit_price=850.0)
+    check("supervisor: cart ≥ $800 and priority coupon works → place with priority coupon",
+          d["action"] == "place" and d["tier"] == "priority" and d["coupon"] == "PRI20")
+
+    rec.coupon_results = {"PRI20": (False, ITEM), "PRI15": (False, ITEM), "REG1": (True, 85.0)}
+    rec.coupon_calls.clear()
+    d = sup(None, items, 850.0, pri, reg, cache, unit_price=850.0)
+    check("supervisor: cart ≥ $800, no priority coupon works → call_zoro_20; regular 10% coupons NEVER called",
+          d["action"] == "call_zoro_20" and "REG1" not in rec.coupon_calls)
 
     d = sup(None, items, 75.0, pri, reg, cache, unit_price=75.0)
     check("supervisor: no priority, cart ≥ $50, regular works → place; ASIN → Coupon column",

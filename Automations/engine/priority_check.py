@@ -352,7 +352,7 @@ def may_move(status: str, current_col: str, bot_owned: bool, mode: str = "new") 
         return True
     if bot_owned or mode == "reset":
         return True
-    if mode in ("recheck", "all", "sweep_added", "sweep_removed") and current_col.upper().endswith("_COUPON"):
+    if mode in ("live", "recheck", "all", "sweep_added", "sweep_removed") and current_col.upper().endswith("_COUPON"):
         return True
     return False
 

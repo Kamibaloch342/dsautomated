@@ -297,7 +297,7 @@ def reserve(amazon_id, profile=""):
                 # status == RELEASED: a prior clean pre-payment failure — retry allowed.
                 c.execute(
                     "UPDATE placer_claims SET status='PLACING', profile=?, attempts=attempts+1,"
-                    " claimed_at=?, note='re-reserve after release' WHERE amazon_order_id=?",
+                    " claimed_at=?, reconciled_at=NULL, note='re-reserve after release' WHERE amazon_order_id=?",
                     (profile, datetime.now().isoformat(), amazon_id),
                 )
                 return (NEW, {"reclaim": True, "attempts": (attempts or 1) + 1})
@@ -386,7 +386,7 @@ def reconcile_orphans(max_age_minutes=10):
             cur = c.execute(
                 "UPDATE placer_claims SET status='FAILED_KEPT', reconciled_at=?, "
                 "note='orphaned mid-placement (no outcome) — verify on Zoro before unlocking' "
-                "WHERE status='PLACING' AND reconciled_at IS NULL AND claimed_at < ?",
+                "WHERE status='PLACING' AND (reconciled_at IS NULL OR reconciled_at < claimed_at) AND claimed_at < ?",
                 (now, cutoff))
             n = cur.rowcount
         c.close()
@@ -425,7 +425,7 @@ def locked_orders(stale_placing_minutes=10):
         cutoff = (datetime.now() - timedelta(minutes=stale_placing_minutes)).isoformat()
         for r in c.execute(
                 "SELECT amazon_order_id,profile,claimed_at FROM placer_claims "
-                "WHERE status='PLACING' AND reconciled_at IS NULL AND claimed_at < ? "
+                "WHERE status='PLACING' AND (reconciled_at IS NULL OR reconciled_at < claimed_at) AND claimed_at < ? "
                 "ORDER BY claimed_at DESC", (cutoff,)):
             rows.append(dict(amazon_order_id=r[0], profile=r[1], claimed_at=r[2], reconciled_at=None,
                              note="stuck mid-placement (no outcome) — verify on Zoro before unlocking",

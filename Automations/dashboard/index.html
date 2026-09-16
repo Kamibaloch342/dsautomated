@@ -100,9 +100,9 @@
   button.tagchip:hover{background:var(--accent);color:#fff}
 
   /* drawer */
-  #ov{position:fixed;inset:0;background:rgba(16,24,40,.4);display:none;z-index:50;backdrop-filter:blur(1px)}
-  #dw{position:fixed;top:0;right:0;width:580px;max-width:96vw;height:100%;background:#fff;
-      box-shadow:-12px 0 40px rgba(16,24,40,.22);overflow:auto;padding:20px 22px}
+  #ov{position:fixed;inset:0;background:rgba(16,24,40,.4);display:none;z-index:50;backdrop-filter:blur(2px)}
+  #dw{position:fixed;top:0;right:0;width:640px;max-width:96vw;height:100%;background:#f8fafc;
+      box-shadow:-12px 0 40px rgba(16,24,40,.22);overflow-y:auto;padding:20px 22px;box-sizing:border-box}
   #dw h2{margin:0 0 2px;font-size:17px;letter-spacing:-.01em} #dw .sub{color:var(--muted);margin-bottom:14px}
   .sect{margin:16px 0 6px;font-weight:700;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);border-bottom:1px solid var(--line);padding-bottom:5px}
   .kv{display:grid;grid-template-columns:160px 1fr;gap:4px 12px;font-size:12.5px}
@@ -134,8 +134,8 @@
   .asinlink{color:var(--accent);cursor:pointer;text-decoration:underline}
   .asinlink:hover{color:var(--ink)}
   /* ASIN analysis modal */
-  #aov,#sov,#zov{position:fixed;inset:0;background:rgba(16,24,40,.4);display:none;z-index:60;align-items:flex-start;justify-content:center;overflow:auto;padding:30px;backdrop-filter:blur(1px)}
-  #adw,#sdw,#zdw{background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(16,24,40,.32);padding:20px 24px;width:900px;max-width:96vw}
+  #aov,#sov,#zov{position:fixed;inset:0;background:rgba(16,24,40,.4);display:none;z-index:60;align-items:flex-start;justify-content:center;overflow-y:auto;padding:30px 16px;backdrop-filter:blur(2px)}
+  #adw,#sdw,#zdw{background:#fff;border-radius:14px;box-shadow:0 24px 64px rgba(16,24,40,.32);padding:20px 24px;width:920px;max-width:96vw;box-sizing:border-box;max-height:92vh;overflow-y:auto;overflow-x:hidden}
   #zdw h2{margin:0 0 2px;font-size:16px}
   #sdw h2{margin:0 0 2px;font-size:16px}
   #adw h2{margin:0 0 2px;font-size:16px}
@@ -172,15 +172,44 @@
   .zbadge-blue{background:#e0f2fe;color:#0369a1}
   .zbadge-purple{background:#f3e8ff;color:#7e22ce}
 
-  .zcard{background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px 16px;box-shadow:var(--shadow)}
-  .zgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px 16px;font-size:12px}
+  .zcard{background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px 16px;box-shadow:var(--shadow);box-sizing:border-box;max-width:100%}
+  .zgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px 16px;font-size:12px}
   .zitem{display:flex;flex-direction:column;gap:1px}
   .zlbl{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--muted)}
   .zval{font-size:12.5px;font-weight:600;color:var(--ink);word-break:break-word}
 
-  .ztable{width:100%;border-collapse:collapse;font-size:12px}
-  .ztable th{background:#f8fafc;color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
-  .ztable td{padding:7px 8px;border-bottom:1px solid var(--line)}
+  .ztable{width:100%;border-collapse:collapse;font-size:11.5px}
+  .ztable th{background:#f8fafc;color:var(--muted);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  .ztable td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+
+  /* Drawer (#dw) modern styling */
+  .dw-close-btn{width:32px;height:32px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--line);cursor:pointer;font-size:20px;color:var(--muted);transition:all .15s;flex-shrink:0;padding:0}
+  .dw-close-btn:hover{background:#fee4e2;color:#b42318;border-color:#fecdca;transform:scale(1.05)}
+  .dw-copy-btn{border:none;background:none;cursor:pointer;font-size:13px;padding:2px 5px;border-radius:5px;transition:background .12s}
+  .dw-copy-btn:hover{background:var(--accsoft)}
+
+  .dw-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:10px 0 14px}
+  @media(max-width:580px){.dw-kpis{grid-template-columns:repeat(2,1fr)}}
+  .dw-kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;box-shadow:0 1px 3px rgba(16,24,40,.04);display:flex;flex-direction:column;justify-content:space-between}
+  .dw-kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:2px}
+  .dw-kpi-val{font-size:16px;font-weight:800;color:var(--ink);letter-spacing:-.02em}
+  .dw-kpi-sub{font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dw-kpi-pos{background:#f0fdf4;border-color:#bbf7d0}
+  .dw-kpi-neg{background:#fef2f2;border-color:#fecaca}
+
+  .dw-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin:8px 0 12px}
+  .dw-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:7px;font-size:11.5px;font-weight:600;cursor:pointer;background:#fff;border:1px solid var(--line);color:var(--ink);text-decoration:none;transition:all .12s;font-family:inherit}
+  .dw-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accsoft)}
+  .dw-btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .dw-btn-primary:hover{opacity:.92;background:var(--accent);color:#fff}
+
+  .dw-toolbar{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 13px;margin-bottom:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 1px 3px rgba(16,24,40,.04)}
+  .dw-toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .dw-toolbar-lbl{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+
+  .dw-card{background:#fff;border:1px solid var(--line);border-radius:11px;padding:12px 15px;margin-bottom:11px;box-shadow:0 1px 3px rgba(16,24,40,.04)}
+  .dw-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  .dw-card-title{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);display:flex;align-items:center;gap:6px}
 
   .cfeed-list{display:flex;flex-direction:column;gap:8px;max-height:220px;overflow-y:auto;padding-right:4px;margin-bottom:12px}
   .cfeed-item{display:flex;gap:10px;align-items:flex-start;background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:9px 12px;transition:background .12s}
@@ -595,22 +624,69 @@ const GROUPS=[
   ["Delivery / tracking",["tracking_ids","carrier","tracking_id_uploaded","delivery_status","delivery_date","deliver_by_date","zoro_deliver_by","zoro_stock","ship_by_date","shipped_email_time","shipped_on_time","ship_margin_hrs","on_time","signed_by","left_at","last_scan_location","time_to_ship_hrs","placement_speed","zoro_ship_speed"]],
   ["Returns / claim",["return_requested","return_reason","refund_done","refund_amount","refund_date","refund_reason","zoro_case_number","zoro_ra_number","zoro_refund_amount"]],
 ];
+function quickNoteDw(txt){
+  const el=$("#newnote");
+  if(!el)return;
+  const cur=el.value.trim();
+  el.value = cur ? (cur + " · " + txt) : txt;
+  el.focus();
+}
+function copyAddressText(btn, o){
+  o = o || window._DWO || {};
+  const parts = [
+    o.ship_name || '',
+    o.ship_street || '',
+    [o.ship_city, o.ship_state, o.ship_postal_code].filter(Boolean).join(' '),
+    o.ship_country || 'US',
+    o.ship_phone ? ('Phone: ' + o.ship_phone) : ''
+  ].filter(Boolean);
+  const text = parts.join('\n');
+  const done = () => {
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied Address';
+    setTimeout(() => btn.textContent = orig, 1500);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function copyTextDirect(btn, txt){
+  const done = () => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓';
+    setTimeout(() => btn.innerHTML = orig, 1200);
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done).catch(() => fallbackCopy(txt, done));
+  } else {
+    fallbackCopy(txt, done);
+  }
+}
+function formatPayment(method, card){
+  let m = (method || '').trim();
+  let c = (card || '').trim();
+  m = m.replace(/Ending in \*{4,}/i, '••••').replace(/Ending in /i, '••••').replace(/\*{4,}/g, '••••');
+  if (c && !m.includes(c)) m = m ? `${m} •${c}` : `••••${c}`;
+  return m || '—';
+}
+
 async function openDw(oid){
   const r=await api("/api/order/"+encodeURIComponent(oid));
   const o=r.order||{}; const notes=r.notes||[]; const rets=r.returns||[];
   window._DWO=o;   // current drawer order (tag toggles read the live tag list from here)
-  // ROI (profit/cost) — the metric your placer/Seller Note uses. Computed here, not stored,
-  // so the placement gate logic is untouched. profit_percent stays gross margin (profit/sale).
+
+  // ROI (profit/cost) — the metric your placer/Seller Note uses.
   const _c=+o.zoro_order_total, _p=+o.profit_dollars;
   if(_c>0 && !isNaN(_p)) o.roi_percent=Math.round(_p/_c*1000)/10;
   const KLBL={profit_percent:"margin % (profit÷sale)", roi_percent:"ROI % (profit÷cost — placer note)"};
-  // "Copy for boss" text — EXACTLY the seller-note format the placer writes on Amazon after
-  // placing (utils/seller_notes.format_seller_note): Title budgeted to 256 chars, G→K masked
-  // Code (+" - ALT"), TC/T/Earnings/PM/PP and the C-coupon line with the coupon's 3-letter tag.
+
+  // "Copy for boss" text
   window._copyText=(()=>{
     const num=v=>(v==null||v==="")?null:(isNaN(+v)?null:+v);
     const tc=num(o.zoro_order_total), tax=num(o.zoro_tax), earn=num(o.earnings), pm=num(o.profit_dollars);
-    const pp=(tc>0&&pm!=null)?(pm/tc*100):null;   // PP = ROI (profit÷cost) — same as the placer note
+    const pp=(tc>0&&pm!=null)?(pm/tc*100):null;
     const L=[`ASIN: ${o.asin||'N/A'}`];
     const askv=(""+(o.sku||"")).trim();
     if(askv&&askv!=="N/A"&&askv!=="None") L.push(`SKU: ${askv}`);
@@ -640,46 +716,290 @@ async function openDw(oid){
     body += "\n\nComments: ";
     return body;
   })();
+
   const grp=GROUPS.map(([t,ks])=>{
     const items=ks.filter(k=>o[k]!=null&&o[k]!=="").map(k=>`<b>${KLBL[k]||k}</b><span>${esc(fmt(k,o[k]))}</span>`).join("");
     return items?`<div class="sect">${t}</div><div class="kv">${items}</div>`:"";
   }).join("");
-  // LIVE Gmail return/refund — shows even if no closing run has touched this order yet
+
+  // LIVE Gmail return/refund
   const refund=rets.find(x=>x.refund_done==="Yes");
-  const retHtml = rets.length ? `<div class="alertbox ${refund?'rf':'rt'}">
+  const retHtml = rets.length ? `<div class="alertbox ${refund?'rf':'rt'}" style="margin-bottom:12px">
       <b>${refund?'💸 Refund detected in Gmail — act now':'↩ Return activity in Gmail'}</b>`+
       rets.slice(0,4).map(x=>`<div>${esc((x.email_timestamp||'').slice(0,16))} — ${x.refund_done==='Yes'?('refund $'+(x.refund_amount||0)+(x.refund_date?(' · '+esc(x.refund_date)):'')):'return requested'} ${esc(x.return_reason||'')}</div>`).join("")+`</div>` : "";
-  // messages + confirmations
-  const msgHtml = `<div class="sect">Messages &amp; confirmations</div><div class="kv">`+
-    [["tracking → Amazon", o.tracking_id_uploaded?("✓ "+o.tracking_id_uploaded):"—"],
-     ["delivery message sent", o.delivered_msg_sent||"—"],
-     ["review requested", o.review_request_sent||o.review_requested||"—"],
-     ["customer messaged us", o.customer_messaged||"—"],
-     ["customer inquiry", o.customer_inquiry||"—"]]
-     .map(([k,v])=>`<b>${k}</b><span>${esc(v)}</span>`).join("")+`</div>`;
-  const aLink = o.asin?`<a class="sclink" style="cursor:pointer" onclick="openAsin('${esc((''+o.asin).split(',')[0])}')">📈 ASIN insights</a>`:"";
-  $("#dw").innerHTML=`
-    <span class="close" onclick="closeDw()">×</span>
-    <h2>${esc(o.amazon_order_id||oid)}</h2>
-    <div class="sub"><span class="badge l-${esc(o.order_label)}">${esc(o.order_label)||""}</span> · ${esc(o.account)} · ${esc(o.title)}</div>
-    <div class="actions"><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(oid)}" target="_blank" rel="noopener">↗ Seller Central</a>${aLink}<button class="sclink" style="cursor:pointer" onclick="copyOrderText(this)">📋 Copy for boss</button></div>
+
+  // Messages card
+  const hasMsg = o.tracking_id_uploaded || o.delivered_msg_sent || o.review_request_sent || o.review_requested || o.customer_messaged || o.customer_inquiry;
+  const msgHtml = hasMsg ? `
+    <div class="dw-card">
+      <div class="dw-card-header">
+        <span class="dw-card-title">💬 Messages &amp; Confirmations</span>
+      </div>
+      <div class="zgrid">
+        <div class="zitem"><span class="zlbl">Tracking → Amazon</span><span class="zval">${o.tracking_id_uploaded ? ('✓ ' + esc(o.tracking_id_uploaded)) : '—'}</span></div>
+        <div class="zitem"><span class="zlbl">Delivery Msg Sent</span><span class="zval">${esc(o.delivered_msg_sent || '—')}</span></div>
+        <div class="zitem"><span class="zlbl">Review Requested</span><span class="zval">${esc(o.review_request_sent || o.review_requested || '—')}</span></div>
+        <div class="zitem"><span class="zlbl">Customer Messaged</span><span class="zval">${esc(o.customer_messaged || '—')}</span></div>
+        <div class="zitem"><span class="zlbl">Customer Inquiry</span><span class="zval">${esc(o.customer_inquiry || '—')}</span></div>
+      </div>
+      ${o.customer_message_text ? `<div style="margin-top:8px;font-size:11.5px;color:var(--ink);background:#f1f5f9;padding:7px 10px;border-radius:7px;border:1px solid var(--line)"><b>Customer:</b> ${esc(o.customer_message_text)}</div>` : ''}
+    </div>` : '';
+
+  const aLink = o.asin ? `<a class="dw-btn" style="cursor:pointer" onclick="openAsin('${esc(('' + o.asin).split(',')[0])}')">📈 ASIN Insights</a>` : "";
+  const fld = (k, v) => `<div class="zitem"><span class="zlbl">${k}</span><span class="zval">${v == null || v === '' ? '—' : v}</span></div>`;
+
+  const profit = o.profit_dollars != null ? +o.profit_dollars : null;
+  const isNeg = profit != null && profit < 0;
+  const isPos = profit != null && profit > 0;
+
+  // Header & Controls
+  const orderId = esc(o.amazon_order_id || oid);
+  const head = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+          <h2 style="margin:0;font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-.01em">${orderId}</h2>
+          <button class="dw-copy-btn" onclick="copyTextDirect(this, '${orderId}')" title="Copy Order ID">📋</button>
+          <span class="zbadge zbadge-acct">${esc(o.account || 'STORE')}</span>
+          <span class="zbadge ${o.order_status === 'Shipped' ? 'zbadge-green' : (o.order_status === 'Pending' ? 'zbadge-amber' : 'zbadge-blue')}">${esc(o.order_status || 'Status')}</span>
+          ${o.order_label ? `<span class="badge l-${esc(o.order_label)}">${esc(o.order_label)}</span>` : ''}
+          ${o.profile_name ? `<span class="zbadge zbadge-purple">${esc(o.profile_name)}</span>` : ''}
+        </div>
+        ${o.title ? `<div style="font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.4;margin-bottom:6px">${esc(o.title)}</div>` : ''}
+      </div>
+      <button class="dw-close-btn" onclick="closeDw()" title="Close">×</button>
+    </div>
+  `;
+
+  const actions = `
+    <div class="dw-actions">
+      <a class="dw-btn dw-btn-primary" href="https://sellercentral.amazon.com/orders-v3/order/${esc(oid)}" target="_blank" rel="noopener">↗ Seller Central</a>
+      ${aLink}
+      <button class="dw-btn" onclick="copyOrderText(this)">📋 Copy for Boss</button>
+      <button class="dw-btn" onclick="copyAddressText(this, window._DWO)">📍 Copy Address</button>
+      ${(o.wb_order_id || o.merchant_order_id) ? `<button class="dw-btn" onclick="openZoro('${esc(o.wb_order_id || o.merchant_order_id)}')">🛒 Zoro Legs (${esc(o.wb_order_id || o.merchant_order_id)})</button>` : ''}
+    </div>
+  `;
+
+  const toolbar = `
+    <div class="dw-toolbar">
+      <div class="dw-toolbar-row">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="dw-toolbar-lbl">Flag:</span>
+          ${["#b42318","#eab308","#067647"].map(c=>`<button onclick="act('${oid}',{flag_color:'${c}'})" style="background:${c};width:20px;height:20px;border-radius:50%;padding:0;border:none;cursor:pointer;${o.flag_color===c?'outline:2px solid #111;outline-offset:2px':''};transition:transform .1s" title="${c} flag"></button>`).join("")}
+          <button onclick="act('${oid}',{flag_color:''})" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:11.5px;text-decoration:underline">clear</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <span class="dw-toolbar-lbl">Case:</span>
+          <select onchange="act('${oid}',{case_status:this.value})" style="padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-size:11.5px;font-family:inherit;font-weight:600;color:var(--ink)">
+            ${["","Open","Filed with Zoro","Ask Zoro for Refund","Won","Lost"].map(s=>`<option ${o.case_status===s?"selected":""}>${s||'— No Status —'}</option>`).join("")}
+          </select>
+        </div>
+        <label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;font-weight:600;color:var(--ink);user-select:none">
+          <input type="checkbox" ${o.manual_delivered==="Yes"?"checked":""} onchange="act('${oid}',{manual_delivered:this.checked?'Yes':''})" style="accent-color:var(--accent);width:14px;height:14px;cursor:pointer"> Mark Delivered
+        </label>
+      </div>
+      ${tagsRowHtml(oid,o)}
+    </div>
+  `;
+
+  const kpis = `
+    <div class="dw-kpis">
+      <div class="dw-kpi">
+        <div class="dw-kpi-lbl">Amazon Earnings</div>
+        <div class="dw-kpi-val">${o.earnings != null ? usd(o.earnings) : '—'}</div>
+        <div class="dw-kpi-sub">Sale: ${o.item_price != null ? usd(o.item_price) : '—'} · Fees: ${o.amazon_fees != null ? usd(o.amazon_fees) : '—'}</div>
+      </div>
+      <div class="dw-kpi">
+        <div class="dw-kpi-lbl">Zoro Cost</div>
+        <div class="dw-kpi-val">${o.zoro_order_total != null ? usd(o.zoro_order_total) : '—'}</div>
+        <div class="dw-kpi-sub">Subtotal: ${o.zoro_subtotal != null ? usd(o.zoro_subtotal) : '—'} · Tax: ${o.zoro_tax != null ? usd(o.zoro_tax) : '$0.00'}</div>
+      </div>
+      <div class="dw-kpi ${isNeg ? 'dw-kpi-neg' : (isPos ? 'dw-kpi-pos' : '')}">
+        <div class="dw-kpi-lbl">Net Profit</div>
+        <div class="dw-kpi-val ${isNeg ? 'neg' : (isPos ? 'pos' : '')}">${profit != null ? (isNeg ? '-$' + Math.abs(profit).toFixed(2) : '$' + profit.toFixed(2)) : '—'}</div>
+        <div class="dw-kpi-sub">${(o.net_profit_after_refund != null && o.refund_done === 'Yes') ? ('Net after refund: ' + usd(o.net_profit_after_refund)) : (profit != null ? 'Gross Profit' : 'Pending')}</div>
+      </div>
+      <div class="dw-kpi">
+        <div class="dw-kpi-lbl">Margin / ROI</div>
+        <div class="dw-kpi-val ${isNeg ? 'neg' : (isPos ? 'pos' : '')}">${o.profit_percent != null ? o.profit_percent + '%' : '—'}</div>
+        <div class="dw-kpi-sub">ROI: ${o.roi_percent != null ? o.roi_percent + '%' : '—'}</div>
+      </div>
+    </div>
+  `;
+
+  const orderCard = `
+    <div class="dw-card">
+      <div class="dw-card-header">
+        <span class="dw-card-title">📦 Order &amp; Item Details</span>
+        ${o.is_business === 'Yes' ? '<span class="zbadge zbadge-purple">🏢 Business Customer</span>' : ''}
+      </div>
+      <div class="zgrid">
+        ${fld('ASIN', o.asin ? `<a class="asinlink" onclick="openAsin('${esc(('' + o.asin).split(',')[0])}')">${esc(o.asin)}</a> <a href="https://www.amazon.com/dp/${esc(('' + o.asin).split(',')[0])}" target="_blank" rel="noopener" style="font-size:11px;color:var(--muted)">↗</a>` : '—')}
+        ${fld('SKU', o.sku)}
+        ${fld('Quantity', o.quantity)}
+        ${fld('Purchased', o.purchase_date)}
+        ${fld('Placed At', o.placed_at)}
+        ${fld('Ship By', o.ship_by_date)}
+        ${fld('Deliver By', o.deliver_by_date)}
+        ${fld('Shipping Paid', o.shipping_price != null ? usd(o.shipping_price) : '—')}
+      </div>
+    </div>
+  `;
+
+  const addressCard = `
+    <div class="dw-card">
+      <div class="dw-card-header">
+        <span class="dw-card-title">📍 Customer &amp; Shipping Address</span>
+        <button class="dw-btn" style="padding:2px 8px;font-size:11px" onclick="copyAddressText(this, window._DWO)">📋 Copy Address</button>
+      </div>
+      <div class="zgrid">
+        ${fld('Recipient Name', o.ship_name ? `<b>${esc(o.ship_name)}</b>` : '—')}
+        ${fld('Street Address', o.ship_street)}
+        ${fld('City / State', [o.ship_city, o.ship_state].filter(Boolean).join(', ') || '—')}
+        ${fld('Postal Code (ZIP)', o.ship_postal_code)}
+        ${fld('Country', o.ship_country || 'US')}
+        ${fld('Phone Number', o.ship_phone)}
+      </div>
+    </div>
+  `;
+
+  const zoroCard = `
+    <div class="dw-card">
+      <div class="dw-card-header">
+        <span class="dw-card-title">🛒 Zoro Purchase &amp; Supplier</span>
+        ${(o.wb_order_id || o.merchant_order_id) ? `<button class="dw-btn" style="padding:2px 8px;font-size:11px" onclick="openZoro('${esc(o.wb_order_id || o.merchant_order_id)}')">🔍 View WB Receipt</button>` : ''}
+      </div>
+      <div class="zgrid">
+        ${fld('WB Order ID', o.wb_order_id ? `<b>${esc(o.wb_order_id)}</b>` : (o.merchant_order_id || '—'))}
+        ${fld('Zoro Account', o.zoro_account_name)}
+        ${fld('Zoro SKU / Code', o.zoro_sku ? `<a href="https://www.zoro.com/i/${esc(o.zoro_sku)}" target="_blank" rel="noopener" style="font-weight:700;color:var(--accent)">${esc(o.zoro_sku)} ↗</a>` : '—')}
+        ${fld('Zoro Qty', o.zoro_qty)}
+        ${fld('Coupon Savings', o.coupon_savings != null ? usd(o.coupon_savings) : '—')}
+        ${fld('Payment Method', formatPayment(o.zoro_payment_method, o.zoro_payment_card))}
+        ${fld('Placement Speed', o.placement_speed)}
+        ${fld('Buyer Zip', o.zoro_buyer_zip || o.ship_postal_code)}
+      </div>
+      ${o.zoro_item_desc ? `<div style="margin-top:8px;font-size:11.5px;color:var(--muted);background:#f8fafc;padding:6px 10px;border-radius:7px;border:1px solid var(--line)"><b>Item:</b> ${esc(o.zoro_item_desc)}</div>` : ''}
+      <div id="dwzoro" style="margin-top:8px"></div>
+    </div>
+  `;
+
+  const trackingCard = `
+    <div class="dw-card">
+      <div class="dw-card-header">
+        <span class="dw-card-title">🚚 Tracking &amp; Fulfillment</span>
+        <span class="zbadge ${o.delivery_status === 'Delivered' ? 'zbadge-green' : (o.delivery_status ? 'zbadge-amber' : 'zbadge-blue')}">${esc(o.delivery_status || 'Pending')}</span>
+      </div>
+      <div class="zgrid">
+        ${fld('Carrier', o.carrier || 'FedEx')}
+        ${fld('Tracking ID', o.tracking_ids ? `<span style="font-weight:700;letter-spacing:.02em">${esc(o.tracking_ids)}</span>` : '—')}
+        ${fld('Uploaded to Amazon', o.tracking_id_uploaded ? `<span style="color:var(--green);font-weight:700">✓ ${esc(o.tracking_id_uploaded)}</span>` : 'No')}
+        ${fld('On-Time Status', o.on_time ? `<span style="color:${o.on_time === 'Yes' ? 'var(--green)' : 'var(--red)'};font-weight:700">${esc(o.on_time)}</span>` : '—')}
+        ${fld('Shipped Date', o.shipped_email_time)}
+        ${fld('Delivered Date', o.delivery_date)}
+        ${fld('Deliver By Date', o.deliver_by_date)}
+        ${fld('Signed By / Left At', [o.signed_by, o.left_at].filter(Boolean).join(' / ') || '—')}
+      </div>
+      ${o.last_scan_location ? `<div style="margin-top:8px;font-size:11px;color:var(--muted)">📍 Last Scan: <b>${esc(o.last_scan_location)}</b></div>` : ''}
+    </div>
+  `;
+
+  const returnCard = (o.return_requested === 'Yes' || o.refund_done === 'Yes' || o.zoro_case_number) ? `
+    <div class="dw-card" style="border-color:#fecaca;background:#fffaf0">
+      <div class="dw-card-header" style="border-color:#fed7aa">
+        <span class="dw-card-title" style="color:#c2410c">↩️ Returns &amp; Claims</span>
+      </div>
+      <div class="zgrid">
+        ${fld('Return Requested', o.return_requested === 'Yes' ? ('Yes — ' + (o.return_reason || '')) : 'No')}
+        ${fld('Refund Done', o.refund_done === 'Yes' ? ('Yes $' + (o.refund_amount || '') + (o.refund_date ? (' (' + esc(o.refund_date) + ')') : '')) : 'No')}
+        ${fld('Zoro Case #', o.zoro_case_number)}
+        ${fld('Zoro RA #', o.zoro_ra_number)}
+        ${fld('Zoro Refund Amt', o.zoro_refund_amount != null ? usd(o.zoro_refund_amount) : '—')}
+      </div>
+    </div>` : '';
+
+  const crmBlock = `
+    <div class="cdiary-box" style="margin-top:12px">
+      <div class="cdiary-header">
+        <span class="cdiary-title">📌 Team Notes &amp; Activity Diary (${notes.length})</span>
+      </div>
+
+      <!-- Feed of existing notes -->
+      <div class="cfeed-list">
+        ${notes.length ? notes.map(n => {
+          const author = n.author || 'User';
+          const initials = author.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase() || 'U';
+          return `
+            <div class="cfeed-item">
+              <div class="cfeed-avatar">${esc(initials)}</div>
+              <div class="cfeed-body">
+                <div class="cfeed-meta">
+                  <span class="cfeed-author">${esc(author)}</span>
+                  <span class="cfeed-time">${esc((n.created_at || '').slice(0, 16))}</span>
+                </div>
+                <div class="cfeed-text">${esc(n.note)}</div>
+              </div>
+            </div>
+          `;
+        }).join("") : `
+          <div style="padding:14px;text-align:center;color:var(--muted);font-size:12px;background:#f8fafc;border-radius:8px;border:1px dashed var(--line)">
+            💬 No comments yet. Use the quick presets below or type a note to save to this order.
+          </div>
+        `}
+      </div>
+
+      <!-- Quick Preset Chips -->
+      <div style="font-size:11px;font-weight:600;color:var(--muted);margin-bottom:5px">⚡ Quick Presets (Click to insert):</div>
+      <div class="qchips-row">
+        <button type="button" class="qchip" onclick="quickNoteDw('Order never received')">⚠️ Order not received</button>
+        <button type="button" class="qchip" onclick="quickNoteDw('Please issue return label')">🔄 Return label requested</button>
+        <button type="button" class="qchip" onclick="quickNoteDw('Ask Zoro for refund')">💸 Ask Zoro for refund</button>
+        <button type="button" class="qchip" onclick="quickNoteDw('Replacement requested from Zoro')">📦 Replacement requested</button>
+        <button type="button" class="qchip" onclick="quickNoteDw('Refund pending from Zoro')">💰 Refund pending</button>
+        <button type="button" class="qchip" onclick="quickNoteDw('Contacted Zoro support')">📞 Contacted Zoro</button>
+        <button type="button" class="qchip" onclick="quickNoteDw('Customer resolved / satisfied')">✅ Issue resolved</button>
+      </div>
+
+      <!-- Comment Box with Cmd+Enter submission -->
+      <div class="cinput-wrap">
+        <textarea id="newnote" class="cinput-box" placeholder="Add a comment to yourself or team (Cmd+Enter to post)…"
+          onkeydown="if((event.metaKey||event.ctrlKey)&&event.key==='Enter'){event.preventDefault();addNote('${esc(oid)}');}"></textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
+          <span style="font-size:11px;color:var(--muted)">Tip: Press <b>⌘+Enter</b> or <b>Ctrl+Enter</b> to post instantly</span>
+          <button class="cbtn-submit" onclick="addNote('${esc(oid)}')">💬 Post Comment</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const rawAccordion = `
+    <details style="margin-top:12px;background:#fff;border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:12px">
+      <summary style="cursor:pointer;font-weight:700;color:var(--muted);user-select:none">
+        🔍 All Raw Database Fields (${Object.keys(o).length} fields)
+      </summary>
+      <div style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px">
+        ${grp}
+      </div>
+    </details>
+  `;
+
+  $("#dw").innerHTML = `
+    ${head}
+    ${actions}
     ${retHtml}
-    <div class="actions"><span>Flag:</span>
-      ${["#b42318","#eab308","#067647"].map(c=>`<button onclick="act('${oid}',{flag_color:'${c}'})" style="background:${c};width:22px;height:22px;border-radius:50%;padding:0"></button>`).join("")}
-      <button onclick="act('${oid}',{flag_color:''})">clear</button></div>
-    ${tagsRowHtml(oid,o)}
-    <div class="actions"><span>Case:</span>
-      <select onchange="act('${oid}',{case_status:this.value})">
-        ${["","Open","Filed with Zoro","Won","Lost"].map(s=>`<option ${o.case_status===s?"selected":""}>${s}</option>`).join("")}
-      </select>
-      <label class="chk"><input type="checkbox" ${o.manual_delivered==="Yes"?"checked":""} onchange="act('${oid}',{manual_delivered:this.checked?'Yes':''})"> mark delivered</label></div>
-    ${grp}
-    <div id="dwzoro"></div>
+    ${toolbar}
+    ${kpis}
+    ${orderCard}
+    ${addressCard}
+    ${zoroCard}
+    ${trackingCard}
+    ${returnCard}
     ${msgHtml}
-    <div class="sect">Comments</div>
-    <div id="notes">${notes.map(n=>`<div class="note">${esc(n.note)}<br><small>${esc(n.author||"me")} · ${esc((n.created_at||"").slice(0,16))}</small></div>`).join("")||'<div style="color:var(--muted);font-size:12px">No comments yet.</div>'}</div>
-    <textarea id="newnote" placeholder="Add a comment / action note…"></textarea>
-    <div class="actions"><button class="save" onclick="addNote('${oid}')">Add comment</button></div>`;
+    ${crmBlock}
+    ${rawAccordion}
+  `;
+
   $("#ov").style.display="block";
   renderDwZoro(o);   // async — one compact Zoro-catalog line under "Zoro / cost" (or nothing)
 }
@@ -1216,7 +1536,7 @@ function renderSevere(){
   const card=(k,lbl,big,sub,color)=>`<div onclick="SEV_FILT=(SEV_FILT==='${k}'?'':'${k}');renderSevere()" title="click to filter"
     style="cursor:pointer;flex:1;min-width:210px;background:var(--card);border-radius:11px;box-shadow:var(--shadow);padding:13px 15px;border-left:5px solid ${color};outline:${sel(k)?'2px solid '+color:'none'}">
     <div style="font-size:12px;color:var(--muted)">${lbl}</div><div style="font-size:25px;font-weight:800">${big}</div><div style="font-size:13px;color:${color};font-weight:700">${sub}</div></div>`;
-  const opts=["","Open","Resolved","Filed with Zoro","Ignored"];
+  const opts=["","Open","Resolved","Filed with Zoro","Ask Zoro for Refund","Ignored"];
   const ball=c=>c?`<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${esc(c)};vertical-align:middle"></span>`:'';
   const rt=items=>`<table style="font-size:12px"><thead><tr><th></th><th>order</th><th style="text-align:right">refund $</th><th style="text-align:right">net profit</th><th>reason</th><th>ASIN</th><th>resolve</th><th></th></tr></thead><tbody>${(items||[]).map(x=>`<tr style="${x.resolved?'opacity:.4':''}">
     <td>${x.flag?ball(x.flag):(x.resolved?'✓':'🔴')}</td>
@@ -1229,7 +1549,7 @@ function renderSevere(){
     <td><a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(x.order_id)}" target="_blank" rel="noopener">SC↗</a></td></tr>`).join("")||`<tr><td colspan=8 style="color:var(--muted);padding:10px">none 🎉</td></tr>`}</tbody></table>`;
   const csv="data:text/csv;charset=utf-8,wb,amount%0A"+(pc.items||[]).map(x=>x.wb+","+x.amount).join("%0A");
   const show=k=>!SEV_FILT||SEV_FILT===k;
-  const popts=["","Open","Resolved","Filed with Zoro","Ignored"];
+  const popts=["","Open","Resolved","Filed with Zoro","Ask Zoro for Refund","Ignored"];
   const placedSec=`<div class="sect">🧾 Zoro orders placed + paid but never captured — May 2026 onwards (${pc.count} open${pc.total?(' / '+pc.total):''}) ${pc.total?`&nbsp;<a class="sclink" href="${csv}" download="placed_not_captured.csv">⬇ CSV</a>`:""}</div>
     <div style="font-size:11px;color:var(--muted);margin:2px 0 6px">Click a WB for its Zoro receipt. Set a status to resolve (saved). No Amazon order links these — investigate at Zoro (cancel/return) or find the missing order.</div>
     <table style="font-size:12px;max-width:640px"><thead><tr><th></th><th>WB</th><th style="text-align:right">Zoro $</th><th>resolve</th></tr></thead><tbody>${(pc.items||[]).slice(0,400).map(x=>`<tr style="${x.resolved?'opacity:.4':''}">
@@ -1263,57 +1583,116 @@ function quickNote(txt){
 async function openZoro(id){
   const r=await api("/api/order_zoro?id="+encodeURIComponent(id)).catch(()=>({legs:[]}));
   const o=r.order,legs=r.legs||[];
-  const fld=(k,v)=>`<div class="zitem"><span class="zlbl">${k}</span><span class="zval">${esc(v==null||v===''?'—':v)}</span></div>`;
+  const fld=(k,v)=>`<div class="zitem"><span class="zlbl">${k}</span><span class="zval">${v==null||v===''?'—':v}</span></div>`;
   
-  // Header with badges
+  // Header with badges and close button
   const head=`
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-      <h2 style="margin:0;font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-.01em">${esc(r.key)}</h2>
-      ${o?`
-        <span class="zbadge zbadge-acct">${esc(o.account||'STORE')}</span>
-        <span class="zbadge ${o.order_status==='Shipped'?'zbadge-green':'zbadge-amber'}">${esc(o.order_status||'Status')}</span>
-        ${o.order_label?`<span class="zbadge zbadge-blue">${esc(o.order_label)}</span>`:''}
-        ${o.merchant_order_id?`<span class="zbadge zbadge-purple">${esc(o.merchant_order_id)}</span>`:''}
-      `:`<span style="font-size:12px;color:#b42318;font-weight:600">· WB not captured in any Amazon order</span>`}
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <h2 style="margin:0;font-size:18px;font-weight:800;color:var(--ink);letter-spacing:-.01em">${esc(r.key)}</h2>
+        <button class="dw-copy-btn" onclick="copyTextDirect(this,'${esc(r.key)}')" title="Copy ID">📋</button>
+        ${o?`
+          <span class="zbadge zbadge-acct">${esc(o.account||'STORE')}</span>
+          <span class="zbadge ${o.order_status==='Shipped'?'zbadge-green':'zbadge-amber'}">${esc(o.order_status||'Status')}</span>
+          ${o.order_label?`<span class="zbadge zbadge-blue">${esc(o.order_label)}</span>`:''}
+          ${o.merchant_order_id?`<span class="zbadge zbadge-purple">${esc(o.merchant_order_id)}</span>`:''}
+        `:`<span style="font-size:12px;color:#b42318;font-weight:600">· WB not captured in any Amazon order</span>`}
+      </div>
+      <button class="dw-close-btn" onclick="closeZoro()" title="Close (Esc)">×</button>
     </div>
   `;
 
   let summary="";
   if(o){
+    const earn = o.earnings != null ? usd(o.earnings) : '—';
+    const cost = o.zoro_order_total != null ? usd(o.zoro_order_total) : '—';
+    const profNum = +o.profit_dollars;
+    const isPos = !isNaN(profNum) && profNum > 0;
+    const isNeg = !isNaN(profNum) && profNum < 0;
+    const prof = o.profit_dollars != null ? ('$' + Number(o.profit_dollars).toFixed(2)) : '—';
+    const profCls = isPos ? 'dw-kpi-pos' : (isNeg ? 'dw-kpi-neg' : '');
+    const margin = (o.profit_percent != null && o.profit_percent !== '') ? `${o.profit_percent}% margin` : '';
+    const roi = (o.roi_percent != null && o.roi_percent !== '') ? `${o.roi_percent}% ROI` : '';
+    const subProf = [margin, roi].filter(Boolean).join(' · ') || 'Gross profit';
     const g=fld;
+
     summary=`
-      ${o.title?`<div style="font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.4;margin:6px 0 10px">${esc(o.title)}</div>`:""}
+      ${o.title ? `<div style="font-size:13px;font-weight:600;color:var(--ink);line-height:1.4;margin:0 0 10px;padding:7px 12px;background:#f8fafc;border-radius:8px;border:1px solid var(--line)">${esc(o.title)}</div>` : ""}
+      
+      <div class="dw-kpis" style="margin:0 0 12px">
+        <div class="dw-kpi">
+          <div class="dw-kpi-lbl">Amazon Earnings</div>
+          <div class="dw-kpi-val">${earn}</div>
+          <div class="dw-kpi-sub">Net payout</div>
+        </div>
+        <div class="dw-kpi">
+          <div class="dw-kpi-lbl">Zoro Cost</div>
+          <div class="dw-kpi-val">${cost}</div>
+          <div class="dw-kpi-sub">${o.coupon_savings ? `Saved ${usd(o.coupon_savings)} coupon` : 'Supplier total'}</div>
+        </div>
+        <div class="dw-kpi ${profCls}">
+          <div class="dw-kpi-lbl">Net Profit</div>
+          <div class="dw-kpi-val" style="${isPos?'color:#027a48':(isNeg?'color:#b42318':'')}">${prof}</div>
+          <div class="dw-kpi-sub">${esc(subProf)}</div>
+        </div>
+        <div class="dw-kpi">
+          <div class="dw-kpi-lbl">Fulfillment</div>
+          <div class="dw-kpi-val" style="font-size:13px;padding-top:2px">${esc(o.delivery_status || o.order_status || 'In Transit')}</div>
+          <div class="dw-kpi-sub">${esc(o.on_time || (o.delivery_date ? 'Delivered' : 'Pending delivery'))}</div>
+        </div>
+      </div>
+
       <div class="zcard" style="margin-bottom:12px">
-        <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px">
-          📦 Amazon Order Details
+        <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+          <span>📦 Amazon Order &amp; Delivery</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            ${o.amazon_order_id ? `<button class="dw-btn" style="padding:2px 8px;font-size:11px" onclick="closeZoro();openDw('${esc(o.amazon_order_id)}')">🔍 Full Details</button>` : ''}
+            <button class="dw-btn" style="padding:2px 8px;font-size:11px" onclick="copyAddressText(this, window._DWO || ${esc(JSON.stringify(o))})">📋 Copy Address</button>
+          </div>
         </div>
         <div class="zgrid">
-          ${g('ASIN',o.asin)} ${g('SKU',o.sku)} ${g('Qty',o.quantity)}
-          ${g('Purchased',o.purchase_date)} ${g('Sold (ship-now)',o.sold_email_time)} ${g('Ship-by',o.ship_by_date)}
-          ${g('Earnings',o.earnings!=null?usd(o.earnings):'—')} ${g('Zoro cost',o.zoro_order_total!=null?usd(o.zoro_order_total):'—')} ${g('Profit',o.profit_dollars!=null?('$'+o.profit_dollars+' ('+(o.profit_percent||0)+'%)'):'—')}
-          ${g('Refund',o.refund_done==='Yes'?('Yes $'+(o.refund_amount||'')+(o.refund_date?(' '+(''+o.refund_date).slice(0,10)):'')):'No')} ${g('Net after refund',o.net_profit_after_refund!=null?usd(o.net_profit_after_refund):'—')} ${g('Return',o.return_requested==='Yes'?('Yes — '+(o.return_reason||'')):'No')}
-          ${g('Tracking',o.tracking_ids)} ${g('Carrier',o.carrier)} ${g('Delivery',o.delivery_status)}
-          ${g('Deliver-by',o.deliver_by_date)} ${g('Delivered',o.delivery_date)} ${g('On-time',o.on_time)}
-          ${g('Placement spd',o.placement_speed)} ${g('Zoro ship spd',o.zoro_ship_speed)} ${g('Zoro acct',o.zoro_account_name)}
-          ${g('Payment',(o.zoro_payment_method||'')+(o.zoro_payment_card?(' •'+o.zoro_payment_card):''))} ${g('Coupon',o.coupon_savings!=null?usd(o.coupon_savings):'—')} ${g('Buyer zip',o.zoro_buyer_zip||o.ship_postal_code)}
-          ${g('Ship to',o.ship_name)} ${g('City/State',((o.ship_city||'')+' '+(o.ship_state||'')).trim())} ${g('Phone',o.ship_phone)}
+          ${g('ASIN / SKU', (o.asin ? `<a href="https://www.amazon.com/dp/${esc(o.asin)}" target="_blank" rel="noopener" class="asinlink">${esc(o.asin)}</a>` : '—') + (o.sku ? ` · ${esc(o.sku)}` : '') + (o.quantity ? ` (×${o.quantity})` : ''))}
+          ${g('Purchased / Sold', esc(o.purchase_date || '—') + (o.sold_email_time ? ` · ${esc(o.sold_email_time)}` : ''))}
+          ${g('Ship By / Deliver By', esc(o.ship_by_date || '—') + (o.deliver_by_date ? ` · Deliver: ${esc(o.deliver_by_date)}` : ''))}
+          ${g('Ship To', esc(o.ship_name || '—') + ' · ' + esc((((o.ship_city||'') + ' ' + (o.ship_state||'')).trim()) || '—'))}
+          ${g('Tracking / Carrier', (o.tracking_ids ? `<span style="font-family:monospace;font-size:11.5px">${esc(o.tracking_ids)}</span> <button class="dw-copy-btn" onclick="copyTextDirect(this,'${esc(o.tracking_ids)}')" title="Copy Tracking">📋</button>` : '—') + (o.carrier ? ` · ${esc(o.carrier)}` : ''))}
+          ${g('Supplier & Payment', esc(o.zoro_account_name || '—') + ' · ' + esc(formatPayment(o.zoro_payment_method, o.zoro_payment_card)))}
         </div>
       </div>
     `;
   }
 
-  const rows=legs.map(l=>{const z=l.zoro||{},t=l.tracking||{};return `<tr>
-    <td><b>${esc(l.wb)}</b></td><td>${esc(z.zoro_account_name||z.gmail_account||'—')}</td>
-    <td style="text-align:right">${z.order_total!=null?usd(z.order_total):'—'}</td>
-    <td>${esc(z.payment_method||'')} ${z.payment_card_last4?('•'+esc(z.payment_card_last4)):''}</td>
-    <td>${esc(z.sku||'')}${z.qty?(' ×'+z.qty):''}</td><td>${esc(z.order_date||(z.email_timestamp||'').slice(0,10))}</td>
-    <td>${esc(t.tracking_ids||'')}</td>
-    <td>${l.captured_in?('<span style="color:var(--green);font-weight:600">✓ '+esc(l.captured_in)+'</span>'):'<span style="color:var(--red);font-weight:600">✗ not captured</span>'}</td></tr>`;}).join("");
+  const rows=legs.map(l=>{
+    const z=l.zoro||{}, t=l.tracking||{};
+    const pmtStr = formatPayment(z.payment_method, z.payment_card_last4);
+    const skuQty = (z.sku || '') + (z.qty ? ` ×${z.qty}` : '');
+    const wbOrder = l.wb || '';
+    const dateStr = z.order_date || (z.email_timestamp || '').slice(0, 10) || '—';
+    const trackId = t.tracking_ids || '';
+
+    return `<tr>
+      <td style="white-space:nowrap">
+        <b>${esc(wbOrder)}</b>
+        ${wbOrder ? `<button class="dw-copy-btn" onclick="copyTextDirect(this,'${esc(wbOrder)}')" title="Copy WB">📋</button>` : ''}
+      </td>
+      <td style="white-space:nowrap">${esc(z.zoro_account_name || z.gmail_account || '—')}</td>
+      <td style="text-align:right;font-weight:700;white-space:nowrap">${z.order_total != null ? usd(z.order_total) : '—'}</td>
+      <td style="white-space:nowrap;font-family:monospace;font-size:11px">${esc(pmtStr)}</td>
+      <td style="white-space:nowrap">${esc(skuQty || '—')}</td>
+      <td style="white-space:nowrap">${esc(dateStr)}</td>
+      <td style="white-space:nowrap">
+        ${trackId ? `<span style="font-family:monospace;font-size:11.5px">${esc(trackId)}</span> <button class="dw-copy-btn" onclick="copyTextDirect(this,'${esc(trackId)}')" title="Copy Tracking">📋</button>` : '—'}
+      </td>
+      <td style="white-space:nowrap">
+        ${l.captured_in ? `<span class="asinlink" onclick="closeZoro();openDw('${esc(l.captured_in)}')" style="color:var(--green);font-weight:700;font-size:11.5px;font-family:monospace" title="Click to open Amazon order details">✓ ${esc(l.captured_in)}</span>` : '<span style="color:var(--red);font-weight:600;font-size:11px">✗ Not captured</span>'}
+      </td>
+    </tr>`;
+  }).join("");
 
   const cr=r.crm||{}, notes=r.notes||[];
   const targetOid = (o && o.amazon_order_id) ? o.amazon_order_id : r.key;
   const flags=["#b42318","#eab308","#067647"].map(col=>`<button onclick="zoroAct('${esc(targetOid)}',{flag_color:'${col}'})" style="background:${col};width:22px;height:22px;border-radius:50%;padding:0;border:0;cursor:pointer;${cr.flag_color===col?'outline:2px solid #111;outline-offset:2px':''};transition:transform .1s" title="${col} flag"></button>`).join("")+` <button onclick="zoroAct('${esc(targetOid)}',{flag_color:''})" style="border:none;background:none;color:var(--muted);cursor:pointer;font-size:11.5px;text-decoration:underline">clear</button>`;
-  const opts=["","Open","Resolved","Filed with Zoro","Won","Lost","Ignored"];
+  const opts=["","Open","Resolved","Filed with Zoro","Ask Zoro for Refund","Won","Lost","Ignored"];
 
   const crmBlock=`
     <div class="cdiary-box">
@@ -1331,14 +1710,14 @@ async function openZoro(id){
         <div style="display:flex;gap:8px;align-items:center">
           <span style="font-size:11.5px;font-weight:600;color:var(--muted)">Status:</span>
           <select onchange="zoroAct('${esc(targetOid)}',{case_status:this.value})" style="padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-family:inherit;font-size:12px;font-weight:600;color:var(--ink)">
-            ${opts.map(o=>`<option ${cr.case_status===o?'selected':''}>${o||'— No Status —'}</option>`).join("")}
+            ${opts.map(opt=>`<option ${cr.case_status===opt?'selected':''}>${opt||'— No Status —'}</option>`).join("")}
           </select>
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex:1;min-width:260px">
           <span style="font-size:11.5px;font-weight:600;color:var(--muted)">Reminder:</span>
           <input id="zrem_date" type="date" value="${esc((cr.reminder_at||'').slice(0,10))}" style="padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-size:11.5px">
           <input id="zrem_note" placeholder="Follow-up task / memo..." value="${esc(cr.reminder_note||'')}" style="flex:1;min-width:120px;padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-size:11.5px">
-          <button class="ghost" style="padding:4px 10px;font-size:11.5px" onclick="zoroAct('${esc(targetOid)}',{reminder_at:$('#zrem_date').value,reminder_note:$('#zrem_note').value})">Save</button>
+          <button class="ghost" style="padding:4px 10px;font-size:11.5px;font-weight:600" onclick="zoroAct('${esc(targetOid)}',{reminder_at:$('#zrem_date').value,reminder_note:$('#zrem_note').value})">Save</button>
         </div>
       </div>
 
@@ -1374,6 +1753,7 @@ async function openZoro(id){
       <div class="qchips-row">
         <button type="button" class="qchip" onclick="quickNote('Order never received')">⚠️ Order not received</button>
         <button type="button" class="qchip" onclick="quickNote('Please issue return label')">🔄 Return label requested</button>
+        <button type="button" class="qchip" onclick="quickNote('Ask Zoro for refund')">💸 Ask Zoro for refund</button>
         <button type="button" class="qchip" onclick="quickNote('Replacement requested from Zoro')">📦 Replacement requested</button>
         <button type="button" class="qchip" onclick="quickNote('Refund pending from Zoro')">💰 Refund pending</button>
         <button type="button" class="qchip" onclick="quickNote('Contacted Zoro support')">📞 Contacted Zoro</button>
@@ -1392,21 +1772,44 @@ async function openZoro(id){
     </div>
   `;
 
-  $("#zdw").innerHTML=`<span class="close" onclick="closeZoro()">×</span>${head}${summary}
-    <div class="zcard" style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+  $("#zdw").innerHTML=`${head}${summary}
+    <div class="zcard" style="margin-bottom:12px;overflow:hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">
           🛒 Zoro Legs (${legs.length}) — Total ${usd(r.zoro_total)}
         </span>
-        ${o?`<a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(r.key)}" target="_blank" rel="noopener" style="font-size:11px;padding:3px 9px">↗ Seller Central</a>`:""}
+        ${(o && o.amazon_order_id)?`<a class="sclink" href="https://sellercentral.amazon.com/orders-v3/order/${esc(o.amazon_order_id)}" target="_blank" rel="noopener" style="font-size:11px;padding:3px 9px">↗ Seller Central</a>`:""}
       </div>
-      <table class="ztable"><thead><tr><th>WB</th><th>Zoro account</th><th style="text-align:right">cost</th><th>payment</th><th>SKU</th><th>date</th><th>tracking</th><th>captured?</th></tr></thead>
-        <tbody>${rows||'<tr><td colspan=8 style="color:var(--muted);text-align:center;padding:12px">no Zoro receipt found for this id</td></tr>'}</tbody></table>
+      <div style="overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;border-radius:8px">
+        <table class="ztable">
+          <thead>
+            <tr>
+              <th>WB</th>
+              <th>Zoro account</th>
+              <th style="text-align:right">cost</th>
+              <th>payment</th>
+              <th>SKU / Qty</th>
+              <th>date</th>
+              <th>tracking</th>
+              <th>captured?</th>
+            </tr>
+          </thead>
+          <tbody>${rows||'<tr><td colspan=8 style="color:var(--muted);text-align:center;padding:14px">no Zoro receipt found for this id</td></tr>'}</tbody>
+        </table>
+      </div>
     </div>
     ${crmBlock}`;
   $("#zov").style.display="flex";
 }
 function closeZoro(){$("#zov").style.display="none";}
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") {
+    if ($("#zov") && $("#zov").style.display === "flex") closeZoro();
+    else if ($("#ov") && $("#ov").style.display === "block") closeDw();
+    else if ($("#aov") && $("#aov").style.display === "flex") closeAsin();
+    else if ($("#sov") && $("#sov").style.display === "flex") closeSov();
+  }
+});
 async function zoroAct(key,fields){await api("/api/order_update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({order_id:key},fields))});openZoro(key);if(TAB==='severe')loadSevere();if(TAB==='tracker')loadTracker();}
 async function zoroNote(key){const el=$("#znote");if(!el)return;const t=el.value.trim();if(!t)return;el.value="";await api("/api/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id:key,note:t,author:ensureProfile()})});openZoro(key);}
 let _DFILT={}, _dtmr;
@@ -1647,7 +2050,7 @@ function renderRefunds(){
   const col={no_return_request:"#b42318",instant_auto:"#b54708",delayed:"#6941c6"};
   let rows=(window._REFUNDS||[]);
   if(REFUND_CAT) rows=rows.filter(x=>x.category===REFUND_CAT);
-  const opts=["","Open","Resolved","Filed with Zoro","Ignored"];
+  const opts=["","Open","Resolved","Filed with Zoro","Ask Zoro for Refund","Ignored"];
   const body=rows.map(x=>`<tr style="${x.resolved?'opacity:.45':''}">
     <td>${x.flag?`<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${esc(x.flag)};vertical-align:middle"></span>`:`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col[x.category]}"></span>`}</td>
     <td><span class="asinlink" onclick="openDw('${esc(x.order_id)}')">${esc(x.order_id)}</span></td>
@@ -1698,10 +2101,13 @@ async function loadDataHealth(){
 }
 async function act(oid,fields){
   await api("/api/order_update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign({order_id:oid},fields))});
+  if($("#ov") && $("#ov").style.display==="block") openDw(oid);
   refreshCurrent();
 }
 async function addNote(oid){
-  const t=$("#newnote").value.trim(); if(!t)return;
+  const el=$("#newnote"); if(!el)return;
+  const t=el.value.trim(); if(!t)return;
+  el.value="";
   await api("/api/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({order_id:oid,note:t,author:ensureProfile()})});
   openDw(oid);
 }
@@ -1716,13 +2122,14 @@ function ensureProfile(){
 function refreshWho(){const b=$("#whoami");if(b)b.textContent="👤 "+(PROFILE||"set name");}
 
 // ── Tags (standard set + custom "Other…", stored in order_crm.tags) ─────────
-const TAGS_STD=["Replacement","Reship","Damaged","Wrong Item","Chargeback"];
+const TAGS_STD=["Replacement","Reship","Return Label","Ask Zoro for Refund","Damaged","Wrong Item","Chargeback"];
 function tagList(o){return (""+(o&&o.tags||"")).split(",").map(s=>s.trim()).filter(Boolean);}
 function tagsRowHtml(oid,o){
   const cur=tagList(o);
-  return `<div class="actions"><span>Tags:</span>`+
+  return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="dw-toolbar-lbl">Tags:</span>`+
     cur.map(t=>`<button class="tagchip" onclick="toggleTag('${esc(oid)}','${esc(t)}')" title="click to remove">${esc(t)} ×</button>`).join("")+
-    `<select onchange="pickTag('${esc(oid)}',this)"><option value="">+ tag…</option>`+
+    `<select onchange="pickTag('${esc(oid)}',this)" style="padding:4px 8px;border:1px solid var(--line);border-radius:7px;font-size:11.5px;font-family:inherit;font-weight:600;background:#fff;color:var(--ink)">
+      <option value="">+ tag…</option>`+
     TAGS_STD.filter(t=>!cur.includes(t)).map(t=>`<option>${t}</option>`).join("")+
     `<option value="__other">Other (custom)…</option></select></div>`;
 }
@@ -2225,6 +2632,160 @@ let REPRICER_STRATEGY = "ALL";
 let REPRICER_QUERY = "";
 let REPRICER_DATA = null;
 let REPRICER_POLL = null;
+let REPRICER_LIVE_DATA = null;
+let REPRICER_LIVE_POLL = null;
+let REPRICER_LOG_AUTOSCROLL = true;
+let REPRICER_CONSOLE_COLLAPSED = false;
+
+async function pollRepricerLiveLog(){
+  try {
+    const live = await api(`/api/repricer_live_log?account=${encodeURIComponent(REPRICER_ACCOUNT)}`);
+    REPRICER_LIVE_DATA = live;
+    updateLiveLogDOM();
+  } catch(e){
+    console.warn("pollRepricerLiveLog error", e);
+  }
+}
+
+function updateLiveLogDOM(){
+  if(!REPRICER_LIVE_DATA) return;
+  const live = REPRICER_LIVE_DATA;
+  const prog = live.progress || {};
+  const sched = live.schedule || {};
+
+  // Update progress bar
+  const $bar = $("#repProgBarFill");
+  const $pct = $("#repProgPct");
+  const $statText = $("#repProgStatusText");
+  const $currAsin = $("#repProgCurrAsin");
+  const $succ = $("#repProgSuccess");
+  const $fail = $("#repProgFail");
+  const $elapsed = $("#repProgElapsed");
+  const $nextRun = $("#repNextRun");
+
+  const pctVal = prog.percent != null ? prog.percent : (prog.total ? Math.round((prog.current/prog.total)*100) : 0);
+  if($bar) $bar.style.width = pctVal + "%";
+  if($pct) $pct.textContent = pctVal + "%";
+  if($statText) {
+    if(live.is_scraping) {
+      $statText.innerHTML = `<span style="display:inline-block;animation:spin 1s linear infinite;color:#f59e0b">⚡</span> Scraping ${esc(prog.current||0)} of ${esc(prog.total||0)} ASINs for <b>${esc(REPRICER_ACCOUNT)}</b>…`;
+    } else {
+      $statText.innerHTML = `<span>● Scraper Ready &amp; Synchronized for <b>${esc(REPRICER_ACCOUNT)}</b></span>`;
+    }
+  }
+  if($currAsin) {
+    if(prog.current_asin) {
+      $currAsin.innerHTML = `📌 <b>Current:</b> <a href="https://www.amazon.com/dp/${esc(prog.current_asin)}" target="_blank" style="color:#2563eb;text-decoration:underline;font-weight:700">${esc(prog.current_asin)}</a>`;
+      $currAsin.style.display = "inline-flex";
+    } else {
+      $currAsin.style.display = "none";
+    }
+  }
+  if($succ) $succ.textContent = `✓ ${prog.successful_count||0} Scraped`;
+  if($fail) $fail.textContent = `⚠️ ${prog.failed_count||0} Errors`;
+  if($elapsed && prog.elapsed_seconds) {
+    const m = Math.floor(prog.elapsed_seconds / 60);
+    const s = Math.floor(prog.elapsed_seconds % 60);
+    $elapsed.textContent = `⏱️ ${m}m ${s}s elapsed`;
+  }
+  if($nextRun) {
+    const nextStr = sched.next_run || "In 12 hours";
+    $nextRun.innerHTML = `⏰ <b>Auto 12h Scrape:</b> Active (Next: <span style="color:#0284c7;font-weight:700">${esc(nextStr)}</span>)`;
+  }
+
+  // Update terminal console
+  const $consoleBody = $("#repLiveLogBody");
+  if($consoleBody && live.lines) {
+    const formatted = live.lines.map(l => {
+      const escLine = esc(l);
+      if(l.includes("✓") || l.includes("COMPLETE") || l.includes("successfully")) {
+        return `<div class="term-line-success">${escLine}</div>`;
+      } else if(l.includes("⚠️") || l.includes("Warning") || l.includes("crash") || l.includes("Respawning")) {
+        return `<div class="term-line-warn">${escLine}</div>`;
+      } else if(l.includes("❌") || l.includes("Error") || l.includes("failed")) {
+        return `<div class="term-line-err">${escLine}</div>`;
+      } else if(l.includes("[*]") || l.includes("Scraping ASIN") || l.includes("TRIGGERED")) {
+        return `<div class="term-line-info">${escLine}</div>`;
+      }
+      return `<div class="term-line-normal">${escLine}</div>`;
+    }).join("");
+    
+    $consoleBody.innerHTML = formatted || `<div style="color:#64748b;font-style:italic">Console idle. Click "Refresh &amp; Scrape Live" or wait for 12h auto-scan to stream live output.</div>`;
+    
+    if(REPRICER_LOG_AUTOSCROLL) {
+      $consoleBody.scrollTop = $consoleBody.scrollHeight;
+    }
+  }
+
+  // Update live terminal status badge
+  const $liveDot = $("#repTerminalLiveDot");
+  if($liveDot) {
+    if(live.is_scraping) {
+      $liveDot.innerHTML = `<span class="term-dot-active"></span><span style="color:#10b981;font-weight:800">LIVE STREAMING</span>`;
+    } else {
+      $liveDot.innerHTML = `<span class="term-dot-idle"></span><span style="color:#94a3b8;font-weight:700">IDLE</span>`;
+    }
+  }
+}
+
+function toggleRepricerLogAutoScroll(){
+  REPRICER_LOG_AUTOSCROLL = !REPRICER_LOG_AUTOSCROLL;
+  const $btn = $("#repBtnAutoScroll");
+  if($btn) {
+    $btn.textContent = `Auto-Scroll: ${REPRICER_LOG_AUTOSCROLL ? 'ON' : 'OFF'}`;
+    $btn.className = `term-btn ${REPRICER_LOG_AUTOSCROLL ? 'on' : ''}`;
+  }
+}
+
+function toggleRepricerConsole(){
+  REPRICER_CONSOLE_COLLAPSED = !REPRICER_CONSOLE_COLLAPSED;
+  const $body = $("#repLiveLogBody");
+  const $btn = $("#repBtnToggleConsole");
+  if($body) $body.style.display = REPRICER_CONSOLE_COLLAPSED ? "none" : "block";
+  if($btn) $btn.textContent = REPRICER_CONSOLE_COLLAPSED ? "▲ Expand" : "▼ Collapse";
+}
+
+function clearRepricerConsole(){
+  const $body = $("#repLiveLogBody");
+  if($body) $body.innerHTML = `<div style="color:#64748b;font-style:italic">Console cleared.</div>`;
+}
+
+function copyRepricerLog(){
+  if(!REPRICER_LIVE_DATA || !REPRICER_LIVE_DATA.lines || !REPRICER_LIVE_DATA.lines.length) {
+    toast("Info", "No log output to copy yet.");
+    return;
+  }
+  const text = REPRICER_LIVE_DATA.lines.join("\n");
+  navigator.clipboard.writeText(text).then(()=>{
+    toast("📋 Copied", "Scraper logs copied to clipboard!");
+  }).catch(()=>{
+    alert("Could not copy log text automatically.");
+  });
+}
+
+async function toggle12hSchedule(){
+  const curSched = (REPRICER_LIVE_DATA && REPRICER_LIVE_DATA.schedule) ? REPRICER_LIVE_DATA.schedule : { enabled: true, interval_hours: 12 };
+  const interval = prompt(
+    "⏰ Automatic Repricer Scheduler Settings\n\n" +
+    "How many hours between automatic competitor scraping cycles?\n" +
+    "(Enter '12' for every 12 hours, or '0' to pause automatic schedule):",
+    curSched.interval_hours || "12"
+  );
+  if(interval === null) return;
+  const num = parseFloat(interval);
+  if(isNaN(num) || num < 0){
+    alert("Please enter a valid positive number of hours.");
+    return;
+  }
+  try {
+    const payload = num === 0 ? { enabled: false } : { enabled: true, interval_hours: num };
+    await api("/api/repricer_schedule", { method: "POST", body: JSON.stringify(payload) });
+    toast("⏰ Schedule Updated", num === 0 ? "Automatic scraping paused." : `Scraper scheduled to run every ${num} hours.`);
+    pollRepricerLiveLog();
+  } catch(e){
+    alert("Could not update schedule: " + (e.message || e));
+  }
+}
 
 async function loadRepricer(force=false){
   const $R = $("#repricer");
@@ -2242,16 +2803,26 @@ async function loadRepricer(force=false){
     REPRICER_DATA = res;
     renderRepricer();
 
+    // Also poll live log and progress
+    await pollRepricerLiveLog();
+
     // Check if background scraping is running and auto-poll
     if(res.is_scraping){
       if(!REPRICER_POLL){
-        REPRICER_POLL = setInterval(()=>loadRepricer(false), 3000);
+        REPRICER_POLL = setInterval(()=>loadRepricer(false), 3500);
+      }
+      if(!REPRICER_LIVE_POLL){
+        REPRICER_LIVE_POLL = setInterval(pollRepricerLiveLog, 1500);
       }
     } else {
       if(REPRICER_POLL){
         clearInterval(REPRICER_POLL);
         REPRICER_POLL = null;
         toast("🎉 Repricer Updated", `Live scraping complete for ${REPRICER_ACCOUNT}! Data refreshed.`);
+      }
+      if(REPRICER_LIVE_POLL){
+        clearInterval(REPRICER_LIVE_POLL);
+        REPRICER_LIVE_POLL = null;
       }
     }
   } catch(e) {
@@ -2280,6 +2851,7 @@ async function triggerRepricerScrape(){
     `🚀 Start Live Amazon Competitor Scraping for ${REPRICER_ACCOUNT}?\n\n` +
     `• Undetected Chrome will launch in the background.\n` +
     `• Scrapes live Buy Box, Lowest 1, 2, 3 sellers & prices across all ${REPRICER_ACCOUNT} listings.\n` +
+    `• Real-time progress and live terminal logs will stream below.\n` +
     `• The Repricer tab will update live and automatically generate the updated Excel (.xlsx) report.`
   );
   if(!confirmed) return;
@@ -2287,6 +2859,9 @@ async function triggerRepricerScrape(){
   try {
     const res = await api(`/api/repricer_scrape?account=${encodeURIComponent(REPRICER_ACCOUNT)}`);
     toast("⚡ Scraper Started", res.message || `Background scraper running for ${REPRICER_ACCOUNT}`);
+    if(!REPRICER_LIVE_POLL){
+      REPRICER_LIVE_POLL = setInterval(pollRepricerLiveLog, 1500);
+    }
     loadRepricer(true);
   } catch(e) {
     alert("Could not start scraper: " + (e.message||e));
@@ -2776,6 +3351,221 @@ function renderRepricer(){
     @keyframes spin { 100% { transform: rotate(360deg); } }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Cockpit Progress Card */
+    .rep-cockpit-card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 14px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+    }
+    .rep-cockpit-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .rep-pulse-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #94a3b8;
+    }
+    .rep-pulse-dot.active {
+      background: #10b981;
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulseGreen 1.5s infinite;
+    }
+    @keyframes pulseGreen {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    .rep-sched-pill {
+      font-size: 11.5px;
+      color: #334155;
+      background: #f1f5f9;
+      padding: 4px 12px;
+      border-radius: 20px;
+      border: 1px solid #cbd5e1;
+    }
+    .rep-sched-btn {
+      font-size: 11px;
+      font-weight: 700;
+      color: #0284c7;
+      background: #e0f2fe;
+      border: 1px solid #bae6fd;
+      padding: 4px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .rep-sched-btn:hover {
+      background: #0284c7;
+      color: #ffffff;
+    }
+    .rep-bar-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .rep-bar-track {
+      flex: 1;
+      height: 12px;
+      background: #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+    .rep-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #2563eb 0%, #38bdf8 50%, #10b981 100%);
+      border-radius: 8px;
+      transition: width 0.4s ease;
+    }
+    .rep-bar-fill.animated {
+      background-size: 200% 100%;
+      animation: barStripe 2s linear infinite;
+    }
+    @keyframes barStripe {
+      0% { background-position: 100% 0; }
+      100% { background-position: 0 0; }
+    }
+    .rep-bar-pct {
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #0f172a;
+      min-width: 48px;
+      text-align: right;
+    }
+    .rep-chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .rep-chip {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .rep-chip-asin { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .rep-chip-success { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .rep-chip-fail { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+    .rep-chip-time { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+    .rep-chip-zip { background: #faf5ff; color: #7e22ce; border: 1px solid #f3e8ff; }
+    .rep-chip-cadence { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+
+    /* Terminal Console */
+    .rep-terminal-card {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+    .rep-terminal-head {
+      background: #0f172a;
+      border-bottom: 1px solid #1e293b;
+      padding: 8px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .rep-term-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .rep-mac-dots {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .mac-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .mac-dot.red { background: #ef4444; }
+    .mac-dot.yellow { background: #f59e0b; }
+    .mac-dot.green { background: #10b981; }
+    .rep-term-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10.5px;
+      background: #1e293b;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .term-dot-idle {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #64748b;
+    }
+    .term-dot-active {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      animation: blinkDot 1s infinite;
+    }
+    @keyframes blinkDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .rep-term-controls {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .term-btn {
+      background: #1e293b;
+      color: #cbd5e1;
+      border: 1px solid #334155;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .term-btn:hover {
+      background: #334155;
+      color: #ffffff;
+    }
+    .term-btn.on {
+      background: #0284c7;
+      color: #ffffff;
+      border-color: #38bdf8;
+    }
+    .rep-terminal-body {
+      padding: 12px 14px;
+      max-height: 280px;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size: 11.5px;
+      line-height: 1.55;
+      color: #e2e8f0;
+      background: #090d16;
+    }
+    .term-line-normal { color: #cbd5e1; margin-bottom: 2px; white-space: pre-wrap; word-break: break-word; }
+    .term-line-info { color: #38bdf8; font-weight: 600; margin-bottom: 2px; white-space: pre-wrap; word-break: break-word; }
+    .term-line-success { color: #10b981; font-weight: 600; margin-bottom: 2px; white-space: pre-wrap; word-break: break-word; }
+    .term-line-warn { color: #f59e0b; font-weight: 600; margin-bottom: 2px; white-space: pre-wrap; word-break: break-word; }
+    .term-line-err { color: #f87171; font-weight: 700; margin-bottom: 2px; white-space: pre-wrap; word-break: break-word; }
   </style>
 
   <div class="rep-container">
@@ -2815,21 +3605,78 @@ function renderRepricer(){
       </div>
     </div>
 
-    <!-- Live Scraping Progress Banner (Shows when scraping) -->
-    ${D.is_scraping ? `
-      <div class="rep-scrape-banner">
-        <div class="rep-scrape-info">
-          <div class="rep-scrape-spinner">⚡</div>
-          <div>
-            <div class="rep-scrape-text-title">Undetected Chrome Scraper is Active for ${esc(REPRICER_ACCOUNT)}</div>
-            <div class="rep-scrape-text-sub">Scanning live Amazon offers, Top 3 Lowest sellers, and Buy Box statuses... Table auto-updates every 3s.</div>
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- LIVE PROGRESS & 12-HOUR AUTO-SCHEDULE COCKPIT             -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="rep-cockpit-card">
+      <div class="rep-cockpit-top">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="rep-pulse-dot ${D.is_scraping ? 'active' : ''}"></div>
+          <div id="repProgStatusText" style="font-weight:800;font-size:14px;color:#1e293b">
+            ${D.is_scraping 
+              ? `<span style="display:inline-block;animation:spin 1s linear infinite;color:#f59e0b">⚡</span> Undetected Chrome Scraper Active for <b>${esc(REPRICER_ACCOUNT)}</b>…` 
+              : `<span>● Scraper Ready &amp; Synchronized for <b>${esc(REPRICER_ACCOUNT)}</b></span>`}
           </div>
         </div>
-        <div style="font-size:12px;font-weight:700;color:#92400e">
-          ${esc(D.last_scrape_status || "Scraping in progress...")}
+        
+        <div style="display:flex;align-items:center;gap:12px">
+          <div id="repNextRun" class="rep-sched-pill">
+            ⏰ <b>Auto 12h Scrape:</b> Active
+          </div>
+          <button class="rep-sched-btn" onclick="toggle12hSchedule()" title="Configure 12-hour cadence">
+            ⚙️ 12h Schedule
+          </button>
         </div>
       </div>
-    ` : ''}
+
+      <!-- Real-Time Progress Bar -->
+      <div class="rep-bar-container">
+        <div class="rep-bar-track">
+          <div id="repProgBarFill" class="rep-bar-fill ${D.is_scraping ? 'animated' : ''}" style="width:0%"></div>
+        </div>
+        <div id="repProgPct" class="rep-bar-pct">0%</div>
+      </div>
+
+      <!-- Real-Time Stat Chips -->
+      <div class="rep-chips-row">
+        <span id="repProgCurrAsin" class="rep-chip rep-chip-asin" style="display:none">📌 Current ASIN</span>
+        <span id="repProgSuccess" class="rep-chip rep-chip-success">✓ 0 Scraped</span>
+        <span id="repProgFail" class="rep-chip rep-chip-fail">⚠️ 0 Errors</span>
+        <span id="repProgElapsed" class="rep-chip rep-chip-time">⏱️ 0s elapsed</span>
+        <span class="rep-chip rep-chip-zip">📍 ZIP: NYC 10001</span>
+        <span class="rep-chip rep-chip-cadence">🔄 Every 12 Hours Auto</span>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <!-- REAL-TIME TERMINAL CONSOLE & LIVE LOG VIEWER               -->
+    <!-- ══════════════════════════════════════════════════════════ -->
+    <div class="rep-terminal-card">
+      <div class="rep-terminal-head">
+        <div class="rep-term-left">
+          <div class="rep-mac-dots">
+            <span class="mac-dot red"></span>
+            <span class="mac-dot yellow"></span>
+            <span class="mac-dot green"></span>
+          </div>
+          <span style="font-weight:800;font-size:12px;color:#f8fafc;letter-spacing:0.02em">🖥️ LIVE SCRAPER CONSOLE &amp; INTELLIGENCE LOG</span>
+          <div id="repTerminalLiveDot" class="rep-term-badge">
+            <span class="term-dot-idle"></span><span style="color:#94a3b8;font-weight:700">IDLE</span>
+          </div>
+        </div>
+
+        <div class="rep-term-controls">
+          <button id="repBtnAutoScroll" class="term-btn on" onclick="toggleRepricerLogAutoScroll()">Auto-Scroll: ON</button>
+          <button class="term-btn" onclick="copyRepricerLog()">📋 Copy Log</button>
+          <button class="term-btn" onclick="clearRepricerConsole()">🧹 Clear</button>
+          <button id="repBtnToggleConsole" class="term-btn" onclick="toggleRepricerConsole()">▼ Collapse</button>
+        </div>
+      </div>
+
+      <div id="repLiveLogBody" class="rep-terminal-body">
+        <div style="color:#64748b;font-style:italic">Connecting to live scraper log stream…</div>
+      </div>
+    </div>
 
     <!-- 6 Executive KPI Cards -->
     <div class="rep-kpis-grid">
@@ -3006,6 +3853,7 @@ function renderRepricer(){
   `;
 
   $R.innerHTML = html;
+  updateLiveLogDOM();
 }
 
 

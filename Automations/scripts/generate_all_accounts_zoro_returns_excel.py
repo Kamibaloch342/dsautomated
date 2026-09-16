@@ -7,7 +7,8 @@ reconciling Zoro returns for:
 - asad.amazon.us (asad_amazon_us)
 - abecomllc26 (abecomllc26)
 - salesmercentile1 (salesmercentile1)
-- salesmercentile / Wrenchly LLC (salesmercentile)
+- salesmercentile (salesmercentile)
+- wrenchly (wrenchlyllc)
 
 Features:
 - Comparative Executive Summary with cross-account KPIs
@@ -194,11 +195,12 @@ def build_workbook():
 
     # Order of accounts
     ACCOUNTS_ORDER = [
-        ("salesmercentile", "salesmercentile (Wrenchly LLC)", "salesmercentile@gmail.com", "CUST25017919"),
+        ("salesmercentile", "salesmercentile", "salesmercentile@gmail.com", "CUST25017919"),
         ("inhur_llc", "inuhr", "inuhrecomllc5@gmail.com", "Child Account"),
         ("asad_amazon_us", "asad.amazon.us", "asad.amazon.us@gmail.com", "Sister Account"),
         ("abecomllc26", "abecomllc26", "abecomllc26@gmail.com", "Sister Account"),
-        ("salesmercentile1", "salesmercentile1", "salesmercentile1@gmail.com", "CUST25217105")
+        ("salesmercentile1", "salesmercentile1", "salesmercentile1@gmail.com", "CUST25217105"),
+        ("wrenchlyllc", "wrenchly", "wrenchlysolutionsllc@gmail.com", "CUST27764503")
     ]
 
     account_records = {}
@@ -258,7 +260,7 @@ def build_workbook():
     # Title Banner
     ws1['B2'] = "ZORO RETURNS & REFUND PORTFOLIO AUDIT REPORT (2026)"
     ws1['B2'].font = Font(name=FONT_FAMILY, size=16, bold=True, color="1B365D")
-    ws1['B3'] = f"Comprehensive Reconciliation for: salesmercentile, inuhr, asad.amazon.us, abecomllc26, and salesmercentile1 | Generated: {datetime.now().strftime('%B %d, %Y')}"
+    ws1['B3'] = f"Comprehensive Reconciliation for: salesmercentile, inuhr, asad.amazon.us, abecomllc26, salesmercentile1, and wrenchly | Generated: {datetime.now().strftime('%B %d, %Y')}"
     ws1['B3'].font = Font(name=FONT_FAMILY, size=11, italic=True, color="4B5563")
 
     ws1['B5'] = "CROSS-ACCOUNT RETURN STATUS SUMMARY"
@@ -369,7 +371,7 @@ def build_workbook():
         "2. Multi-Account Portfolio Segregation: Each account is maintained under its own dedicated tab (Tabs 3 to 7) with complete tracking and refund timestamps.",
         "3. Clear Isolation of Sara Springer 52 Anomalies (Tab 8): The 52 disputed items from the July 6 communication specifically pertain to Customer #25017919 (salesmercentile) and have been segregated to protect all other clean claims.",
         "4. Carrier In-Transit Protections: Orders scanned by FedEx but pending final delivery to Zoro are tracked under each respective account as carrier transit delays (not customer or merchant fault).",
-        "5. Wrenchly Solutions LLC Attributions: Wrenchly LLC functions as an authorized billing profile on salesmercentile, with all orders and refunds fully audited."
+        "5. Wrenchly Solutions LLC Segregation: Wrenchly LLC (wrenchlysolutionsllc@gmail.com, CUST27764503) operates as its own dedicated business account, fully audited and distinct from salesmercentile."
     ]
     for i, g in enumerate(guidelines, start=row_notes+1):
         ws1.cell(row=i, column=2, value=g).font = Font(name=FONT_FAMILY, size=10.5, color="374151")
@@ -488,14 +490,15 @@ def build_workbook():
     # ═══════════════════════════════════════════════════════════════════════════
     # TABS FOR INDIVIDUAL ACCOUNTS
     # ═══════════════════════════════════════════════════════════════════════════
+    create_data_tab("salesmercentile", account_records["salesmercentile"])
     create_data_tab("inuhr", account_records["inhur_llc"])
     create_data_tab("asad.amazon.us", account_records["asad_amazon_us"])
     create_data_tab("abecomllc26", account_records["abecomllc26"])
     create_data_tab("salesmercentile1", account_records["salesmercentile1"])
-    create_data_tab("salesmercentile (Wrenchly)", account_records["salesmercentile"])
+    create_data_tab("wrenchly", account_records["wrenchlyllc"])
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # TAB 8: SARA SPRINGER 52 ANOMALY LOG
+    # TAB 9: SARA SPRINGER 52 ANOMALY LOG
     # ═══════════════════════════════════════════════════════════════════════════
     create_data_tab("Sara Springer 52 Anomalies", sara_flagged_list)
 

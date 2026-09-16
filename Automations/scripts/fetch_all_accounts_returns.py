@@ -133,35 +133,39 @@ def fetch_refund_pdf(mid_and_acc):
                 if p.get('filename', '').lower().endswith('.pdf'):
                     att_id = p.get('body', {}).get('attachmentId')
                     break
-            if not att_id:
-                return None
 
-            data = svc.users().messages().attachments().get(userId="me", messageId=mid, id=att_id).execute()
-            pdf_bytes = base64.urlsafe_b64decode(data["data"])
-            with open(tmp_pdf, "wb") as f:
-                f.write(pdf_bytes)
-            
-            with pdfplumber.open(tmp_pdf) as pdf:
-                txt = "\n".join(page.extract_text() or "" for page in pdf.pages)
-                so_m = re.search(r'SO\s*#?\s*(?:Sales Order\s*#?)?\s*(SO\d+)', txt, re.I)
-                ra_m = re.search(r'Return Authorization\s*#?\s*(\d+)', txt, re.I)
-                tot_m = re.search(r'Total\s*\$([\d,]+\.\d{2})', txt)
-                date_m = re.search(r'Date\s*(\d{1,2}/\d{1,2}/\d{4})', txt)
-                ref_num_m = re.search(r'Cash Refund\s*#?\s*(\d+)', txt)
+            txt = ""
+            if att_id:
+                data = svc.users().messages().attachments().get(userId="me", messageId=mid, id=att_id).execute()
+                pdf_bytes = base64.urlsafe_b64decode(data["data"])
+                with open(tmp_pdf, "wb") as f:
+                    f.write(pdf_bytes)
+                
+                with pdfplumber.open(tmp_pdf) as pdf:
+                    txt = "\n".join(page.extract_text() or "" for page in pdf.pages)
+            else:
+                body = get_email_body_html(payload)
+                txt = clean_html(body)
 
-                if so_m:
-                    so_num = so_m.group(1).upper()
-                    ref_amount = float(tot_m.group(1).replace(',', '')) if tot_m else 0.0
-                    ra_num = ra_m.group(1) if ra_m else ""
-                    ref_date = date_m.group(1) if date_m else ""
-                    ref_num = ref_num_m.group(1) if ref_num_m else ""
-                    return {
-                        'so_number': so_num,
-                        'refund_amount': ref_amount,
-                        'refund_date': ref_date,
-                        'ra_number': ra_num,
-                        'cash_refund_number': ref_num
-                    }
+            so_m = re.search(r'Sales Order\s*#?\s*(SO\d+)', txt, re.I) or re.search(r'\b(SO\d{7,9})\b', txt, re.I)
+            ra_m = re.search(r'Return Authorization\s*#?\s*(\d+)', txt, re.I)
+            tot_m = re.search(r'Total\s*\$([\d,]+\.\d{2})', txt)
+            date_m = re.search(r'(?:Cash Refund Date|Date)\s*(\d{1,2}/\d{1,2}/\d{4})', txt)
+            ref_num_m = re.search(r'(?:Refund|Cash Refund)\s*#\s*(\d+)', txt, re.I)
+
+            if so_m:
+                so_num = so_m.group(1).upper()
+                ref_amount = float(tot_m.group(1).replace(',', '')) if tot_m else 0.0
+                ra_num = ra_m.group(1) if ra_m else ""
+                ref_date = date_m.group(1) if date_m else ""
+                ref_num = ref_num_m.group(1) if ref_num_m else ""
+                return {
+                    'so_number': so_num,
+                    'refund_amount': ref_amount,
+                    'refund_date': ref_date,
+                    'ra_number': ra_num,
+                    'cash_refund_number': ref_num
+                }
             break
         except Exception:
             if attempt == 0:
@@ -182,7 +186,13 @@ def fetch_account_returns(account_key: str, display_name: str, workers: int = 10
     
     out_file = os.path.join(AUTO_DIR, "data", f"zoro_returns_{account_key}.json")
     
-    # Fast-load salesmercentile if already present
+    # Fast-load cached data if already present unless --force is specified
+    if os.path.exists(out_file) and os.path.getsize(out_file) > 100 and "--force" not in sys.argv:
+        print(f"Loading cached data from {out_file} for {account_key}...", flush=True)
+        with open(out_file, 'r') as f:
+            return json.load(f)
+
+    # Fallback to existing zoro_returns_data.json if salesmercentile
     if account_key == "salesmercentile":
         existing_sm = os.path.join(AUTO_DIR, "data", "zoro_returns_data.json")
         if os.path.exists(existing_sm):
@@ -311,7 +321,8 @@ def main():
         ("asad_amazon_us", "asad.amazon.us"),
         ("abecomllc26", "abecomllc26"),
         ("salesmercentile1", "salesmercentile1"),
-        ("salesmercentile", "salesmercentile (Wrenchly LLC)")
+        ("salesmercentile", "salesmercentile"),
+        ("wrenchlyllc", "wrenchly (Wrenchly Solutions LLC)")
     ]
 
     master_json = os.path.join(AUTO_DIR, "data", "zoro_returns_all_accounts.json")

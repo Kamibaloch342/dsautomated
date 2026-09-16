@@ -48,6 +48,21 @@ def _zip5(z):
     return d[:5]
 
 
+def _clean_sku(sku):
+    s = (sku or "").strip().upper()
+    return re.sub(r"^(NEW_|HATH-)", "", s)
+
+
+def _parse_ts(ts_str):
+    if not ts_str:
+        return 0.0
+    s = str(ts_str).replace("T", " ").split(".")[0].strip()
+    try:
+        return time.mktime(time.strptime(s, "%Y-%m-%d %H:%M:%S"))
+    except Exception:
+        return 0.0
+
+
 def archive_is_fresh(max_minutes=30):
     # 30 min, not 15: the stamp advances every ~10-20 min in practice (fetch cycle
     # + sync time), so a 15-min bar flapped stale and sent 288 needless Gmail
@@ -64,42 +79,111 @@ def archive_is_fresh(max_minutes=30):
         return False
 
 
-def check_address_local(street, zip_code, days=7):
-    """Exact-match duplicate lookup. Returns
+def check_address_local(street, zip_code, days=7, current_asin=None, current_sku=None,
+                        current_amazon_id=None, repeat_threshold_hours=72.0):
+    """Exact-match duplicate lookup with smart repeat-customer & multi-item filtering.
+    Returns
         {"wb": <most recent WB>, "source": ..., "when": ..., "all_wbs": [...]}
-    or None when no record matches. Never raises."""
+    or None when no record matches or when matches are safe repeat/multi-item orders. Never raises."""
     st, z5 = _norm_street(street), _zip5(zip_code)
     if not st or not z5:
         return None
+
+    cur_asin = (current_asin or "").strip().upper()
+    cur_sku = _clean_sku(current_sku)
+    cur_aid = (current_amazon_id or "").strip()
+
     try:
         c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)
         c.row_factory = sqlite3.Row
         win = f"-{int(days)} day"
         matches = []
         for r in c.execute(
-                "SELECT wb_order_id, ship_street, ship_postal_code AS zip, placed_at AS ts "
+                "SELECT wb_order_id, amazon_order_id, asin, sku, ship_street, ship_postal_code AS zip, placed_at AS ts "
                 "FROM order_placer_orders WHERE placed_at >= datetime('now', ?) "
                 "AND COALESCE(wb_order_id,'')!=''", (win,)):
             if _norm_street(r["ship_street"]) == st and _zip5(r["zip"]) == z5:
                 for wb in _WB.findall(r["wb_order_id"]):
-                    matches.append((r["ts"] or "", wb, "placer-record"))
+                    matches.append({
+                        "ts": r["ts"] or "",
+                        "wb": wb,
+                        "source": "placer-record",
+                        "amazon_id": (r["amazon_order_id"] or "").strip(),
+                        "asin": (r["asin"] or "").strip().upper(),
+                        "sku": _clean_sku(r["sku"])
+                    })
         for r in c.execute(
-                "SELECT wb_order_id, ship_street, ship_zip AS zip, email_timestamp AS ts "
+                "SELECT wb_order_id, sku, ship_street, ship_zip AS zip, email_timestamp AS ts "
                 "FROM archive_zoro WHERE email_timestamp >= datetime('now', ?) "
                 "AND COALESCE(wb_order_id,'')!=''", (win,)):
             if _norm_street(r["ship_street"]) == st and _zip5(r["zip"]) == z5:
                 for wb in _WB.findall(r["wb_order_id"]):
-                    matches.append((r["ts"] or "", wb, "zoro-receipt"))
+                    matches.append({
+                        "ts": r["ts"] or "",
+                        "wb": wb,
+                        "source": "zoro-receipt",
+                        "amazon_id": "",
+                        "asin": "",
+                        "sku": _clean_sku(r["sku"])
+                    })
         c.close()
     except Exception as e:
         print(f"   [DUP_LOCAL] lookup error ({e}) — treating as no local answer")
         return None
+
     if not matches:
         return None
-    matches.sort(reverse=True)                     # newest first
-    ts, wb, src = matches[0]
+
+    matches.sort(key=lambda m: m["ts"], reverse=True)  # newest first
+
+    # 1. HARD GATE: Same Amazon Order ID is an absolute duplicate (never re-buy)
+    if cur_aid:
+        for m in matches:
+            if m.get("amazon_id") and m["amazon_id"] == cur_aid:
+                print(f"   🛑 [DUP_LOCAL] FATAL DUPLICATE: Amazon Order ID {cur_aid} was already placed as {m['wb']} at {m['ts']}")
+                return {"wb": m["wb"], "source": m["source"], "when": m["ts"], "all_wbs": [m["wb"]], "reason": "same_amazon_order"}
+
+    # 2. Check each match for repeat customer or multi-item purchases
+    now = time.time()
+    dup_candidates = []
+    for m in matches:
+        pts = _parse_ts(m["ts"])
+        hours_ago = ((now - pts) / 3600.0) if pts > 0 else 0.0
+
+        # Different product check:
+        different_product = False
+        if cur_asin and m.get("asin"):
+            if cur_asin != m["asin"]:
+                different_product = True
+        elif cur_sku and m.get("sku"):
+            if cur_sku != m["sku"]:
+                different_product = True
+
+        if different_product:
+            print(f"   ℹ️ [DUP_LOCAL] address match is for a DIFFERENT product "
+                  f"(current: {cur_asin or cur_sku} vs previous: {m.get('asin') or m.get('sku')} on {m['wb']}) — not a duplicate")
+            continue
+
+        # Repeat customer check (> repeat_threshold_hours, e.g. 72h / 3 days):
+        if hours_ago > repeat_threshold_hours:
+            print(f"   ℹ️ [DUP_LOCAL] repeat customer: {m['wb']} was placed {hours_ago:.1f}h ago "
+                  f"(> {repeat_threshold_hours:.0f}h) — legitimate repeat order, not an accidental duplicate")
+            continue
+
+        # Potential accidental duplicate (< 72h, same ASIN/SKU or unknown ASIN/SKU)
+        dup_candidates.append(m)
+
+    if not dup_candidates:
+        print(f"   ✅ [DUP_LOCAL] address matched {len(matches)} previous order(s), but all are safe "
+              f"(different products or placed > {repeat_threshold_hours:.0f}h ago) — ALLOWING PLACEMENT")
+        return None
+
+    top = dup_candidates[0]
+    top_pts = _parse_ts(top["ts"])
+    top_hours = ((now - top_pts) / 3600.0) if top_pts > 0 else 0.0
+    print(f"   🔁 [DUP_LOCAL] DUPLICATE DETECTED: same product ordered {top_hours:.1f}h ago (WB: {top['wb']})")
     all_wbs = []
-    for _, w, _s in matches:
-        if w not in all_wbs:
-            all_wbs.append(w)
-    return {"wb": wb, "source": src, "when": ts, "all_wbs": all_wbs}
+    for m in dup_candidates:
+        if m["wb"] not in all_wbs:
+            all_wbs.append(m["wb"])
+    return {"wb": top["wb"], "source": top["source"], "when": top["ts"], "all_wbs": all_wbs}

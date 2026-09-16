@@ -70,3 +70,7 @@ page_source_tmp.html
 # Keepa / hunting: local key + response cache
 Amazon_DS_Hunting/.keepa_key
 Amazon_DS_Hunting/.keepa_cache/
+
+# WhatsApp Gateway auth session
+**/auth_session/
+

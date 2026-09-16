@@ -300,9 +300,6 @@ def update_amazon_seller_id(driver, amazon_order_id, new_seller_id, account_prof
                 auto_login(driver, account_profile)
                 driver.get(f"{AMAZON_BASE_ORDER_URL}{amazon_order_id}")
 
-        # One-time full page scrape for structure inspection
-        _scrape_order_page_structure(driver, amazon_order_id)
-
     def _read_seller_id():
         """Read back the currently-saved merchant/seller order id from the page.
 
@@ -427,17 +424,8 @@ def update_amazon_seller_id(driver, amazon_order_id, new_seller_id, account_prof
                 if not expected and saved == "":
                     break
 
-            # If verified in DOM, refresh the page to guarantee persistence in Amazon's database
+            # If verified in DOM, return True immediately without reloading
             if expected and (saved == expected or expected in saved):
-                # Double-check with a quick refresh to confirm database persistence
-                try:
-                    driver.get(f"{AMAZON_BASE_ORDER_URL}{amazon_order_id}")
-                    time.sleep(1.5)
-                    verified_saved = _read_seller_id()
-                    if expected in verified_saved or verified_saved == expected:
-                        return True
-                except Exception:
-                    return True # If DOM confirmed, proceed
                 return True
 
             if not expected and saved == "":

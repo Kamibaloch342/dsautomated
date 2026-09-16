@@ -6,7 +6,8 @@ Generates an individual, professional Excel workbook for EACH account:
 2. Zoro_Returns_asad_amazon_us_2026.xlsx
 3. Zoro_Returns_abecomllc26_2026.xlsx
 4. Zoro_Returns_salesmercentile1_2026.xlsx
-5. Zoro_Returns_salesmercentile_Wrenchly_2026.xlsx
+5. Zoro_Returns_salesmercentile_2026.xlsx
+6. Zoro_Returns_wrenchly_2026.xlsx
 
 Each file is completely self-contained and tailored for that account:
 - Executive Summary KPI dashboard
@@ -400,6 +401,10 @@ def create_single_account_workbook(acc_key, disp_name, email, cust_no, records):
     populate_table_sheet(ws_all, records)
 
     safe_name = acc_key.replace(".", "_")
+    if acc_key == "wrenchlyllc":
+        safe_name = "wrenchly"
+    elif acc_key == "inhur_llc":
+        safe_name = "inuhr"
     filename = f"Zoro_Returns_{safe_name}_2026.xlsx"
     filepath = os.path.join(DATA_DIR, filename)
     wb.save(filepath)
@@ -441,7 +446,8 @@ def main():
         ("asad_amazon_us", "asad.amazon.us", "asad.amazon.us@gmail.com", "Sister Account"),
         ("abecomllc26", "abecomllc26", "abecomllc26@gmail.com", "Sister Account"),
         ("salesmercentile1", "salesmercentile1", "salesmercentile1@gmail.com", "CUST25217105"),
-        ("salesmercentile", "salesmercentile (Wrenchly LLC)", "salesmercentile@gmail.com", "CUST25017919")
+        ("salesmercentile", "salesmercentile", "salesmercentile@gmail.com", "CUST25017919"),
+        ("wrenchlyllc", "wrenchly", "wrenchlysolutionsllc@gmail.com", "CUST27764503")
     ]
 
     account_records_map = {}

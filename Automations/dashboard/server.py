@@ -11,6 +11,7 @@ Run:  ../.venv/bin/python dashboard/server.py 8000
 """
 import os, sys, json, sqlite3, time, urllib.parse, re, gzip as _gzip
 from datetime import date, timedelta, datetime
+from typing import Dict, Any, List, Optional
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 try:
     from zoneinfo import ZoneInfo
@@ -71,6 +72,92 @@ import threading
 import subprocess
 
 _REPRICER_SCRAPING = {"Hathoro": False, "HOANK": False, "last_msg": ""}
+_REPRICER_DATA_DIR = os.path.join(os.path.dirname(HERE), "data")
+_REPRICER_PROGRESS_FILE = os.path.join(_REPRICER_DATA_DIR, "repricer_progress.json")
+_REPRICER_LIVE_LOG_FILE = os.path.join(_REPRICER_DATA_DIR, "repricer_live.log")
+_REPRICER_SCHEDULE_FILE = os.path.join(_REPRICER_DATA_DIR, "repricer_schedule.json")
+
+
+def _get_repricer_schedule_info() -> Dict[str, Any]:
+    sched = {
+        "enabled": True,
+        "interval_hours": 12.0,
+        "last_run": "",
+        "next_run": "",
+        "accounts": ["Hathoro", "HOANK"],
+    }
+    if os.path.exists(_REPRICER_SCHEDULE_FILE):
+        try:
+            with open(_REPRICER_SCHEDULE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                sched.update(data)
+        except Exception:
+            pass
+    if not sched.get("next_run"):
+        sched["next_run"] = (datetime.now() + timedelta(hours=sched.get("interval_hours", 12.0))).strftime("%Y-%m-%d %H:%M:%S")
+    return sched
+
+
+def _update_repricer_schedule(body: Dict[str, Any]) -> Dict[str, Any]:
+    sched = _get_repricer_schedule_info()
+    if "enabled" in body:
+        sched["enabled"] = bool(body["enabled"])
+    if "interval_hours" in body:
+        try:
+            val = float(body["interval_hours"])
+            if val > 0:
+                sched["interval_hours"] = val
+                last_dt = datetime.now()
+                if sched.get("last_run"):
+                    try:
+                        last_dt = datetime.strptime(sched["last_run"], "%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        pass
+                sched["next_run"] = (last_dt + timedelta(hours=val)).strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            pass
+    try:
+        os.makedirs(os.path.dirname(_REPRICER_SCHEDULE_FILE), exist_ok=True)
+        with open(_REPRICER_SCHEDULE_FILE, "w", encoding="utf-8") as f:
+            json.dump(sched, f, indent=2)
+    except Exception as e:
+        return {"error": str(e)}
+    return sched
+
+
+def _get_repricer_live_log(account: str = "Hathoro") -> Dict[str, Any]:
+    acct = "Hathoro" if "HATHORO" in (account or "").upper() else "HOANK"
+    prog = {}
+    if os.path.exists(_REPRICER_PROGRESS_FILE):
+        try:
+            with open(_REPRICER_PROGRESS_FILE, "r", encoding="utf-8") as f:
+                prog = json.load(f)
+        except Exception:
+            pass
+
+    lines = []
+    if os.path.exists(_REPRICER_LIVE_LOG_FILE):
+        try:
+            with open(_REPRICER_LIVE_LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+                all_lines = f.readlines()
+                lines = [l.rstrip("\r\n") for l in all_lines[-200:]]
+        except Exception:
+            pass
+
+    is_active = bool(_REPRICER_SCRAPING.get("Hathoro") or _REPRICER_SCRAPING.get("HOANK"))
+    sched = _get_repricer_schedule_info()
+
+    return {
+        "account": acct,
+        "is_scraping": is_active,
+        "is_scraping_hathoro": _REPRICER_SCRAPING.get("Hathoro", False),
+        "is_scraping_hoank": _REPRICER_SCRAPING.get("HOANK", False),
+        "last_msg": _REPRICER_SCRAPING.get("last_msg", ""),
+        "progress": prog,
+        "lines": lines,
+        "schedule": sched,
+    }
+
 
 def _start_repricer_scrape(account: str = "Hathoro"):
     global _REPRICER_SCRAPING
@@ -80,22 +167,98 @@ def _start_repricer_scrape(account: str = "Hathoro"):
 
     def _worker():
         _REPRICER_SCRAPING[acct] = True
+        now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         _REPRICER_SCRAPING["last_msg"] = f"Scraping started for {acct} at {datetime.now().strftime('%H:%M:%S')}"
+        
+        try:
+            os.makedirs(os.path.dirname(_REPRICER_LIVE_LOG_FILE), exist_ok=True)
+            with open(_REPRICER_LIVE_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"\n{'='*75}\n[{now_ts}] 🚀 REPRICER SCRAPE TRIGGERED FOR {acct.upper()}\n{'='*75}\n")
+        except Exception:
+            pass
+
         try:
             script_name = "generate_hathoro_offers_report.py" if acct == "Hathoro" else "generate_hoank_offers_report.py"
             script_path = os.path.join(os.path.dirname(HERE), "scripts", script_name)
             venv_py = os.path.abspath(os.path.join(os.path.dirname(HERE), "..", ".venv", "bin", "python"))
             py_exec = venv_py if os.path.exists(venv_py) else sys.executable
-            subprocess.run([py_exec, script_path, "--force"], check=False)
+            
+            with open(_REPRICER_LIVE_LOG_FILE, "a", encoding="utf-8") as log_f:
+                p = subprocess.Popen(
+                    [py_exec, script_path, "--force"],
+                    stdout=log_f,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+                p.wait()
+
+            done_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             _REPRICER_SCRAPING["last_msg"] = f"Scraping completed for {acct} at {datetime.now().strftime('%H:%M:%S')}"
+            try:
+                with open(_REPRICER_LIVE_LOG_FILE, "a", encoding="utf-8") as log_f:
+                    log_f.write(f"\n[{done_ts}] 🎉 REPRICER SCRAPE COMPLETED FOR {acct.upper()}\n{'='*75}\n\n")
+            except Exception:
+                pass
         except Exception as e:
             _REPRICER_SCRAPING["last_msg"] = f"Scraping error: {e}"
+            try:
+                with open(_REPRICER_LIVE_LOG_FILE, "a", encoding="utf-8") as log_f:
+                    log_f.write(f"\n[ERROR] Scraping failed for {acct}: {e}\n")
+            except Exception:
+                pass
         finally:
             _REPRICER_SCRAPING[acct] = False
+            try:
+                sched = _get_repricer_schedule_info()
+                sched["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                next_dt = datetime.now() + timedelta(hours=sched.get("interval_hours", 12.0))
+                sched["next_run"] = next_dt.strftime("%Y-%m-%d %H:%M:%S")
+                with open(_REPRICER_SCHEDULE_FILE, "w", encoding="utf-8") as f:
+                    json.dump(sched, f, indent=2)
+            except Exception:
+                pass
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
     return {"status": "started", "message": f"Live scraping started for {acct}"}
+
+
+def _start_repricer_scheduler():
+    def _loop():
+        time.sleep(30)
+        while True:
+            try:
+                sched = _get_repricer_schedule_info()
+                if sched.get("enabled", True):
+                    last_run_str = sched.get("last_run", "")
+                    interval_hrs = float(sched.get("interval_hours", 12.0))
+                    should_run = False
+                    if not last_run_str:
+                        sched["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        sched["next_run"] = (datetime.now() + timedelta(hours=interval_hrs)).strftime("%Y-%m-%d %H:%M:%S")
+                        with open(_REPRICER_SCHEDULE_FILE, "w", encoding="utf-8") as f:
+                            json.dump(sched, f, indent=2)
+                    else:
+                        try:
+                            last_dt = datetime.strptime(last_run_str, "%Y-%m-%d %H:%M:%S")
+                            elapsed_sec = (datetime.now() - last_dt).total_seconds()
+                            if elapsed_sec >= (interval_hrs * 3600):
+                                should_run = True
+                        except Exception:
+                            pass
+                    if should_run:
+                        print(f"[repricer_scheduler] ⏰ 12-hour cadence reached. Launching automated repricer scan...")
+                        if not _REPRICER_SCRAPING.get("Hathoro"):
+                            _start_repricer_scrape("Hathoro")
+            except Exception as e:
+                print(f"[repricer_scheduler] Warning: {e}")
+            time.sleep(60)
+
+    sched_thread = threading.Thread(target=_loop, daemon=True, name="Repricer12hScheduler")
+    sched_thread.start()
+
+
+_start_repricer_scheduler()
 
 _env_port = int(os.environ.get("PORT") or 0)
 # Render (cloud mode) assigns the port through $PORT and must win even if a start
@@ -2424,6 +2587,11 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/repricer_scrape":
                 req_acct = q.get("account", ["Hathoro"])[0] or "Hathoro"
                 return self._send(_start_repricer_scrape(req_acct))
+            if p == "/api/repricer_live_log":
+                req_acct = q.get("account", ["Hathoro"])[0] or "Hathoro"
+                return self._send(_get_repricer_live_log(req_acct))
+            if p == "/api/repricer_schedule":
+                return self._send(_get_repricer_schedule_info())
             if p == "/api/repricer_excel":
                 req_acct = q.get("account", ["Hathoro"])[0] or "Hathoro"
                 is_hathoro = "HATHORO" in req_acct.upper()
@@ -2529,6 +2697,8 @@ class H(BaseHTTPRequestHandler):
                 return self._send(listing_label_set(body))
             if u.path == "/api/watch_clear":
                 return self._send(watch_clear(body))
+            if u.path == "/api/repricer_schedule":
+                return self._send(_update_repricer_schedule(body))
             return self._send({"error": "not found"}, 404)
         except Exception as e:
             return self._send({"error": str(e)}, 500)

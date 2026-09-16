@@ -156,14 +156,16 @@ def get_amazon_earnings_from_gmail(service, order_id):
         return None
 
 
-def check_if_address_already_ordered_gmail(services_list, address_line, zip_code="", customer_name=""):
+def check_if_address_already_ordered_gmail(services_list, address_line, zip_code="", customer_name="",
+                                            current_asin=None, current_sku=None, current_amazon_id=None):
     """Search ALL duplicate-check Gmail accounts for recent order to same recipient.
 
     Strategy:
-    1. If customer_name is provided, search by name (primary — more reliable).
-    2. Fall back to address search if no name or no matches.
+    1. Check LOCAL records (placer log + zoro archive) with smart repeat-customer (>72h)
+       and multi-item (different ASIN/SKU) filtering.
+    2. Fall back to live Gmail search ONLY if archive is stale AND local check found nothing.
     3. Search both Zoro ("Has Been Received") and Grainger ("Shipping Confirmation")
-       emails with a 7-day lookback.
+       emails with a 3-day (72h) lookback.
     4. Verify zip code in the email body to prevent false positives.
 
     Returns WB/WW order number if found, or None if no duplicate.
@@ -176,7 +178,10 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
     # local records say nothing AND the archive is too stale to trust a 'no'.
     try:
         from utils.dup_check_local import check_address_local, archive_is_fresh
-        _local = check_address_local(address_line, zip_code)
+        _local = check_address_local(address_line, zip_code,
+                                     current_asin=current_asin,
+                                     current_sku=current_sku,
+                                     current_amazon_id=current_amazon_id)
         if _local:
             if len(_local["all_wbs"]) > 1:
                 print(f"   [DUP_LOCAL] address matches {len(_local['all_wbs'])} WBs "
@@ -184,7 +189,7 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
             print(f"   [DUP_LOCAL] duplicate via {_local['source']} ({_local['when']}): {_local['wb']}")
             return _local["wb"]
         if archive_is_fresh():
-            print("   [DUP_LOCAL] no local match + archive fresh — no duplicate (Gmail skipped)")
+            print("   [DUP_LOCAL] no local duplicate (or safe repeat/multi-item) + archive fresh — no duplicate (Gmail skipped)")
             return None
         print("   [DUP_LOCAL] no local match but archive is STALE — falling back to live Gmail")
     except Exception as _le:
@@ -220,10 +225,8 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
 
     for idx, service in enumerate(services_list):
         for search_term in queries:
-            # Search both Zoro and Grainger confirmation emails (7-day window,
-            # matching the documented design — 3d left day-4..7 duplicates unseen).
-            # Broadened subject filter also catches the "Sales Receipt" confirmation format.
-            query = (f'{search_term} newer_than:7d '
+            # Search confirmation emails within 3-day (72h) lookback
+            query = (f'{search_term} newer_than:3d '
                      f'(subject:"Has Been Received" OR subject:"Shipping Confirmation" OR subject:"Sales Receipt")')
             # Retry transient API/rate-limit errors with backoff before giving up.
             messages = None
@@ -326,7 +329,10 @@ def batch_check_addresses_gmail(services_list, orders):
         from utils.dup_check_local import check_address_local, archive_is_fresh
         fresh = archive_is_fresh()
         for o in orders:
-            _l = check_address_local(o.get("address") or "", o.get("zip") or "")
+            _l = check_address_local(o.get("address") or "", o.get("zip") or "",
+                                     current_asin=o.get("asin"),
+                                     current_sku=o.get("sku"),
+                                     current_amazon_id=o.get("key"))
             if _l:
                 resolved[o["key"]] = _l["wb"]
                 print(f"   [DUP_LOCAL] {o['key']}: duplicate via {_l['source']} → {_l['wb']}")
@@ -358,7 +364,7 @@ def batch_check_addresses_gmail(services_list, orders):
 
     all_terms = sorted({t for s in specs.values() for t in s["terms"]})
     or_block = " OR ".join(f'"{t}"' for t in all_terms)
-    query = (f'({or_block}) newer_than:7d '
+    query = (f'({or_block}) newer_than:3d '
              f'(subject:"Has Been Received" OR subject:"Shipping Confirmation" OR subject:"Sales Receipt")')
 
     bodies = []       # (subject, body_clean)

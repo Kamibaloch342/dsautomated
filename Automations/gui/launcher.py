@@ -173,6 +173,7 @@ DEFAULT_CFG = {
     },
     "velocity": {"max_per_cycle": 0, "inter_order_delay": 0, "cycle_sleep": 120},
     "blocked_order_ids": [],
+    "telegram": {"enabled": True},
 }
 
 
@@ -776,6 +777,25 @@ class App(tk.Tk):
         self._btn(bl, "Save", self.GREEN, self._save_config, small=True).pack(side="left", padx=(16, 4))
         self._btn(bl, "Reload", self.CYAN, self._load_config, small=True).pack(side="left", padx=(0, 4))
 
+        self.v_tg_enabled = tk.BooleanVar(value=True)
+        tg_cb = ttk.Checkbutton(bl, text="📱 Telegram Alerts", variable=self.v_tg_enabled, command=self._save_config)
+        tg_cb.pack(side="left", padx=(14, 4))
+        self._tip(tg_cb, "TELEGRAM MOBILE ALERTS (@kamrandsbot):\n"
+                         "• All Placed Orders: Amazon SC page screenshot + Copy for Boss\n"
+                         "• Low Margin (< 8%): Flagged with pre-tax warning & Copy for Boss\n"
+                         "• Mega Profit (> 50%): High-profit celebration insight\n"
+                         "• Low-profit skips & Out-of-Stock (OOS) alerts with full item title\n"
+                         "Toggle ON on days you want alerts on mobile, OFF when you don't.")
+
+        self.v_wa_enabled = tk.BooleanVar(value=True)
+        wa_cb = ttk.Checkbutton(bl, text="💬 WhatsApp Alerts", variable=self.v_wa_enabled, command=self._save_config)
+        wa_cb.pack(side="left", padx=(8, 4))
+        self._tip(wa_cb, "WHATSAPP MOBILE ALERTS (Self-Hosted Gateway):\n"
+                         "• All Placed Orders: Amazon SC page screenshot + pure monospaced note\n"
+                         "• Out-of-Stock (OOS) & Low-profit skip alerts\n"
+                         "Runs locally via Baileys gateway (http://127.0.0.1:3005).\n"
+                         "Toggle ON on days you want alerts on WhatsApp, OFF when you don't.")
+
         rf = tk.Frame(hi, bg=self.CARD)
         rf.pack(side="right", pady=8)
 
@@ -1172,7 +1192,7 @@ class App(tk.Tk):
                              "routing — nothing is pulled in from the "
                              "Priority_ASIN_Control sheet while this is on.")
             self._plabels_only[pk] = lo_var
-            rb_combo = self._combo(ch, ["5", "10", "15", "20"], w=3)
+            rb_combo = self._combo(ch, ["5", "10", "15", "20", "25", "30", "40", "50", "60", "80", "100"], w=4)
             rb_combo.set("10")
             rb_combo.pack(side="right", padx=(4, 0))
             self._tip(rb_combo, "Rush batch size — how many placements before the "
@@ -1275,7 +1295,7 @@ class App(tk.Tk):
                 fg3.grid(row=3, column=0, sticky="ew", padx=12, pady=(2, 6))
 
                 foc_en_var = tk.BooleanVar(value=False)
-                foc_cb = ttk.Checkbutton(fg3, text="🎯 Place with Priority", variable=foc_en_var)
+                foc_cb = ttk.Checkbutton(fg3, text="🎯 Place with Priority", variable=foc_en_var, command=self._save_config)
                 foc_cb.pack(side="left", padx=(0, 6))
                 self._tip(foc_cb, "FOCUS PRIORITY COUPON MODE:\n"
                                   "When checked, loads and places ONLY orders whose ASIN has this\n"
@@ -1304,6 +1324,9 @@ class App(tk.Tk):
                     font=(self.FONT, 9)
                 )
                 foc_combo.pack(side="left")
+                foc_combo.bind("<<ComboboxSelected>>", lambda e: self._save_config())
+                foc_combo.bind("<FocusOut>", lambda e: self._save_config())
+                foc_combo.bind("<Return>", lambda e: self._save_config())
                 self._tip(foc_combo, "Enter or select the priority coupon to focus on (e.g. FACILITY8M26, HARDWARE8926, or shorthand facility, hardware).\n"
                                      "Only orders for ASINs where this coupon works will be loaded and placed.")
                 self._pfocus_priority_code[pk] = foc_code_var
@@ -3704,6 +3727,14 @@ class App(tk.Tk):
         self.v_deciding_min.set(str(cfg.get("deciding_coupon_min", 50)))
         self.v_pi_target.set(str(cfg.get("pi_target_margin", 10)))
 
+        tg_cfg = cfg.get("telegram", {})
+        if hasattr(self, "v_tg_enabled"):
+            self.v_tg_enabled.set(bool(tg_cfg.get("enabled", True)))
+
+        wa_cfg = cfg.get("whatsapp", {})
+        if hasattr(self, "v_wa_enabled"):
+            self.v_wa_enabled.set(bool(wa_cfg.get("enabled", True)))
+
         self.txt_blocked.delete("1.0", "end")
         self.txt_blocked.insert("1.0", "\n".join(cfg.get("blocked_order_ids", [])))
 
@@ -3811,6 +3842,14 @@ class App(tk.Tk):
             "deciding_coupon_min": deciding_min,
             "pi_target_margin": pi_target,
         })
+        if hasattr(self, "v_tg_enabled"):
+            tg = dict(cfg.get("telegram") or {})
+            tg["enabled"] = self.v_tg_enabled.get()
+            cfg["telegram"] = tg
+        if hasattr(self, "v_wa_enabled"):
+            wa = dict(cfg.get("whatsapp") or {})
+            wa["enabled"] = self.v_wa_enabled.get()
+            cfg["whatsapp"] = wa
         _write_cfg_file(cfg)
         self._flash_msg("✅ Config saved!", self.GREEN)
 
@@ -4077,6 +4116,10 @@ class App(tk.Tk):
         self._update_hdr()
 
     def _start_multi(self):
+        try:
+            self._save_config()
+        except Exception:
+            pass
         holder = self._lease_blocks_start()
         if holder:
             messagebox.showwarning("Placers running elsewhere",

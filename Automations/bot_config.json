@@ -12,7 +12,7 @@
             "est_margin_only": true,
             "labels_only": false,
             "rush_mode": false,
-            "rush_batch": 20
+            "rush_batch": 25
         },
         "DM_RESELLER": {
             "target_label": "AB ECOM",
@@ -35,7 +35,7 @@
             "est_margin_only": true,
             "labels_only": false,
             "rush_mode": false,
-            "rush_batch": 20
+            "rush_batch": 25
         },
         "HS_RESELLER": {
             "target_label": "Rajar",
@@ -56,6 +56,7 @@
     "blocked_order_ids": [],
     "deciding_coupon_min": 50.0,
     "pi_target_margin": 10.0,
+    "big_order_threshold": 800.0,
     "routing": {
         "deciding_min_margin_pct": 5,
         "supervise_unlabelled": true,
@@ -89,5 +90,16 @@
             "recheck_per_cycle": 15
         },
         "sync_order_log_to_sheet": false
+    },
+    "telegram": {
+        "enabled": true,
+        "bot_token": "8710557088:AAHZMFQaQI2sr5bQsDyqbr9W3I1tLJOMMD8",
+        "chat_id": "8968500979",
+        "worker_url": "https://dark-meadow-74d3.kamibaloch342.workers.dev"
+    },
+    "whatsapp": {
+        "enabled": true,
+        "recipient_phone": "120363419946377042@g.us",
+        "server_url": "http://127.0.0.1:3005"
     }
 }

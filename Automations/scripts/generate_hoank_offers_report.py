@@ -227,13 +227,98 @@ def get_top_3_lowest_offers(offers: List[Dict[str, Any]]) -> List[Dict[str, Any]
     return [item[1] for item in valid_offers[:3]]
 
 
+PROGRESS_FILE = os.path.join(BASE_DIR, "data", "repricer_progress.json")
+LIVE_LOG_FILE = os.path.join(BASE_DIR, "data", "repricer_live.log")
+
+
+def emit_log(msg: str) -> None:
+    """Print to console and append to repricer_live.log with timestamp."""
+    print(msg, flush=True)
+    try:
+        os.makedirs(os.path.dirname(LIVE_LOG_FILE), exist_ok=True)
+        with open(LIVE_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.now().strftime('%H:%M:%S')} {msg}\n")
+    except Exception:
+        pass
+
+
+def emit_progress(
+    account: str,
+    current: int,
+    total: int,
+    asin: str,
+    status: str,
+    success_count: int,
+    fail_count: int,
+    start_time: float,
+) -> None:
+    """Persist real-time progress state for the live dashboard."""
+    try:
+        pct = round((current / total * 100), 1) if total > 0 else 0.0
+        elapsed = round(time.time() - start_time, 1)
+        data = {
+            "account": account,
+            "is_scraping": current < total,
+            "current": current,
+            "total": total,
+            "percent": pct,
+            "current_asin": asin,
+            "status": status,
+            "successful_count": success_count,
+            "failed_count": fail_count,
+            "elapsed_seconds": elapsed,
+            "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        os.makedirs(os.path.dirname(PROGRESS_FILE), exist_ok=True)
+        tmp = PROGRESS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, PROGRESS_FILE)
+    except Exception:
+        pass
+
+
+def is_driver_alive(driver: Optional[webdriver.Chrome]) -> bool:
+    """Check if the Selenium WebDriver instance is still alive and responsive."""
+    if driver is None:
+        return False
+    try:
+        _ = driver.current_url
+        return True
+    except Exception:
+        return False
+
+
+def respawn_driver(
+    old_driver: Optional[webdriver.Chrome],
+    zipcode: str = "10001",
+    headless: bool = True,
+) -> webdriver.Chrome:
+    """Safely terminate crashed driver and spawn a fresh stealth Chrome session."""
+    emit_log("    ⚠️ Browser disconnected or crashed. Respawning fresh Chrome session...")
+    if old_driver:
+        try:
+            old_driver.quit()
+        except Exception:
+            pass
+    time.sleep(2.5)
+    new_driver = get_driver(headless=headless)
+    try:
+        set_amazon_zipcode(new_driver, zipcode)
+        time.sleep(2)
+    except Exception as e:
+        emit_log(f"    ⚠️ Warning setting zipcode on respawned driver: {e}")
+    emit_log("    ✓ Fresh Chrome session active and ready.")
+    return new_driver
+
+
 def scrape_all_asins_offers(
     asins_df: pd.DataFrame,
     zipcode: str = "10001",
     headless: bool = True,
     force_rescrape: bool = False,
 ) -> Dict[str, Any]:
-    """Scrape live Amazon offers for all ASINs in dataframe using persistent browser session."""
+    """Scrape live Amazon offers for all ASINs in dataframe using persistent browser session with auto-recovery."""
     cache = load_cache()
     to_scrape = []
 
@@ -243,12 +328,24 @@ def scrape_all_asins_offers(
             continue
         to_scrape.append(asin)
 
-    print(f"[*] Total HOANK ASINs in dataset: {len(asins_df)}")
-    print(f"[*] Already cached: {len(asins_df) - len(to_scrape)}")
-    print(f"[*] Needing live scraping: {len(to_scrape)}")
+    total_asins = len(asins_df)
+    already_cached = total_asins - len(to_scrape)
+    emit_log(f"[*] Total HOANK ASINs in dataset: {total_asins}")
+    emit_log(f"[*] Already cached: {already_cached}")
+    emit_log(f"[*] Needing live scraping: {len(to_scrape)}")
+
+    start_time = time.time()
+    success_count = sum(1 for v in cache.values() if v.get("scraped_successfully"))
+    fail_count = sum(1 for v in cache.values() if not v.get("scraped_successfully"))
+
+    emit_progress("HOANK", already_cached, total_asins,
+                  to_scrape[0] if to_scrape else "", "Initializing live scrape...",
+                  success_count, fail_count, start_time)
 
     if not to_scrape:
-        print("    ✓ All ASINs already present in cache.")
+        emit_log("    ✓ All ASINs already present in cache.")
+        emit_progress("HOANK", total_asins, total_asins, "", "All ASINs cached",
+                      success_count, fail_count, start_time)
         return cache
 
     driver = get_driver(headless=headless)
@@ -256,87 +353,122 @@ def scrape_all_asins_offers(
 
     try:
         for idx, asin in enumerate(to_scrape, 1):
+            curr_progress_idx = already_cached + idx
             url = f"https://www.amazon.com/dp/{asin}"
-            print(f"\n[{idx}/{len(to_scrape)}] Scraping HOANK ASIN {asin} ({url})...")
+            emit_log(f"\n[{curr_progress_idx}/{total_asins}] Scraping HOANK ASIN {asin} ({url})...")
+            emit_progress("HOANK", curr_progress_idx, total_asins, asin,
+                          f"Scraping ASIN {asin}...", success_count, fail_count, start_time)
 
-            try:
-                driver.get(url)
-                time.sleep(2.5)
+            max_retries = 2
+            for attempt in range(1, max_retries + 1):
+                try:
+                    if not is_driver_alive(driver):
+                        driver = respawn_driver(driver, zipcode=zipcode, headless=headless)
+                        zip_set = True
 
-                if not zip_set:
-                    set_amazon_zipcode(driver, zipcode)
-                    time.sleep(2)
-                    zip_set = True
+                    driver.get(url)
+                    time.sleep(2.5)
 
-                # Click offer link if available
-                click_all_offers_button(driver)
-                time.sleep(3)
+                    if not zip_set:
+                        set_amazon_zipcode(driver, zipcode)
+                        time.sleep(2)
+                        zip_set = True
 
-                # Parse offers from page
-                html = driver.page_source
-                offers = parse_all_offers_from_page(html)
+                    # Click offer link if available
+                    click_all_offers_button(driver)
+                    time.sleep(3)
 
-                total_sellers = len(offers)
-                buy_box_offer = next((o for o in offers if o.get("is_pinned")), offers[0] if offers else None)
+                    # Parse offers from page
+                    html = driver.page_source
+                    offers = parse_all_offers_from_page(html)
 
-                top_3 = get_top_3_lowest_offers(offers)
-                lowest_1 = top_3[0] if len(top_3) > 0 else (buy_box_offer or {})
-                lowest_2 = top_3[1] if len(top_3) > 1 else None
-                lowest_3 = top_3[2] if len(top_3) > 2 else None
+                    total_sellers = len(offers)
+                    buy_box_offer = next((o for o in offers if o.get("is_pinned")), offers[0] if offers else None)
 
-                is_hoank_in_bb = False
-                if buy_box_offer:
-                    bb_name = buy_box_offer.get("seller_name", "").lower()
-                    if "hoank" in bb_name or "qurtdis" in bb_name or "hypersale" in bb_name:
-                        is_hoank_in_bb = True
+                    top_3 = get_top_3_lowest_offers(offers)
+                    lowest_1 = top_3[0] if len(top_3) > 0 else (buy_box_offer or {})
+                    lowest_2 = top_3[1] if len(top_3) > 1 else None
+                    lowest_3 = top_3[2] if len(top_3) > 2 else None
 
-                cache[asin] = {
-                    "asin": asin,
-                    "scraped_at": datetime.now().isoformat(),
-                    "scraped_successfully": True,
-                    "total_sellers_count": total_sellers,
-                    "buy_box_seller": buy_box_offer.get("seller_name") if buy_box_offer else "",
-                    "buy_box_price": buy_box_offer.get("item_price") if buy_box_offer else "",
-                    "buy_box_shipping": buy_box_offer.get("shipping_cost") if buy_box_offer else "",
-                    "buy_box_delivery": buy_box_offer.get("shipping_time") if buy_box_offer else "",
-                    "is_hoank_in_buy_box": is_hoank_in_bb,
-                    # Top 3 lowest offers
-                    "lowest_1_seller": lowest_1.get("seller_name", ""),
-                    "lowest_1_price": lowest_1.get("total_price", lowest_1.get("item_price", "")),
-                    "lowest_1_delivery": lowest_1.get("shipping_time", ""),
-                    "lowest_2_seller": lowest_2.get("seller_name", "") if lowest_2 else "",
-                    "lowest_2_price": lowest_2.get("total_price", lowest_2.get("item_price", "")) if lowest_2 else "",
-                    "lowest_2_delivery": lowest_2.get("shipping_time", "") if lowest_2 else "",
-                    "lowest_3_seller": lowest_3.get("seller_name", "") if lowest_3 else "",
-                    "lowest_3_price": lowest_3.get("total_price", lowest_3.get("item_price", "")) if lowest_3 else "",
-                    "lowest_3_delivery": lowest_3.get("shipping_time", "") if lowest_3 else "",
-                    "all_offers": offers,
-                }
+                    is_hoank_in_bb = False
+                    if buy_box_offer:
+                        bb_name = buy_box_offer.get("seller_name", "").lower()
+                        if "hoank" in bb_name or "qurtdis" in bb_name or "hypersale" in bb_name:
+                            is_hoank_in_bb = True
 
-                print(
-                    f"    ✓ Sellers: {total_sellers} | "
-                    f"Lowest 1: {cache[asin]['lowest_1_price']} ({cache[asin]['lowest_1_seller']}) | "
-                    f"BB: {cache[asin]['buy_box_seller']} | HOANK in BB: {'YES' if is_hoank_in_bb else 'NO'}"
-                )
+                    cache[asin] = {
+                        "asin": asin,
+                        "scraped_at": datetime.now().isoformat(),
+                        "scraped_successfully": True,
+                        "total_sellers_count": total_sellers,
+                        "buy_box_seller": buy_box_offer.get("seller_name") if buy_box_offer else "",
+                        "buy_box_price": buy_box_offer.get("item_price") if buy_box_offer else "",
+                        "buy_box_shipping": buy_box_offer.get("shipping_cost") if buy_box_offer else "",
+                        "buy_box_delivery": buy_box_offer.get("shipping_time") if buy_box_offer else "",
+                        "is_hoank_in_buy_box": is_hoank_in_bb,
+                        # Top 3 lowest offers
+                        "lowest_1_seller": lowest_1.get("seller_name", ""),
+                        "lowest_1_price": lowest_1.get("total_price", lowest_1.get("item_price", "")),
+                        "lowest_1_delivery": lowest_1.get("shipping_time", ""),
+                        "lowest_2_seller": lowest_2.get("seller_name", "") if lowest_2 else "",
+                        "lowest_2_price": lowest_2.get("total_price", lowest_2.get("item_price", "")) if lowest_2 else "",
+                        "lowest_2_delivery": lowest_2.get("shipping_time", "") if lowest_2 else "",
+                        "lowest_3_seller": lowest_3.get("seller_name", "") if lowest_3 else "",
+                        "lowest_3_price": lowest_3.get("total_price", lowest_3.get("item_price", "")) if lowest_3 else "",
+                        "lowest_3_delivery": lowest_3.get("shipping_time", "") if lowest_3 else "",
+                        "all_offers": offers,
+                    }
 
-            except Exception as e:
-                print(f"    ⚠️ Error scraping ASIN {asin}: {e}")
-                cache[asin] = {
-                    "asin": asin,
-                    "scraped_at": datetime.now().isoformat(),
-                    "scraped_successfully": False,
-                    "error": str(e),
-                    "total_sellers_count": 0,
-                    "all_offers": [],
-                }
+                    success_count += 1
+                    emit_log(
+                        f"    ✓ Sellers: {total_sellers} | "
+                        f"Lowest 1: {cache[asin]['lowest_1_price']} ({cache[asin]['lowest_1_seller']}) | "
+                        f"BB: {cache[asin]['buy_box_seller']} | HOANK in BB: {'YES' if is_hoank_in_bb else 'NO'}"
+                    )
+                    break
+
+                except Exception as e:
+                    err_str = str(e)
+                    is_fatal_session = any(
+                        k in err_str.lower()
+                        for k in ["invalid session id", "disconnected", "renderer", "not reachable", "session deleted"]
+                    )
+                    if is_fatal_session and attempt < max_retries:
+                        first_line = err_str.splitlines()[0] if err_str else "Connection lost"
+                        emit_log(f"    ⚠️ Session crash on attempt {attempt}: {first_line}. Respawning Chrome...")
+                        driver = respawn_driver(driver, zipcode=zipcode, headless=headless)
+                        zip_set = True
+                        continue
+                    else:
+                        first_line = err_str.splitlines()[0] if err_str else str(e)
+                        emit_log(f"    ⚠️ Error scraping ASIN {asin}: {first_line}")
+                        cache[asin] = {
+                            "asin": asin,
+                            "scraped_at": datetime.now().isoformat(),
+                            "scraped_successfully": False,
+                            "error": str(e),
+                            "total_sellers_count": 0,
+                            "all_offers": [],
+                        }
+                        fail_count += 1
+                        break
 
             # Save cache immediately so dashboard displays live real-time progress
             save_cache(cache)
-
+            emit_progress("HOANK", curr_progress_idx, total_asins, asin,
+                          f"Processed {asin}", success_count, fail_count, start_time)
 
     finally:
-        driver.quit()
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
         save_cache(cache)
+        emit_progress("HOANK", total_asins, total_asins, "", "Scraping completed",
+                      success_count, fail_count, start_time)
+
+    return cache
 
     return cache
 

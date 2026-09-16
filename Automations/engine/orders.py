@@ -654,75 +654,103 @@ def _rush_defer_note(amazon_id, note_text):
 
 def _rush_flush_amazon_writes(driver):
     """Write every journaled WB/label + its notes back to Amazon — BATCHED:
-    one tab per order so all the page loads overlap (same technique as the
-    phase-A scrape and the closing SC scrape), then each pre-loaded tab gets
-    its seller-id + notes written with skip_navigate. A tab that didn't land
-    on its order page just falls back to the navigating write for that one
-    order. Entries that fail stay journaled and retry on the next flush or
-    the next run. Returns the driver (recycled if a stall hit mid-flush)."""
+    open tabs in parallel (modeled after Closing) so page loads overlap without
+    memory exhaustion, then each pre-loaded tab gets its seller-id + notes
+    written with skip_navigate. Both WB and seller note are written on the
+    same loaded tab without page reloads. Entries that fail stay journaled
+    and retry on the next flush or the next run."""
     if not _rush_pending:
         return driver
     entries = [dict(e) for e in _rush_pending.values()]
-    print(f"\n⚡ RUSH FLUSH: {len(entries)} deferred order(s) — loading all order pages in parallel tabs...")
+    print(f"\n⚡ RUSH FLUSH: {len(entries)} deferred order(s) — loading order pages in parallel tabs...")
     base = driver.current_window_handle
-    handle_map = {}
+    CHUNK_SIZE = 8
+
     try:
-        for e in entries:
-            try:
-                driver.switch_to.new_window("tab")
-                handle_map[driver.current_window_handle] = e
-                driver.execute_script("window.location.href = arguments[0];",
-                                      f"{AMAZON_BASE_ORDER_URL}{e['amazon_id']}")
-            except Exception as oe:
-                print(f"  ⚠️  Could not open flush tab for {e['amazon_id']}: {oe}")
-        time.sleep(4)
-        for h, e in handle_map.items():
-            aid = e["amazon_id"]
-            try:
-                driver.switch_to.window(h)
-                for _ in range(20):   # up to 10s; usually already complete
+        for chunk_start in range(0, len(entries), CHUNK_SIZE):
+            chunk = entries[chunk_start:chunk_start + CHUNK_SIZE]
+            handle_map = {}
+            for e in chunk:
+                try:
+                    driver.switch_to.new_window("tab")
+                    handle_map[driver.current_window_handle] = e
+                    driver.execute_script("window.location.href = arguments[0];",
+                                          f"{AMAZON_BASE_ORDER_URL}{e['amazon_id']}")
+                except Exception as oe:
+                    print(f"  ⚠️  Could not open flush tab for {e['amazon_id']}: {oe}")
+
+            if not handle_map:
+                continue
+
+            # Overlapping readiness polling (modeled on Closing)
+            pending_handles = list(handle_map.keys())
+            pending = set(range(len(pending_handles)))
+            deadline = time.time() + 12
+            while pending and time.time() < deadline:
+                for i in list(pending):
                     try:
-                        if driver.execute_script("return document.readyState") == "complete":
-                            break
+                        h = pending_handles[i]
+                        driver.switch_to.window(h)
+                        u = (driver.current_url or "").lower()
+                        aid = handle_map[h]["amazon_id"].lower()
+                        if aid in u or "signin" in u or "/ap/" in u:
+                            if driver.execute_script("return document.readyState") == "complete":
+                                pending.discard(i)
                     except Exception:
                         pass
-                    time.sleep(0.5)
-                on_page = (aid in (driver.current_url or "")) and not is_login_page(driver)
-                if not e.get("label") and not on_page:
-                    continue                      # notes-only + wrong page → retry later
-                ok = True
-                if e.get("label"):
-                    ok = update_amazon_seller_id(driver, aid, e["label"], PROFILE_NAME,
-                                                 skip_navigate=on_page)
-                if not ok:
-                    print(f"  ⚠️  Deferred WB write FAILED for {aid} — kept journaled for retry")
-                    continue
-                _notes_ok = True
-                for note_text in e.get("notes", []):
-                    try:
-                        write_seller_note(driver, aid, note_text=note_text, skip_navigate=True)
-                    except Exception as note_err:
-                        _notes_ok = False
-                        print(f"   [SellerNote] ⚠️  deferred note failed for {aid}: {note_err} "
-                              f"— kept journaled for retry")
-                if not _notes_ok:
-                    continue   # label rewrite next retry is idempotent; note must land
-                _rush_pending.pop(aid, None)
-                _rush_journal_save()
-                print(f"  ✅ {aid}: {e.get('label') or '(notes only)'} written back")
-            except Exception as we:
-                print(f"  ⚠️  Deferred write error for {aid}: {we}")
-                if _is_stall_error(we):
-                    driver = _recycle_browser(f"stalled during rush flush {aid}")
-                    return driver     # recycle closed the tabs; the rest retry next flush
-    finally:
-        try:
-            for h in list(handle_map.keys()):
+                if pending:
+                    time.sleep(0.3)
+
+            for h in pending_handles:
+                e = handle_map[h]
+                aid = e["amazon_id"]
+                try:
+                    driver.switch_to.window(h)
+                    on_page = (aid in (driver.current_url or "")) and not is_login_page(driver)
+                    if not e.get("label") and not on_page:
+                        continue                      # notes-only + wrong page → retry later
+                    ok = True
+                    if e.get("label"):
+                        ok = update_amazon_seller_id(driver, aid, e["label"], PROFILE_NAME,
+                                                     skip_navigate=on_page)
+                    if not ok:
+                        print(f"  ⚠️  Deferred WB write FAILED for {aid} — kept journaled for retry")
+                        continue
+                    _notes_ok = True
+                    for note_text in e.get("notes", []):
+                        try:
+                            write_seller_note(driver, aid, note_text=note_text, skip_navigate=True)
+                        except Exception as note_err:
+                            _notes_ok = False
+                            print(f"   [SellerNote] ⚠️  deferred note failed for {aid}: {note_err} "
+                                  f"— kept journaled for retry")
+                    if not _notes_ok:
+                        continue   # label rewrite next retry is idempotent; note must land
+                    _rush_pending.pop(aid, None)
+                    _rush_journal_save()
+                    print(f"  ✅ {aid}: {e.get('label') or '(notes only)'} written back")
+                except Exception as we:
+                    print(f"  ⚠️  Deferred write error for {aid}: {we}")
+                    if _is_stall_error(we):
+                        driver = _recycle_browser(f"stalled during rush flush {aid}")
+                        return driver
+
+            # Close worker tabs for this chunk
+            for h in pending_handles:
                 try:
                     driver.switch_to.window(h)
                     driver.close()
                 except Exception:
                     pass
+            try:
+                driver.switch_to.window(base)
+            except Exception:
+                try:
+                    driver.switch_to.window(driver.window_handles[0])
+                except Exception:
+                    pass
+    finally:
+        try:
             driver.switch_to.window(base)
         except Exception:
             try:
@@ -1095,6 +1123,13 @@ def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_w
     if min_orders:
         lo = min(min_orders.values())
         print(f"  🧑‍⚖️ SUPERVISOR: a priority coupon would apply from a ${lo:.0f} cart (this cart ${raw_cart_cost:.2f})")
+    # Big Order Gate ($800+): if no priority coupon applies, NEVER test regular 10% EM coupons.
+    # Return "call_zoro_20" so the order is marked '20' on Amazon for manual 20% Zoro phone discount.
+    big_threshold = float(((gui_cfg if "gui_cfg" in globals() else {}).get("big_order_threshold", 800.0) or 800.0))
+    if raw_cart_cost >= big_threshold:
+        why = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon applies; mark '20' for manual 20% Zoro phone discount"
+        return _ret({"action": "call_zoro_20", "coupon": None, "tier": None, "reason": why,
+                     "verdict": _v("NO_PRIORITY", "Deciding", why)})
     if all_zoro_select:
         why = "Zoro Select — no priority coupon applies; reseller already gets the 10 % Select discount"
         return _ret({"action": "reseller", "coupon": None, "tier": None, "reason": why,
@@ -1296,6 +1331,10 @@ def _coupon_fail_decision(last_fail, raw_cart_cost, earnings, all_zoro_select, s
     mtxt = f"{res_margin:.1%}" if res_margin is not None else "unknown"
     if total and tr == total:
         return {"action": "wait", "definitive": False, "reason": "coupon API trouble on every code — retry next cycle"}
+    big_threshold = float(((gui_cfg if "gui_cfg" in globals() else {}).get("big_order_threshold", 800.0) or 800.0))
+    if (raw_cart_cost or 0.0) >= big_threshold:
+        return {"action": "call_zoro_20", "definitive": False,
+                "reason": f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon applied; mark '20' for manual 20% Zoro phone discount"}
     tiered = "regular_dead" in lf or "priority_dead" in lf
     if not tiered:                                   # summaries written before 14 Sep 2026
         if total and item == total and regs > 0:
@@ -1426,65 +1465,89 @@ def _maybe_run_priority_check(driver, sku_map, coupon_codes, cache):
 
 
 def _rush_scrape_batch(driver, batch):
-    """RUSH phase A: open one tab per order so Amazon loads every detail page
-    in PARALLEL, then harvest each tab with the same extraction code as the
-    classic scrape. Returns {amazon_id: detail}. Orders missing from the map
-    (load failed, login wall, extract error) are scraped serially by the
-    caller — correctness never depends on the batch path."""
+    """RUSH phase A: open tabs in parallel (modeled after Closing) so Amazon loads
+    detail pages concurrently without memory exhaustion, then harvest each tab
+    with the same extraction code as the classic scrape. Returns {amazon_id: detail}.
+    Orders missing from the map are scraped serially by the caller."""
     details = {}
     base = driver.current_window_handle
-    handle_to_order = {}
+    CHUNK_SIZE = 8
+
     try:
-        for o in batch:
-            url = f"{AMAZON_BASE_ORDER_URL}{o['amazon_id']}"
-            try:
-                # switch_to.new_window creates a REAL tab via the driver —
-                # window.open() from a script gets eaten by Chrome's popup
-                # blocker (that made phase A silently return 0/10). Setting
-                # location via JS returns immediately, so all tabs keep
-                # loading in parallel while we open the next one.
-                driver.switch_to.new_window("tab")
-                handle_to_order[driver.current_window_handle] = o
-                driver.execute_script("window.location.href = arguments[0];", url)
-            except Exception as e:
-                print(f"  ⚠️  Could not open batch tab for {o['amazon_id']}: {e}")
-        time.sleep(4)   # all tabs load concurrently; give the slowest a head start
-        login_hit = False
-        for h, o in handle_to_order.items():
-            aid = o["amazon_id"]
-            try:
-                driver.switch_to.window(h)
-            except Exception:
-                continue
-            for _ in range(20):   # up to 10s per tab (usually already complete)
+        for chunk_start in range(0, len(batch), CHUNK_SIZE):
+            chunk = batch[chunk_start:chunk_start + CHUNK_SIZE]
+            handle_to_order = {}
+            for o in chunk:
+                url = f"{AMAZON_BASE_ORDER_URL}{o['amazon_id']}"
                 try:
-                    if driver.execute_script("return document.readyState") == "complete":
-                        break
+                    driver.switch_to.new_window("tab")
+                    handle_to_order[driver.current_window_handle] = o
+                    driver.execute_script("window.location.href = arguments[0];", url)
+                except Exception as e:
+                    print(f"  ⚠️  Could not open batch tab for {o['amazon_id']}: {e}")
+
+            if not handle_to_order:
+                continue
+
+            # Overlapping readiness polling (modeled on Closing: scrape_sc_fields.py)
+            pending_handles = list(handle_to_order.keys())
+            pending = set(range(len(pending_handles)))
+            deadline = time.time() + 12
+            while pending and time.time() < deadline:
+                for i in list(pending):
+                    try:
+                        h = pending_handles[i]
+                        driver.switch_to.window(h)
+                        u = (driver.current_url or "").lower()
+                        aid = handle_to_order[h]["amazon_id"].lower()
+                        if aid in u or "signin" in u or "/ap/" in u:
+                            if driver.execute_script("return document.readyState") == "complete":
+                                pending.discard(i)
+                    except Exception:
+                        pass
+                if pending:
+                    time.sleep(0.3)
+
+            login_hit = False
+            for h in pending_handles:
+                o = handle_to_order[h]
+                aid = o["amazon_id"]
+                try:
+                    driver.switch_to.window(h)
                 except Exception:
-                    pass
-                time.sleep(0.5)
-            if is_login_page(driver):
-                login_hit = True
-                break
-            if aid not in (driver.current_url or ""):
-                continue          # navigation didn't take — serial fallback covers it
-            try:
-                d = _extract_order_details(driver, aid, fallback_qty=o.get("qty", 1))
-                if d:
-                    details[aid] = d
-            except Exception as e:
-                print(f"  ⚠️  Batch-tab extract failed for {aid}: {e} — will scrape serially")
-        if login_hit:
-            print("  🔐 Login wall inside batch tabs — whole batch falls back to serial scrape")
-            details.clear()
-    finally:
-        try:
-            for h in list(handle_to_order.keys()):
+                    continue
+                if is_login_page(driver):
+                    login_hit = True
+                    break
+                if aid not in (driver.current_url or ""):
+                    continue
+                try:
+                    d = _extract_order_details(driver, aid, fallback_qty=o.get("qty", 1))
+                    if d:
+                        details[aid] = d
+                except Exception as e:
+                    print(f"  ⚠️  Batch-tab extract failed for {aid}: {e} — will scrape serially")
+
+            # Close worker tabs for this chunk
+            for h in pending_handles:
                 try:
                     driver.switch_to.window(h)
                     driver.close()
                 except Exception:
                     pass
+            try:
+                driver.switch_to.window(base)
+            except Exception:
+                try:
+                    driver.switch_to.window(driver.window_handles[0])
+                except Exception:
+                    pass
+
+            if login_hit:
+                print("  🔐 Login wall inside batch tabs — remaining batch falls back to serial scrape")
+                break
+    finally:
+        try:
             driver.switch_to.window(base)
         except Exception:
             try:
@@ -2013,6 +2076,8 @@ def _focus_decision(verdict, codes, now=None) -> str:
         return "probe"                       # tested before this coupon (or too long ago)
     if status == "COUPON_OK":
         return "skip"                        # another priority coupon works — nothing is lost
+    if any("SELECT" in c for c in codes) and status == "SELECT":
+        return "probe"                       # Zoro Select coupon: MUST probe Zoro Select items!
     if status in ("SELECT", "NO_PRIORITY", "REGULAR_OK"):
         return "skip"                        # recently tested with every priority code: no
     return "probe"
@@ -3105,6 +3170,44 @@ def _evaluate_order_strategy(resolved_items, priority_coupons, unit_price):
     return strategy
 
 
+def _notify_big_order_20(amazon_id, asin, sku, cart_cost, buyer="", city="", state=""):
+    """Send WhatsApp and Telegram alert when an order >= $800 is marked '20'."""
+    loc = f"{city}, {state}".strip(", ")
+    binfo = f"{buyer} ({loc})" if (buyer or loc) else "Customer"
+    wa_msg = (
+        f"🚨 *BIG ORDER ($800+) — MARKED '20'*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📦 *Order ID*: `{amazon_id}`\n"
+        f"🏷️ *ASIN*: `{asin}` | *SKU*: `{sku}`\n"
+        f"💰 *Zoro Purchase*: *${cart_cost:.2f}*\n"
+        f"👤 *Buyer*: {binfo}\n"
+        f"📝 *Amazon Tag*: Marked *'20'* in Seller Order ID\n"
+        f"📞 *Action*: No priority coupon applies. Call Zoro customer service for manual 20% phone discount!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━"
+    )
+    tg_msg = (
+        f"🚨 <b>BIG ORDER ($800+) — MARKED '20'</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📦 <b>Order ID</b>: <code>{amazon_id}</code>\n"
+        f"🏷️ <b>ASIN</b>: <code>{asin}</code> | <b>SKU</b>: <code>{sku}</code>\n"
+        f"💰 <b>Zoro Purchase</b>: <b>${cart_cost:.2f}</b>\n"
+        f"👤 <b>Buyer</b>: {binfo}\n"
+        f"📝 <b>Amazon Tag</b>: Marked <b>'20'</b> in Seller Order ID\n"
+        f"📞 <b>Action</b>: No priority coupon applies. Call Zoro customer service for manual 20% phone discount!\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━"
+    )
+    try:
+        from utils.whatsapp import send_whatsapp_message
+        send_whatsapp_message(wa_msg)
+    except Exception as e:
+        print(f"  ⚠️ WhatsApp alert error: {e}")
+    try:
+        from utils.telegram import send_telegram_message
+        send_telegram_message(tg_msg)
+    except Exception as e:
+        print(f"  ⚠️ Telegram alert error: {e}")
+
+
 def process_order(driver, amazon_id, order_detail, sku_map,
                   earnings_service, duplicate_services,
                   coupon_codes=None, asin_coupon_cache=None,
@@ -3192,7 +3295,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         print(f"  ⏭️  Already has WB ID: {merchant_id} — skipping")
         return "skipped"
 
-    if merchant_id and merchant_id.upper() in ("OOS", "DISCONTINUED", "DUPLICATE", "SR", "NET30"):
+    if merchant_id and merchant_id.upper() in ("OOS", "DISCONTINUED", "DUPLICATE", "SR", "NET30", "20"):
         print(f"  ⏭️  Already marked: {merchant_id} — skipping")
         return "skipped"
     if merchant_id and merchant_id.upper().startswith("LOSS"):
@@ -3249,6 +3352,30 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         if item["second_sku"]:
             second_label = "2nd Part" if not is_multi_item else f"2nd Part {index}"
             _print_kv(second_label, item["second_sku"])
+
+    # ── Focus Priority Coupon guard (per-order check) ─────────────
+    # If "Place with Priority" is active for this profile, ONLY process orders that match the focus coupon.
+    # If the user toggled it mid-cycle or an order was already queued, skip/defer any non-matching order immediately.
+    _foc_q = _focus_query()
+    if _foc_q and IS_COUPON_PROFILE and not manual_override:
+        _pri_loaded = coupon_codes[0] if isinstance(coupon_codes, tuple) else []
+        _foc_codes = _focus_codes(_foc_q, _pri_loaded)
+        if _foc_codes:
+            from engine import priority_check as _pc
+            verdicts = _pc.load_verdicts()
+            v = verdicts.get(primary_item.get("asin")) if primary_item.get("asin") else None
+            d = _focus_decision(v, _foc_codes, time.time())
+            if d == "skip":
+                print(f"  ⏭️ Focus coupon active ({', '.join(_foc_codes)}): {primary_item.get('asin')} does not match focus coupon — deferred")
+                return "skipped"
+            elif d == "probe":
+                probe_mem = _focus_probe_cache()
+                ckey = "|".join(_foc_codes)
+                pr = probe_mem.get(f"{primary_item.get('asin')}|{ckey}")
+                now = time.time()
+                if pr and now - float(pr.get("at") or 0) < FOCUS_PROBE_TTL_S and not pr.get("ok"):
+                    print(f"  ⏭️ Focus coupon active ({', '.join(_foc_codes)}): {primary_item.get('asin')} tested earlier (no discount) — deferred")
+                    return "skipped"
     
     # Dates from Amazon order page
     pd = order_detail.get("purchase_date", "")
@@ -3362,7 +3489,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             existing_wb = check_if_address_already_ordered_gmail(
                 duplicate_services, addr["street_address"],
                 zip_code=addr.get("zip_code", ""),
-                customer_name=buyer)
+                customer_name=buyer,
+                current_asin=asin_field,
+                current_sku=sku_field,
+                current_amazon_id=amazon_id)
         if existing_wb == DUP_CHECK_FAILED:
             # The Gmail duplicate search could not complete (rate-limit / API error).
             # FAIL CLOSED: do NOT place — the old behaviour placed anyway, which is exactly
@@ -3548,6 +3678,20 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             print(f"  ❌ {'OUT OF STOCK' if is_genuine_oos else 'INVENTORY CHECK FAILED'}: {item['sku']} ({inv_status})")
             if label:
                 update_amazon_seller_id(driver, amazon_id, label, PROFILE_NAME)
+                try:
+                    from utils.telegram import notify_oos
+                    item_title = primary_item.get("title", "") if "primary_item" in locals() else (items[0].get("title", "") if items else "")
+                    notify_oos(
+                        amazon_id=amazon_id,
+                        title=item_title,
+                        asin=asin_field,
+                        sku=sku_field,
+                        zoro_code=item.get("sku", ""),
+                        account=PROFILE_NAME,
+                        driver=driver
+                    )
+                except Exception as _oose:
+                    print(f"   [Telegram] ⚠️ OOS alert error: {_oose}")
             _log_order({
                 "amazon_id": amazon_id,
                 "asin": asin_field,
@@ -3642,12 +3786,25 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # has to survive the list→detail dict hop, and when it silently didn't, this
     # routing never fired at all. The membership check makes the gate correct even
     # if a discovery path forgets to stamp.
+    # Big Order Gate ($800+) for Reseller profile: never buy $800+ orders at reseller price.
+    # Mark '20' on Amazon and alert so Kamran can call Zoro for 20% manual discount.
+    big_threshold = float(((gui_cfg if "gui_cfg" in globals() else {}).get("big_order_threshold", 800.0) or 800.0))
+    if IS_RESELLER_PROFILE and raw_cart_cost >= big_threshold and not manual_override:
+        ok = update_amazon_seller_id(driver, amazon_id, "20", PROFILE_NAME)
+        reason = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) on Reseller profile — marked '20' for manual 20% Zoro phone discount"
+        print(f"  📞 {reason} — marked '20' on Amazon" + ("" if ok else "  ⚠️ write not verified — set it by hand"))
+        _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                    "buyer": buyer, "city": city, "state": state, "status": "MARKED_20_CALL_ZORO",
+                    "notes": reason})
+        _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state)
+        return "skipped"
+
     _is_deciding_order = bool(order_detail.get("_deciding"))
     if not _is_deciding_order and IS_RESELLER_PROFILE and DECIDING_ASINS:
         _dset = {d.strip().upper() for d in DECIDING_ASINS if d and d.strip()}
         _is_deciding_order = any((it.get("asin") or "").strip().upper() in _dset
                                  for it in resolved_items)
-    if _is_deciding_order and IS_RESELLER_PROFILE:
+    if _is_deciding_order and IS_RESELLER_PROFILE and not manual_override:
         # Aliased on purpose: a plain `from … import ZORO_SMALL_ORDER_FEE` here would make
         # that name LOCAL to the whole function and break its module-level use further
         # down (UnboundLocalError on every order — happened on 7 Sep 2026).
@@ -3727,6 +3884,15 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             _record_asin_verdict(primary_item.get("asin"), _dec["verdict"], _cart_txt, _dec.get("coupon") or "")
         elif _dec.get("verdict"):
             print("  🧑‍⚖️ SUPERVISOR: no priority coupons loaded — order handled, ASIN left unsorted until they are")
+        if _dec["action"] == "call_zoro_20":
+            ok = update_amazon_seller_id(driver, amazon_id, "20", PROFILE_NAME)
+            print(f"  📞 BIG ORDER (${raw_cart_cost:.2f} >= ${big_threshold:.0f}): {_dec['reason']} — marked '20' on Amazon"
+                  + ("" if ok else "  ⚠️ write not verified — set it by hand"))
+            _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                        "buyer": buyer, "city": city, "state": state, "status": "MARKED_20_CALL_ZORO",
+                        "notes": _dec["reason"]})
+            _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state)
+            return "skipped"
         if _dec["action"] == "reseller":
             _route_to_sibling(driver, amazon_id, "reseller", "Supervisor: " + _dec["reason"],
                               dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
@@ -3838,6 +4004,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     skip_priority = _pcfg.get("skip_priority_coupons", False)
 
     # Build the flat coupon list for the checkout function
+    _foc_codes = []
     if skip_coupons:
         coupon_arg = None
         priority_codes_for_checkout = []
@@ -3853,12 +4020,19 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 seen_codes.add(code)
                 priority_codes_for_checkout.append(code)
 
-        # Focus Priority Coupon: try the focus code(s) FIRST at checkout (only codes that exist in
-        # today's list — an unknown query never becomes a bogus coupon attempt).
+        # Focus Priority Coupon: in focus mode, strictly try ONLY the focus coupon(s) at checkout!
+        # Do NOT fall back to other priority coupons (e.g. POWER) or regular coupons.
         _foc_codes = _focus_active_codes(priority_coupons_with_pct)
         if _foc_codes and not skip_priority:
-            priority_codes_for_checkout = _foc_codes + [c for c in priority_codes_for_checkout if c not in _foc_codes]
-            print(f"  🎯 Focus coupon(s) first at checkout: {', '.join(_foc_codes)}")
+            priority_codes_for_checkout = list(_foc_codes)
+            regular_coupon_codes = []
+            print(f"  🎯 Focus coupon mode ACTIVE: trying ONLY [{', '.join(_foc_codes)}] at checkout (no fallback to other coupons)")
+
+        # Big Order Gate ($800+): never place with regular 10% EM coupons
+        if raw_cart_cost >= big_threshold:
+            if regular_coupon_codes:
+                print(f"  📞 BIG ORDER (${raw_cart_cost:.2f} >= ${big_threshold:.0f}): regular 10% EM coupons disabled — trying ONLY priority coupons")
+            regular_coupon_codes = []
 
         coupon_arg = priority_codes_for_checkout + regular_coupon_codes
 
@@ -3875,6 +4049,15 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif IS_COUPON_PROFILE:
         print(f"  🏷️  Coupon: OFF ({TARGET_LABEL} profile)")
     if IS_COUPON_PROFILE and not skip_coupons and not manual_override and not coupon_arg:
+        if raw_cart_cost >= big_threshold:
+            ok = update_amazon_seller_id(driver, amazon_id, "20", PROFILE_NAME)
+            reason = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon in pool; marked '20' for manual 20% Zoro phone discount"
+            print(f"  📞 {reason} — marked '20' on Amazon" + ("" if ok else "  ⚠️ write not verified — set it by hand"))
+            _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                        "buyer": buyer, "city": city, "state": state, "status": "MARKED_20_CALL_ZORO",
+                        "notes": reason})
+            _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state)
+            return "skipped"
         # No coupon at all in today's pool: this profile exists to place WITH coupons, so it
         # waits for the next coupon load instead of buying at list price.
         print("  ⏸️  No coupons available (priority or regular) — not placing at full price; waiting for the next coupon load")
@@ -3968,17 +4151,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     est_shipping=estimated_shipping,
                     est_profit=profit if earnings else None,
                     est_margin=margin if earnings else None,
-                    preferred_coupon=split_coupon or supervised_coupon or strategy.get("preferred_coupon"),
+                    preferred_coupon=split_coupon or (_foc_codes[0] if _foc_codes else (supervised_coupon or strategy.get("preferred_coupon"))),
                     coupon_meta_by_code=coupon_meta_by_code,
                     alt_of=alt_main_sku,
                     payment_method=PAYMENT_METHOD,
                     split_coupon_only=split_coupon,
-                    # Was the Zoro Select discount actually applied to this
-                    # order's cost? Only reseller profiles receive it, so the
-                    # seller note can say whether the margin already includes it.
-                    zoro_select=bool(
-                        IS_RESELLER_PROFILE
-                        and all(it.get("is_zoro_select") for it in resolved_items)),
+                    # Zoro Select brand detection: True if the item is Zoro Select
+                    zoro_select=bool(all(it.get("is_zoro_select") for it in resolved_items)),
                     **filter_kwargs_for_callee(place_order_fast_true_api,
                                                checkout_kwargs, warn_label="ENGINE"))
             except Exception as true_api_err:
@@ -4186,6 +4365,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # ── Result handling ───────────────────────────────────────────
     margin_str = str(int(round(margin * 100))) if earnings else "0"
     _cf_route = None            # set when a COUPON FAIL means "the reseller should place this"
+    _cf_action_20 = False       # set when cart >= $800 and coupons fail -> mark '20' for phone discount
 
     if result_status == "SUCCESS" and (result_id.startswith("WB") or " " in result_id):
         # Money has been spent. CONFIRM the local claim FIRST so this order can never be
@@ -4262,8 +4442,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 }
                 enrich_note_basis(
                     note_data, profile_name=PROFILE_NAME,
-                    zoro_select=bool(IS_RESELLER_PROFILE and all(
-                        it.get("is_zoro_select") for it in resolved_items)),
+                    zoro_select=bool(all(it.get("is_zoro_select") for it in resolved_items)),
                     earnings=earnings, amazon_fees=amazon_fees,
                     shipping_amt=shipping_amt, total_cost=logged_cost)
                 _note_text = format_seller_note(note_data)
@@ -4274,6 +4453,40 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                                       skip_navigate=True)
             except Exception as e:
                 print(f"   [SellerNote] ⚠️  Could not write note: {e}")
+
+            try:
+                from utils.telegram import notify_order_placed
+                tg_data = dict(split_detail)
+                if 'note_data' in locals():
+                    tg_data.update(note_data)
+                _s_tax_val = float(split_tax or 0.0) if 'split_tax' in locals() else 0.0
+                _s_cost_val = float(logged_cost) if 'logged_cost' in locals() and logged_cost else 0.0
+                _s_earn_val = float(split_earnings if 'split_earnings' in locals() else (earnings or 0.0))
+                _s_cost_no_tax = max(0.01, _s_cost_val - _s_tax_val)
+                _s_margin_no_tax = ((_s_earn_val - _s_cost_no_tax) / _s_cost_no_tax) if (_s_earn_val and _s_cost_no_tax > 0) else (margin or 0.0)
+                _s_need_photo = (margin is not None and (margin < 0.08 or margin > 0.30)) or (_s_margin_no_tax < 0.08)
+                notify_order_placed(tg_data, driver=driver if (not defer_amazon_writes or _s_need_photo) else None, account=PROFILE_NAME)
+            except Exception as _tge:
+                print(f"   [Telegram] ⚠️ Notification error: {_tge}")
+
+            # Operational Insights & Anomaly Analysis
+            try:
+                from utils.insights_engine import analyze_order_insights
+                from utils.whatsapp import notify_insight
+                insight_data = dict(split_detail)
+                if 'note_data' in locals():
+                    insight_data.update(note_data)
+                insight_data["purchase_date"] = pd
+                insight_data["ship_by_date"] = sb
+                insight_data["deliver_by_date"] = db
+                insight_data["amazon_fees"] = amazon_fees
+                insight_data["shipping_amt"] = shipping_amt
+                triggered_insights = analyze_order_insights(insight_data)
+                for ins in triggered_insights:
+                    print(f"   💡 [Insight] Triggered: {ins.get('title')} ({ins.get('code')})")
+                    notify_insight(ins)
+            except Exception as _ie:
+                print(f"   💡 [Insight] ⚠️ Analysis error: {_ie}")
         else:
             print(f"\n  ╔══════════════════════════════════════════╗")
             if is_multi_item:
@@ -4333,8 +4546,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             }
             enrich_note_basis(
                 note_data, profile_name=PROFILE_NAME,
-                zoro_select=bool(IS_RESELLER_PROFILE and all(
-                    it.get("is_zoro_select") for it in resolved_items)),
+                zoro_select=bool(all(it.get("is_zoro_select") for it in resolved_items)),
                 earnings=earnings, amazon_fees=amazon_fees,
                 shipping_amt=shipping_amt, total_cost=logged_cost)
             _note_text = format_seller_note(note_data)
@@ -4345,6 +4557,44 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                                   skip_navigate=True)
         except Exception as e:
             print(f"   [SellerNote] ⚠️  Could not write note: {e}")
+
+        # Send Telegram notification (handles < 8% screenshot, > 50% celebration, or normal placement)
+        try:
+            from utils.telegram import notify_order_placed
+            tg_data = dict(normal_detail)
+            if 'note_data' in locals():
+                tg_data.update(note_data)
+            _n_tax_val = float(logged_tax or 0.0) if 'logged_tax' in locals() and logged_tax else 0.0
+            _n_cost_val = float(logged_cost) if 'logged_cost' in locals() and logged_cost else 0.0
+            _n_earn_val = float(earnings or 0.0)
+            _n_cost_no_tax = max(0.01, _n_cost_val - _n_tax_val)
+            _n_margin_no_tax = ((_n_earn_val - _n_cost_no_tax) / _n_cost_no_tax) if (_n_earn_val and _n_cost_no_tax > 0) else (margin or 0.0)
+            _n_need_photo = (margin is not None and (margin < 0.08 or margin > 0.30)) or (_n_margin_no_tax < 0.08)
+            notify_order_placed(tg_data, driver=driver if (not defer_amazon_writes or _n_need_photo) else None, account=PROFILE_NAME)
+        except Exception as _tge:
+            print(f"   [Telegram] ⚠️ Notification error: {_tge}")
+
+        # Operational Insights & Anomaly Analysis
+        try:
+            from utils.insights_engine import analyze_order_insights
+            from utils.whatsapp import notify_insight
+            insight_data = dict(normal_detail)
+            if 'note_data' in locals():
+                insight_data.update(note_data)
+            insight_data["purchase_date"] = pd
+            insight_data["ship_by_date"] = sb
+            insight_data["deliver_by_date"] = db
+            insight_data["amazon_fees"] = amazon_fees
+            insight_data["shipping_amt"] = shipping_amt
+            if last_checkout_result:
+                insight_data["zoro_stock"] = last_checkout_result.get("stock_level") or last_checkout_result.get("zoro_stock")
+                insight_data["zoro_deliver_by"] = last_checkout_result.get("est_delivery") or last_checkout_result.get("zoro_deliver_by")
+            triggered_insights = analyze_order_insights(insight_data)
+            for ins in triggered_insights:
+                print(f"   💡 [Insight] Triggered: {ins.get('title')} ({ins.get('code')})")
+                notify_insight(ins)
+        except Exception as _ie:
+            print(f"   💡 [Insight] ⚠️ Analysis error: {_ie}")
         # Delete used regular coupon from Google Sheet so colleagues don't reuse it.
         # Priority coupons are reusable and stay in the sheet.
         used_coupon = last_checkout_result.get("used_coupon_code") if last_checkout_result else None
@@ -4378,6 +4628,21 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             "status": "LOW_PROFIT",
             "notes": "; ".join(filter(None, [status_note, order_note])),
         })
+        try:
+            from utils.telegram import notify_low_profit_rejected
+            notify_low_profit_rejected(
+                amazon_id=amazon_id,
+                title=primary_item.get("title", "") if "primary_item" in locals() else "",
+                asin=asin_field,
+                sku=sku_field,
+                earnings=earnings or 0.0,
+                cost=logged_cost or 0.0,
+                margin=margin,
+                reason="Loss-Kamran checking",
+                min_margin=checkout_min_margin or MIN_MARGIN
+            )
+        except Exception as _tge:
+            print(f"   [Telegram] ⚠️ Low profit alert error: {_tge}")
         # Write the loss details to the Amazon seller note so the loss is visible
         # at a glance (cost, earnings, profit/loss, margin) without digging logs.
         try:
@@ -4397,8 +4662,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             }
             enrich_note_basis(
                 note_data, profile_name=PROFILE_NAME,
-                zoro_select=bool(IS_RESELLER_PROFILE and all(
-                    it.get("is_zoro_select") for it in resolved_items)),
+                zoro_select=bool(all(it.get("is_zoro_select") for it in resolved_items)),
                 earnings=earnings, amazon_fees=amazon_fees,
                 shipping_amt=shipping_amt, total_cost=logged_cost)
             write_seller_note(driver, amazon_id, note_text=format_seller_note(note_data),
@@ -4425,27 +4689,48 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         status_note = (f"Coupon API / session trouble on every priority coupon — retry next cycle"
                        if result_status == "COUPON_RETRY" else f"No coupon worked — skipping (will retry next cycle)")
         if result_status == "COUPON FAIL" and IS_COUPON_PROFILE and not skip_coupons:
-            from utils.config import ZORO_SMALL_ORDER_FEE as _cf_fee, FREE_SHIPPING_THRESHOLD as _cf_free
-            _lf = (asin_coupon_cache or {}).get("last_fail") or {}
-            _cf = _coupon_fail_decision(_lf, raw_cart_cost, earnings,
-                                        all(it.get("is_zoro_select") for it in resolved_items),
-                                        _cf_fee, _cf_free, DECIDING_MIN_MARGIN)
-            _DLOG.log("coupon_fail", profile=PROFILE_NAME, amazon_id=amazon_id, asin=asin_field, sku=sku_field,
-                      qty=qty_field, cart=raw_cart_cost, earnings=earnings, action=_cf["action"], reason=_cf["reason"],
-                      definitive=bool(_cf.get("definitive")), last_fail=_lf)
-            status_note = f"No coupon worked — {_cf['reason']}"
-            if _cf.get("definitive"):
-                # every code rejected the item itself → promo-ineligible now, not after two strikes
-                _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), False,
-                                     cache=asin_coupon_cache, definitive=True, source="checkout")
-            if _cf["action"] == "route_reseller" and not manual_override:
-                _cf_route = _cf["reason"]
+            if raw_cart_cost >= big_threshold:
+                _cf_action_20 = True
+                status_note = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon worked at checkout"
+            elif _foc_codes:
+                status_note = f"Focus coupon ({', '.join(_foc_codes)}) did not apply — deferred"
+                _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": status_note}
             else:
-                _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": _cf["reason"]}
+                from utils.config import ZORO_SMALL_ORDER_FEE as _cf_fee, FREE_SHIPPING_THRESHOLD as _cf_free
+                _lf = (asin_coupon_cache or {}).get("last_fail") or {}
+                _cf = _coupon_fail_decision(_lf, raw_cart_cost, earnings,
+                                            all(it.get("is_zoro_select") for it in resolved_items),
+                                            _cf_fee, _cf_free, DECIDING_MIN_MARGIN)
+                _DLOG.log("coupon_fail", profile=PROFILE_NAME, amazon_id=amazon_id, asin=asin_field, sku=sku_field,
+                          qty=qty_field, cart=raw_cart_cost, earnings=earnings, action=_cf["action"], reason=_cf["reason"],
+                          definitive=bool(_cf.get("definitive")), last_fail=_lf)
+                status_note = f"No coupon worked — {_cf['reason']}"
+                if _cf.get("definitive"):
+                    # every code rejected the item itself → promo-ineligible now, not after two strikes
+                    _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), False,
+                                         cache=asin_coupon_cache, definitive=True, source="checkout")
+                if _cf["action"] == "call_zoro_20":
+                    _cf_action_20 = True
+                elif _cf["action"] == "route_reseller" and not manual_override:
+                    _cf_route = _cf["reason"]
+                else:
+                    _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": _cf["reason"]}
     else:
         status_note = f"Placement failed: {result_status}"
     
     print(f"  ❌ {status_note}")
+
+    if _cf_action_20:
+        if _HAS_LOCK and not DRY_RUN:
+            plock.release(amazon_id, f"big order -> marked 20")
+        ok = update_amazon_seller_id(driver, amazon_id, "20", PROFILE_NAME)
+        reason = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon worked at checkout; marked '20' for manual 20% Zoro phone discount"
+        print(f"  📞 {reason} — marked '20' on Amazon" + ("" if ok else "  ⚠️ write not verified — set it by hand"))
+        _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                    "buyer": buyer, "city": city, "state": state, "status": "MARKED_20_CALL_ZORO",
+                    "notes": reason})
+        _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state)
+        return "skipped"
 
     # ── Reconcile the local claim on failure ──────────────────────
     # These statuses are all detected BEFORE Zoro payment, so it is safe to release the
@@ -4488,7 +4773,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 try:
                     existing_wb = check_if_address_already_ordered_gmail(
                         duplicate_services, addr["street_address"],
-                        zip_code=addr.get("zip_code", ""), customer_name=buyer)
+                        zip_code=addr.get("zip_code", ""), customer_name=buyer,
+                        current_asin=asin_field,
+                        current_sku=sku_field,
+                        current_amazon_id=amazon_id)
                 except Exception as _dup_err:
                     print(f"   [dup-recheck] error: {_dup_err}")
                     existing_wb = None
@@ -5165,7 +5453,9 @@ def main():
                                     _dspec.append({"key": _o["amazon_id"],
                                                    "name": _o.get("buyer", ""),
                                                    "address": _a.get("street_address", ""),
-                                                   "zip": _a.get("zip_code", "")})
+                                                   "zip": _a.get("zip_code", ""),
+                                                   "asin": _o.get("asin", ""),
+                                                   "sku": _o.get("sku", "")})
                             if _dspec:
                                 dup_map = batch_check_addresses_gmail(duplicate_services, _dspec)
                                 print(f"⚡ Batched dup check: {len(dup_map)}/{len(_dspec)} "
@@ -5229,7 +5519,7 @@ def main():
                             print(f"  ⏭️  Already processed ({mid})")
                             _run_log["skipped"] += 1
                             continue
-                        if mid and mid.upper() in ("OOS", "DISCONTINUED", "DUPLICATE", "SR", "NET30"):
+                        if mid and mid.upper() in ("OOS", "DISCONTINUED", "DUPLICATE", "SR", "NET30", "20"):
                             print(f"  ⏭️  Already marked: {mid}")
                             _run_log["skipped"] += 1
                             continue
@@ -5410,7 +5700,7 @@ def main():
                     print(f"  ⏭️  Already processed ({mid})")
                     _run_log["skipped"] += 1
                     continue
-                if mid and mid.upper() in ("OOS", "DISCONTINUED", "DUPLICATE", "SR", "NET30"):
+                if mid and mid.upper() in ("OOS", "DISCONTINUED", "DUPLICATE", "SR", "NET30", "20"):
                     print(f"  ⏭️  Already marked: {mid}")
                     _run_log["skipped"] += 1
                     continue
