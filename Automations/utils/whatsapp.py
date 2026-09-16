@@ -319,15 +319,15 @@ def notify_order_oos(order: dict, screenshot_bytes: bytes = None, account: str =
             pass
 
     caption = (
-        f"🚨 *OUT OF STOCK ALERT (OOS)*\n"
-        f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
-        f"• SKU           : `{sku if sku else 'N/A'}`\n"
-        f"• ASIN          : `{asin}`\n"
-        f"• Zoro Code     : `{order.get('zoro_code') or sku}`\n"
-        f"• Amazon Order  : `{amz_id}`\n"
-        f"• Order Qty     : {qty}\n"
-        f"• Buyer         : {buyer}\n"
-        f"• Action        : Supplier is OOS — check alternatives or notify customer."
+        f"🚨 *OUT OF STOCK ALERT (OOS)*\n\n"
+        f"• Title: *{title[:80] if title else 'Product Listing'}*\n"
+        f"• SKU: `{sku if sku else 'N/A'}`\n"
+        f"• ASIN: `{asin}`\n"
+        f"• Zoro Code: `{order.get('zoro_code') or sku}`\n"
+        f"• Order: `{amz_id}`\n\n"
+        f"• Quantity: {qty}\n"
+        f"• Buyer: {buyer}\n"
+        f"• Action: Supplier is OOS — marked on Amazon SC, manual review required"
     )
     if screenshot_bytes:
         return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group)
@@ -358,16 +358,16 @@ def notify_low_margin(order: dict, margin_pct: float, screenshot_bytes: bytes = 
     coupon = order.get("coupon_used") or order.get("coupon") or "None"
 
     caption = (
-        f"⚠️ *LOW PROFIT MARGIN WARNING (< 8%)*\n"
-        f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
-        f"• SKU           : `{sku if sku else 'N/A'}`\n"
-        f"• ASIN          : `{asin}`\n"
-        f"• Amazon Order  : `{amz_id}`\n"
-        f"• Margin        : *{margin_pct:.1f}%* (Pre-tax verified)\n"
-        f"• Profit        : *+${profit:.2f}*\n"
-        f"• Payout        : ${payout:.2f} | Zoro Cost: ${cost:.2f}\n"
-        f"• Coupon        : {coupon}\n"
-        f"• Note          : Thin profit margin — review selling price."
+        f"⚠️ *LOW PROFIT MARGIN WARNING (< 8%)*\n\n"
+        f"• Title: *{title[:80] if title else 'Product Listing'}*\n"
+        f"• SKU: `{sku if sku else 'N/A'}`\n"
+        f"• ASIN: `{asin}`\n"
+        f"• Order: `{amz_id}`\n\n"
+        f"• Profit Margin: *{margin_pct:.1f}%* (Threshold: 8.0%)\n"
+        f"• Net Profit:    *+${profit:.2f}*\n"
+        f"• Payout / Cost: ${payout:.2f} / ${cost:.2f}\n"
+        f"• Coupon:        {coupon}\n"
+        f"• Status:        Placed (review pricing)"
     )
     if screenshot_bytes:
         return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group)
@@ -398,15 +398,15 @@ def notify_high_profit(order: dict, margin_pct: float, screenshot_bytes: bytes =
     coupon = order.get("coupon_used") or order.get("coupon") or "None"
 
     caption = (
-        f"🎉 *PROFIT ORDER (> 20%)*\n"
-        f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
-        f"• SKU           : `{sku if sku else 'N/A'}`\n"
-        f"• ASIN          : `{asin}`\n"
-        f"• Amazon Order  : `{amz_id}`\n"
-        f"• Margin        : *+{margin_pct:.1f}%* 🔥\n"
-        f"• Profit        : *+${profit:.2f}* 💵\n"
-        f"• Payout        : ${payout:.2f} | Cost: ${cost:.2f}\n"
-        f"• Coupon Used   : {coupon}"
+        f"🎉 *HIGH PROFIT ORDER (> 20%)* 🔥\n\n"
+        f"• Title: *{title[:80] if title else 'Product Listing'}*\n"
+        f"• SKU: `{sku if sku else 'N/A'}`\n"
+        f"• ASIN: `{asin}`\n"
+        f"• Order: `{amz_id}`\n\n"
+        f"• Profit Margin: *+{margin_pct:.1f}%* 🔥\n"
+        f"• Net Profit:    *+${profit:.2f}* 💵\n"
+        f"• Payout / Cost: ${payout:.2f} / ${cost:.2f}\n"
+        f"• Coupon Used:   {coupon}"
     )
     if screenshot_bytes:
         return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group)

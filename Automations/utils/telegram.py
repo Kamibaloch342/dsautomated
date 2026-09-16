@@ -229,6 +229,7 @@ def format_boss_note_text(data: dict) -> str:
         f"Zoro Code Used: {code}",
         f"Qty: {qty}",
         f"Tracking msg sent: {tracking}",
+        "",
         f"Total Zoro Cost: {tc_str}",
         f"Zoro Tax: {tax_str}",
         f"Amazon Earnings: {earn_str}",
@@ -334,10 +335,16 @@ def notify_order_placed(order_data: dict, driver=None, account: str = ""):
 
 
 def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
-                               earnings: float, cost: float, margin: float,
-                               reason: str = "", min_margin: float = None,
-                               account: str = ""):
-    """Alert when an order is skipped/rejected due to negative or thin margin."""
+                               cost: float, earnings: float, min_margin: float,
+                               reason: str = "", account: str = ""):
+    """Send immediate notification when an order is skipped/marked Loss-Kamran."""
+    diff = earnings - cost
+    pct = (diff / cost) * 100.0 if cost > 0 else 0.0
+    pfx = "+" if diff >= 0 else ""
+    margin_pct = f"{pfx}{pct:.1f}%"
+    dollar_diff = abs(diff)
+    thresh_pct = f"{min_margin * 100.0:.0f}%"
+
     title = str(title or "").strip()
     sku = str(sku or "").strip()
     if (not title or not sku or sku in ("N/A", "None", "")) and asin:
@@ -345,18 +352,13 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
         title = title or db_t
         sku = sku or db_s
 
-    pfx = "+" if (earnings - cost) >= 0 else ""
-    dollar_diff = earnings - cost if (earnings is not None and cost is not None) else 0.0
-    margin_pct = f"{margin * 100:.1f}%" if margin is not None else "N/A"
-    thresh_pct = f"{min_margin * 100:.1f}%" if min_margin is not None else "N/A"
-
     if is_telegram_enabled():
         msg = (
             f"⛔ <b>ORDER REJECTED — LOW PROFIT</b>\n\n"
             f"<b>Title:</b> {html.escape(title[:80]) if title else 'Product Listing'}\n"
             f"<b>SKU:</b> <code>{sku if sku else 'N/A'}</code>\n"
             f"<b>ASIN:</b> <code>{asin}</code>\n"
-            f"<b>Amazon ID:</b> <code>{amazon_id}</code>\n"
+            f"<b>Amazon ID:</b> <code>{amazon_id}</code>\n\n"
             f"<b>Earnings:</b> ${earnings:.2f} | <b>Cost:</b> ${cost:.2f}\n"
             f"<b>Projected Profit:</b> {pfx}${dollar_diff:.2f} ({margin_pct})\n"
             f"<b>Threshold:</b> Min required {thresh_pct}\n"
@@ -373,11 +375,11 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
                 f"• Title: *{title[:80] if title else 'Product Listing'}*\n"
                 f"• SKU: `{sku if sku else 'N/A'}`\n"
                 f"• ASIN: `{asin}`\n"
-                f"• Amazon ID: `{amazon_id}`\n"
-                f"• Earnings: ${earnings:.2f} | Cost: ${cost:.2f}\n"
-                f"• Projected Profit: {pfx}${dollar_diff:.2f} ({margin_pct})\n"
-                f"• Threshold: Min required {thresh_pct}\n"
-                f"• Status: Skipped / Marked {reason or 'LOSS'}"
+                f"• Order: `{amazon_id}`\n\n"
+                f"• Projected Profit: *{pfx}${dollar_diff:.2f}* ({margin_pct})\n"
+                f"• Earnings / Cost:  ${earnings:.2f} / ${cost:.2f}\n"
+                f"• Threshold:        Min required {thresh_pct}\n"
+                f"• Status:           Skipped / Marked {reason or 'LOSS'}"
             )
             send_whatsapp_message(wa_msg, to=target_wa_group, background=True)
     except Exception:
@@ -407,8 +409,7 @@ def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
             f"<b>SKU:</b> <code>{sku if sku else 'N/A'}</code>\n"
             f"<b>ASIN:</b> <code>{asin}</code>\n"
             f"<b>Zoro Code:</b> <code>{zoro_code}</code>\n"
-            f"<b>Amazon Order:</b> <code>{amazon_id}</code>\n"
-            f"<b>Account:</b> {account or 'ZUHRA'}\n"
+            f"<b>Amazon Order:</b> <code>{amazon_id}</code>\n\n"
             f"<b>Action:</b> Marked 'OOS' on Amazon Seller Central"
         )
         if screenshot_bytes:
@@ -426,8 +427,8 @@ def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
                 f"• SKU: `{sku if sku else 'N/A'}`\n"
                 f"• ASIN: `{asin}`\n"
                 f"• Zoro Code: `{zoro_code}`\n"
-                f"*Amazon Order:* `{amazon_id}`\n"
-                f"*Action:* Marked 'OOS' on Amazon Seller Central"
+                f"• Order: `{amazon_id}`\n\n"
+                f"• Action: Marked 'OOS' on Amazon Seller Central"
             )
             if screenshot_bytes:
                 send_whatsapp_photo(screenshot_bytes, caption=wa_msg, to=target_wa_group, background=True)

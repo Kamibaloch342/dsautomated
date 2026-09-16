@@ -208,17 +208,25 @@ def dispatch_account_insights(
                 except Exception:
                     pass
 
-            lines = [header]
+            # Clean up redundant ASIN and Account prefixes from message body if present
+            clean_msg = msg_body
+            if clean_msg.startswith("ASIN "):
+                parts = clean_msg.split(":", 1)
+                if len(parts) == 2:
+                    clean_msg = parts[1].strip()
+
+            lines = [header, ""]
             lines.append(f"• Title: *{title[:80] if title else 'Product Listing'}*")
             lines.append(f"• SKU: `{sku if sku else 'N/A'}`")
             if asin:
                 lines.append(f"• ASIN: `{asin}`")
             if order_id:
-                lines.append(f"• Amazon Order: `{order_id}`")
+                lines.append(f"• Order: `{order_id}`")
             if d_str:
                 lines.append(f"• Date: {d_str}")
 
-            lines.append(f"• Detail: {msg_body}")
+            lines.append("")
+            lines.append(f"• Alert: {clean_msg}")
             full_text = "\n".join(lines)
 
             print(f"  📤 [{cat}] -> {ref_key}")

@@ -207,6 +207,8 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             last_date_str = last_order.get("purchase_date") or last_order.get("placed_at") or "earlier"
             direction = "INCREASED" if delta > 0 else "DECREASED"
             emoji = "📈" if delta > 0 else "📉"
+            status_badge = "🟢" if delta > 0 else "🔴"
+            order_line = f"• Order: `{current_amz_id}`\n" if current_amz_id else ""
             insights.append({
                 "code": "ITEM_PRICE_CHANGED",
                 "emoji": emoji,
@@ -216,13 +218,14 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "sku": sku_str,
                 "product_title": title_str,
                 "summary": (
-                    f"{emoji} *AMAZON ITEM PRICE CHANGED*\n"
+                    f"{emoji} *AMAZON ITEM PRICE {direction}* {status_badge}\n\n"
                     f"• Title: *{title_str}*\n"
                     f"• SKU: `{sku_str}`\n"
                     f"• ASIN: `{asin}`\n"
-                    f"• Current Price: *${item_unit_price:.2f}* / unit (Order: `{current_amz_id}`)\n"
+                    f"{order_line}\n"
+                    f"• Current Price:  *${item_unit_price:.2f}* / unit\n"
                     f"• Previous Price: *${last_item_unit_price:.2f}* / unit ({last_date_str})\n"
-                    f"• Shift: *{'+$' if delta >= 0 else '-$'}{abs(delta):.2f}* / unit ({pct:+.1f}%)"
+                    f"• Price Shift:    *{'+$' if delta >= 0 else '-$'}{abs(delta):.2f}* / unit ({pct:+.1f}%)"
                 ),
                 "data": {
                     "current_price": item_unit_price,
@@ -250,6 +253,8 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             if last_unit_base > 0 and abs(zoro_unit_cost - last_unit_base) >= 0.50:
                 cost_delta = zoro_unit_cost - last_unit_base
                 cost_pct = (cost_delta / last_unit_base) * 100.0
+                cost_direction = "INCREASED" if cost_delta > 0 else "DECREASED"
+                status_badge = "🔴" if cost_delta > 0 else "🟢"
                 insights.append({
                     "code": "ZORO_BASE_PRICE_CHANGED",
                     "emoji": "🏷️",
@@ -259,14 +264,14 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "sku": sku_str,
                     "product_title": title_str,
                     "summary": (
-                        f"🏷️ *ZORO BASE PRICE CHANGED*\n"
+                        f"🏷️ *ZORO BASE COST {cost_direction}* {status_badge}\n\n"
                         f"• Title: *{title_str}*\n"
                         f"• SKU: `{sku_str}`\n"
                         f"• Zoro Code: `{zoro_code}`\n"
-                        f"• ASIN: `{asin}`\n"
+                        f"• ASIN: `{asin}`\n\n"
                         f"• New Base Unit: *${zoro_unit_cost:.2f}*\n"
                         f"• Old Base Unit: *${last_unit_base:.2f}*\n"
-                        f"• Cost Shift: *{'+$' if cost_delta >= 0 else '-$'}{abs(cost_delta):.2f}* ({cost_pct:+.1f}%)"
+                        f"• Cost Shift:    *{'+$' if cost_delta >= 0 else '-$'}{abs(cost_delta):.2f}* ({cost_pct:+.1f}%)"
                     ),
                     "data": {
                         "new_base": zoro_unit_cost,
@@ -292,6 +297,7 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     main_sku = main_sku or "Primary SKU"
 
     if alt_used:
+        order_line = f"• Order: `{current_amz_id}`\n" if current_amz_id else ""
         insights.append({
             "code": "ALT_CODE_USED",
             "emoji": "🔄",
@@ -301,13 +307,14 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             "sku": sku_str,
             "product_title": title_str,
             "summary": (
-                f"🔄 *ALTERNATIVE SKU USED (Main OOS)*\n"
+                f"🔄 *ALTERNATIVE SKU USED (Main OOS)*\n\n"
                 f"• Title: *{title_str}*\n"
                 f"• SKU: `{sku_str}`\n"
                 f"• ASIN: `{asin}`\n"
-                f"• Primary Zoro Code: `{main_sku}` (❌ Out of Stock)\n"
+                f"{order_line}\n"
+                f"• Primary Zoro Code:     `{main_sku}` (❌ Out of Stock)\n"
                 f"• Placed by Alternative: `{zoro_code}` (✅ Available)\n"
-                f"• Quantity: {qty} units"
+                f"• Quantity Placed:       *{qty} unit{'s' if qty > 1 else ''}*"
             ),
             "data": {
                 "main_sku": main_sku,
@@ -325,6 +332,7 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
         if hist_shipping:
             avg_hist_ship = sum(hist_shipping) / len(hist_shipping)
             if avg_hist_ship >= 10.0 and shipping_amt < 1.0:
+                order_line = f"• Order: `{current_amz_id}`\n" if current_amz_id else ""
                 insights.append({
                     "code": "SHIPPING_MISMATCH",
                     "emoji": "⚠️",
@@ -334,14 +342,15 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "sku": sku_str,
                     "product_title": title_str,
                     "summary": (
-                        f"⚠️ *SHIPPING CHARGE MISMATCH!*\n"
+                        f"⚠️ *SHIPPING CHARGE MISMATCH (Free Shipping Charged)*\n\n"
                         f"• Title: *{title_str}*\n"
                         f"• SKU: `{sku_str}`\n"
                         f"• ASIN: `{asin}`\n"
-                        f"• Customary Shipping: *${avg_hist_ship:.2f}* (Charged on previous orders)\n"
-                        f"• Current Order Shipping: *$0.00 (FREE SHIPPING charged to buyer!)*\n"
-                        f"• Payout impact: *-${avg_hist_ship:.2f}*\n"
-                        f"• Action: Verify Amazon Shipping Template for this SKU immediately!"
+                        f"{order_line}\n"
+                        f"• Customary Shipping:     *${avg_hist_ship:.2f}* (Charged on prior orders)\n"
+                        f"• Current Order Shipping: *$0.00* (⚠️ FREE shipping charged to buyer!)\n"
+                        f"• Payout Impact:          *-${avg_hist_ship:.2f}*\n"
+                        f"• Action Required:        Verify Amazon Shipping Template immediately!"
                     ),
                     "data": {
                         "expected_shipping": avg_hist_ship,
@@ -356,6 +365,7 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     amz_deliver_by = _parse_date(deliver_by_str)
     if zoro_date and amz_deliver_by and zoro_date > amz_deliver_by:
         days_late = (zoro_date - amz_deliver_by).days
+        order_line = f"• Order: `{current_amz_id}`\n" if current_amz_id else ""
         insights.append({
             "code": "DELIVERY_MISMATCH_LATE",
             "emoji": "⏰",
@@ -365,15 +375,15 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             "sku": sku_str,
             "product_title": title_str,
             "summary": (
-                f"⏰ *DELIVERY WINDOW MISMATCH (Late Risk)*\n"
+                f"⏰ *DELIVERY WINDOW MISMATCH (Late Risk)*\n\n"
                 f"• Title: *{title_str}*\n"
                 f"• SKU: `{sku_str}`\n"
                 f"• ASIN: `{asin}`\n"
-                f"• Amazon Order: `{current_amz_id}`\n"
-                f"• Amazon Deliver-By: *{amz_deliver_by.strftime('%a, %b %d')}*\n"
-                f"• Zoro Est. Delivery: *{zoro_date.strftime('%a, %b %d')}* (*{days_late} day(s) LATE*)\n"
-                f"• Carrier: FedEx Ground\n"
-                f"• Risk: Potential late delivery defect on OTDR"
+                f"{order_line}\n"
+                f"• Amazon Promise Date: *{amz_deliver_by.strftime('%a, %b %d')}*\n"
+                f"• Zoro Est. Delivery:  *{zoro_date.strftime('%a, %b %d')}* (🚨 *{days_late} day{'s' if days_late > 1 else ''} LATE*)\n"
+                f"• Carrier:             FedEx Ground\n"
+                f"• Defect Risk:         Potential Late Delivery defect on OTDR"
             ),
             "data": {
                 "amazon_deliver_by": str(amz_deliver_by),
@@ -396,13 +406,13 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             "sku": sku_str,
             "product_title": title_str,
             "summary": (
-                f"📦 *LOW ZORO STOCK WARNING*\n"
+                f"📦 *LOW SUPPLIER STOCK WARNING*\n\n"
                 f"• Title: *{title_str}*\n"
                 f"• SKU: `{sku_str}`\n"
                 f"• Zoro Code: `{zoro_code}`\n"
-                f"• ASIN: `{asin}`\n"
-                f"• Status: *{zoro_stock_note}*\n"
-                f"• Action: Monitor listing or deactivate to prevent OOS cancellations"
+                f"• ASIN: `{asin}`\n\n"
+                f"• Supplier Inventory: ⚠️ *{zoro_stock_note}*\n"
+                f"• Recommendation:     Monitor listing or reduce active inventory to avoid OOS"
             ),
             "data": {
                 "zoro_code": zoro_code,
@@ -424,7 +434,10 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                 clean_delta = current_clean_unit - last_clean_unit
                 clean_pct = (clean_delta / last_clean_unit) * 100.0
                 if abs(clean_pct) >= 5.0:
+                    clean_direction = "INCREASED" if clean_delta > 0 else "DECREASED"
                     emoji = "💰" if clean_delta > 0 else "📉"
+                    status_badge = "🟢" if clean_delta > 0 else "🔴"
+                    order_line = f"• Order: `{current_amz_id}`\n" if current_amz_id else ""
                     insights.append({
                         "code": "CLEAN_EARNINGS_SHIFT",
                         "emoji": emoji,
@@ -434,13 +447,14 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "sku": sku_str,
                         "product_title": title_str,
                         "summary": (
-                            f"{emoji} *CLEAN UNIT EARNINGS SHIFT*\n"
+                            f"{emoji} *CLEAN UNIT EARNINGS {clean_direction}* {status_badge}\n\n"
                             f"• Title: *{title_str}*\n"
                             f"• SKU: `{sku_str}`\n"
-                            f"• ASIN: `{asin}` (Subtotal excl ship & tax)\n"
-                            f"• Current Clean Unit: *${current_clean_unit:.2f}* / unit\n"
-                            f"• Previous Clean Unit: *${last_clean_unit:.2f}* / unit\n"
-                            f"• Delta: *{'+$' if clean_delta >= 0 else '-$'}{abs(clean_delta):.2f}* / unit ({clean_pct:+.1f}%)"
+                            f"• ASIN: `{asin}` (Excluding ship & tax)\n"
+                            f"{order_line}\n"
+                            f"• Current Net Unit:  *${current_clean_unit:.2f}* / unit\n"
+                            f"• Previous Net Unit: *${last_clean_unit:.2f}* / unit\n"
+                            f"• Net Shift:         *{'+$' if clean_delta >= 0 else '-$'}{abs(clean_delta):.2f}* / unit ({clean_pct:+.1f}%)"
                         ),
                         "data": {
                             "current_clean": current_clean_unit,
@@ -459,6 +473,7 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
         handling_days = (s_date - p_date).days
         # Normal handling is 2-4 days. If Amazon reduced handling to <= 1 day:
         if handling_days <= 1:
+            order_line = f"• Order: `{current_amz_id}`\n" if current_amz_id else ""
             insights.append({
                 "code": "HANDLING_TIME_REDUCED",
                 "emoji": "⚡",
@@ -468,15 +483,15 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "sku": sku_str,
                 "product_title": title_str,
                 "summary": (
-                    f"⚡ *HANDLING TIME REDUCED*\n"
+                    f"⚡ *AMAZON HANDLING TIME REDUCED*\n\n"
                     f"• Title: *{title_str}*\n"
                     f"• SKU: `{sku_str}`\n"
                     f"• ASIN: `{asin}`\n"
-                    f"• Amazon Order: `{current_amz_id}`\n"
-                    f"• Purchased: {p_date.strftime('%a, %b %d')}\n"
-                    f"• Ship-By: *{s_date.strftime('%a, %b %d')}* (*Handling: {handling_days} Day(s)*)\n"
-                    f"• Expected: 2-3 Days\n"
-                    f"• Action: Must fulfill promptly to avoid Late Shipment defect!"
+                    f"{order_line}\n"
+                    f"• Purchase Date: {p_date.strftime('%a, %b %d')}\n"
+                    f"• Ship-By Date:  *{s_date.strftime('%a, %b %d')}* (⚡ *{handling_days} day{'s' if handling_days > 1 else ''} handling*)\n"
+                    f"• Expected:      2-3 Days standard\n"
+                    f"• Action:        Must fulfill promptly to avoid Late Shipment defect!"
                 ),
                 "data": {
                     "handling_days": handling_days,
