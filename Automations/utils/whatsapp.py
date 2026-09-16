@@ -277,10 +277,18 @@ def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, acc
         from utils.telegram import format_boss_note_text
         boss_text = format_boss_note_text(order_data)
     except Exception:
+        asin_val = order_data.get("asin", "N/A")
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            db_title, db_sku = _lookup_title_and_sku(asin_val)
+        except Exception:
+            db_title, db_sku = "", ""
         boss_text = (
+            f"Title: {order_data.get('title') or db_title or 'Product Listing'}\n"
+            f"SKU: {order_data.get('sku') or db_sku or 'N/A'}\n"
+            f"ASIN: {asin_val}\n"
             f"Amazon Order: {order_data.get('amazon_id', 'N/A')}\n"
             f"WB Order: {order_data.get('wb_id', 'N/A')}\n"
-            f"ASIN: {order_data.get('asin', 'N/A')}\n"
             f"Earnings: ${earn_val:.2f} | Cost: ${cost_val:.2f} | Profit: ${profit_val:.2f} ({pp_display})"
         )
 
@@ -295,20 +303,30 @@ def notify_order_oos(order: dict, screenshot_bytes: bytes = None, account: str =
     """Send out of stock alert with product photo/screenshot to the store's Orders Alerts group."""
     amz_id = order.get("amazon_id") or order.get("amazon_order_id") or "N/A"
     asin = order.get("asin") or "N/A"
-    sku = order.get("sku") or order.get("zoro_code") or "N/A"
+    sku = order.get("sku") or order.get("zoro_code") or ""
     qty = order.get("qty") or order.get("quantity") or 1
-    title = (order.get("title") or order.get("item_title") or asin)[:60]
+    title = str(order.get("title") or order.get("item_title") or "").strip()
     profile = account or order.get("profile") or order.get("profile_name") or ""
     buyer = order.get("buyer") or ""
     target_group = get_whatsapp_group(profile, kind="orders")
 
+    if (not title or not sku or sku in ("N/A", "None", "")) and asin:
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            db_t, db_s = _lookup_title_and_sku(asin)
+            title = title or db_t
+            sku = sku or db_s
+        except Exception:
+            pass
+
     caption = (
         f"🚨 *OUT OF STOCK ALERT (OOS)*\n"
         f"• Store Profile : {profile or 'Active Store'}\n"
-        f"• Amazon Order  : `{amz_id}`\n"
+        f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
+        f"• SKU           : `{sku if sku else 'N/A'}`\n"
         f"• ASIN          : `{asin}`\n"
-        f"• Zoro Code     : `{sku}`\n"
-        f"• Title         : {title}...\n"
+        f"• Zoro Code     : `{order.get('zoro_code') or sku}`\n"
+        f"• Amazon Order  : `{amz_id}`\n"
         f"• Order Qty     : {qty}\n"
         f"• Buyer         : {buyer}\n"
         f"• Action        : Supplier is OOS — check alternatives or notify customer."
@@ -322,10 +340,20 @@ def notify_low_margin(order: dict, margin_pct: float, screenshot_bytes: bytes = 
     """Send low-margin warning alert (< 8.0% pre-tax) with order screenshot to Orders Alerts group."""
     amz_id = order.get("amazon_id") or order.get("amazon_order_id") or "N/A"
     asin = order.get("asin") or "N/A"
-    sku = order.get("sku") or "N/A"
-    title = (order.get("title") or asin)[:60]
+    sku = order.get("sku") or order.get("zoro_code") or ""
+    title = str(order.get("title") or order.get("item_title") or "").strip()
     profile = account or order.get("profile") or order.get("profile_name") or ""
     target_group = get_whatsapp_group(profile, kind="orders")
+
+    if (not title or not sku or sku in ("N/A", "None", "")) and asin:
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            db_t, db_s = _lookup_title_and_sku(asin)
+            title = title or db_t
+            sku = sku or db_s
+        except Exception:
+            pass
+
     payout = float(order.get("earnings") or 0.0)
     cost = float(order.get("cost") or order.get("zoro_price") or 0.0)
     profit = float(order.get("profit") or (payout - cost))
@@ -334,10 +362,10 @@ def notify_low_margin(order: dict, margin_pct: float, screenshot_bytes: bytes = 
     caption = (
         f"⚠️ *LOW PROFIT MARGIN WARNING (< 8%)*\n"
         f"• Store Profile : {profile or 'Active Store'}\n"
-        f"• Amazon Order  : `{amz_id}`\n"
+        f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
+        f"• SKU           : `{sku if sku else 'N/A'}`\n"
         f"• ASIN          : `{asin}`\n"
-        f"• Zoro Code     : `{sku}`\n"
-        f"• Title         : {title}...\n"
+        f"• Amazon Order  : `{amz_id}`\n"
         f"• Margin        : *{margin_pct:.1f}%* (Pre-tax verified)\n"
         f"• Profit        : *+${profit:.2f}*\n"
         f"• Payout        : ${payout:.2f} | Zoro Cost: ${cost:.2f}\n"
@@ -353,10 +381,20 @@ def notify_high_profit(order: dict, margin_pct: float, screenshot_bytes: bytes =
     """Send high-profit celebration alert (> 20.0%) with order screenshot to Orders Alerts group."""
     amz_id = order.get("amazon_id") or order.get("amazon_order_id") or "N/A"
     asin = order.get("asin") or "N/A"
-    sku = order.get("sku") or "N/A"
-    title = (order.get("title") or asin)[:60]
+    sku = order.get("sku") or order.get("zoro_code") or ""
+    title = str(order.get("title") or order.get("item_title") or "").strip()
     profile = account or order.get("profile") or order.get("profile_name") or ""
     target_group = get_whatsapp_group(profile, kind="orders")
+
+    if (not title or not sku or sku in ("N/A", "None", "")) and asin:
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            db_t, db_s = _lookup_title_and_sku(asin)
+            title = title or db_t
+            sku = sku or db_s
+        except Exception:
+            pass
+
     payout = float(order.get("earnings") or 0.0)
     cost = float(order.get("cost") or order.get("zoro_price") or 0.0)
     profit = float(order.get("profit") or (payout - cost))
@@ -365,10 +403,10 @@ def notify_high_profit(order: dict, margin_pct: float, screenshot_bytes: bytes =
     caption = (
         f"🎉 *PROFIT ORDER (> 20%)*\n"
         f"• Store Profile : {profile or 'Active Store'}\n"
-        f"• Amazon Order  : `{amz_id}`\n"
+        f"• Title         : *{title[:80] if title else 'Product Listing'}*\n"
+        f"• SKU           : `{sku if sku else 'N/A'}`\n"
         f"• ASIN          : `{asin}`\n"
-        f"• Zoro Code     : `{sku}`\n"
-        f"• Title         : {title}...\n"
+        f"• Amazon Order  : `{amz_id}`\n"
         f"• Margin        : *+{margin_pct:.1f}%* 🔥\n"
         f"• Profit        : *+${profit:.2f}* 💵\n"
         f"• Payout        : ${payout:.2f} | Cost: ${cost:.2f}\n"
@@ -391,14 +429,53 @@ def notify_insight(insight: dict, account: str = "") -> bool:
         return False
     acct = account or insight.get("account") or ""
     target_group = get_whatsapp_group(acct, kind="insights")
+
+    # Ensure Title and SKU are in summary if not already present
+    asin = str(insight.get("asin") or "").strip().upper()
+    title = str(insight.get("title") or insight.get("product_title") or "").strip()
+    sku = str(insight.get("sku") or insight.get("main_sku") or "").strip()
+
+    if (not title or not sku) and asin:
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            db_t, db_s = _lookup_title_and_sku(asin)
+            title = title or db_t
+            sku = sku or db_s
+        except Exception:
+            pass
+
+    if "• Title:" not in summary and (title or sku):
+        meta_lines = []
+        if title:
+            meta_lines.append(f"• Title: *{title[:80]}*")
+        if sku:
+            meta_lines.append(f"• SKU: `{sku}`")
+        if meta_lines:
+            parts = summary.split("\n", 1)
+            if len(parts) == 2:
+                summary = f"{parts[0]}\n" + "\n".join(meta_lines) + f"\n{parts[1]}"
+            else:
+                summary = summary + "\n" + "\n".join(meta_lines)
+
     return send_whatsapp_message(summary, to=target_group, background=True)
 
 
 def notify_hijack(details: dict, screenshot_bytes: bytes = None) -> bool:
     """Send listing hijack alert when our rank is #2 or #3 to Insights group."""
     store = details.get("store") or "Amazon Store"
-    asin = details.get("asin") or "N/A"
-    title = (details.get("title") or "Tracked Product")[:60]
+    asin = str(details.get("asin") or "N/A").strip().upper()
+    sku = str(details.get("sku") or "").strip()
+    title = str(details.get("title") or "").strip()
+
+    if (not title or not sku) and asin and asin != "N/A":
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            db_t, db_s = _lookup_title_and_sku(asin)
+            title = title or db_t
+            sku = sku or db_s
+        except Exception:
+            pass
+
     our_rank = details.get("our_rank") or "2"
     winner_name = details.get("winner_name") or "Competitor"
     winner_price = details.get("winner_price") or "N/A"
@@ -408,8 +485,9 @@ def notify_hijack(details: dict, screenshot_bytes: bytes = None) -> bool:
     caption = (
         f"🚨 *LISTING HIJACK ALERT: Position Dropped!*\n"
         f"• Store       : {store}\n"
+        f"• Title       : *{title[:80] if title else 'Tracked Product'}*\n"
+        f"• SKU         : `{sku if sku else 'N/A'}`\n"
         f"• ASIN        : `{asin}`\n"
-        f"• Title       : {title}...\n"
         f"• Our Rank    : *#{our_rank}* (Lost Buy Box!)\n"
         f"• Buy Box Won : {winner_name} ({winner_price})\n"
         f"• Our Price   : {our_price}\n"

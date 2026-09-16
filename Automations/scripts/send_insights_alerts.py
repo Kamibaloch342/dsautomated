@@ -95,6 +95,32 @@ def _record_dispatched(con: sqlite3.Connection, ref_key: str, account: str, cate
     con.commit()
 
 
+def _load_asin_meta(con: sqlite3.Connection) -> dict:
+    """Pre-index ASIN -> {title, sku} metadata for 100% card fidelity."""
+    meta = {}
+    try:
+        for r in con.execute(
+            "SELECT UPPER(asin), title, sku FROM closing_orders WHERE asin IS NOT NULL AND title IS NOT NULL GROUP BY UPPER(asin)"
+        ):
+            if r[0]:
+                meta[r[0]] = {"title": str(r[1] or "").strip(), "sku": str(r[2] or "").strip()}
+    except Exception:
+        pass
+    try:
+        for r in con.execute(
+            "SELECT UPPER(asin), title, sku FROM order_placer_orders WHERE asin IS NOT NULL AND title IS NOT NULL GROUP BY UPPER(asin)"
+        ):
+            if r[0]:
+                entry = meta.setdefault(r[0], {})
+                if r[1]:
+                    entry["title"] = str(r[1]).strip()
+                if r[2]:
+                    entry["sku"] = str(r[2]).strip()
+    except Exception:
+        pass
+    return meta
+
+
 def dispatch_account_insights(
     account: str,
     days: int = 7,
@@ -127,6 +153,7 @@ def dispatch_account_insights(
 
     con = sqlite3.connect(DB_PATH, timeout=10)
     already_sent = _get_dispatched_keys(con)
+    asin_meta = _load_asin_meta(con)
 
     sent_count = 0
     categories = [category_filter] if category_filter else list(all_insights.keys())
@@ -145,17 +172,41 @@ def dispatch_account_insights(
 
             msg_body = item.get("message") or "Insight alert"
             order_id = item.get("order_id")
-            asin = item.get("asin")
-            sku = item.get("sku") or item.get("main_sku")
+            asin = (item.get("asin") or "").strip().upper()
+            title = str(item.get("title") or "").strip()
+            sku = str(item.get("sku") or item.get("main_sku") or "").strip()
+
+            # Fallback lookup in pre-indexed metadata
+            if asin and asin in asin_meta:
+                if not title:
+                    title = asin_meta[asin].get("title", "")
+                if not sku:
+                    sku = asin_meta[asin].get("sku", "")
+
+            # If still missing and order_id exists, lookup by order_id
+            if (not title or not sku) and order_id:
+                try:
+                    row = con.execute(
+                        "SELECT title, sku, asin FROM order_placer_orders WHERE amazon_order_id = ? AND title IS NOT NULL LIMIT 1",
+                        (order_id,)
+                    ).fetchone()
+                    if row:
+                        title = title or str(row[0] or "").strip()
+                        sku = sku or str(row[1] or "").strip()
+                        if not asin and row[2]:
+                            asin = str(row[2]).strip().upper()
+                except Exception:
+                    pass
+
             d_str = item.get("date") or ""
 
             lines = [header, f"• Store: *{account}*"]
-            if order_id:
-                lines.append(f"• Amazon Order: `{order_id}`")
+            lines.append(f"• Title: *{title[:80] if title else 'Product Listing'}*")
+            lines.append(f"• SKU: `{sku if sku else 'N/A'}`")
             if asin:
                 lines.append(f"• ASIN: `{asin}`")
-            if sku:
-                lines.append(f"• SKU / Code: `{sku}`")
+            if order_id:
+                lines.append(f"• Amazon Order: `{order_id}`")
             if d_str:
                 lines.append(f"• Date: {d_str}")
 

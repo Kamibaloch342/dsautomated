@@ -3170,15 +3170,32 @@ def _evaluate_order_strategy(resolved_items, priority_coupons, unit_price):
     return strategy
 
 
-def _notify_big_order_20(amazon_id, asin, sku, cart_cost, buyer="", city="", state=""):
+def _notify_big_order_20(amazon_id, asin, sku, cart_cost, buyer="", city="", state="", title=""):
     """Send WhatsApp and Telegram alert when an order >= $800 is marked '20'."""
     loc = f"{city}, {state}".strip(", ")
     binfo = f"{buyer} ({loc})" if (buyer or loc) else "Customer"
+
+    title = str(title or "").strip()
+    sku = str(sku or "").strip()
+    if (not title or not sku or sku in ("N/A", "None", "")) and asin:
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            db_t, db_s = _lookup_title_and_sku(asin)
+            title = title or db_t
+            sku = sku or db_s
+        except Exception:
+            pass
+
+    title_str = title[:80] if title else "Product Listing"
+    sku_str = sku if sku else "N/A"
+
     wa_msg = (
         f"🚨 *BIG ORDER ($800+) — MARKED '20'*\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• Title: *{title_str}*\n"
+        f"• SKU: `{sku_str}`\n"
+        f"• ASIN: `{asin}`\n"
         f"📦 *Order ID*: `{amazon_id}`\n"
-        f"🏷️ *ASIN*: `{asin}` | *SKU*: `{sku}`\n"
         f"💰 *Zoro Purchase*: *${cart_cost:.2f}*\n"
         f"👤 *Buyer*: {binfo}\n"
         f"📝 *Amazon Tag*: Marked *'20'* in Seller Order ID\n"
@@ -3188,8 +3205,10 @@ def _notify_big_order_20(amazon_id, asin, sku, cart_cost, buyer="", city="", sta
     tg_msg = (
         f"🚨 <b>BIG ORDER ($800+) — MARKED '20'</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• Title: <b>{html.escape(title_str)}</b>\n"
+        f"• SKU: <code>{sku_str}</code>\n"
+        f"• ASIN: <code>{asin}</code>\n"
         f"📦 <b>Order ID</b>: <code>{amazon_id}</code>\n"
-        f"🏷️ <b>ASIN</b>: <code>{asin}</code> | <b>SKU</b>: <code>{sku}</code>\n"
         f"💰 <b>Zoro Purchase</b>: <b>${cart_cost:.2f}</b>\n"
         f"👤 <b>Buyer</b>: {binfo}\n"
         f"📝 <b>Amazon Tag</b>: Marked <b>'20'</b> in Seller Order ID\n"

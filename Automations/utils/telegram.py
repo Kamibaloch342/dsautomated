@@ -141,8 +141,35 @@ def send_telegram_photo(photo_bytes: bytes, caption: str = "", parse_mode: str =
     return _do_send_photo(photo_bytes, caption, parse_mode, followup_message)
 
 
+def _lookup_title_and_sku(asin: str) -> tuple:
+    """Fallback lookup for product Title and SKU by ASIN from automations_unified.db."""
+    if not asin or asin in ("N/A", "None", ""):
+        return ("", "")
+    try:
+        import sqlite3
+        auto_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        db_path = os.path.join(auto_dir, "data", "automations_unified.db")
+        if os.path.exists(db_path):
+            with sqlite3.connect(db_path, timeout=5) as c:
+                row = c.execute(
+                    "SELECT title, sku FROM order_placer_orders WHERE UPPER(asin) = ? AND title IS NOT NULL ORDER BY id DESC LIMIT 1",
+                    (asin.upper(),)
+                ).fetchone()
+                if row and (row[0] or row[1]):
+                    return (str(row[0] or "").strip(), str(row[1] or "").strip())
+                row = c.execute(
+                    "SELECT title, sku FROM closing_orders WHERE UPPER(asin) = ? AND title IS NOT NULL ORDER BY id DESC LIMIT 1",
+                    (asin.upper(),)
+                ).fetchone()
+                if row and (row[0] or row[1]):
+                    return (str(row[0] or "").strip(), str(row[1] or "").strip())
+    except Exception:
+        pass
+    return ("", "")
+
+
 def format_boss_note_text(data: dict) -> str:
-    """Format the exact 'Copy for boss' template."""
+    """Format the exact 'Copy for boss' template with guaranteed Title and SKU."""
     title = str(data.get("title") or "").strip()
     asin = str(data.get("asin") or "N/A").strip()
     sku = str(data.get("sku") or "N/A").strip()
@@ -151,6 +178,14 @@ def format_boss_note_text(data: dict) -> str:
         code = "K" + code[1:]
     if data.get("alt_used") and " - ALT" not in code:
         code += " - ALT"
+
+    # Fallback lookup if title or SKU is missing
+    if not title or title in ("N/A", "None", "") or not sku or sku in ("N/A", "None", ""):
+        db_title, db_sku = _lookup_title_and_sku(asin)
+        if not title or title in ("N/A", "None", ""):
+            title = db_title
+        if not sku or sku in ("N/A", "None", ""):
+            sku = db_sku or code
         
     qty = data.get("qty", 1)
     tracking = data.get("tracking_sent", "No")
@@ -187,22 +222,21 @@ def format_boss_note_text(data: dict) -> str:
     else:
         c_str = "Not Used"
 
-    lines = []
-    if title and title not in ("N/A", "None"):
-        lines.append(f"Title: {title[:60]}")
-    lines.append(f"ASIN: {asin}")
-    if sku and sku not in ("N/A", "None"):
-        lines.append(f"SKU: {sku}")
-    lines.append(f"Zoro Code Used: {code}")
-    lines.append(f"Qty: {qty}")
-    lines.append(f"Tracking msg sent: {tracking}")
-    lines.append(f"Total Zoro Cost: {tc_str}")
-    lines.append(f"Zoro Tax: {tax_str}")
-    lines.append(f"Amazon Earnings: {earn_str}")
-    lines.append(f"Profit Margin: {pm_str}")
-    lines.append(f"Profit Percentage: {pp_str}")
-    lines.append(f"Coupon: {c_str}")
-    lines.append("\nComments: ")
+    lines = [
+        f"Title: {title[:80] if title else 'Product Listing'}",
+        f"SKU: {sku if sku else 'N/A'}",
+        f"ASIN: {asin}",
+        f"Zoro Code Used: {code}",
+        f"Qty: {qty}",
+        f"Tracking msg sent: {tracking}",
+        f"Total Zoro Cost: {tc_str}",
+        f"Zoro Tax: {tax_str}",
+        f"Amazon Earnings: {earn_str}",
+        f"Profit Margin: {pm_str}",
+        f"Profit Percentage: {pp_str}",
+        f"Coupon: {c_str}",
+        "\nComments: "
+    ]
     
     return "\n".join(lines)
 
@@ -305,6 +339,13 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
                                reason: str = "", min_margin: float = None,
                                account: str = ""):
     """Alert when an order is skipped/rejected due to negative or thin margin."""
+    title = str(title or "").strip()
+    sku = str(sku or "").strip()
+    if (not title or not sku or sku in ("N/A", "None", "")) and asin:
+        db_t, db_s = _lookup_title_and_sku(asin)
+        title = title or db_t
+        sku = sku or db_s
+
     pfx = "+" if (earnings - cost) >= 0 else ""
     dollar_diff = earnings - cost if (earnings is not None and cost is not None) else 0.0
     margin_pct = f"{margin * 100:.1f}%" if margin is not None else "N/A"
@@ -313,9 +354,10 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
     if is_telegram_enabled():
         msg = (
             f"⛔ <b>ORDER REJECTED — LOW PROFIT</b>\n\n"
-            f"<b>Title:</b> {html.escape(title[:70]) if title else 'N/A'}\n"
+            f"<b>Title:</b> {html.escape(title[:80]) if title else 'Product Listing'}\n"
+            f"<b>SKU:</b> <code>{sku if sku else 'N/A'}</code>\n"
+            f"<b>ASIN:</b> <code>{asin}</code>\n"
             f"<b>Amazon ID:</b> <code>{amazon_id}</code>\n"
-            f"<b>ASIN:</b> <code>{asin}</code> | <b>SKU:</b> <code>{sku}</code>\n"
             f"<b>Earnings:</b> ${earnings:.2f} | <b>Cost:</b> ${cost:.2f}\n"
             f"<b>Projected Profit:</b> {pfx}${dollar_diff:.2f} ({margin_pct})\n"
             f"<b>Threshold:</b> Min required {thresh_pct}\n"
@@ -329,10 +371,11 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
             target_wa_group = get_whatsapp_group(account, kind="orders")
             wa_msg = (
                 f"⛔ *ORDER REJECTED — LOW PROFIT*\n\n"
-                f"*Account:* {account or 'ZUHRA Store'}\n"
-                f"*Title:* {title[:70] if title else 'N/A'}\n"
-                f"*Amazon ID:* {amazon_id}\n"
-                f"*ASIN:* {asin} | *SKU:* {sku}\n"
+                f"*Store:* {account or 'ZUHRA Store'}\n"
+                f"*Title:* *{title[:80] if title else 'Product Listing'}*\n"
+                f"*SKU:* `{sku if sku else 'N/A'}`\n"
+                f"*ASIN:* `{asin}`\n"
+                f"*Amazon ID:* `{amazon_id}`\n"
                 f"*Earnings:* ${earnings:.2f} | *Cost:* ${cost:.2f}\n"
                 f"*Projected Profit:* {pfx}${dollar_diff:.2f} ({margin_pct})\n"
                 f"*Threshold:* Min required {thresh_pct}\n"
@@ -346,6 +389,13 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
 def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
                zoro_code: str, account: str = "", driver=None, screenshot_bytes: bytes = None):
     """Alert when an item is genuine Out of Stock and marked on Amazon, with screenshot."""
+    title = str(title or "").strip()
+    sku = str(sku or "").strip()
+    if (not title or not sku or sku in ("N/A", "None", "")) and asin:
+        db_t, db_s = _lookup_title_and_sku(asin)
+        title = title or db_t
+        sku = sku or db_s or zoro_code
+
     if screenshot_bytes is None and driver:
         try:
             screenshot_bytes = driver.get_screenshot_as_png()
@@ -355,9 +405,9 @@ def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
     if is_telegram_enabled():
         msg = (
             f"🚨 <b>OUT OF STOCK (OOS) ALERT</b>\n\n"
-            f"<b>Title:</b> {html.escape(title[:80]) if title else 'N/A'}\n"
+            f"<b>Title:</b> {html.escape(title[:80]) if title else 'Product Listing'}\n"
+            f"<b>SKU:</b> <code>{sku if sku else 'N/A'}</code>\n"
             f"<b>ASIN:</b> <code>{asin}</code>\n"
-            f"<b>SKU:</b> <code>{sku}</code>\n"
             f"<b>Zoro Code:</b> <code>{zoro_code}</code>\n"
             f"<b>Amazon Order:</b> <code>{amazon_id}</code>\n"
             f"<b>Account:</b> {account or 'ZUHRA'}\n"
@@ -375,11 +425,11 @@ def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
             wa_msg = (
                 f"🚨 *OUT OF STOCK (OOS) ALERT*\n\n"
                 f"*Store:* {account or 'ZUHRA'}\n"
-                f"*Title:* {title[:80] if title else 'N/A'}\n"
-                f"*ASIN:* {asin}\n"
-                f"*SKU:* {sku}\n"
-                f"*Zoro Code:* {zoro_code}\n"
-                f"*Amazon Order:* {amazon_id}\n"
+                f"*Title:* *{title[:80] if title else 'Product Listing'}*\n"
+                f"*SKU:* `{sku if sku else 'N/A'}`\n"
+                f"*ASIN:* `{asin}`\n"
+                f"*Zoro Code:* `{zoro_code}`\n"
+                f"*Amazon Order:* `{amazon_id}`\n"
                 f"*Action:* Marked 'OOS' on Amazon Seller Central"
             )
             if screenshot_bytes:

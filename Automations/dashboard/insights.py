@@ -196,12 +196,42 @@ def compute(account: Optional[str] = None, date_from: Optional[str] = None,
     except sqlite3.OperationalError:
         pass
 
+    # Pre-index global ASIN -> {title, sku} metadata
+    asin_to_meta: Dict[str, Dict[str, str]] = {}
+    try:
+        for r in con.execute(
+            "SELECT UPPER(asin), title, sku FROM closing_orders WHERE asin IS NOT NULL AND title IS NOT NULL GROUP BY UPPER(asin)"
+        ):
+            if r[0]:
+                asin_to_meta[r[0]] = {"title": str(r[1] or "").strip(), "sku": str(r[2] or "").strip()}
+        for r in con.execute(
+            "SELECT UPPER(asin), title, sku FROM order_placer_orders WHERE asin IS NOT NULL AND title IS NOT NULL GROUP BY UPPER(asin)"
+        ):
+            if r[0]:
+                entry = asin_to_meta.setdefault(r[0], {})
+                if r[1]:
+                    entry["title"] = str(r[1]).strip()
+                if r[2]:
+                    entry["sku"] = str(r[2]).strip()
+    except Exception:
+        pass
+
     resolved = _resolved_keys(con)
     verified = load_verified()
     con.close()
 
     orders = list(orders_map.values())
     today = date.today().isoformat()
+
+    # Overlay window-specific order titles/skus
+    for o in orders:
+        a = (o.get("asin") or "").strip().upper()
+        if a:
+            entry = asin_to_meta.setdefault(a, {"title": "", "sku": ""})
+            if not entry.get("title") and o.get("title"):
+                entry["title"] = str(o["title"]).strip()
+            if not entry.get("sku") and (o.get("sku") or o.get("zoro_sku")):
+                entry["sku"] = str(o.get("sku") or o.get("zoro_sku")).strip()
 
     out: Dict[str, List[Dict[str, Any]]] = {k: [] for k in [
         "earnings_increase", "earnings_decrease", "shipping_change",
@@ -222,6 +252,15 @@ def compute(account: Optional[str] = None, date_from: Optional[str] = None,
         }
         if extra:
             item.update(extra)
+
+        # Ensure title and SKU are always attached
+        a_key = str(item.get("asin") or "").strip().upper()
+        if a_key in asin_to_meta:
+            if not item.get("title") and asin_to_meta[a_key].get("title"):
+                item["title"] = asin_to_meta[a_key]["title"]
+            if not item.get("sku") and asin_to_meta[a_key].get("sku"):
+                item["sku"] = asin_to_meta[a_key]["sku"]
+
         out[kind].append(item)
 
     # ═══════════════════════════════════════════════════════════════════════════

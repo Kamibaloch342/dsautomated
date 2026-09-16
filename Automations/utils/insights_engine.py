@@ -135,7 +135,21 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     zoro_code = (order.get("sku") or "").strip().upper()
     current_amz_id = str(order.get("amazon_id") or order.get("amazon_order_id") or "")
     qty = max(1, int(order.get("qty") or order.get("quantity") or 1))
-    title = order.get("title") or order.get("item_title") or asin
+    title = str(order.get("title") or order.get("item_title") or "").strip()
+    sku = str(order.get("seller_sku") or order.get("sku") or zoro_code).strip()
+
+    # Guaranteed fallback lookup for Title & SKU if missing
+    if (not title or not sku or sku in ("N/A", "None", "")) and asin:
+        try:
+            from utils.telegram import _lookup_title_and_sku
+            db_t, db_s = _lookup_title_and_sku(asin)
+            title = title or db_t
+            sku = sku or db_s or zoro_code
+        except Exception:
+            pass
+
+    title_str = title[:80] if title else "Product Listing"
+    sku_str = sku if sku else (zoro_code or "N/A")
 
     # Current financial numbers
     earnings = float(order.get("earnings") or 0.0)
@@ -180,10 +194,14 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "emoji": emoji,
                 "title": f"Amazon Price {direction}",
                 "severity": "info" if delta > 0 else "warning",
+                "asin": asin,
+                "sku": sku_str,
+                "product_title": title_str,
                 "summary": (
                     f"{emoji} *AMAZON ITEM PRICE CHANGED*\n"
+                    f"• Title: *{title_str}*\n"
+                    f"• SKU: `{sku_str}`\n"
                     f"• ASIN: `{asin}`\n"
-                    f"• Product: {title[:50]}...\n"
                     f"• Current Price: *${item_price:.2f}* (Order: `{current_amz_id}`)\n"
                     f"• Previous Price: *${last_item_price:.2f}* ({last_date_str})\n"
                     f"• Shift: *{'+$' if delta >= 0 else '-$'}{abs(delta):.2f}* ({pct:+.1f}%)"
@@ -219,10 +237,15 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "emoji": "🏷️",
                     "title": "Zoro Base Cost Changed",
                     "severity": "warning" if cost_delta > 0 else "info",
+                    "asin": asin,
+                    "sku": sku_str,
+                    "product_title": title_str,
                     "summary": (
                         f"🏷️ *ZORO BASE PRICE CHANGED*\n"
+                        f"• Title: *{title_str}*\n"
+                        f"• SKU: `{sku_str}`\n"
                         f"• Zoro Code: `{zoro_code}`\n"
-                        f"• Product: {title[:50]}...\n"
+                        f"• ASIN: `{asin}`\n"
                         f"• New Base Unit: *${zoro_unit_cost:.2f}*\n"
                         f"• Old Base Unit: *${last_unit_base:.2f}*\n"
                         f"• Cost Shift: *{'+$' if cost_delta >= 0 else '-$'}{abs(cost_delta):.2f}* ({cost_pct:+.1f}%)"
@@ -246,8 +269,13 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             "emoji": "🔄",
             "title": "Alternative SKU Used (Main OOS)",
             "severity": "info",
+            "asin": asin,
+            "sku": sku_str,
+            "product_title": title_str,
             "summary": (
                 f"🔄 *ALTERNATIVE SKU USED (Main OOS)*\n"
+                f"• Title: *{title_str}*\n"
+                f"• SKU: `{sku_str}`\n"
                 f"• ASIN: `{asin}`\n"
                 f"• Primary Zoro Code: `{main_sku}` (❌ Out of Stock)\n"
                 f"• Fulfilled By Alt: `{zoro_code}` (✅ Available)\n"
@@ -274,8 +302,13 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                     "emoji": "⚠️",
                     "title": "Shipping Charge Mismatch (Free Shipping Charged)",
                     "severity": "alert",
+                    "asin": asin,
+                    "sku": sku_str,
+                    "product_title": title_str,
                     "summary": (
                         f"⚠️ *SHIPPING CHARGE MISMATCH!*\n"
+                        f"• Title: *{title_str}*\n"
+                        f"• SKU: `{sku_str}`\n"
                         f"• ASIN: `{asin}`\n"
                         f"• Customary Shipping: *${avg_hist_ship:.2f}* (Charged on previous orders)\n"
                         f"• Current Order Shipping: *$0.00 (FREE SHIPPING charged to buyer!)*\n"
@@ -300,8 +333,14 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             "emoji": "⏰",
             "title": "Delivery Window Mismatch (OTDR Risk)",
             "severity": "alert",
+            "asin": asin,
+            "sku": sku_str,
+            "product_title": title_str,
             "summary": (
                 f"⏰ *DELIVERY WINDOW MISMATCH (Late Risk)*\n"
+                f"• Title: *{title_str}*\n"
+                f"• SKU: `{sku_str}`\n"
+                f"• ASIN: `{asin}`\n"
                 f"• Amazon Order: `{current_amz_id}`\n"
                 f"• Amazon Deliver-By: *{amz_deliver_by.strftime('%a, %b %d')}*\n"
                 f"• Zoro Est. Delivery: *{zoro_date.strftime('%a, %b %d')}* (*{days_late} day(s) LATE*)\n"
@@ -325,9 +364,15 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             "emoji": "📦",
             "title": "Low Zoro Stock Warning",
             "severity": "warning",
+            "asin": asin,
+            "sku": sku_str,
+            "product_title": title_str,
             "summary": (
                 f"📦 *LOW ZORO STOCK WARNING*\n"
+                f"• Title: *{title_str}*\n"
+                f"• SKU: `{sku_str}`\n"
                 f"• Zoro Code: `{zoro_code}`\n"
+                f"• ASIN: `{asin}`\n"
                 f"• Status: *{zoro_stock_note}*\n"
                 f"• Action: Monitor listing or deactivate to prevent OOS cancellations"
             ),
@@ -357,8 +402,13 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "emoji": emoji,
                         "title": "Clean Net Earnings Per Unit Shift",
                         "severity": "info" if clean_delta > 0 else "warning",
+                        "asin": asin,
+                        "sku": sku_str,
+                        "product_title": title_str,
                         "summary": (
                             f"{emoji} *CLEAN UNIT EARNINGS SHIFT*\n"
+                            f"• Title: *{title_str}*\n"
+                            f"• SKU: `{sku_str}`\n"
                             f"• ASIN: `{asin}` (Subtotal excl ship & tax)\n"
                             f"• Current Clean Unit: *${current_clean_unit:.2f}* / unit\n"
                             f"• Previous Clean Unit: *${last_clean_unit:.2f}* / unit\n"
@@ -386,8 +436,14 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "emoji": "⚡",
                 "title": "Amazon Handling Time Reduced",
                 "severity": "warning",
+                "asin": asin,
+                "sku": sku_str,
+                "product_title": title_str,
                 "summary": (
                     f"⚡ *HANDLING TIME REDUCED*\n"
+                    f"• Title: *{title_str}*\n"
+                    f"• SKU: `{sku_str}`\n"
+                    f"• ASIN: `{asin}`\n"
                     f"• Amazon Order: `{current_amz_id}`\n"
                     f"• Purchased: {p_date.strftime('%a, %b %d')}\n"
                     f"• Ship-By: *{s_date.strftime('%a, %b %d')}* (*Handling: {handling_days} Day(s)*)\n"
