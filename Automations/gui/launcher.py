@@ -500,7 +500,17 @@ class App(tk.Tk):
         (they originate from the dashboard's Ops panel) and answer in done/."""
         try:
             if os.path.isdir(CONTROL_QUEUE):
-                for fn in sorted(os.listdir(CONTROL_QUEUE)):
+                # ORDER MATTERS: file names are random ids, so sorting by name executed
+                # commands in arbitrary order — a stop queued before a start could run after
+                # it and kill the process that had just been started (seen 18 Sep 00:48:53).
+                # Oldest file first is the order they were actually queued in.
+                def _queued_at(name):
+                    try:
+                        return os.path.getmtime(os.path.join(CONTROL_QUEUE, name))
+                    except OSError:
+                        return 0.0
+                for fn in sorted((f for f in os.listdir(CONTROL_QUEUE) if f.endswith(".json")),
+                                 key=_queued_at):
                     if not fn.endswith(".json"):
                         continue
                     path = os.path.join(CONTROL_QUEUE, fn)
