@@ -68,13 +68,25 @@ def apply_cdp_stealth(driver):
 
 def mark_profile_clean_exit(user_data_dir):
     """Clear the "Chrome didn't shut down correctly / Restore pages?" state in a
-    profile BEFORE launching Chrome with it. The fleet stops browsers with
-    signals, so profiles get marked crashed; rewriting exit_type in
-    Default/Preferences (plus --hide-crash-restore-bubble at launch) makes every
-    start clean. Missing/new profiles and malformed files are ignored."""
+    profile BEFORE launching Chrome with it. Also removes stale SingletonLock /
+    SingletonSocket / SingletonCookie / DevToolsActivePort entries left behind by a
+    killed Chrome — on macOS 27 a stale lock made every launch fail with "Could not
+    remove old devtools port file" (230 times on 17 Sep 2026). Only call this when no
+    Chrome is running on the profile (setup_driver checks the debugging port first).
+
+    Missing/new profiles and malformed files are ignored."""
     import json as _json
+    expanded_dir = os.path.expanduser(str(user_data_dir))
+    for lock in ("SingletonLock", "SingletonSocket", "SingletonCookie", "DevToolsActivePort"):
+        try:
+            lock_path = os.path.join(expanded_dir, lock)
+            if os.path.islink(lock_path) or os.path.exists(lock_path):
+                os.unlink(lock_path)
+        except OSError:
+            pass
+
     try:
-        prefs_path = os.path.join(os.path.expanduser(str(user_data_dir)),
+        prefs_path = os.path.join(expanded_dir,
                                   "Default", "Preferences")
         if not os.path.isfile(prefs_path):
             return
@@ -112,7 +124,8 @@ CHROME_SOFT_FLAGS_STR = " ".join(CHROME_SOFT_FLAGS)
 # Opt-in only: ZUHRA_HEADLESS=1 in the environment (the launcher sets it from
 # bot_config.json {"chrome": {"headless": true}}) or that config key directly.
 # Only affects a Chrome WE launch; an already-running Chrome on the port is reused as-is.
-HEADLESS_FLAGS_STR = "--headless=new --window-size=1440,900 --disable-gpu"
+HEADLESS_FLAGS = ["--headless=new", "--window-size=1440,900", "--disable-gpu"]
+HEADLESS_FLAGS_STR = " ".join(HEADLESS_FLAGS)
 
 
 def headless_wanted():
@@ -586,31 +599,89 @@ def setup_driver(debugging_port, profile_folder_name):
     def _launch_chrome():
         try:
             mark_profile_clean_exit(profile_path)
-            command = (
-                f'"{ chrome_exe}"'
-                f' --remote-debugging-port={debugging_port}'
-                f' --user-data-dir="{profile_path}"'
-                f' --hide-crash-restore-bubble'
-                f' --no-first-run'
-                f' --no-default-browser-check'
-                f' --lang=en-US'
-                f' {CHROME_SOFT_FLAGS_STR}'
-                + (f' {HEADLESS_FLAGS_STR}' if headless else '')
-            )
-            proc = subprocess.Popen(command, shell=True,
-                                   # DEVNULL, not PIPE: nothing ever read these pipes,
-                                   # so a chatty Chrome could fill the 64KB buffer and
-                                   # hard-block mid-run.
-                                   stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-            # Wait for Chrome to start listening (poll port, max 6s)
-            for _ in range(12):
+
+            chrome_args = [
+                f'--remote-debugging-port={debugging_port}',
+                f'--user-data-dir={profile_path}',
+                '--hide-crash-restore-bubble',
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--lang=en-US',
+            ] + CHROME_SOFT_FLAGS
+            if headless:
+                chrome_args += HEADLESS_FLAGS
+
+            # Capture Chrome stderr to a temp log so we can diagnose crashes
+            import tempfile
+            chrome_log = os.path.join(tempfile.gettempdir(),
+                                      f"chrome_debug_{debugging_port}.log")
+
+            proc = None
+            if sys.platform == "darwin":
+                # macOS 27+: com.apple.provenance prevents Chrome from creating
+                # SingletonLock when launched as a subprocess of Python. Using
+                # 'open -a' launches Chrome through LaunchServices, giving it its
+                # own app identity and proper TCC context.
+                open_cmd = [
+                    "open", "-a", "Google Chrome", "-n", "-W",
+                    "--args",
+                ] + chrome_args
+                _chrome_log_fh = open(chrome_log, "w", encoding="utf-8")
+                proc = subprocess.Popen(open_cmd,
+                                       stderr=_chrome_log_fh,
+                                       stdout=subprocess.DEVNULL)
+            else:
+                command = (
+                    f'"{ chrome_exe}"'
+                    + ' ' + ' '.join(f'"{a}"' if ' ' in a else a for a in chrome_args)
+                )
+                _chrome_log_fh = open(chrome_log, "w", encoding="utf-8")
+                proc = subprocess.Popen(command, shell=True,
+                                       stderr=_chrome_log_fh,
+                                       stdout=subprocess.DEVNULL)
+
+            # Wait for Chrome to start listening (poll port, max 15s)
+            port_opened = False
+            for _ in range(30):
                 time.sleep(0.5)
+                # Check if Chrome already exited (crashed)
+                # NOTE: with 'open -W' the proc stays alive as long as Chrome runs,
+                # so poll() returning non-None means a real failure.
+                if proc.poll() is not None:
+                    _chrome_log_fh.close()
+                    print(f"   ❌ Chrome exited immediately with code {proc.returncode}")
+                    try:
+                        with open(chrome_log, "r") as f:
+                            err = f.read(2000).strip()
+                        if err:
+                            print(f"   📋 Chrome stderr:\n{err}")
+                    except Exception:
+                        pass
+                    return proc
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(0.5)
                 if s.connect_ex(('127.0.0.1', debugging_port)) == 0:
                     s.close()
+                    port_opened = True
                     break
                 s.close()
+            if port_opened:
+                try:
+                    _chrome_log_fh.close()
+                except Exception:
+                    pass
+            if not port_opened:
+                _chrome_log_fh.close()
+                alive = proc.poll() is None
+                print(f"   ⚠️  Chrome port {debugging_port} not open after 15s "
+                      f"(process {'alive' if alive else 'dead'})")
+                try:
+                    with open(chrome_log, "r") as f:
+                        err = f.read(2000).strip()
+                    if err:
+                        print(f"   📋 Chrome stderr:\n{err}")
+                except Exception:
+                    pass
             return proc
         except Exception as e:
             print(f"❌ Chrome Launch Error: {e}")

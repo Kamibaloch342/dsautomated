@@ -271,6 +271,103 @@ def create_chrome_driver(options):
     return _harden_driver(webdriver.Chrome(service=service, options=options))
 
 
+def launch_or_attach_chrome(account_config, profile_path, download_dir=None):
+    """
+    On macOS, launching Chrome via LaunchServices ('open -a') avoids macOS 27+
+    TCC / com.apple.provenance sandbox crashes that occur when ChromeDriver spawns
+    Chrome directly as a child of a non-terminal GUI app (Launcher).
+    Once Chrome opens its remote-debugging-port, Selenium connects cleanly via debuggerAddress.
+    """
+    import socket
+    import subprocess
+    from utils.helpers import CHROME_SOFT_FLAGS, mark_profile_clean_exit
+    mark_profile_clean_exit(profile_path)
+    port = 9331 if account_config.get("key") == "hoank" else 9333
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    port_open = sock.connect_ex(('127.0.0.1', port)) == 0
+    sock.close()
+
+    if not port_open:
+        if sys.platform == "darwin":
+            cmd = [
+                "open", "-a", "Google Chrome", "-n",
+                "--args",
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={profile_path}",
+                "--window-size=1920,1080",
+                "--hide-crash-restore-bubble",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ] + CHROME_SOFT_FLAGS
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            from utils.helpers import get_chrome_paths
+            _, chrome_exe = get_chrome_paths(os.path.basename(profile_path))
+            cmd = [
+                chrome_exe,
+                f"--remote-debugging-port={port}",
+                f"--user-data-dir={profile_path}",
+                "--window-size=1920,1080",
+                "--hide-crash-restore-bubble",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ] + CHROME_SOFT_FLAGS
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        for _ in range(30):
+            time.sleep(0.5)
+            s = socket.socket()
+            s.settimeout(0.5)
+            if s.connect_ex(('127.0.0.1', port)) == 0:
+                s.close()
+                port_open = True
+                break
+            s.close()
+
+    if port_open:
+        opts = Options()
+        opts.add_experimental_option("debuggerAddress", f"127.0.0.1:{port}")
+        try:
+            d = _harden_driver(webdriver.Chrome(options=opts))
+            if download_dir:
+                try:
+                    d.execute_cdp_cmd("Page.setDownloadBehavior", {
+                        "behavior": "allow",
+                        "downloadPath": download_dir
+                    })
+                except Exception:
+                    pass
+            return d
+        except Exception as e:
+            print(f"  ⚠️  Debugger attach on port {port} failed: {e}")
+
+    return None
+
+
+# Cycle health shared with the loops below: a cycle that could not reach Gmail, or that
+# halted (order report not downloadable, session gone), must not be retried every minute —
+# on 16 Sep 2026 one halt repeated 342 times in 6.5 h and on 17 Sep two runs printed
+# 300,000 lines against a broken TLS bundle. Backoff: Gmail down → ≥15 min; halts → 2 min
+# per consecutive halt, capped at 30 min.
+_CYCLE_HEALTH = {"halts": 0, "gmail_down": False}
+
+
+def cycle_sleep_seconds(base_seconds):
+    extra = 0
+    if _CYCLE_HEALTH.get("gmail_down"):
+        extra = max(extra, 900)
+    h = int(_CYCLE_HEALTH.get("halts") or 0)
+    if h:
+        extra = max(extra, min(120 * h, 1800))
+    if extra > base_seconds:
+        why = "Gmail unreachable" if _CYCLE_HEALTH.get("gmail_down") else f"{h} consecutive halted run(s)"
+        print(f"  ⏸️   backing off: {why} — next run in {extra // 60} min instead of {base_seconds}s")
+        return extra
+    return base_seconds
+
+
 def run_account_loop(account_config, sleep_seconds):
     """Runs one account forever with its own cadence."""
     driver = None
@@ -279,8 +376,9 @@ def run_account_loop(account_config, sleep_seconds):
         print(f"  🏪  ACCOUNT: {account_config['name'].upper()}  |  {time.strftime('%Y-%m-%d %H:%M:%S')}")
         print("─" * 60)
         driver = main_workflow(account_config, passed_driver=driver)
-        print(f"\n  ⏸️   {account_config['name']} sleeping {sleep_seconds}s before next run...")
-        time.sleep(sleep_seconds)
+        _s = cycle_sleep_seconds(sleep_seconds)
+        print(f"\n  ⏸️   {account_config['name']} sleeping {_s}s before next run...")
+        time.sleep(_s)
 
 # --- Message Log Helpers ---
 
@@ -524,21 +622,26 @@ def capture_confirm_shipment_structure(driver, amazon_id):
 
 
 def load_tracking_upload_log():
-    """Loads the tracking upload audit log. Returns list of entries."""
-    if os.path.exists(TRACKING_UPLOAD_LOG_FILE):
-        try:
-            with open(TRACKING_UPLOAD_LOG_FILE, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"⚠️ Could not read tracking upload log: {e}")
-    return []
+    """Loads the tracking upload audit log. Returns list of entries.
+    Both tracking processes (HOANK + Hathoro) share this file: reads go through the
+    same file lock the writers use, so a half-written file is never seen (that race
+    produced 377 'Expecting value' reads and wiped the log between 14 and 17 Sep 2026)."""
+    try:
+        from utils.jsonstore import locked, read_json
+        with locked(TRACKING_UPLOAD_LOG_FILE):
+            data = read_json(TRACKING_UPLOAD_LOG_FILE, [], quarantine=True)
+        return data if isinstance(data, list) else []
+    except Exception as e:
+        print(f"⚠️ Could not read tracking upload log: {e}")
+        return []
 
 
 def save_tracking_upload_log(entries):
-    """Saves the tracking upload audit log."""
+    """Saves the tracking upload audit log (atomic: temp file + rename, under the lock)."""
     try:
-        with open(TRACKING_UPLOAD_LOG_FILE, "w") as f:
-            json.dump(entries, f, indent=2)
+        from utils.jsonstore import locked, write_json_atomic
+        with locked(TRACKING_UPLOAD_LOG_FILE):
+            write_json_atomic(TRACKING_UPLOAD_LOG_FILE, entries, indent=2)
     except Exception as e:
         print(f"⚠️ Could not save tracking upload log: {e}")
 
@@ -565,9 +668,9 @@ def _page_shows_already_shipped(driver):
 
 
 def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_type, status, note=""):
-    """Append one tracking upload event to the audit log."""
-    entries = load_tracking_upload_log()
-    entries.append({
+    """Append one tracking upload event to the audit log (one locked read-modify-write,
+    so the two account processes never overwrite each other's entries)."""
+    entry = {
         "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
         "amazon_order_id": amazon_id,
         "wb_order_ids": wb_ids if isinstance(wb_ids, list) else [wb_ids],
@@ -576,11 +679,16 @@ def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_t
         "message_type": message_type,
         "status": status,  # "success" | "failed" | "skipped_dup" | "no_tracking" | "already_shipped"
         "note": note,
-    })
-    # Keep only last 5000 entries to prevent file bloat
-    if len(entries) > 5000:
-        entries = entries[-5000:]
-    save_tracking_upload_log(entries)
+    }
+    try:
+        from utils.jsonstore import mutate_json
+        def _append(entries):
+            entries = entries if isinstance(entries, list) else []
+            entries.append(entry)
+            return entries[-5000:]              # keep the last 5000 entries
+        mutate_json(TRACKING_UPLOAD_LOG_FILE, _append, [], indent=2)
+    except Exception as e:
+        print(f"⚠️ Could not save tracking upload log: {e}")
 
 # --- Gmail Helper Functions ---
 
@@ -1426,30 +1534,32 @@ def main_workflow(account_config, passed_driver=None):
     try:
         if not driver:
             print(f"\n  🌐  Launching Chrome for '{account_config['name']}'...")
-            options = Options()
-            options.add_argument("--window-size=1920,1080")
-            options.add_argument("--start-maximized")
-            # Memory softening — keep in sync with utils.helpers.CHROME_SOFT_FLAGS
-            for _sf in ("--renderer-process-limit=4", "--disable-background-networking",
-                        "--disable-sync", "--disable-default-apps",
-                        "--disable-component-update", "--metrics-recording-only",
-                        "--mute-audio", "--disk-cache-size=104857600"):
-                options.add_argument(_sf)
             profile_path = resolve_user_data_dir(account_config)
             print(f"  👤  Using Chrome profile dir: {profile_path}")
-            from utils.helpers import mark_profile_clean_exit
-            mark_profile_clean_exit(profile_path)
-            options.add_argument(f"user-data-dir={profile_path}")
-            options.add_argument("--hide-crash-restore-bubble")
-            options.add_argument("--start-maximized")
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
-            options.add_argument("--no-first-run")
-            options.add_argument("--no-default-browser-check")
-            prefs = {"download.default_directory": acct_download_dir}
-            options.add_experimental_option("prefs", prefs)
+            driver = launch_or_attach_chrome(account_config, profile_path, download_dir=acct_download_dir)
+            if not driver:
+                options = Options()
+                options.add_argument("--window-size=1920,1080")
+                options.add_argument("--start-maximized")
+                # Memory softening — keep in sync with utils.helpers.CHROME_SOFT_FLAGS
+                for _sf in ("--renderer-process-limit=4", "--disable-background-networking",
+                            "--disable-sync", "--disable-default-apps",
+                            "--disable-component-update", "--metrics-recording-only",
+                            "--mute-audio", "--disk-cache-size=104857600"):
+                    options.add_argument(_sf)
+                from utils.helpers import mark_profile_clean_exit
+                mark_profile_clean_exit(profile_path)
+                options.add_argument(f"user-data-dir={profile_path}")
+                options.add_argument("--hide-crash-restore-bubble")
+                options.add_argument("--start-maximized")
+                options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                options.add_experimental_option('useAutomationExtension', False)
+                options.add_argument("--no-first-run")
+                options.add_argument("--no-default-browser-check")
+                prefs = {"download.default_directory": acct_download_dir}
+                options.add_experimental_option("prefs", prefs)
 
-            driver = create_chrome_driver(options)
+                driver = create_chrome_driver(options)
         else:
             print(f"\n  🌐  Reusing existing Chrome for '{account_config['name']}'...")
             
@@ -1669,7 +1779,10 @@ def main_workflow(account_config, passed_driver=None):
                             for wb_id in wb_ids:
                                 _update_order_log_tracking(wb_id, found_tracking_ids_list, found_shipped_time)
                         else:
-                            print(f"     ❌  No tracking ID found in any Gmail account.")
+                            if gmail_services or len(pending_orders) < 3:
+                                print(f"     ❌  No tracking ID found in any Gmail account.")
+                            elif len(pending_orders) == 3:
+                                print(f"     ❌  … (Gmail unreachable this cycle — further 'no tracking' lines suppressed)")
                             pending_orders.append(merchant_id)
                             log_tracking_upload(
                                 amazon_id=amazon_order_id,
@@ -1782,7 +1895,11 @@ def main_workflow(account_config, passed_driver=None):
 
                                 tracking_field = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, TRACKING_ID_FIELD_SELECTOR)))
 
-                                _all_tids = [t.strip() for t in tracking_id_string.split(',') if t.strip()]
+                                # Stable order: the same shipment must yield the same "primary" ID on every
+                                # run — on 15 Sep 2026 nine orders were re-uploaded with a DIFFERENT piece's
+                                # number because the Gmail sweep returned the pieces in another order.
+                                _all_tids = sorted({t.strip() for t in tracking_id_string.split(',') if t.strip()},
+                                                   key=lambda t: (len(t), t))
                                 # Capture the live DOM the first time a genuinely
                                 # multi-package shipment is seen — that is the only
                                 # state where the per-package controls are rendered.
@@ -1898,13 +2015,19 @@ def main_workflow(account_config, passed_driver=None):
 
                 if pending_orders:
                     print(f"\n  ⚠️  {len(pending_orders)} WB order(s) with no tracking found:")
-                    for wb_id in pending_orders:
+                    for wb_id in pending_orders[:20]:
                         print(f"       • {wb_id}")
+                    if len(pending_orders) > 20:
+                        print(f"       • … and {len(pending_orders) - 20} more")
+            _CYCLE_HEALTH["halts"] = 0
+            _CYCLE_HEALTH["gmail_down"] = not gmail_services
 
     except (FileNotFoundError, SystemExit) as e:
         print(f"\n  ⛔  Run halted: {e}")
+        _CYCLE_HEALTH["halts"] = _CYCLE_HEALTH.get("halts", 0) + 1
     except Exception as e:
         print(f"\n  ❌  Unexpected error: {e}")
+        _CYCLE_HEALTH["halts"] = _CYCLE_HEALTH.get("halts", 0) + 1
     finally:
         # User requested to keep the browser open between runs
         # if driver: driver.quit()  <-- Removed
@@ -1981,4 +2104,4 @@ if __name__ == "__main__":
         print("\n" + "═" * 60)
         print("  ⏸️   Cycle complete. Pausing before next run...")
         print("═" * 60)
-        time.sleep(args.sleep_seconds)
+        time.sleep(cycle_sleep_seconds(args.sleep_seconds))

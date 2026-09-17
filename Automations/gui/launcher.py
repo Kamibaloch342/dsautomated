@@ -4526,10 +4526,20 @@ class App(tk.Tk):
 
     @staticmethod
     def _mark_profile_clean_exit(user_data_dir):
-        """Clear the "Restore pages? Chrome didn't shut down correctly" state
-        before launching Chrome on a profile (fleet stops mark them crashed)."""
+        """Clear the "Restore pages? Chrome didn't shut down correctly" state and
+        remove stale Singleton / DevToolsActivePort entries before launching Chrome on
+        a profile (macOS 27 left them behind after the upgrade)."""
+        expanded_dir = os.path.expanduser(str(user_data_dir))
+        for lock in ("SingletonLock", "SingletonSocket", "SingletonCookie", "DevToolsActivePort"):
+            try:
+                lock_path = os.path.join(expanded_dir, lock)
+                if os.path.islink(lock_path) or os.path.exists(lock_path):
+                    os.unlink(lock_path)
+            except OSError:
+                pass
+
         try:
-            prefs_path = os.path.join(os.path.expanduser(str(user_data_dir)),
+            prefs_path = os.path.join(expanded_dir,
                                       "Default", "Preferences")
             if not os.path.isfile(prefs_path):
                 return
