@@ -68,7 +68,8 @@
         "promo_strike_hours": 24
     },
     "chrome": {
-        "headless": false
+        "headless": false,
+        "headless_tracking": true
     },
     "automation": {
         "auto_closing": {
@@ -107,5 +108,8 @@
             "hathoro_orders": "120363412233188303@g.us",
             "hathoro_insights": "120363413450875187@g.us"
         }
+    },
+    "checkout": {
+        "page_checkout": true
     }
 }

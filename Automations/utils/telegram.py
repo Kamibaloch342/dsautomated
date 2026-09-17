@@ -188,7 +188,6 @@ def format_boss_note_text(data: dict) -> str:
             sku = db_sku or code
         
     qty = data.get("qty", 1)
-    tracking = "No"  # By default for just-placed orders, tracking msg sent is always No
     
     tc = data.get("tc") or data.get("zoro_price")
     tc_str = f"${float(tc):.2f}" if tc is not None and str(tc).strip() != "" else "N/A"
@@ -224,17 +223,13 @@ def format_boss_note_text(data: dict) -> str:
 
     lines = [
         f"Title: {title[:80] if title else 'Product Listing'}",
-        f"SKU: {sku if sku else 'N/A'}",
-        f"ASIN: {asin}",
+        f"SKU: {sku if sku else 'N/A'} | ASIN: {asin}",
         f"Zoro Code Used: {code}",
         f"Qty: {qty}",
-        f"Tracking msg sent: {tracking}",
         "",
-        f"Total Zoro Cost: {tc_str}",
-        f"Zoro Tax: {tax_str}",
+        f"Total Zoro Cost: {tc_str} ( Tax: {tax_str} )",
         f"Amazon Earnings: {earn_str}",
-        f"Profit Margin: {pm_str}",
-        f"Profit Percentage: {pp_str}",
+        f"Profit Margin: {pm_str} ({pp_str})",
         f"Coupon: {c_str}",
     ]
     
@@ -289,14 +284,14 @@ def notify_order_placed(order_data: dict, driver=None, account: str = ""):
     boss_text = format_boss_note_text(order_data)
 
     if pp is not None and margin_decimal < 0.08:
-        status_header = f"⚠️ <b>LOW MARGIN ORDER (&lt; 8%): {pp_display}</b>"
+        status_header = f"🔴 <b>LOW MARGIN ORDER (&lt; 8%): {pp_display}</b>"
         log_msg = f"  📱 [Telegram] Low margin order (< 8%: {pp_display}) — sending Amazon screenshot + Copy for Boss in background..."
-    elif pp is not None and margin_decimal >= 0.50:
-        status_header = f"🚀 <b>MEGA PROFIT ORDER (&gt; 50%): +{pp_display}!</b> 💰"
-        log_msg = f"  📱 [Telegram] Mega profit order (> 50%: {pp_display}) — sending Amazon screenshot + celebration details in background..."
+    elif pp is not None and margin_decimal <= 0.20:
+        status_header = f"🟡 <b>ORDER PLACED: {pfx}{pp_display}</b>"
+        log_msg = f"  📱 [Telegram] Order placed ({pfx}{pp_display}) — sending Amazon screenshot + order details in background..."
     else:
-        status_header = f"✅ <b>ORDER PLACED: +{pp_display}</b> 🟢"
-        log_msg = f"  📱 [Telegram] Order placed (+{pp_display}) — sending Amazon screenshot + order details in background..."
+        status_header = f"🟢 <b>PROFIT ORDER: +{pp_display}</b>"
+        log_msg = f"  📱 [Telegram] Profit order (+{pp_display}) — sending Amazon screenshot + details in background..."
 
     print(log_msg)
 

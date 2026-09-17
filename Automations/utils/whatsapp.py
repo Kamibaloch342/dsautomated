@@ -261,16 +261,16 @@ def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, acc
 
     margin_decimal = (pp / 100.0) if pp is not None else 0.0
     pp_display = f"{pp:.1f}%" if pp is not None else "N/A"
+    pfx = "+" if pp is not None and pp >= 0 else ""
 
     is_low_margin = (margin_decimal < 0.08) or (margin_no_tax is not None and margin_no_tax < 0.08)
-    is_high_profit = (margin_decimal >= 0.20)
 
     if is_low_margin:
-        wa_header = f"⚠️ *LOW MARGIN ORDER (< 8% PRE-TAX): {pp_display}*"
-    elif is_high_profit:
-        wa_header = f"🎉 *PROFIT ORDER (+{pp_display})* 🔥"
+        wa_header = f"🔴 *LOW MARGIN ORDER (< 8%): {pp_display}*"
+    elif margin_decimal <= 0.20:
+        wa_header = f"🟡 *ORDER PLACED ({pfx}{pp_display})*"
     else:
-        wa_header = f"✅ *ORDER PLACED (+{pp_display})* 🟢"
+        wa_header = f"🟢 *PROFIT ORDER (+{pp_display})*"
 
     try:
         from utils.telegram import format_boss_note_text
@@ -284,8 +284,7 @@ def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, acc
             db_title, db_sku = "", ""
         boss_text = (
             f"Title: {order_data.get('title') or db_title or 'Product Listing'}\n"
-            f"SKU: {order_data.get('sku') or db_sku or 'N/A'}\n"
-            f"ASIN: {asin_val}\n"
+            f"SKU: {order_data.get('sku') or db_sku or 'N/A'} | ASIN: {asin_val}\n"
             f"Amazon Order: {order_data.get('amazon_id', 'N/A')}\n"
             f"WB Order: {order_data.get('wb_id', 'N/A')}\n"
             f"Earnings: ${earn_val:.2f} | Cost: ${cost_val:.2f} | Profit: ${profit_val:.2f} ({pp_display})"
