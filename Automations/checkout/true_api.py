@@ -1007,6 +1007,9 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
                        original_sku=None, shipping_amt=None,
                        amazon_fees=None, alt_of=None, zoro_select=None):
     """Append a detailed multi-line order audit block to a single master log file.
+    Cost falls back to the cart total we computed at checkout when the order was placed by
+    the DOM fallback (no API order response): 16–36 rows/day were landing in the DB with
+    zoro_order_total NULL because this line said Cost:N/A (17 Sep 2026).
     alt_of = the MAIN Zoro code when this order was placed with its ALTERNATIVE
     (main was OOS); None for a normal placement.
     zoro_select = True/False when known — whether the Zoro Select discount is
@@ -1068,7 +1071,7 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
             f"[{now}] | WB:{s(wb_id)} | Profile:{s(profile)} | Amazon:{s(amazon_id)}"
             f" | ASIN:{s(asin)} | Title:{s(item_title)} | AQty:{s(amazon_order_qty)}"
             f" | SKU:{s(sku)} | ZMultiple:{s(zoro_multiple)} | ZMultiplier:{s(qty_multiplier)}"
-            f" | ZQty:{s(qty)} | Earnings:{s(fmt_money(earnings))} | Cost:{s(fmt_money(summary.get('total')))}"
+            f" | ZQty:{s(qty)} | Earnings:{s(fmt_money(earnings))} | Cost:{s(fmt_money(summary.get('total') if summary.get('total') is not None else checkout_total))}"
             f" | Profit:{s(fmt_money(profit))} | FinalMargin:{s(fmt_pct(margin))} | EstMargin:{s(fmt_pct(est_margin))}"
             f" | Coupon:{s(used_coupon or 'None')} | Status:{s(zoro_response.get('orderStatus') if isinstance(zoro_response, dict) else 'N/A')}"
             f" | Subtotal:{s(fmt_money(summary.get('subTotal')))} | Discount:{s(fmt_money(summary.get('discountTotal')))}"
