@@ -289,9 +289,15 @@ def launch_or_attach_chrome(account_config, profile_path, download_dir=None):
     """
     import socket
     import subprocess
-    from utils.helpers import CHROME_SOFT_FLAGS, mark_profile_clean_exit
+    from utils.helpers import CHROME_SOFT_FLAGS, HEADLESS_FLAGS, headless_wanted, mark_profile_clean_exit
     mark_profile_clean_exit(profile_path)
     port = 9331 if account_config.get("key") == "hoank" else 9333
+    # Tracking had no headless support at all: its flag list was hard-coded. It honours the
+    # same switch as the placers now (bot_config chrome.headless / ZUHRA_HEADLESS=1), which
+    # matters on a 16 GB machine running 4 placers + 2 trackers side by side.
+    _extra = list(HEADLESS_FLAGS) if headless_wanted() else []
+    if _extra:
+        print(f"  🫥  headless mode for '{account_config['name']}' (no window)")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(1)
@@ -309,7 +315,7 @@ def launch_or_attach_chrome(account_config, profile_path, download_dir=None):
                 "--hide-crash-restore-bubble",
                 "--no-first-run",
                 "--no-default-browser-check",
-            ] + CHROME_SOFT_FLAGS
+            ] + CHROME_SOFT_FLAGS + _extra
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         else:
             from utils.helpers import get_chrome_paths
@@ -322,7 +328,7 @@ def launch_or_attach_chrome(account_config, profile_path, download_dir=None):
                 "--hide-crash-restore-bubble",
                 "--no-first-run",
                 "--no-default-browser-check",
-            ] + CHROME_SOFT_FLAGS
+            ] + CHROME_SOFT_FLAGS + _extra
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         for _ in range(30):

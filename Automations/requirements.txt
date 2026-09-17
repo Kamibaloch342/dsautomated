@@ -12,3 +12,12 @@ google-auth
 google-auth-oauthlib
 google-auth-httplib2
 google-api-python-client
+pyotp    # Amazon 2FA auto-login (platforms/auth.py) — without it every re-login fails
+undetected-chromedriver    # last-resort Chrome attach fallback (engine/amazon_scraper.py, gmail_fetch/utils.py)
+boto3    # Cloudflare R2 sync + cloud agent (utils/r2_store.py)
+rich    # console tables in engine/coupons.py
+beautifulsoup4    # HTML parsing
+psutil    # memory stats in the cloud agent
+cryptography    # used by the coupon signup flow
+curl_cffi    # used by the coupon signup flow
+setuptools    # py3.12 removed distutils, which undetected-chromedriver still imports
