@@ -1398,6 +1398,24 @@ class App(tk.Tk):
         self.trk_single = tk.BooleanVar()
         ttk.Checkbutton(r1, text="Single cycle", variable=self.trk_single).pack(side="left")
 
+        # Trackers get their OWN headless switch, independent of the placers': tracking only
+        # drives Seller Central and was verified working headless (auto-login, report download,
+        # upload and buyer messages all fine), while placer checkout has not been proven yet.
+        tk.Frame(r1, bg=self.MUTED, width=1).pack(side="left", fill="y", padx=(16, 12), pady=4)
+        self._trk_headless_var = tk.BooleanVar(
+            value=bool((_read_cfg_file().get("chrome") or {}).get("headless_tracking")))
+        self._trk_headless_cb = ttk.Checkbutton(r1, text="🫥 Headless (trackers)",
+                                                variable=self._trk_headless_var,
+                                                command=self._toggle_tracking_headless)
+        self._trk_headless_cb.pack(side="left")
+        self._tip(self._trk_headless_cb,
+                  "HEADLESS TRACKERS — the two tracking Chromes run with no window.\n"
+                  "Separate from the placers' headless switch on the Orders page.\n\n"
+                  "Measured on one identical HOANK cycle: 1660 MB headed vs 889 MB headless.\n"
+                  "Verified headless: Amazon auto-login, order report, tracking upload and\n"
+                  "buyer messages all work.\n\n"
+                  "Applies to trackers STARTED FROM NOW.")
+
         self._sep(ti)
 
         self._trk_btns = {}
@@ -4171,6 +4189,22 @@ class App(tk.Tk):
             "ok" if on else "warn")
         self._log_line(f"🧾 Attributed checkout {'ON' if on else 'OFF'} "
                        f"(placers started from now; restart a running one to switch it)", source="remote")
+
+    def _toggle_tracking_headless(self):
+        """Persist the trackers' own headless choice (chrome.headless_tracking). Restarts
+        nothing — a running tracker keeps its mode until restarted."""
+        on = bool(self._trk_headless_var.get())
+        try:
+            cfg = _read_cfg_file()
+            cfg.setdefault("chrome", {})["headless_tracking"] = on
+            _write_cfg_file(cfg)
+        except Exception as e:
+            self._feed_line(f"Could not save the tracker headless setting: {e}", "warn")
+            return
+        self._feed_line(f"Trackers headless {'ON' if on else 'OFF'} — applies to trackers started from now",
+                        "ok" if on else "warn")
+        self._log_line(f"🫥 Trackers headless {'ON' if on else 'OFF'} "
+                       f"(restart a running tracker to switch it)", source="remote")
 
     def _start_orders_key(self, key):
         """Start one placer profile (the GUI button and remote commands share this).

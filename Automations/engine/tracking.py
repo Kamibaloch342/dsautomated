@@ -295,7 +295,7 @@ def launch_or_attach_chrome(account_config, profile_path, download_dir=None):
     # Tracking had no headless support at all: its flag list was hard-coded. It honours the
     # same switch as the placers now (bot_config chrome.headless / ZUHRA_HEADLESS=1), which
     # matters on a 16 GB machine running 4 placers + 2 trackers side by side.
-    _extra = list(HEADLESS_FLAGS) if headless_wanted() else []
+    _extra = list(HEADLESS_FLAGS) if headless_wanted("tracking") else []
     if _extra:
         print(f"  🫥  headless mode for '{account_config['name']}' (no window)")
 

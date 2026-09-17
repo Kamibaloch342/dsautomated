@@ -1715,103 +1715,266 @@ def _select_shipping_method(driver):
     return selected != 'not_found'
 
 
+def _place_order_button(driver):
+    """The Place Order button, or None. Cheap and non-blocking — the caller does the waiting."""
+    for sel in ('[data-za="checkout-place-order-button"]', '[data-za="checkout-main-action-top"]'):
+        try:
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            if els:
+                return els[0]
+        except Exception:
+            continue
+    try:
+        for b in driver.find_elements(By.CSS_SELECTOR, 'button, input[type="submit"]'):
+            if (b.text or b.get_attribute('value') or '').strip() == 'Place Order':
+                return b
+    except Exception:
+        pass
+    return None
+
+
+# Everything that decides whether a click will actually land, read in one round-trip: is the
+# document done, is the button on screen, enabled and uncovered, and has it stopped moving.
+# Headless has no OS focus and no compositor pacing, so a click fired a moment too early hits a
+# button whose Vue handler is not bound yet and nothing happens. That is what the old retry was
+# papering over — the first click missed on 4 of 4 headless orders and 6 of 29 headed ones.
+_PLACE_BTN_STATE_JS = """
+var el = arguments[0];
+if (!el || !el.isConnected) return {gone: true};
+var r = el.getBoundingClientRect();
+var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+var scrim = document.querySelector('.v-overlay__scrim');
+var hit = null;
+try { hit = document.elementFromPoint(cx, cy); } catch (e) {}
+return {
+    ready: document.readyState === 'complete',
+    w: r.width, h: r.height, x: Math.round(r.left), y: Math.round(r.top), cx: cx, cy: cy,
+    inView: r.top >= 0 && r.left >= 0 &&
+            r.bottom <= (window.innerHeight || 0) && r.right <= (window.innerWidth || 0),
+    visible: el.offsetParent !== null && r.width > 0 && r.height > 0,
+    enabled: !el.disabled && !el.classList.contains('v-btn--disabled') &&
+             el.getAttribute('aria-disabled') !== 'true',
+    loading: el.classList.contains('v-btn--loading') ||
+             !!document.querySelector('.v-btn--loading'),
+    scrim: !!(scrim && scrim.offsetParent !== null),
+    covered: !!(hit && hit !== el && !el.contains(hit) && !hit.contains(el))
+};
+"""
+
+
+def _why_not_clickable(state):
+    """Turn the state blob into one readable reason, so a failure says what it was waiting on."""
+    if not state:
+        return "button not found"
+    if state.get("gone"):
+        return "button left the page"
+    if not state.get("ready"):
+        return "page still loading"
+    if not state.get("visible"):
+        return "button not visible"
+    if not state.get("enabled"):
+        return "button disabled"
+    if state.get("loading"):
+        return "still spinning"
+    if state.get("scrim"):
+        return "an overlay is covering the page"
+    if state.get("covered"):
+        return "something is drawn over the button"
+    if not state.get("inView"):
+        return "button off screen"
+    return "button never stopped moving"
+
+
+def _wait_place_order_clickable(driver, timeout=25):
+    """Block until a click on Place Order can genuinely register, then hand back the button.
+
+    Waits for each thing the old code only assumed: the document finished, no overlay or
+    spinner is up, the button is visible, enabled and has nothing drawn over its centre, and
+    its rectangle is identical across consecutive samples (a button still moving is a page
+    still rendering). Returns (button, state), or (None, last_state) on timeout.
+    """
+    deadline = time.time() + timeout
+    last, at, since = None, None, 0.0
+    while time.time() < deadline:
+        btn = _place_order_button(driver)
+        if btn is None:
+            at = None
+            time.sleep(0.3)
+            continue
+        try:
+            state = driver.execute_script(_PLACE_BTN_STATE_JS, btn)
+        except Exception:
+            at = None
+            time.sleep(0.3)
+            continue
+        last = state
+        if not state or state.get("gone"):
+            at = None
+            time.sleep(0.3)
+            continue
+        if not state.get("inView"):
+            try:
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({block:'center', inline:'center'});", btn)
+            except Exception:
+                pass
+            at = None
+            time.sleep(0.3)
+            continue
+        if (not state.get("ready") or not state.get("visible") or not state.get("enabled")
+                or state.get("loading") or state.get("scrim") or state.get("covered")):
+            at = None
+            time.sleep(0.3)
+            continue
+        here = (state.get("x"), state.get("y"), round(state.get("w") or 0), round(state.get("h") or 0))
+        if here != at:
+            at, since = here, time.time()
+            time.sleep(0.25)
+            continue
+        if time.time() - since >= 0.4:
+            return btn, state
+        time.sleep(0.25)
+    return None, last
+
+
+def _deliver_click(driver, btn, state):
+    """Click the button for real. Returns how it was delivered, or None.
+
+    CDP dispatches the same trusted mouse event Chrome makes for a human, at the coordinates
+    we just verified are the button's — no window focus needed, which is what makes it work
+    headless (the same reason buyer messages needed Input.insertText). Selenium's own click
+    and a dispatched MouseEvent stay as fallbacks.
+    """
+    cx, cy = state.get("cx"), state.get("cy")
+    if cx is not None and cy is not None:
+        try:
+            for ev, buttons, clicks in (("mouseMoved", 0, 0), ("mousePressed", 1, 1),
+                                        ("mouseReleased", 0, 1)):
+                driver.execute_cdp_cmd("Input.dispatchMouseEvent", {
+                    "type": ev, "x": float(cx), "y": float(cy),
+                    "button": "left", "buttons": buttons, "clickCount": clicks})
+            return "cdp"
+        except Exception:
+            pass
+    try:
+        btn.click()
+        return "selenium"
+    except Exception:
+        pass
+    try:
+        driver.execute_script(
+            "arguments[0].click();"
+            "arguments[0].dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true}));",
+            btn)
+        return "js"
+    except Exception:
+        return None
+
+
+def _click_registered(driver, btn, timeout=5.0):
+    """Did the page react to the click at all?
+
+    A Place Order click that lands disables the button and puts it into Vuetify's loading
+    state, or navigates outright. Checking that here means a dead click is caught in a second
+    or two instead of after the full order-number poll.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            if '/checkout' not in (driver.current_url or ''):
+                return True
+        except Exception:
+            pass
+        try:
+            state = driver.execute_script(_PLACE_BTN_STATE_JS, btn)
+        except Exception:
+            return True            # element detached — the page is navigating
+        if (not state or state.get("gone") or state.get("loading")
+                or not state.get("enabled") or state.get("scrim")):
+            return True
+        time.sleep(0.25)
+    return False
+
+
+def _await_order_number(driver, timeout=25.0):
+    """Wait for the WB number, in the URL first and then in the page text."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            url = driver.current_url or ''
+            m = re.search(r'orderNo=(WB\d{8,})', url)
+            if m:
+                return m.group(1)
+            if '/confirmation' in url:
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+    time.sleep(2)
+    try:
+        m = re.search(r'(WB\d{8,})', driver.execute_script("return document.body.innerText;") or "")
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return None
+
+
 def _click_place_order(driver):
     """Click Place Order and wait for WB confirmation. Returns WB ID or None."""
     print("  📝 Placing order...")
 
-    def _find_place_order_btn():
-        for sel in ['[data-za="checkout-place-order-button"]', '[data-za="checkout-main-action-top"]']:
-            try:
-                btn = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, sel)))
-                return btn
-            except Exception:
-                continue
-        # Fallback: find by button text
-        try:
-            btns = driver.find_elements(By.CSS_SELECTOR, 'button, input[type="submit"]')
-            for b in btns:
-                txt = (b.text or b.get_attribute('value') or '').strip()
-                if txt == 'Place Order':
-                    return b
-        except Exception:
-            pass
-        return None
-
-    # Wait for any loading overlay to clear before clicking
-    for _ov in range(15):
-        overlay = driver.execute_script("""
-            var scrim = document.querySelector('.v-overlay__scrim');
-            if (scrim && scrim.offsetParent !== null) return true;
-            var loading = document.querySelector('.v-btn--loading');
-            if (loading) return true;
-            return false;
-        """)
-        if not overlay:
-            break
-        time.sleep(1)
-
-    # Try clicking Place Order up to 2 times
     zoro_id = None
-    for click_attempt in range(2):
-        place_btn = _find_place_order_btn()
-        if not place_btn:
-            print("  ❌ Place Order button not found")
+    for attempt in range(3):
+        btn, state = _wait_place_order_clickable(driver)
+        if btn is None:
+            # It never became perfectly clickable. If the button is at least present, visible
+            # and enabled, click it anyway — that is what the old code did unconditionally, so
+            # failing here instead would be a step backwards. Drop the cached coordinates: the
+            # reason we are here is that they are covered or still moving, so go through the
+            # element itself, which also lets Selenium report an intercepted click.
+            why = _why_not_clickable(state)
+            btn = _place_order_button(driver)
+            if btn is None or not (state and state.get("visible") and state.get("enabled")):
+                print(f"  ❌ Place Order never became clickable ({why})")
+                return None
+            print(f"  ⚠️  Place Order never fully settled ({why}) — clicking it anyway")
+            state = {k: v for k, v in state.items() if k not in ("cx", "cy")}
+
+        how = _deliver_click(driver, btn, state)
+        if how is None:
+            print("  ❌ Could not deliver the click to Place Order")
             return None
 
-        # Scroll into view first
-        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", place_btn)
-        time.sleep(0.5)
+        if not _click_registered(driver, btn):
+            # Nothing moved: no spinner, no disable, no navigation. Nothing was submitted, so
+            # clicking again cannot duplicate an order.
+            print(f"  ⚠️  Click {attempt + 1} ({how}) did not register — retrying")
+            continue
+        print(f"  🖱️  Place Order clicked ({how}, attempt {attempt + 1})")
 
-        # Strategy 1: Native Selenium click (triggers Vue event bindings properly)
-        try:
-            place_btn.click()
-        except Exception:
-            # Strategy 2: JS click with proper event dispatch
-            driver.execute_script("""
-                var btn = arguments[0];
-                btn.click();
-                btn.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
-            """, place_btn)
-
-        # Poll URL for WB order number (longer window: 45 iterations * 0.5s = ~22s)
-        for _ in range(45):
-            try:
-                url_match = re.search(r'orderNo=(WB\d{8,})', driver.current_url)
-                if url_match:
-                    zoro_id = url_match.group(1)
-                    break
-                # Also check if we landed on a confirmation page
-                if '/confirmation' in driver.current_url:
-                    break
-            except Exception:
-                pass
-            time.sleep(0.5)
-
+        zoro_id = _await_order_number(driver)
         if zoro_id:
             break
 
-        # Fallback: check page text for WB ID (confirmation page loaded but URL didn't have orderNo)
-        time.sleep(2)
+        # The click DID register but no order number came back. Only click again if the button
+        # has returned to its idle state on the checkout page, which means the submission was
+        # abandoned client-side. While it is still spinning or disabled an order may be in
+        # flight, and a second click would place a duplicate — stop and let the caller flag it.
         try:
-            page_text = driver.execute_script("return document.body.innerText;") or ""
-            wb_match = re.search(r'(WB\d{8,})', page_text)
-            if wb_match:
-                zoro_id = wb_match.group(1)
-                break
+            after = driver.execute_script(_PLACE_BTN_STATE_JS, _place_order_button(driver))
         except Exception:
-            pass
-
-        # If still on checkout page, the click didn't work — try again
-        if click_attempt == 0 and '/checkout' in driver.current_url:
-            print(f"  ⚠️  Click didn't trigger — retrying Place Order...")
-            time.sleep(2)
-        else:
+            after = None
+        idle = bool(after and not after.get("gone") and after.get("enabled")
+                    and not after.get("loading") and '/checkout' in (driver.current_url or ''))
+        if not idle:
+            print("  ⏸️  No order number, and the page has not returned to an idle checkout — "
+                  "not clicking again (a second click could duplicate the order)")
             break
+        if attempt < 2:
+            print("  ⚠️  Submission came back with no order number — trying once more")
 
-    if zoro_id:
-        pass  # Success print handled by caller
-    else:
+    if not zoro_id:
         print(f"  ❌ Order may have failed. URL: {driver.current_url[:80]}")
 
     return zoro_id

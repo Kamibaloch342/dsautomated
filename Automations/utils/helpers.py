@@ -11,11 +11,13 @@ import random
 import signal
 import socket
 import inspect
+import contextlib
 import subprocess
 import functools
 
 import requests
 from datetime import datetime
+from urllib.parse import urlparse
 # pandas is imported lazily inside download_read_and_delete_csv (its only user) so
 # that importing this module never loads numpy/pandas — those compiled DLLs are
 # blocked by Windows 11 Smart App Control and must not stop the placer from starting.
@@ -210,17 +212,157 @@ HEADLESS_FLAGS = ["--headless=new", "--window-size=1440,900", "--disable-gpu"]
 HEADLESS_FLAGS_STR = " ".join(HEADLESS_FLAGS)
 
 
-def headless_wanted():
-    v = os.environ.get("ZUHRA_HEADLESS", "").strip().lower()
+def headless_wanted(component: str = "orders"):
+    """Should THIS component's Chrome run without a window?
+
+    Placers and trackers are switched separately: a tracker can run headless to save memory
+    while the placers keep visible windows for checkout (or the other way round).
+      orders   → env ZUHRA_HEADLESS          / bot_config chrome.headless
+      tracking → env ZUHRA_HEADLESS_TRACKING / bot_config chrome.headless_tracking
+    An unknown component falls back to the orders setting.
+    """
+    if str(component or "").strip().lower().startswith("track"):
+        env_key, cfg_key = "ZUHRA_HEADLESS_TRACKING", "headless_tracking"
+    else:
+        env_key, cfg_key = "ZUHRA_HEADLESS", "headless"
+    v = os.environ.get(env_key, "").strip().lower()
     if v in ("1", "true", "yes"):
         return True
     if v in ("0", "false", "no"):
         return False
     try:
         from utils.config import load_gui_config
-        return bool((load_gui_config().get("chrome") or {}).get("headless"))
+        return bool((load_gui_config().get("chrome") or {}).get(cfg_key))
     except Exception:
         return False
+
+
+# Zoro approved this reseller account, so the placer says who it is: the UA carries the company
+# name, which lets Zoro attribute this traffic to the account they approved instead of logging it
+# as an unidentified client — the same reason the attributed-checkout switch exists. It also
+# replaces the string a headless Chrome sends by default, which literally reads "HeadlessChrome".
+#
+# Scope is deliberately narrow. It applies to the PLACER's Chrome only (via harden_driver), and
+# the two Seller Central navigations wrap themselves in amazon_identity() so Amazon keeps seeing
+# the exact browser it has always seen. Trackers build their own driver and are untouched.
+RESELLER_USER_AGENT = ("Mozilla/5.0 (RajarEnterpriseLLC/2026) AppleWebKit/537.36 "
+                       "(KHTML, like Gecko) Chrome/147.0.7727.138 Safari/537.36")
+
+
+def zoro_user_agent():
+    """The UA the placer presents to Zoro.
+
+    env ZUHRA_ZORO_UA, then bot_config chrome.zoro_user_agent, then the reseller default.
+    Set either to an empty string to send nothing and keep Chrome's own UA.
+    """
+    v = os.environ.get("ZUHRA_ZORO_UA")
+    if v is not None:
+        return v.strip()
+    try:
+        from utils.config import load_gui_config
+        cfg = (load_gui_config().get("chrome") or {})
+        if "zoro_user_agent" in cfg:
+            return str(cfg.get("zoro_user_agent") or "").strip()
+    except Exception:
+        pass
+    return RESELLER_USER_AGENT
+
+
+def apply_zoro_identity(driver):
+    """Present the reseller UA on this browser's requests — page loads and fetch() alike."""
+    ua = zoro_user_agent()
+    if not ua:
+        return driver
+    try:
+        driver.execute_cdp_cmd("Network.setUserAgentOverride",
+                               {"userAgent": ua, "acceptLanguage": "en-US,en"})
+    except Exception:
+        pass
+    return driver
+
+
+def browser_user_agent(driver):
+    """Chrome's own UA for this browser, as it would send with no override applied.
+
+    Cached per driver: it cannot change while the browser lives, and this is read on every
+    navigation away from Zoro.
+    """
+    cached = getattr(driver, "_zuhra_stock_ua", None)
+    if cached is not None:
+        return cached
+    try:
+        ua = (driver.execute_cdp_cmd("Browser.getVersion", {}) or {}).get("userAgent", "") or ""
+    except Exception:
+        return ""
+    try:
+        driver._zuhra_stock_ua = ua
+    except Exception:
+        pass
+    return ua
+
+
+def apply_stock_identity(driver):
+    """Hand the browser back its own UA — for every host that is not Zoro."""
+    stock = browser_user_agent(driver)
+    if not stock:
+        return driver
+    try:
+        driver.execute_cdp_cmd("Network.setUserAgentOverride",
+                               {"userAgent": stock, "acceptLanguage": "en-US,en"})
+    except Exception:
+        pass
+    return driver
+
+
+@contextlib.contextmanager
+def amazon_identity(driver):
+    """Chrome's own UA for the duration, the Zoro one restored on the way out.
+
+    Amazon has no part in the Zoro arrangement, so Seller Central must never start seeing a
+    reseller UA it has not seen from this profile before.
+    """
+    apply_stock_identity(driver)
+    try:
+        yield driver
+    finally:
+        apply_zoro_identity(driver)
+
+
+def bind_identity_to_navigation(driver):
+    """Choose the identity from the host being navigated to, at the one choke point.
+
+    Every Zoro request the placer makes begins with a navigation to zoro.com, and the XHRs that
+    page then fires — including the whole internal order API — inherit the UA that was in force
+    when it loaded. Switching here therefore covers the API calls too, and covers them without
+    touching the twenty-odd driver.get() call sites or risking one being missed. Anything that
+    is not Zoro, Seller Central above all, gets Chrome's own UA exactly as before.
+    """
+    if getattr(driver, "_zuhra_identity_bound", False):
+        return driver
+    original_get = driver.get
+
+    def get(url, *args, **kwargs):
+        try:
+            parts = urlparse(url or "")
+            # Only a real web navigation picks an identity. chrome://settings parses with a
+            # hostname of "settings", and about:blank, file:// and data: pages send nothing to
+            # anyone — none of them should disturb whichever UA is in force.
+            host = ((parts.hostname or "").lower()
+                    if parts.scheme in ("http", "https") else "")
+        except Exception:
+            host = ""
+        if host == "zoro.com" or host.endswith(".zoro.com"):
+            apply_zoro_identity(driver)
+        elif host:
+            apply_stock_identity(driver)
+        return original_get(url, *args, **kwargs)
+
+    try:
+        driver.get = get
+        driver._zuhra_identity_bound = True
+    except Exception:
+        pass
+    return driver
 
 
 def page_checkout_wanted():
@@ -251,13 +393,13 @@ def page_checkout_wanted():
 
 
 def harden_driver(driver):
-    """Apply the survival timeouts to a freshly created/attached driver."""
+    """Apply the survival timeouts and the Zoro identity to a fresh placer driver."""
     try:
         driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT_S)
         driver.set_script_timeout(ASYNC_SCRIPT_TIMEOUT_S)
     except Exception:
         pass
-    return driver
+    return bind_identity_to_navigation(driver)
 
 
 def safe_get(driver, url, retries=1):
