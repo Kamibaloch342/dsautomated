@@ -223,6 +223,33 @@ def headless_wanted():
         return False
 
 
+def page_checkout_wanted():
+    """Finish orders on Zoro's REAL /checkout page instead of POSTing them to the order API.
+
+    Why it exists: Zoro's marketing attribution runs on Google Tag Manager / GA4, which fires
+    on PAGE events. Placing through the API renders no page, so no view_item, begin_checkout or
+    purchase event ever reaches them — the order shows up in their order system with no channel
+    attached, which is the "unattributed web order activity" their reseller team asked about on
+    17 Sep 2026. Finishing on the checkout page lets their own tags record the sale.
+
+    Cart, address, shipping and coupons still go through the API; only the final Place Order
+    moves to the page. Measured cost on 18 Sep: 21 s median per order via the API vs 48 s via
+    the page.
+
+    ZUHRA_PAGE_CHECKOUT=1/0, or bot_config {"checkout": {"page_checkout": true}}.
+    """
+    v = os.environ.get("ZUHRA_PAGE_CHECKOUT", "").strip().lower()
+    if v in ("1", "true", "yes"):
+        return True
+    if v in ("0", "false", "no"):
+        return False
+    try:
+        from utils.config import load_gui_config
+        return bool((load_gui_config().get("checkout") or {}).get("page_checkout"))
+    except Exception:
+        return False
+
+
 def harden_driver(driver):
     """Apply the survival timeouts to a freshly created/attached driver."""
     try:

@@ -1446,7 +1446,24 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 "zip": billing.get("zip", billing.get("zip_code", "")).replace("-", ""),
             }
 
-        if "RESELLER" in active_profile:
+        # ── ATTRIBUTED CHECKOUT ──────────────────────────────────────────────
+        # Finish on Zoro's real checkout page so their GTM/GA4 tags see the sale. Everything
+        # before this (cart, address, shipping method, coupons) still went through the API, so
+        # the coupon logic is untouched; only the final Place Order click moves to the page.
+        # A page order that yields no order id is AMBIGUOUS, so it falls through to the normal
+        # "ORDER FAILED" handling, which locks the order for review rather than retrying.
+        from utils.helpers import page_checkout_wanted
+        if page_checkout_wanted():
+            print("   🧾 Attributed checkout ON — placing on Zoro's real /checkout page "
+                  "(their analytics records this order)")
+            zoro_id = _dom_place_order_fallback(
+                driver, sku, qty, address, po_number, active_profile,
+                earnings, checkout_total, profit, margin,
+                coupon_list, asin, asin_coupon_cache,
+                skip_priority_coupons, priority_coupons,
+                min_margin, return_details, zoro_code,
+                payment_method=payment_method)
+        elif "RESELLER" in active_profile:
             if str(payment_method or "").upper() == "NET30":
                 # Net30 terms = API type INVOICE (fast path, full response data).
                 print("   RESELLER mode (Net30): API submit with INVOICE terms...")

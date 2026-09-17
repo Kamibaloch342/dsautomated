@@ -1137,6 +1137,22 @@ class App(tk.Tk):
                   "Applies to placers and trackers STARTED FROM NOW; already-running\n"
                   "processes keep their current mode until you restart them.")
 
+        self._pagechk_var = tk.BooleanVar(
+            value=bool((_read_cfg_file().get("checkout") or {}).get("page_checkout")))
+        self._pagechk_cb = ttk.Checkbutton(r1, text="🧾 Attributed checkout", variable=self._pagechk_var,
+                                           command=self._toggle_page_checkout)
+        self._pagechk_cb.pack(side="left", padx=(0, 4))
+        self._tip(self._pagechk_cb,
+                  "ATTRIBUTED CHECKOUT — place the final order on Zoro's real /checkout page\n"
+                  "instead of posting it to their order API.\n\n"
+                  "Zoro's marketing analytics (Google Tag Manager / GA4) fires on PAGE events.\n"
+                  "API-placed orders render no page, so their system records the order with no\n"
+                  "channel attached — the 'unattributed web order activity' their reseller team\n"
+                  "asked about. Finishing on the page lets their own tags record the sale.\n\n"
+                  "Cart, coupons, address and shipping still go through the API, so the coupon\n"
+                  "logic is unchanged. Costs about 27 s more per order (measured: 21 s → 48 s).\n"
+                  "Applies to placers STARTED FROM NOW.")
+
         # Multi checkboxes inline
         tk.Frame(r1, bg=self.MUTED, width=1).pack(side="left", fill="y", padx=(14, 10), pady=4)
         self._dim(r1, "Multi:").pack(side="left", padx=(0, 4))
@@ -4137,6 +4153,24 @@ class App(tk.Tk):
                         "ok" if on else "warn")
         self._log_line(f"🫥 Headless {'ON' if on else 'OFF'} (placers + trackers started from now; "
                        f"restart a running one to switch it)", source="remote")
+
+    def _toggle_page_checkout(self):
+        """Persist the attributed-checkout choice. Like headless, nothing is restarted: a
+        running placer keeps its current mode until it is restarted."""
+        on = bool(self._pagechk_var.get())
+        try:
+            cfg = _read_cfg_file()
+            cfg.setdefault("checkout", {})["page_checkout"] = on
+            _write_cfg_file(cfg)
+        except Exception as e:
+            self._feed_line(f"Could not save the attributed-checkout setting: {e}", "warn")
+            return
+        self._feed_line(
+            ("Attributed checkout ON — orders finish on Zoro's real checkout page (~27 s slower each)"
+             if on else "Attributed checkout OFF — orders are placed through the API"),
+            "ok" if on else "warn")
+        self._log_line(f"🧾 Attributed checkout {'ON' if on else 'OFF'} "
+                       f"(placers started from now; restart a running one to switch it)", source="remote")
 
     def _start_orders_key(self, key):
         """Start one placer profile (the GUI button and remote commands share this).

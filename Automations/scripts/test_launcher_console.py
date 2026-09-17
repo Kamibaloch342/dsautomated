@@ -106,6 +106,36 @@ def main():
     check("the remote set_headless command keeps the checkbox in sync",
           "_headless_var.set(bool(args.get(\"on\")))" in src)
 
+    # ── attributed checkout switch ───────────────────────────────────────
+    import os as _os
+    sys.path.insert(0, AUTO)
+    from utils.helpers import page_checkout_wanted
+    _os.environ["ZUHRA_PAGE_CHECKOUT"] = "1"
+    check("attributed checkout: env var turns it on", page_checkout_wanted() is True)
+    _os.environ["ZUHRA_PAGE_CHECKOUT"] = "0"
+    check("attributed checkout: env var turns it off even if config says on", page_checkout_wanted() is False)
+    _os.environ.pop("ZUHRA_PAGE_CHECKOUT")
+    check("attributed checkout: default comes from bot_config checkout.page_checkout",
+          page_checkout_wanted() == bool((json.load(open(os.path.join(AUTO, "bot_config.json"))).get("checkout") or {}).get("page_checkout")))
+
+    api = open(os.path.join(AUTO, "checkout", "true_api.py"), encoding="utf-8").read()
+    i, j = api.index("if page_checkout_wanted():"), api.index('elif "RESELLER" in active_profile:')
+    check("the switch is evaluated BEFORE the profile branches", i < j)
+    check("with the switch on, the order API submit is skipped entirely",
+          "_submit_order_api" not in api[i:j])
+    check("the page path still receives the payment method (Net30 resellers keep their terms)",
+          "payment_method=payment_method" in api[i:j])
+    check("cart, coupons, shipping and address still go through the API (unchanged)",
+          all(k in api for k in ("/v1/cart/{cart_id}/items", "/v1/cart/{cart_id}/promo",
+                                 "/v1/cart/{cart_id}/shippingmethod", "/v1/cart/{cart_id}/shippingaddress")))
+
+    check("the launcher exposes the toggle next to Headless",
+          "_pagechk_var" in src and "Attributed checkout" in src and "_toggle_page_checkout" in src)
+    check("toggling attributed checkout restarts nothing",
+          "_stop" not in src.split("def _toggle_page_checkout")[1].split("def ")[0])
+    check("it writes to checkout.page_checkout, not chrome.*",
+          'cfg.setdefault("checkout", {})["page_checkout"]' in src)
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))
