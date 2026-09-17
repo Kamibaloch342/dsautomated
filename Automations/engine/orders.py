@@ -2009,12 +2009,11 @@ def _focus_probe_cache() -> dict:
 def _focus_probe_remember(key: str, ok: bool) -> None:
     try:
         from utils.jsonstore import mutate_json
-        def _m(d):
-            d = d or {}
+        with mutate_json(_FOCUS_PROBE_PATH, {}) as d:      # locked read-modify-write, in place
             d[key] = {"ok": bool(ok), "at": time.time()}
             cutoff = time.time() - 7 * 86400
-            return {k: v for k, v in d.items() if float((v or {}).get("at") or 0) > cutoff}
-        mutate_json(_FOCUS_PROBE_PATH, _m, {})
+            for k in [k for k, v in d.items() if float((v or {}).get("at") or 0) <= cutoff]:
+                del d[k]
     except Exception as e:
         print(f"  ⚠️ focus probe memory: {e}")
 

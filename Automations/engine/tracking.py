@@ -687,11 +687,12 @@ def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_t
     }
     try:
         from utils.jsonstore import mutate_json
-        def _append(entries):
-            entries = entries if isinstance(entries, list) else []
+        with mutate_json(TRACKING_UPLOAD_LOG_FILE, [], indent=2) as entries:   # locked read-modify-write
+            if not isinstance(entries, list):
+                entries.clear() if hasattr(entries, "clear") else None
             entries.append(entry)
-            return entries[-5000:]              # keep the last 5000 entries
-        mutate_json(TRACKING_UPLOAD_LOG_FILE, _append, [], indent=2)
+            if len(entries) > 5000:
+                del entries[:-5000]             # keep the last 5000 entries (in place)
     except Exception as e:
         print(f"⚠️ Could not save tracking upload log: {e}")
 
