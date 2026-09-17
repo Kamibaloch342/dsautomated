@@ -30,7 +30,7 @@ class FakeStore:
     def __init__(self): self.blobs = {}
     def put_bytes(self, key, data, content_type=""): self.blobs[key] = data
     def get_bytes(self, key): return self.blobs.get(key)
-    def list(self, prefix, max_keys=1000): return [{"key": k} for k in sorted(self.blobs) if k.startswith(prefix)]
+    def list(self, prefix, max_keys=1000): return [{"key": k, "size": len(v)} for k, v in sorted(self.blobs.items()) if k.startswith(prefix)]
     def delete(self, key): self.blobs.pop(key, None)
     def get_file(self, key, path, gunzip=False):
         import gzip
@@ -44,8 +44,7 @@ CREATE TABLE orders(id INTEGER PRIMARY KEY AUTOINCREMENT, amazon_order_id TEXT, 
   order_status TEXT, tracking_number TEXT, carrier TEXT, updated_at TEXT);
 CREATE TABLE order_placer_orders(id INTEGER PRIMARY KEY AUTOINCREMENT, amazon_order_id TEXT, wb_order_id TEXT,
   profit_dollars REAL, placed_at TEXT);
-CREATE TABLE enrichment_log(id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, amazon_order_id TEXT, field TEXT,
-  new_value TEXT, timestamp TEXT);
+CREATE TABLE bot_decisions(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, amazon_id TEXT, kind TEXT, action TEXT);
 CREATE TABLE placer_claims(amazon_order_id TEXT PRIMARY KEY, status TEXT, wb_order_id TEXT, profile TEXT);
 """
 
@@ -77,7 +76,7 @@ def main():
     store = FakeStore()
     ia, ib = sj.install(A), sj.install(B)
     check("install: triggers on every synced table that exists, the rest skipped",
-          set(ia["tables"]) == {"orders", "order_placer_orders", "enrichment_log", "placer_claims"} and "closing_orders" in ia["skipped"], str(ia))
+          set(ia["tables"]) == {"orders", "order_placer_orders", "bot_decisions", "placer_claims"} and "closing_orders" in ia["skipped"], str(ia))
 
     # A places an order
     x(A, "INSERT INTO orders(amazon_order_id, merchant_order_id, order_status, updated_at) VALUES ('111-1','WB1','SUCCESS','t1')")
@@ -101,16 +100,16 @@ def main():
 
     # concurrent edits: B closes (tracking cols), A changes a placement column of the SAME row
     x(B, "UPDATE orders SET tracking_number='1Z999', carrier='UPS', updated_at='t2' WHERE amazon_order_id='111-1'")
-    x(B, "INSERT INTO enrichment_log(run_id, amazon_order_id, field, new_value, timestamp) VALUES ('r1','111-1','tracking','1Z999','t2')")
+    x(B, "INSERT INTO bot_decisions(ts, amazon_id, kind, action) VALUES ('t2','111-1','route','reseller')")
     x(A, "UPDATE orders SET order_status='SHIPPED_CONFIRMED', updated_at='t3' WHERE amazon_order_id='111-1'")
     sj.push(B, store, "mac-b")
     r = sj.pull(A, store, "mac-a")
     row = q(A, "SELECT order_status, tracking_number, carrier FROM orders WHERE amazon_order_id='111-1'")
     check("column-level merge: A gets B's tracking columns and KEEPS its own newer status",
           row == [("SHIPPED_CONFIRMED", "1Z999", "UPS")], str(row))
-    check("append-only: the enrichment row arrived once", q(A, "SELECT COUNT(*) FROM enrichment_log")[0][0] == 1)
+    check("append-only: the enrichment row arrived once", q(A, "SELECT COUNT(*) FROM bot_decisions")[0][0] == 1)
     sj.pull(A, store, "mac-a")
-    check("append-only: re-pull does not duplicate it", q(A, "SELECT COUNT(*) FROM enrichment_log")[0][0] == 1)
+    check("append-only: re-pull does not duplicate it", q(A, "SELECT COUNT(*) FROM bot_decisions")[0][0] == 1)
 
     # A's status change flows to B; B's row keeps its tracking
     sj.push(A, store, "mac-a"); sj.pull(B, store, "mac-b")
@@ -137,10 +136,25 @@ def main():
           r["errors"] == 0 and q(B, "SELECT order_status FROM orders WHERE amazon_order_id='222-2'") == [("X",)]
           and "new_col" in r["skipped_cols"].get("orders", set()), str(r))
 
+    # no-op updates never leave the machine; real updates travel as key + changed columns only
+    before = sj.pending_count(A)
+    x(A, "UPDATE orders SET order_status = order_status, carrier = carrier WHERE amazon_order_id='222-2'")
+    check("no-op UPDATE (same values) creates no journal row", sj.pending_count(A) == before, str((before, sj.pending_count(A))))
+    x(A, "UPDATE orders SET carrier='UPS' WHERE amazon_order_id='222-2'")
+    import gzip as _gz, json as _js
+    sj.push(A, store, "mac-a")
+    last = max(k for k in store.blobs if k.startswith("sync/events/mac-a/"))
+    ev = _js.loads(_gz.decompress(store.blobs[last]))["events"][-1]
+    check("real UPDATE travels slim: key + changed columns, old values of the changed ones only",
+          set(ev["new"]) == {"amazon_order_id", "carrier"} and ev["old"] == {"carrier": "FedEx"}, str(ev))
+    sj.pull(B, store, "mac-b")
+    check("slim UPDATE applies on the other machine", q(B, "SELECT carrier, order_status FROM orders WHERE amazon_order_id='222-2'") == [("UPS", "X")])
+
     # housekeeping
     s = sj.summary(A)
     check("summary reports installed / pending / applied", s["installed"] and s["pending"] == 0 and s["applied_files"] >= 2, str(s))
-    check("prune keeps fresh batches", sj.prune_remote(store, days=1) == 0 and len(store.blobs) >= 5)
+    check("prune keeps fresh batches under the size cap", sj.prune_remote(store, days=1, max_mb=512) == 0 and len(store.blobs) >= 5)
+    check("prune by size drops the oldest batches first", sj.prune_remote(store, days=1, max_mb=0.0001) >= 1)
     # seed a brand-new machine from the slim DB
     import gzip
     store.blobs["db/dashboard.db.gz"] = gzip.compress(open(A, "rb").read())

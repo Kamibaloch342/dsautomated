@@ -74,3 +74,6 @@ Amazon_DS_Hunting/.keepa_cache/
 # WhatsApp Gateway auth session
 **/auth_session/
 
+
+# the virtualenv may be a symlink (real venv lives in ~/.zuhra/venv, outside Google Drive)
+.venv

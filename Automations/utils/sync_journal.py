@@ -63,7 +63,6 @@ TABLES: dict[str, list[str] | None] = {
     "archive_returns": ["amazon_order_id", "email_timestamp", "email_type", "gmail_account"],
     "archive_earnings": ["amazon_order_id", "gmail_account", "email_timestamp"],
     "archive_zoro": None,
-    "enrichment_log": None,
     "order_messages": None,
     "bot_decisions": None,
     "crm_notes": None,
@@ -128,9 +127,12 @@ def install(db_path: str) -> dict:
                      f"PRIMARY KEY(table_name, row_hash))")
         present = _tables(conn)
         done, skipped = [], []
+        # drop EVERY journal trigger first — including ones for tables no longer in TABLES
+        # (enrichment_log kept journaling 1.7M audit rows after it was removed from the list)
+        for (trg,) in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger' "
+                                   "AND (name LIKE 'zs_ai_%' OR name LIKE 'zs_au_%')").fetchall():
+            conn.execute(f"DROP TRIGGER IF EXISTS \"{trg}\"")
         for t in TABLES:
-            for trg in (f"zs_ai_{t}", f"zs_au_{t}"):
-                conn.execute(f"DROP TRIGGER IF EXISTS {trg}")
             if t not in present:
                 skipped.append(t)
                 continue
@@ -139,10 +141,14 @@ def install(db_path: str) -> dict:
                 skipped.append(t)
                 continue
             new_expr, old_expr = _json_expr("NEW", cols), _json_expr("OLD", cols)
+            # Closing rewrites whole rows with identical values: on 14 Sep 2026 a 2,000-event
+            # batch was 100 % no-op updates and 3.3 GB of them reached R2 in four days. The
+            # UPDATE trigger fires only when at least one column really changed.
+            changed = " OR ".join(f"NEW.\"{c}\" IS NOT OLD.\"{c}\"" for c in cols)
             conn.execute(f"CREATE TRIGGER zs_ai_{t} AFTER INSERT ON \"{t}\" FOR EACH ROW BEGIN "
                          f"INSERT INTO {JOURNAL}(table_name, op, new_json, old_json, ts) "
                          f"VALUES ('{t}', 'I', {new_expr}, NULL, (julianday('now') - 2440587.5) * 86400.0); END")
-            conn.execute(f"CREATE TRIGGER zs_au_{t} AFTER UPDATE ON \"{t}\" FOR EACH ROW BEGIN "
+            conn.execute(f"CREATE TRIGGER zs_au_{t} AFTER UPDATE ON \"{t}\" FOR EACH ROW WHEN ({changed}) BEGIN "
                          f"INSERT INTO {JOURNAL}(table_name, op, new_json, old_json, ts) "
                          f"VALUES ('{t}', 'U', {new_expr}, {old_expr}, (julianday('now') - 2440587.5) * 86400.0); END")
             done.append(t)
@@ -189,8 +195,19 @@ def push(db_path: str, store, host: str, batch: int = 2000, max_batches: int = 2
                                 f"ORDER BY seq LIMIT ?", (batch,)).fetchall()
             if not rows:
                 break
-            evs = [{"seq": r[0], "table": r[1], "op": r[2], "new": json.loads(r[3]) if r[3] else None,
-                    "old": json.loads(r[4]) if r[4] else None, "ts": r[5]} for r in rows]
+            evs = []
+            for r in rows:
+                ev = {"seq": r[0], "table": r[1], "op": r[2], "new": json.loads(r[3]) if r[3] else None,
+                      "old": json.loads(r[4]) if r[4] else None, "ts": r[5]}
+                ev = _slim_event(ev)
+                if ev is not None:
+                    evs.append(ev)
+            if not evs:                                   # a batch of pure no-ops: nothing to upload
+                conn.execute(f"DELETE FROM {JOURNAL} WHERE seq <= ?", (rows[-1][0],))
+                conn.commit()
+                if len(rows) < batch:
+                    break
+                continue
             body = gzip.compress(json.dumps({"host": host, "created": time.time(), "events": evs},
                                             default=str).encode("utf-8"))
             key = f"{PREFIX}{host}/{utcnow_key()}_{rows[0][0]:012d}-{rows[-1][0]:012d}.json.gz"
@@ -204,6 +221,23 @@ def push(db_path: str, store, host: str, batch: int = 2000, max_batches: int = 2
         return {"files": files, "events": events}
     finally:
         conn.close()
+
+
+def _slim_event(ev: dict):
+    """An UPDATE travels as key columns + the columns that changed (with their old values);
+    an update that changed nothing is dropped. INSERTs travel whole."""
+    if ev.get("op") != "U" or not isinstance(ev.get("new"), dict) or not isinstance(ev.get("old"), dict):
+        return ev
+    new, old = ev["new"], ev["old"]
+    changed = {k: v for k, v in new.items() if old.get(k) != v}
+    if not changed:
+        return None
+    keycols = TABLES.get(ev.get("table")) or []
+    slim_new = {k: new[k] for k in keycols if k in new}
+    slim_new.update(changed)
+    ev["new"] = slim_new
+    ev["old"] = {k: old.get(k) for k in changed}
+    return ev
 
 
 # ── pull / apply ──────────────────────────────────────────────────────────
@@ -286,7 +320,7 @@ def _apply(conn, ev: dict, cols_cache: dict, present: set, stats: dict) -> None:
             return
         rid = row[0]
         if ev.get("op") == "U" and isinstance(old, dict):
-            changed = {k: v for k, v in new.items() if old.get(k) != v}
+            changed = {k: v for k, v in new.items() if k in old and old.get(k) != v}
         else:
             # an INSERT that already exists here (both machines saw the order): fill gaps only
             cur = conn.execute(f"SELECT * FROM \"{t}\" WHERE rowid = ?", (rid,)).fetchone()
@@ -316,22 +350,32 @@ def _insert(conn, t: str, row: dict) -> None:
 
 
 # ── housekeeping ──────────────────────────────────────────────────────────
-def prune_remote(store, days: int = 14) -> int:
-    """Delete event batches older than `days` (their timestamp is in the key)."""
+def prune_remote(store, days: int = 3, max_mb: float = 512.0) -> int:
+    """Delete event batches older than `days`, and the oldest ones beyond `max_mb` in total
+    (keys start with a UTC timestamp, so key order is time order)."""
     cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
-    old = []
-    for item in store.list(PREFIX, max_keys=1000):
+    items = []
+    for item in store.list(PREFIX, max_keys=100000):
         k = _key_of(item)
+        size = int(item.get("size") or 0) if isinstance(item, dict) else 0
         try:
             stamp = os.path.basename(k).split("_")[0]
             ts = datetime.strptime(stamp, "%Y%m%dT%H%M%S").replace(tzinfo=timezone.utc).timestamp()
-            if ts < cutoff:
-                old.append(k)
         except Exception:
             continue
-    for k in old:
+        items.append((k, ts, size))
+    items.sort(key=lambda x: x[1])
+    doomed = [k for k, ts, _ in items if ts < cutoff]
+    total = sum(size for k, ts, size in items if k not in set(doomed))
+    for k, ts, size in items:
+        if total <= max_mb * 1048576:
+            break
+        if k not in doomed:
+            doomed.append(k)
+            total -= size
+    for k in doomed:
         store.delete(k)
-    return len(old)
+    return len(doomed)
 
 
 def seed_from_cloud(db_path: str, store, slim_key: str = "db/dashboard.db.gz") -> str:
