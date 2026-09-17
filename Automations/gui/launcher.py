@@ -610,6 +610,8 @@ class App(tk.Tk):
             cfg = _read_cfg_file()
             cfg.setdefault("chrome", {})["headless"] = bool(args.get("on"))
             _write_cfg_file(cfg)
+            if hasattr(self, "_headless_var"):
+                self._headless_var.set(bool(args.get("on")))      # keep the checkbox honest
             return True, f"headless {'ON' if args.get('on') else 'OFF'} (applies to placers started from now)"
         if a == "shutdown_launcher":
             self.after(800, self._on_close)
@@ -1108,6 +1110,22 @@ class App(tk.Tk):
         self.btn_ord_stop = self._btn(r1, "■ Stop All", self.RED, self._stop_all_orders)
         self.btn_ord_stop.pack(side="left")
         self.btn_ord_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+
+        # Headless toggle — placers AND trackers launched from now on run without a window.
+        # Measured 17 Sep 2026 on one identical tracking cycle: headed 1660 MB vs headless
+        # 889 MB of system memory. On a 16 GB Mac running 4 placers + 2 trackers that is the
+        # difference between swapping and not.
+        tk.Frame(r1, bg=self.MUTED, width=1).pack(side="left", fill="y", padx=(14, 10), pady=4)
+        self._headless_var = tk.BooleanVar(
+            value=bool((_read_cfg_file().get("chrome") or {}).get("headless")))
+        self._headless_cb = ttk.Checkbutton(r1, text="🫥 Headless", variable=self._headless_var,
+                                            command=self._toggle_headless)
+        self._headless_cb.pack(side="left", padx=(0, 4))
+        self._tip(self._headless_cb,
+                  "HEADLESS MODE — Chrome runs with no window.\n"
+                  "Roughly half the memory per browser (measured: 1660 MB → 889 MB).\n"
+                  "Applies to placers and trackers STARTED FROM NOW; already-running\n"
+                  "processes keep their current mode until you restart them.")
 
         # Multi checkboxes inline
         tk.Frame(r1, bg=self.MUTED, width=1).pack(side="left", fill="y", padx=(14, 10), pady=4)
@@ -3709,6 +3727,12 @@ class App(tk.Tk):
         self.console.tag_configure("dash", foreground=self.PURPLE)
         self.console.tag_configure("dim", foreground=self.DIM)
         self.console.tag_configure("header", foreground=self.ACCENT, font=(self.MONO, 10, "bold"))
+        # Per-source badges. Under a view that spans several processes (All / Orders /
+        # Tracking / Closing) every line carries a short colour-coded tag, so all four
+        # placers can be read in one stream instead of one profile at a time.
+        for _src, (_lbl, _col) in self._source_badges().items():
+            self.console.tag_configure(f"src::{_src}", foreground=_col,
+                                       font=(self.MONO, 9, "bold"))
 
     # ══════════════════════════════════════════════════════════════════════
     #  CONFIG load / save
@@ -3924,10 +3948,45 @@ class App(tk.Tk):
             return "dim"
         return None
 
+    # source → (badge, colour). Kept short so the badge column stays narrow.
+    def _source_badges(self):
+        return {
+            "orders_DM_COUPON":   ("DM·CPN", self.CYAN),
+            "orders_DM_RESELLER": ("DM·RSL", self.GREEN),
+            "orders_HS_COUPON":   ("HS·CPN", self.PURPLE),
+            "orders_HS_RESELLER": ("HS·RSL", self.AMBER),
+            "tracking_hoank":     ("TRK·HO", self.ACCENT),
+            "tracking_hathoro":   ("TRK·HA", "#f7a072"),
+            "coupon":             ("COUPON", self.AMBER),
+            "listings":           ("LIST  ", self.DIM),
+            "walmart":            ("WMART ", self.PURPLE),
+            "remote":             ("REMOTE", self.DIM),
+        }
+
+    # Views that mix several processes — only these need a per-line badge.
+    _MULTI_SOURCE_VIEWS = ("All", "Orders", "Tracking", "Closing")
+
+    def _badge_for(self, source):
+        """(label, tag) for a console source, or None when no badge is wanted."""
+        src = str(source or "").strip()
+        if not src:
+            return None
+        table = self._source_badges()
+        if src in table:
+            return table[src][0], f"src::{src}"
+        if src.startswith(("bulk_", "messages_", "closing_")):
+            acct = "HO" if src.endswith("_hoank") else ("HA" if src.endswith("_hathoro") else "  ")
+            return f"CLOSE·{acct}", "dim"
+        if src.startswith("orders_"):
+            return src.replace("orders_", "")[:6].upper().ljust(6), "dim"
+        if src.startswith("tracking_"):
+            return src.replace("tracking_", "TRK·")[:6].ljust(6), "dim"
+        return None
+
     _BOX_CHARS = set("│┌┐└┘├┤┬┴┼─═║╔╗╚╝╠╣╦╩╬")
     _SUMMARY_PREFIXES = ("ASIN", "SKU", "Payout", "Est Cost", "Est Mgn", "Est Pft", "With ")
 
-    def _insert_console_line(self, ts, text):
+    def _insert_console_line(self, ts, text, source=""):
         tag = self._console_tag(text)
         stripped = text.lstrip() if text else ""
         is_box = stripped and stripped[0] in self._BOX_CHARS
@@ -3935,6 +3994,11 @@ class App(tk.Tk):
         # Skip timestamp for box-drawing / summary lines so they can be copy-pasted cleanly
         if not is_box and not is_summary:
             self.console.insert("end", f"{ts} ", "time")
+            # Who said it — only under a view that mixes processes.
+            if self._console_filter_value() in self._MULTI_SOURCE_VIEWS:
+                badge = self._badge_for(source)
+                if badge:
+                    self.console.insert("end", f"{badge[0]} ", badge[1])
         if tag:
             self.console.insert("end", text, tag)
         else:
@@ -3968,7 +4032,7 @@ class App(tk.Tk):
         if not self._console_matches_filter(source):
             return
         self.console.configure(state="normal")
-        self._insert_console_line(ts, text)
+        self._insert_console_line(ts, text, source)
         if self._auto_scroll.get():
             self.console.see("end")
         self.console.configure(state="disabled")
@@ -3984,7 +4048,7 @@ class App(tk.Tk):
             self._insert_console_line("--:--:--", f"… {len(matches) - 5000} earlier line(s) — see the Logs page …")
             matches = matches[-5000:]
         for ts, text, source in matches:
-            self._insert_console_line(ts, text)
+            self._insert_console_line(ts, text, source)
         if self._auto_scroll.get():
             self.console.see("end")
         self.console.configure(state="disabled")
@@ -4046,6 +4110,23 @@ class App(tk.Tk):
                                    f"dashboard) before starting here — this prevents duplicate orders.")
             return
         self._start_orders_key(key)
+
+    def _toggle_headless(self):
+        """Persist the headless choice to bot_config.json. Nothing is restarted: a running
+        Chrome keeps its mode, so the change lands on the next start (same rule as the
+        remote set_headless command)."""
+        on = bool(self._headless_var.get())
+        try:
+            cfg = _read_cfg_file()
+            cfg.setdefault("chrome", {})["headless"] = on
+            _write_cfg_file(cfg)
+        except Exception as e:
+            self._feed_line(f"Could not save the headless setting: {e}", "warn")
+            return
+        self._feed_line(f"Headless {'ON' if on else 'OFF'} — applies to processes started from now",
+                        "ok" if on else "warn")
+        self._log_line(f"🫥 Headless {'ON' if on else 'OFF'} (placers + trackers started from now; "
+                       f"restart a running one to switch it)", source="remote")
 
     def _start_orders_key(self, key):
         """Start one placer profile (the GUI button and remote commands share this).
