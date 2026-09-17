@@ -223,9 +223,18 @@ def parse_runtime_args():
         default=False,
         help="Skip sending customer messages even if account has send_messages=True.",
     )
+    parser.add_argument(
+        "--max-uploads",
+        type=int,
+        default=0,
+        help="Stop after N successful tracking uploads (0 = no limit). Use --max-uploads 1 "
+             "with --single-cycle to verify the whole flow on exactly one order.",
+    )
     args = parser.parse_args()
     if args.sleep_seconds < 0:
         parser.error("--sleep-seconds must be 0 or greater")
+    if args.max_uploads < 0:
+        parser.error("--max-uploads must be 0 or greater")
     return args
 
 
@@ -787,12 +796,32 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
         print(f"     ⚠️  Order {order_id}: Messaging appears disabled (no clickable option found). Skipping.")
         return False
 
-    # --- STEP 2: Inject full message via JS (no clipboard needed) ---
+    # --- STEP 2: Inject the message and PROVE it landed ------------------------
+    # document.execCommand('insertText') is deprecated and fails SILENTLY when the
+    # textarea (inside kat-textarea's shadow root) is not truly focused or not laid out
+    # yet. The old code never checked, then clicked Send anyway — that is how buyers
+    # received EMPTY messages. Now: insert, read the value back, fall back to the native
+    # setter + composed events (the same technique that fixed the seller-order-id field),
+    # read back again, and refuse to send if the box is still empty.
+    if not (message_text or "").strip():
+        print(f"     ⛔  Order {order_id}: refusing to send — the message body is empty")
+        return False
+
+    def _textarea_value():
+        try:
+            return driver.execute_script(
+                "var t=document.querySelector('kat-textarea');"
+                "if(!t||!t.shadowRoot)return null;"
+                "var a=t.shadowRoot.querySelector('textarea');"
+                "return a ? a.value : null;")
+        except Exception:
+            return None
+
     try:
         js_ta = "return document.querySelector('kat-textarea').shadowRoot.querySelector('textarea');"
         textarea = wait.until(lambda d: d.execute_script(js_ta))
 
-        # execCommand('insertText') triggers Amazon's internal state update
+        # attempt 1 — execCommand (keeps Amazon's own input handling intact)
         driver.execute_script("""
             var ta = arguments[0];
             var msg = arguments[1];
@@ -800,7 +829,38 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
             ta.select();
             document.execCommand('insertText', false, msg);
         """, textarea, message_text)
-        time.sleep(0.5)
+        time.sleep(0.6)
+
+        got = _textarea_value()
+        if not (got or "").strip():
+            # attempt 2 — native value setter + events that cross the shadow boundary
+            print(f"     ↻  Textarea still empty after insertText — retrying with the native setter")
+            driver.execute_script("""
+                var ta = arguments[0], msg = arguments[1];
+                ta.focus();
+                var d = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
+                if (d && d.set) { d.set.call(ta, msg); } else { ta.value = msg; }
+                ta.dispatchEvent(new Event('input',  {bubbles: true, composed: true}));
+                ta.dispatchEvent(new Event('change', {bubbles: true, composed: true}));
+                ta.blur(); ta.focus();
+            """, textarea, message_text)
+            time.sleep(0.8)
+            got = _textarea_value()
+
+        if not (got or "").strip():
+            print(f"     ⛔  Order {order_id}: the message box is STILL empty — NOT clicking Send "
+                  f"(an empty message would reach the buyer). Retried next cycle.")
+            return False
+
+        _want = " ".join((message_text or "").split())
+        _have = " ".join((got or "").split())
+        if _have != _want:
+            if _want[:60] not in _have:
+                print(f"     ⛔  Order {order_id}: the box holds different text than intended "
+                      f"({len(_have)} chars vs {len(_want)}) — NOT clicking Send")
+                return False
+            print(f"     ⚠️  Order {order_id}: box text differs slightly ({len(_have)} vs {len(_want)} chars) — proceeding")
+        print(f"     ✍️  Message text verified in the box ({len(_have)} chars)")
     except Exception as e:
         err_str = str(e).lower()
         if "not interactable" in err_str or "not reachable" in err_str:
@@ -1708,7 +1768,14 @@ def main_workflow(account_config, passed_driver=None):
 
                 rows_list = list(filtered_orders_df.iterrows())
 
+                _max_uploads = int(getattr(_cli_args, "max_uploads", 0) or 0)
+                if _max_uploads:
+                    print(f"  🔒  UPLOAD CAP: stopping after {_max_uploads} successful upload(s)")
+
                 for batch_start in range(0, total_orders, BATCH_SIZE):
+                    if _max_uploads and success_count >= _max_uploads:
+                        print(f"\n  🔒  Upload cap reached ({success_count}/{_max_uploads}) — no further batches this run.")
+                        break
                     batch_rows = rows_list[batch_start:batch_start + BATCH_SIZE]
                     batch_num = (batch_start // BATCH_SIZE) + 1
                     total_batches = (total_orders + BATCH_SIZE - 1) // BATCH_SIZE
@@ -1807,6 +1874,10 @@ def main_workflow(account_config, passed_driver=None):
                         print(f"  {'─'*54}")
 
                         for upload_idx, order_data in enumerate(batch_with_tracking, 1):
+                            if _max_uploads and success_count >= _max_uploads:
+                                print(f"     🔒  Upload cap reached ({success_count}/{_max_uploads}) — "
+                                      f"skipping the remaining {len(batch_with_tracking) - upload_idx + 1} order(s).")
+                                break
                             amazon_id = order_data["amazon-order-id"]
                             tracking_id_string = order_data["Tracking ID"]
                             order_wb_ids = order_data.get("wb_ids", [])

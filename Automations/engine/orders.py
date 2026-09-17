@@ -178,6 +178,17 @@ TARGET_LABEL = CONFIG.get("target_label", "")
 TARGET_LABEL_2 = CONFIG.get("target_label_2", "") if "COUPON" in PROFILE_NAME else ""
 MIN_MARGIN = CONFIG.get("min_profit_margin", -0.2)
 MIN_MARGIN_2 = CONFIG.get("min_profit_margin_2", -0.2) if "COUPON" in PROFILE_NAME else MIN_MARGIN
+# The launcher's per-profile "Order Limit" box writes profiles.<P>.order_limit into
+# bot_config.json, and apply_gui_overrides copies it onto PROFILES[...]["order_limit"] — but
+# nothing ever READ it: the placer used the module-level ORDER_LIMIT (hard-coded 0 = unlimited).
+# So the limit silently did nothing. Proved on 17 Sep 2026: order_limit=1 placed 5 orders.
+# 0 keeps the old meaning (no limit); a positive value wins over the global.
+try:
+    _profile_order_limit = int(CONFIG.get("order_limit") or 0)
+except (TypeError, ValueError):
+    _profile_order_limit = 0
+if _profile_order_limit > 0:
+    ORDER_LIMIT = _profile_order_limit
 MARGIN_CHECK_EST_ONLY = CONFIG.get("margin_check_est_only", False)
 EARNINGS_GMAIL = CONFIG["gmail_earnings_account"]
 DUPLICATE_GMAIL_LIST = CONFIG["gmail_duplicates_list"]
@@ -228,6 +239,8 @@ if SUPERVISE_UNLABELLED:
 if IS_RESELLER_PROFILE:
     print(f"   -> Deciding rule: cart ≥ threshold OR reseller margin < {DECIDING_MIN_MARGIN:.0%} → coupon profile")
 print(f"   -> Min Margin: {MIN_MARGIN:.0%} ({MIN_MARGIN})")
+if ORDER_LIMIT > 0:
+    print(f"   -> 🔒 Order Limit: {ORDER_LIMIT} successful order(s) this run, then stop")
 print(f"   -> Margin Mode: FINAL pre-tax margin decides placement "
       f"(pre-checkout estimate gate removed; tax excluded since it's refunded)")
 if IS_RESELLER_PROFILE:
