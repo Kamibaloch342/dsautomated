@@ -4554,6 +4554,38 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    @staticmethod
+    def _ports_for(name):
+        """Chrome debugging port(s) a launcher process owns (its browser may outlive it:
+        since macOS 27 Chrome is started through LaunchServices, not as a child)."""
+        n = (name or "").lower()
+        if n.startswith("orders_"):
+            pk = name[len("orders_"):]
+            return [PORTS[pk]] if pk in PORTS else []
+        if "hoank" in n:
+            return [PORTS["HOANK_CLOSING"]]
+        if "hathoro" in n:
+            return [PORTS["HATHORO_CLOSING"]]
+        return []
+
+    def _sweep_chrome(self, name, wait=True):
+        """Close the Chrome window(s) that belonged to `name` (graceful, then forced)."""
+        ports = self._ports_for(name)
+        if not ports:
+            return
+        def _run():
+            try:
+                from utils.proc import close_chrome
+                for p in ports:
+                    asked, forced = close_chrome(port=p, timeout=8.0 if wait else 0.0, wait=wait)
+                    if asked:
+                        self.after(0, lambda p=p, a=asked, f=forced: self._feed_line(
+                            f"{name.upper()}: closed Chrome on :{p}" + (" (forced)" if f else ""), "ok"))
+            except Exception as e:
+                self.after(0, lambda e=e: self._feed_line(f"{name.upper()}: Chrome sweep failed: {e}", "warn"))
+        import threading
+        threading.Thread(target=_run, daemon=True, name=f"sweep-{name}").start()
+
     def _stop(self, name):
         proc = self._procs.get(name)
         if proc:
@@ -4568,17 +4600,19 @@ class App(tk.Tk):
                     # escalate to SIGKILL only if it's still alive after 12s.
                     pgid = os.getpgid(proc.pid)
                     os.killpg(pgid, signal.SIGTERM)
-                    def _escalate(p=proc, g=pgid, tries=24):
+                    def _escalate(p=proc, g=pgid, tries=24, n=name):
                         if p.poll() is not None:
+                            self._sweep_chrome(n)          # the child is gone: close what it left behind
                             return
                         if tries <= 0:
                             try:
                                 os.killpg(g, signal.SIGKILL)
-                                self._feed_line(f"{name.upper()} did not exit in 12s — force-killed", "warn")
+                                self._feed_line(f"{n.upper()} did not exit in 12s — force-killed", "warn")
                             except Exception:
                                 pass
+                            self._sweep_chrome(n)
                             return
-                        self.after(500, lambda: _escalate(p, g, tries - 1))
+                        self.after(500, lambda: _escalate(p, g, tries - 1, n))
                     self.after(500, _escalate)
             except Exception:
                 proc.kill()
@@ -4799,13 +4833,23 @@ class App(tk.Tk):
             os.remove(LAUNCHER_STATE)       # tells the cloud agent (and colleagues) we're closed
         except OSError:
             pass
+        # Every automation browser: ask each to quit now, force whatever is still there in 4 s,
+        # then close the window. (Placers, tracking and closing all use the ports in PORTS.)
         try:
-            from utils.proc import kill_pids_on_port   # cross-platform (netstat/taskkill on Windows)
-            for pk in PROFILES:
-                kill_pids_on_port(PORTS[pk])
+            from utils.proc import close_chrome
+            for port in sorted(set(PORTS.values())):
+                close_chrome(port=port, wait=False)
         except Exception:
             pass
-        self.after(500, self.destroy)
+        def _finish():
+            try:
+                from utils.proc import close_chrome
+                for port in sorted(set(PORTS.values())):
+                    close_chrome(port=port, timeout=0.0)
+            except Exception:
+                pass
+            self.destroy()
+        self.after(4000, _finish)
 
 
 if __name__ == "__main__":

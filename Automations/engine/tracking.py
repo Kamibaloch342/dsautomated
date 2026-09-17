@@ -325,6 +325,11 @@ def launch_or_attach_chrome(account_config, profile_path, download_dir=None):
                 port_open = True
                 break
             s.close()
+        if port_open:
+            # WE launched it → it is closed again when this process stops (launcher Stop /
+            # window close send SIGTERM; see the handler in __main__). Between cycles it stays.
+            from utils.helpers import register_owned_chrome
+            register_owned_chrome(profile_path, port)
 
     if port_open:
         opts = Options()
@@ -2041,7 +2046,24 @@ def main_workflow(account_config, passed_driver=None):
 # --- Main Execution Loop ---
 _cli_args = None  # set in __main__
 
+def _stop_signal(signum, frame):
+    """Launcher Stop / window close: close the browsers this run launched, then exit at
+    once (worker threads in parallel mode would otherwise keep the process alive until
+    the launcher force-kills it, and a SIGKILL would leave the browsers open)."""
+    print(f"\n  ⚠️  Signal {signum} — closing this run's Chrome window(s) and exiting")
+    try:
+        from utils.helpers import close_owned_chromes
+        close_owned_chromes(timeout=8.0)
+    except Exception as e:
+        print(f"  ⚠️  could not close Chrome: {e}")
+    os._exit(0)
+
+
 if __name__ == "__main__":
+    import signal as _signal
+    _signal.signal(_signal.SIGINT, _stop_signal)
+    if hasattr(_signal, "SIGTERM"):
+        _signal.signal(_signal.SIGTERM, _stop_signal)
     args = parse_runtime_args()
     _cli_args = args
     selected_accounts = select_accounts(args.accounts)

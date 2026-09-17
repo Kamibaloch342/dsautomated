@@ -66,6 +66,88 @@ def apply_cdp_stealth(driver):
     return driver
 
 
+# ── Browsers this process launched (closed again at exit, like a child process would be) ──
+_OWNED_CHROMES = []          # [(profile_path, port)]
+_OWNED_ATEXIT = []
+
+
+def register_owned_chrome(profile_path, port):
+    """Remember a Chrome THIS process launched so it is closed when the process ends —
+    'open -a' makes Chrome a child of launchd, so nothing else would close it."""
+    import atexit
+    key = (str(profile_path), int(port) if port else None)
+    if key not in _OWNED_CHROMES:
+        _OWNED_CHROMES.append(key)
+    if not _OWNED_ATEXIT:
+        _OWNED_ATEXIT.append(True)
+        atexit.register(close_owned_chromes)
+
+
+def close_owned_chromes(timeout=8.0):
+    """Close every browser this process launched (idempotent)."""
+    from utils.proc import close_chrome
+    n = 0
+    for profile_path, port in list(_OWNED_CHROMES):
+        try:
+            asked, forced = close_chrome(profile_path, port, timeout=timeout)
+            n += asked
+        except Exception:
+            pass
+    _OWNED_CHROMES.clear()
+    return n
+
+
+class ChromeHandle:
+    """Process-like handle for a Chrome launched through 'open -a' (or a direct Popen).
+    poll()/terminate()/kill()/wait() act on the real BROWSER process, so callers written for
+    a child-process Popen (`_cleanup` in the placer) keep working unchanged."""
+    def __init__(self, proc, profile_path, port):
+        self.proc, self.profile_path, self.port = proc, str(profile_path), int(port)
+        self.returncode = None
+
+    def _pids(self):
+        from utils.proc import chrome_browser_pids
+        return chrome_browser_pids(self.profile_path, self.port)
+
+    @property
+    def pid(self):
+        p = self._pids()
+        return min(p) if p else (self.proc.pid if self.proc is not None else None)
+
+    def poll(self):
+        if self._pids():
+            return None
+        self.returncode = self.returncode if self.returncode is not None else 0
+        return self.returncode
+
+    def wait(self, timeout=None):
+        import time as _t
+        end = None if timeout is None else _t.time() + timeout
+        while self.poll() is None:
+            if end is not None and _t.time() > end:
+                raise subprocess.TimeoutExpired("chrome", timeout)
+            _t.sleep(0.25)
+        return self.returncode
+
+    def terminate(self):
+        from utils.proc import close_chrome
+        close_chrome(self.profile_path, self.port, timeout=8.0)
+        try:
+            if self.proc is not None and self.proc.poll() is None:
+                self.proc.terminate()
+        except Exception:
+            pass
+
+    def kill(self):
+        from utils.proc import close_chrome
+        close_chrome(self.profile_path, self.port, timeout=0.0)
+        try:
+            if self.proc is not None and self.proc.poll() is None:
+                self.proc.kill()
+        except Exception:
+            pass
+
+
 def mark_profile_clean_exit(user_data_dir):
     """Clear the "Chrome didn't shut down correctly / Restore pages?" state in a
     profile BEFORE launching Chrome with it. Also removes stale SingletonLock /
@@ -670,6 +752,8 @@ def setup_driver(debugging_port, profile_folder_name):
                     _chrome_log_fh.close()
                 except Exception:
                     pass
+                register_owned_chrome(profile_path, debugging_port)
+                return ChromeHandle(proc, profile_path, debugging_port)
             if not port_opened:
                 _chrome_log_fh.close()
                 alive = proc.poll() is None
