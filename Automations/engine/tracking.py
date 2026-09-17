@@ -687,6 +687,25 @@ def _page_shows_already_shipped(driver):
         return False
 
 
+def recent_already_shipped(days=14):
+    """Amazon order ids whose ORDER PAGE already showed a confirmed shipment on an earlier run.
+
+    Amazon's unshipped report lags behind the order page, so the very same confirmed orders
+    come back in every report. On 17–18 Sep the same five orders were re-processed at 09:28,
+    20:18 and 00:39 — each costing a doomed 20 s message attempt plus two page loads, and each
+    risking a duplicate message to a buyer whose order was already handled. Once the order page
+    has told us it is shipped, believe it for `days` rather than asking Amazon again every cycle.
+    """
+    cutoff = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - days * 86400))
+    out = set()
+    for e in load_tracking_upload_log():
+        if e.get("status") == "already_shipped" and (e.get("timestamp") or "") >= cutoff:
+            oid = (e.get("amazon_order_id") or "").strip()
+            if oid:
+                out.add(oid)
+    return out
+
+
 def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_type, status, note=""):
     """Append one tracking upload event to the audit log (one locked read-modify-write,
     so the two account processes never overwrite each other's entries)."""
@@ -803,12 +822,16 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
         return False
 
     # --- STEP 2: Inject the message and PROVE it landed ------------------------
-    # document.execCommand('insertText') is deprecated and fails SILENTLY when the
-    # textarea (inside kat-textarea's shadow root) is not truly focused or not laid out
-    # yet. The old code never checked, then clicked Send anyway — that is how buyers
-    # received EMPTY messages. Now: insert, read the value back, fall back to the native
-    # setter + composed events (the same technique that fixed the seller-order-id field),
-    # read back again, and refuse to send if the box is still empty.
+    # Three ways in, best first:
+    #   1. CDP Input.insertText — a TRUSTED input event straight into the renderer. Works
+    #      even when the Chrome window is in the background, which matters here: with four
+    #      placers plus two trackers the messaging window is almost never the focused one.
+    #   2. document.execCommand('insertText') — deprecated and silently no-ops unless the
+    #      document has focus. That is exactly why messages failed in bursts.
+    #   3. native value setter + events — fills the box but Amazon's kat-textarea keeps its
+    #      own state, so Send stays DISABLED. Measured 18 Sep: execCommand 5 sent / 0 failed,
+    #      native setter 0 sent / 24 failed. Last resort only.
+    # Whatever happens, the box is read back and Send is never clicked on an empty box.
     if not (message_text or "").strip():
         print(f"     ⛔  Order {order_id}: refusing to send — the message body is empty")
         return False
@@ -823,50 +846,73 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
         except Exception:
             return None
 
+    def _matches(got):
+        want = " ".join((message_text or "").split())
+        have = " ".join((got or "").split())
+        return bool(have) and (have == want or want[:60] in have)
+
     try:
         js_ta = "return document.querySelector('kat-textarea').shadowRoot.querySelector('textarea');"
         textarea = wait.until(lambda d: d.execute_script(js_ta))
+        how = None
 
-        # attempt 1 — execCommand (keeps Amazon's own input handling intact)
-        driver.execute_script("""
-            var ta = arguments[0];
-            var msg = arguments[1];
-            ta.focus();
-            ta.select();
-            document.execCommand('insertText', false, msg);
-        """, textarea, message_text)
-        time.sleep(0.6)
+        # 1 — trusted insert (no window focus needed)
+        try:
+            driver.execute_script("arguments[0].focus(); arguments[0].select();", textarea)
+            driver.execute_cdp_cmd("Input.insertText", {"text": message_text})
+            time.sleep(0.5)
+            if _matches(_textarea_value()):
+                how = "CDP insertText"
+        except Exception as _cdp_err:
+            print(f"     ⋯  CDP insertText unavailable ({str(_cdp_err)[:60]})")
 
-        got = _textarea_value()
-        if not (got or "").strip():
-            # attempt 2 — native value setter + events that cross the shadow boundary
-            print(f"     ↻  Textarea still empty after insertText — retrying with the native setter")
+        # 2 — execCommand (works only while the window has focus)
+        if not how:
             driver.execute_script("""
                 var ta = arguments[0], msg = arguments[1];
+                ta.focus(); ta.select();
+                document.execCommand('insertText', false, msg);
+            """, textarea, message_text)
+            time.sleep(0.6)
+            if _matches(_textarea_value()):
+                how = "execCommand"
+
+        # 3 — native setter, and tell the component about it on BOTH the inner textarea
+        #     and the kat-textarea host (Katal reads the host property)
+        if not how:
+            print(f"     ↻  Box still empty — falling back to the native setter "
+                  f"(Send often stays disabled after this)")
+            driver.execute_script("""
+                var ta = arguments[0], msg = arguments[1];
+                var host = document.querySelector('kat-textarea');
                 ta.focus();
                 var d = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value');
                 if (d && d.set) { d.set.call(ta, msg); } else { ta.value = msg; }
-                ta.dispatchEvent(new Event('input',  {bubbles: true, composed: true}));
-                ta.dispatchEvent(new Event('change', {bubbles: true, composed: true}));
+                ['input','change'].forEach(function(t){
+                    ta.dispatchEvent(new Event(t, {bubbles: true, composed: true}));
+                });
+                if (host) {
+                    try { host.value = msg; } catch (e) {}
+                    ['input','change'].forEach(function(t){
+                        host.dispatchEvent(new Event(t, {bubbles: true, composed: true}));
+                    });
+                }
                 ta.blur(); ta.focus();
             """, textarea, message_text)
             time.sleep(0.8)
-            got = _textarea_value()
+            if _matches(_textarea_value()):
+                how = "native setter"
 
+        got = _textarea_value()
         if not (got or "").strip():
             print(f"     ⛔  Order {order_id}: the message box is STILL empty — NOT clicking Send "
                   f"(an empty message would reach the buyer). Retried next cycle.")
             return False
-
-        _want = " ".join((message_text or "").split())
-        _have = " ".join((got or "").split())
-        if _have != _want:
-            if _want[:60] not in _have:
-                print(f"     ⛔  Order {order_id}: the box holds different text than intended "
-                      f"({len(_have)} chars vs {len(_want)}) — NOT clicking Send")
-                return False
-            print(f"     ⚠️  Order {order_id}: box text differs slightly ({len(_have)} vs {len(_want)} chars) — proceeding")
-        print(f"     ✍️  Message text verified in the box ({len(_have)} chars)")
+        if not _matches(got):
+            print(f"     ⛔  Order {order_id}: the box holds different text than intended "
+                  f"({len(' '.join((got or '').split()))} chars) — NOT clicking Send")
+            return False
+        print(f"     ✍️  Message text verified in the box ({len(' '.join(got.split()))} chars, via {how})")
     except Exception as e:
         err_str = str(e).lower()
         if "not interactable" in err_str or "not reachable" in err_str:
@@ -938,7 +984,34 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
         wait.until(lambda d: d.execute_script(js_click_send))
         time.sleep(random.uniform(2.5, 4.0))
     except Exception as e:
-        print(f"     ❌  Send button error for {order_id}: {e}")
+        # A blank TimeoutException told us nothing for 11k failures. Report what the page
+        # actually shows: a Send button that exists but is disabled means the component
+        # never accepted the text, which is a different fault from no button at all.
+        try:
+            diag = driver.execute_script("""
+                var out = {found: 0, enabled: 0, chars: 0};
+                var t = document.querySelector('kat-textarea');
+                if (t && t.shadowRoot) {
+                    var a = t.shadowRoot.querySelector('textarea');
+                    out.chars = a && a.value ? a.value.length : 0;
+                }
+                document.querySelectorAll('kat-button, button').forEach(function(el){
+                    var s = ((el.getAttribute('label') || '') + ' ' + (el.textContent || '')).trim().toLowerCase();
+                    if (s === 'send' || s.startsWith('send ')) {
+                        out.found++;
+                        var inner = el.shadowRoot ? el.shadowRoot.querySelector('button') : null;
+                        if ((inner && !inner.disabled) || (!inner && !el.disabled)) out.enabled++;
+                    }
+                });
+                return out;
+            """) or {}
+        except Exception:
+            diag = {}
+        why = (f"Send button(s) found={diag.get('found', '?')} enabled={diag.get('enabled', '?')}, "
+               f"box has {diag.get('chars', '?')} chars")
+        if diag.get("found") and not diag.get("enabled"):
+            why += " — Amazon is keeping Send DISABLED, so it never registered the text"
+        print(f"     ❌  Send button error for {order_id}: {why} [{type(e).__name__}]")
         return False
     return True
 
@@ -1774,6 +1847,10 @@ def main_workflow(account_config, passed_driver=None):
 
                 rows_list = list(filtered_orders_df.iterrows())
 
+                _shipped_recent = recent_already_shipped()
+                if _shipped_recent:
+                    print(f"  ⏩  {len(_shipped_recent)} order(s) already confirmed shipped on a previous run "
+                          f"— they are skipped without loading a page (Amazon's report still lists them)")
                 _max_uploads = int(getattr(_cli_args, "max_uploads", 0) or 0)
                 if _max_uploads:
                     print(f"  🔒  UPLOAD CAP: stopping after {_max_uploads} successful upload(s)")
@@ -1887,6 +1964,11 @@ def main_workflow(account_config, passed_driver=None):
                             amazon_id = order_data["amazon-order-id"]
                             tracking_id_string = order_data["Tracking ID"]
                             order_wb_ids = order_data.get("wb_ids", [])
+                            if amazon_id in _shipped_recent:
+                                already_shipped_skips += 1
+                                print(f"\n  [Batch {batch_num} — {upload_idx}/{len(batch_with_tracking)}] "
+                                      f"⏩  {amazon_id}: already shipped (seen on an earlier run) — skipped")
+                                continue
                             print(f"\n  [Batch {batch_num} — {upload_idx}/{len(batch_with_tracking)}] ▶️  Amazon ID: {amazon_id}")
                             print(f"     📦  Tracking: {tracking_id_string}")
 
@@ -1894,6 +1976,29 @@ def main_workflow(account_config, passed_driver=None):
                             _msg_sent = False
                             _msg_type = None
                             _need_seller_note = False
+
+                            # Is it already shipped? Ask the order page BEFORE spending ~20 s on a
+                            # message. The old order (message first, check second) meant every stale
+                            # report row cost a failed message — and, when the message DID work, the
+                            # buyer got a second tracking notice for an order already confirmed.
+                            try:
+                                driver.get(f"https://sellercentral.amazon.com/orders-v3/order/{amazon_id}")
+                                if _page_shows_already_shipped(driver):
+                                    already_shipped_skips += 1
+                                    _shipped_recent.add(amazon_id)
+                                    print(f"     ⏩  Already shipped on Amazon — no message, no upload.")
+                                    log_tracking_upload(
+                                        amazon_id=amazon_id,
+                                        wb_ids=order_wb_ids,
+                                        tracking_ids=tracking_id_string.split(", ") if tracking_id_string else [],
+                                        message_sent=False,
+                                        message_type=None,
+                                        status="already_shipped",
+                                        note="confirmed shipment already on Amazon (stale report row) — checked before messaging",
+                                    )
+                                    continue
+                            except Exception as _pre_err:
+                                print(f"     ⚠️  Could not pre-check shipment state ({str(_pre_err)[:80]}) — continuing")
 
                             if should_send_messages:
                                 existing_msg = message_log.get(amazon_id, {})
