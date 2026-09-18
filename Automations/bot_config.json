@@ -69,7 +69,7 @@
     },
     "chrome": {
         "headless": false,
-        "headless_tracking": true
+        "headless_tracking": false
     },
     "automation": {
         "auto_closing": {
