@@ -43,6 +43,11 @@ CHROME_SOFT_FLAGS = [
     "--disk-cache-size=104857600",
 ]
 
+# Keep in sync with utils.helpers.HEADLESS_FLAGS. A closing Chrome still needs a window size:
+# Seller Central lays its tables out responsively, and a default-sized headless viewport hides
+# columns the scrape looks for.
+HEADLESS_FLAGS = ["--headless=new", "--window-size=1920,1080", "--disable-gpu"]
+
 
 def _resolve_default_runner_python():
     candidates = [
@@ -1634,6 +1639,26 @@ class App(tk.Tk):
         self.cls_msg_limit.pack(side="left", padx=(4, 8))
         self.cls_msg_dry = tk.BooleanVar()
         ttk.Checkbutton(ctrl, text="Msg Dry Run", variable=self.cls_msg_dry).pack(side="left", padx=(8, 0))
+
+        # One switch for the whole chain, both accounts. Every later step attaches to the
+        # Chrome the first one launches, so this single choice carries all of them.
+        tk.Frame(ctrl, bg=self.MUTED, width=1).pack(side="left", fill="y", padx=(16, 12), pady=4)
+        self._cls_headless_var = tk.BooleanVar(value=self._closing_headless())
+        self._cls_headless_cb = ttk.Checkbutton(ctrl, text="🫥 Headless (closing)",
+                                                variable=self._cls_headless_var,
+                                                command=self._toggle_closing_headless)
+        self._cls_headless_cb.pack(side="left")
+        self._tip(self._cls_headless_cb,
+                  "HEADLESS CLOSING — the whole chain runs with no windows:\n"
+                  "report download, ingest, Seller Central scrape, FedEx,\n"
+                  "delivery messages and review requests.\n\n"
+                  "It works because only the FIRST step launches a Chrome; the rest\n"
+                  "attach to it, so they inherit whatever this is set to.\n\n"
+                  "Applies to the next Chrome the chain launches. One already open on\n"
+                  "9331/9333 keeps its window until you close it and start again.\n"
+                  "You still need to be LOGGED IN on that profile — do that headed once,\n"
+                  "the session persists in the profile, then switch this on.")
+
         self.lbl_cls = tk.Label(ctrl, text="Idle", font=(self.MONO, 9),
                                 bg=self.CARD, fg=self.MUTED)
         self.lbl_cls.pack(side="right")
@@ -1705,13 +1730,17 @@ class App(tk.Tk):
             "--hide-crash-restore-bubble",
             "--no-first-run",
             "--no-default-browser-check",
-            "--start-maximized",
             *CHROME_SOFT_FLAGS,
         ]
+        # Everything downstream — report download, SC scrape, messaging, review requests —
+        # only ATTACHES to this Chrome, so whether it has a window is decided right here.
+        hl = self._closing_headless()
+        cmd += HEADLESS_FLAGS if hl else ["--start-maximized"]
         try:
             subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self._flash_msg(f"Chrome launched for {account} on port {port}", self.GREEN)
-            self._feed_line(f"Chrome launched for {account} Closing (port {port})", "ok")
+            how = " (headless)" if hl else ""
+            self._flash_msg(f"Chrome launched for {account} on port {port}{how}", self.GREEN)
+            self._feed_line(f"Chrome launched for {account} Closing (port {port}){how}", "ok")
             self.after(3000, self._check_ports)
         except Exception as e:
             self._flash_msg(f"Failed to launch Chrome: {e}", self.RED)
@@ -4206,6 +4235,33 @@ class App(tk.Tk):
         self._log_line(f"🫥 Trackers headless {'ON' if on else 'OFF'} "
                        f"(restart a running tracker to switch it)", source="remote")
 
+    def _closing_headless(self):
+        """Is the closing chain set to run without windows? Read fresh, never cached."""
+        try:
+            return bool((_read_cfg_file().get("chrome") or {}).get("headless_closing"))
+        except Exception:
+            return False
+
+    def _toggle_closing_headless(self):
+        """Persist the closing chain's headless choice (chrome.headless_closing).
+
+        Restarts nothing. It applies to the next Chrome the chain LAUNCHES — every later step
+        (SC scrape, messaging, review requests) only attaches to that one, so they follow it.
+        A Chrome already open on 9331/9333 keeps its window until it is closed and relaunched.
+        """
+        on = bool(self._cls_headless_var.get())
+        try:
+            cfg = _read_cfg_file()
+            cfg.setdefault("chrome", {})["headless_closing"] = on
+            _write_cfg_file(cfg)
+        except Exception as e:
+            self._feed_line(f"Could not save the closing headless setting: {e}", "warn")
+            return
+        self._feed_line(f"Closing headless {'ON' if on else 'OFF'} — applies to the next Chrome "
+                        f"the chain launches", "ok" if on else "warn")
+        self._log_line(f"🫥 Closing headless {'ON' if on else 'OFF'} "
+                       f"(close the closing Chrome to switch a running one)", source="remote")
+
     def _start_orders_key(self, key):
         """Start one placer profile (the GUI button and remote commands share this).
         Returns True if started, False if it was already running."""
@@ -4320,6 +4376,11 @@ class App(tk.Tk):
             env.update(extra_env)
         if name.startswith("orders_") and (_read_cfg_file().get("chrome") or {}).get("headless"):
             env["ZUHRA_HEADLESS"] = "1"   # utils.helpers.setup_driver → --headless=new (memory saver)
+        # The closing chain: bulk_<acct> (report → ingest → SC scrape → FedEx) and
+        # messages_<acct> (delivery messages + review requests). closing.ensure_chrome and
+        # post_delivery both read this, so the chain stays windowless end to end.
+        if name.startswith(("bulk_", "messages_")) and self._closing_headless():
+            env["ZUHRA_HEADLESS_CLOSING"] = "1"
         tag = f"{name}_{label}" if label else name
         self._tags[name] = tag
         self._start_times[name] = datetime.now()

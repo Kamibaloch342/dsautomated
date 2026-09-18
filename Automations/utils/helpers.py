@@ -215,14 +215,19 @@ HEADLESS_FLAGS_STR = " ".join(HEADLESS_FLAGS)
 def headless_wanted(component: str = "orders"):
     """Should THIS component's Chrome run without a window?
 
-    Placers and trackers are switched separately: a tracker can run headless to save memory
-    while the placers keep visible windows for checkout (or the other way round).
+    Each part is switched separately, because they want different things: closing and tracking
+    run unattended and only ever want the memory back, while a placer's checkout is worth
+    watching when something goes wrong.
       orders   → env ZUHRA_HEADLESS          / bot_config chrome.headless
       tracking → env ZUHRA_HEADLESS_TRACKING / bot_config chrome.headless_tracking
+      closing  → env ZUHRA_HEADLESS_CLOSING  / bot_config chrome.headless_closing
     An unknown component falls back to the orders setting.
     """
-    if str(component or "").strip().lower().startswith("track"):
+    name = str(component or "").strip().lower()
+    if name.startswith("track"):
         env_key, cfg_key = "ZUHRA_HEADLESS_TRACKING", "headless_tracking"
+    elif name.startswith("clos") or name.startswith("bulk") or name.startswith("messag"):
+        env_key, cfg_key = "ZUHRA_HEADLESS_CLOSING", "headless_closing"
     else:
         env_key, cfg_key = "ZUHRA_HEADLESS", "headless"
     v = os.environ.get(env_key, "").strip().lower()
@@ -830,8 +835,12 @@ def ensure_chromedriver():
             lock_fh.close()
 
 
-def setup_driver(debugging_port, profile_folder_name):
-    """Initialize WebDriver with stealth patches. Returns (driver, chrome_process) or (None, None)."""
+def setup_driver(debugging_port, profile_folder_name, component="orders"):
+    """Initialize WebDriver with stealth patches. Returns (driver, chrome_process) or (None, None).
+
+    `component` picks which headless switch applies — the review-request pass runs as part of
+    closing, not as a placer, so it follows the closing switch.
+    """
     print("🚀 Initializing WebDriver (Stealth + Region Optimized)...")
 
     profile_path, chrome_exe = get_chrome_paths(profile_folder_name)
@@ -843,7 +852,7 @@ def setup_driver(debugging_port, profile_folder_name):
     port_open = _sock.connect_ex(('127.0.0.1', debugging_port)) == 0
     _sock.close()
 
-    headless = headless_wanted()
+    headless = headless_wanted(component)
     if headless:
         print("   -> 🫥 headless mode (--headless=new) — memory saver, no window")
 

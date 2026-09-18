@@ -865,7 +865,9 @@ def run_post_delivery(
                 break
         if port is None:
             port = 9221 if is_hathoro else 9223
-        driver, _chrome_proc = setup_driver(port, profile_dir)
+        # Review requests are part of closing, not a placement run, so they follow the
+        # closing headless switch rather than the placers'.
+        driver, _chrome_proc = setup_driver(port, profile_dir, component="closing")
         if driver is None:
             logger.error("Failed to create driver for %s", store_name)
             return []
@@ -877,7 +879,7 @@ def run_post_delivery(
                 logger.warning("Driver died — restarting...")
                 if driver_owned:
                     from utils.helpers import setup_driver
-                    driver, _ = setup_driver(port, profile_dir)
+                    driver, _ = setup_driver(port, profile_dir, component="closing")
                 if driver is None:
                     break
             updated = process_single_order(

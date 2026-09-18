@@ -390,14 +390,26 @@ def _kill_stale_chrome(port):
         pass
 
 
-def ensure_chrome(port, tries=4, headless=False):
+def ensure_chrome(port, tries=4, headless=None):
     """Connect to Chrome on `port`; if absent, kill any stale instance, launch a
     dedicated closing profile, and retry the connect several times (the first
     launch often isn't ready yet → 'unable to connect to renderer').
 
     Tags the driver with `_closing_launched`: True only when WE started this
     Chrome. release_chrome() then quits only our own instances — never the
-    user's manually-logged-in headed Chrome we merely attached to."""
+    user's manually-logged-in headed Chrome we merely attached to.
+
+    headless=None means "ask the closing switch" (ZUHRA_HEADLESS_CLOSING /
+    bot_config chrome.headless_closing). That is what carries the whole chain — report
+    download, Seller Central scrape, messaging and review requests — into headless
+    together, since the later steps only ATTACH to whatever this launched. Pass True or
+    False to force it, as the FedEx pass does."""
+    if headless is None:
+        try:
+            from utils.helpers import headless_wanted
+            headless = headless_wanted("closing")
+        except Exception:
+            headless = False
     from engine.amazon_scraper import _connect_chrome
     d = _connect_chrome(port)
     if d:
@@ -420,6 +432,7 @@ def ensure_chrome(port, tries=4, headless=False):
         d = _connect_chrome(port)
         if d:
             d._closing_launched = True     # ours → safe to quit at the end
+            d._closing_headless = headless  # whether THIS browser has a window to log into
             try:
                 from utils.helpers import apply_cdp_stealth
                 apply_cdp_stealth(d)
@@ -485,7 +498,25 @@ def download_report(port, days=30, start_date=None, end_date=None):
         print(f"[CLOSING]   Current URL: {driver.current_url}")
 
         login_waited = 0
+        # Headless has no window to log into, and closing has no auto-login, so waiting is
+        # pointless: say what actually fixes it and stop instead of burning LOGIN_WAIT_MINS.
+        _headless_run = getattr(driver, "_closing_headless", None)
+        if _headless_run is None:
+            try:
+                from utils.helpers import headless_wanted
+                _headless_run = headless_wanted("closing")
+            except Exception:
+                _headless_run = False
         while "signin" in driver.current_url.lower() or "ap/signin" in driver.current_url:
+            if _headless_run:
+                print("=" * 60)
+                print(f"[CLOSING] 🔑 SC LOGIN REQUIRED on port {port}, but this run is HEADLESS "
+                      f"— there is no window to log into, and closing has no auto-login.")
+                print("[CLOSING]    Fix once: turn OFF 'Headless (closing)' in the launcher, press")
+                print(f"[CLOSING]    🚀 Chrome, log into Seller Central, then turn it back ON. The")
+                print("[CLOSING]    session is kept in the profile, so this is a one-time step.")
+                print("=" * 60)
+                return None
             if sys.stdin.isatty():
                 print("=" * 60)
                 print(f"[CLOSING] 🔑 LOGIN REQUIRED — a Chrome window is open on port {port}.")
