@@ -812,13 +812,27 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
     }
     return clickRadio(arguments[0]);
     """
+    # clickRadio returns {success:false} when it finds no radio at all — and that dict is
+    # TRUTHY, so `... or {}` accepted it as a hit on the very first poll. The run then printed
+    # "✔ Radio button selected: [?]" having selected nothing, and went looking for a message
+    # box that only appears once a reason IS selected. That is why every delivery message and
+    # review request failed on 18 Sep. Poll on success itself, so a late-rendering page gets
+    # the retries the wait was there to provide.
+    def _pick_radio(d):
+        r = d.execute_script(js_select_option, radio_priority)
+        return r if isinstance(r, dict) and r.get("success") else False
+
     try:
-        result = wait.until(lambda d: d.execute_script(js_select_option, radio_priority) or {})
-        chosen = result.get('chosen', '?') if isinstance(result, dict) else '?'
-        print(f"     ✔  Radio button selected: [{chosen}]")
+        result = wait.until(_pick_radio)
+        print(f"     ✔  Radio button selected: [{result.get('chosen', '?')}]")
         time.sleep(2)
-    except Exception:
-        print(f"     ⚠️  Order {order_id}: Messaging appears disabled (no clickable option found). Skipping.")
+    except TimeoutException:
+        print(f"     ⚠️  Order {order_id}: no contact reason available "
+              f"(tried {radio_priority}) — messaging disabled for this order. Skipping.")
+        return False
+    except Exception as _radio_err:
+        print(f"     ⚠️  Order {order_id}: could not select a contact reason "
+              f"({type(_radio_err).__name__}: {str(_radio_err)[:70]}). Skipping.")
         return False
 
     # --- STEP 2: Inject the message and PROVE it landed ------------------------
@@ -852,8 +866,22 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
         return bool(have) and (have == want or want[:60] in have)
 
     try:
-        js_ta = "return document.querySelector('kat-textarea').shadowRoot.querySelector('textarea');"
-        textarea = wait.until(lambda d: d.execute_script(js_ta))
+        # Return null when the box is not there YET, never dereference null. wait.until only
+        # swallows NoSuchElementException, so the old unguarded
+        #   document.querySelector('kat-textarea').shadowRoot...
+        # raised JavascriptException on the very first poll and escaped the wait entirely —
+        # "Cannot read properties of null (reading 'shadowRoot')", instantly, with no retry.
+        # The textarea appears a beat after the reason radio is picked, so every delivery
+        # message and review request failed this way (seen on all 1315 HOANK orders, 18 Sep).
+        js_ta = ("var t=document.querySelector('kat-textarea');"
+                 "if(!t||!t.shadowRoot)return null;"
+                 "return t.shadowRoot.querySelector('textarea');")
+        try:
+            textarea = wait.until(lambda d: d.execute_script(js_ta))
+        except TimeoutException:
+            print(f"     ⛔  Order {order_id}: the message box never appeared "
+                  f"(is the reason radio selected?) — nothing sent")
+            return False
         how = None
 
         # 1 — trusted insert (no window focus needed)
