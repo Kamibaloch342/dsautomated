@@ -156,12 +156,34 @@ def main():
     print("\n── a headless run that hits the login page ──")
     check("it does not sit waiting for a login nobody can perform",
           "this run is HEADLESS" in cl and "_headless_run" in cl)
-    check("it names the actual fix (log in once headed, session persists)",
-          "turn OFF 'Headless (closing)'" in cl and "one-time step" in cl)
+    check("it names both fixes: the credentials to check, and logging in by hand",
+          "credentials and OTP secret" in cl and "turn OFF 'Headless (closing)'" in cl
+          and "session persists" in cl)
     check("the driver records whether ITS OWN window exists, not just the current setting",
           "_closing_headless = headless" in cl)
     check("a headed run still waits as before", "sys.stdin.isatty()" in cl
           and "LOGIN_WAIT_MINS" in cl)
+
+    # ── 8. closing logs itself in, the way the tracker already does ──────────
+    print("\n── closing logs in by itself now ──")
+    check("closing calls the same auto_login the tracker uses",
+          "from platforms.auth import auto_login" in cl and "auto_login(driver, ACCOUNT)" in cl)
+    check("it re-navigates to the report page after logging in, as the tracker does",
+          "Auto-login OK" in cl)
+    check("the manual wait is now only the fallback",
+          cl.index("auto_login(driver, ACCOUNT)") < cl.index("login_waited = 0"))
+    from platforms.auth import resolve_account_key
+    check("closing's ACCOUNT names map to credential keys",
+          resolve_account_key("HOANK") == "hoank" and resolve_account_key("Hathoro") == "hathoro")
+
+    print("\n── a click that lands on a loading overlay is retried ──")
+    check("the date dropdown and Request Download go through the retry",
+          cl.count("_click_retry(driver, dropdown") == 2
+          and "_click_retry(driver, wait.until" in cl)
+    check("it retries only interception, and re-raises when it never clears",
+          "ElementClickInterceptedException" in cl and "raise" in func_src(cl, "_click_retry"))
+    check("a normal click still happens immediately (no added delay)",
+          "el.click()" in func_src(cl, "_click_retry"))
 
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:

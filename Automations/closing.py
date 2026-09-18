@@ -390,6 +390,28 @@ def _kill_stale_chrome(port):
         pass
 
 
+def _click_retry(driver, el, what, tries=6, pause=2.0):
+    """Click, and if something is drawn over it, wait and click again.
+
+    Report Central keeps a #loading-box-style overlay over the whole form while it loads, and
+    Selenium's element_to_be_clickable does not look at what is painted on top — so a click a
+    moment too early raises ElementClickInterceptedException and kills the run. Seen 18 Sep
+    2026 one second after a login: "Other element would receive the click:
+    <div id='loading-box-style'>". The overlay clears on its own, so retrying is the whole fix.
+    """
+    from selenium.common.exceptions import ElementClickInterceptedException
+    for attempt in range(1, tries + 1):
+        try:
+            el.click()
+            return True
+        except ElementClickInterceptedException:
+            if attempt == tries:
+                raise
+            print(f"[CLOSING]   ⏳ {what} covered (page still loading) — retry {attempt}/{tries - 1}")
+            time.sleep(pause)
+    return False
+
+
 def ensure_chrome(port, tries=4, headless=None):
     """Connect to Chrome on `port`; if absent, kill any stale instance, launch a
     dedicated closing profile, and retry the connect several times (the first
@@ -497,9 +519,27 @@ def download_report(port, days=30, start_date=None, end_date=None):
         time.sleep(3)
         print(f"[CLOSING]   Current URL: {driver.current_url}")
 
+        # Log in the way the tracker already does — same credentials, same OTP path
+        # (platforms.auth.auto_login, which tracking.py has used for every report download).
+        # Closing used to just wait for a human, which is why it could not run unattended and
+        # why a headless run had nothing to offer. The manual wait below is now only the
+        # fallback for when auto-login itself fails.
+        if "signin" in (driver.current_url or "").lower():
+            try:
+                from platforms.auth import auto_login
+                print(f"[CLOSING] 🔐 Login required — auto-logging in as {ACCOUNT}...")
+                if auto_login(driver, ACCOUNT):
+                    driver.get(url)
+                    time.sleep(3)
+                    print(f"[CLOSING] ✅ Auto-login OK — back on {driver.current_url[:60]}")
+                else:
+                    print("[CLOSING] ⚠️ Auto-login did not complete")
+            except Exception as _e:
+                print(f"[CLOSING] ⚠️ Auto-login unavailable ({type(_e).__name__}: {str(_e)[:70]})")
+
         login_waited = 0
-        # Headless has no window to log into, and closing has no auto-login, so waiting is
-        # pointless: say what actually fixes it and stop instead of burning LOGIN_WAIT_MINS.
+        # If auto-login could not get us in, headless has no window for a human to use, so
+        # waiting is pointless: say what actually fixes it instead of burning LOGIN_WAIT_MINS.
         _headless_run = getattr(driver, "_closing_headless", None)
         if _headless_run is None:
             try:
@@ -510,11 +550,12 @@ def download_report(port, days=30, start_date=None, end_date=None):
         while "signin" in driver.current_url.lower() or "ap/signin" in driver.current_url:
             if _headless_run:
                 print("=" * 60)
-                print(f"[CLOSING] 🔑 SC LOGIN REQUIRED on port {port}, but this run is HEADLESS "
-                      f"— there is no window to log into, and closing has no auto-login.")
-                print("[CLOSING]    Fix once: turn OFF 'Headless (closing)' in the launcher, press")
-                print(f"[CLOSING]    🚀 Chrome, log into Seller Central, then turn it back ON. The")
-                print("[CLOSING]    session is kept in the profile, so this is a one-time step.")
+                print(f"[CLOSING] 🔑 SC LOGIN FAILED on port {port} — auto-login could not get in "
+                      f"and this run is HEADLESS, so there is no window for you to use.")
+                print(f"[CLOSING]    Check the {ACCOUNT} credentials and OTP secret the tracker uses")
+                print("[CLOSING]    (platforms/auth.py), or turn OFF 'Headless (closing)', press")
+                print("[CLOSING]    🚀 Chrome and log in by hand once — the session persists in the")
+                print("[CLOSING]    profile, so it only has to be done again when it expires.")
                 print("=" * 60)
                 return None
             if sys.stdin.isatty():
@@ -578,7 +619,7 @@ def download_report(port, days=30, start_date=None, end_date=None):
         # open menu intercepts the Request Download click.
         if start_date and end_date:
             print(f"[CLOSING]   Selecting Exact dates {start_date} → {end_date}...")
-            dropdown.click(); time.sleep(1)
+            _click_retry(driver, dropdown, "date dropdown"); time.sleep(1)
             driver.execute_script(
                 "arguments[0].shadowRoot.querySelector('kat-option[value=\"-1\"]').click()", dropdown)
             time.sleep(2)
@@ -628,15 +669,15 @@ def download_report(port, days=30, start_date=None, end_date=None):
                     print(f"[CLOSING]   picker dump failed: {_e}")
         else:
             print(f"[CLOSING]   Selecting last {days} days...")
-            dropdown.click(); time.sleep(1)
+            _click_retry(driver, dropdown, "date dropdown"); time.sleep(1)
             driver.execute_script(
                 "arguments[0].shadowRoot.querySelector('kat-option[value=\"%d\"]').click()" % days,
                 dropdown)
             time.sleep(1)
 
         print("[CLOSING]   Clicking Request Download...")
-        wait.until(EC.element_to_be_clickable(
-            (By.CSS_SELECTOR, 'kat-button[label="Request Download"]'))).click()
+        _click_retry(driver, wait.until(EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, 'kat-button[label="Request Download"]'))), "Request Download")
         print("[CLOSING]   ✓ Report requested — polling every 30s (max 10 min)...")
 
         waited, report_path = 0, None
