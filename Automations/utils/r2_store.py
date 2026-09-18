@@ -183,6 +183,7 @@ class R2Store:
     def __init__(self, creds: dict | None = None):
         self._creds = creds or load_credentials()
         self._client = None
+        self._xfer = None
         self._lock = threading.Lock()
 
     # ── plumbing ──────────────────────────────────────────────────────────
@@ -211,6 +212,20 @@ class R2Store:
                                       connect_timeout=15, read_timeout=120),
                     )
         return self._client
+
+    def _transfer_cfg(self):
+        """Transfer settings for get_file/put_file.
+
+        boto3's defaults fetch a large object as ten concurrent 8 MB parts, so a 32 MB download
+        can hold ~80 MB of buffers — more than the BytesIO this replaced. Two parts at a time is
+        plenty for a file this size and keeps the ceiling near 16 MB.
+        """
+        if self._xfer is None:
+            from boto3.s3.transfer import TransferConfig
+            self._xfer = TransferConfig(multipart_chunksize=8 * 1024 * 1024,
+                                        multipart_threshold=8 * 1024 * 1024,
+                                        max_concurrency=2, use_threads=True)
+        return self._xfer
 
     # ── generic object ops ────────────────────────────────────────────────
     def put_bytes(self, key: str, data: bytes, content_type: str = "application/octet-stream",
@@ -265,19 +280,27 @@ class R2Store:
         """Download to `path` atomically (tmp + rename). False if the key is missing."""
         tmp = path + ".part"
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        gz_tmp = path + ".gz.part"
         try:
             if gunzip:
-                buf = io.BytesIO()
-                self._c().download_fileobj(self.bucket, key, buf)
-                buf.seek(0)
-                with gzip.GzipFile(fileobj=buf, mode="rb") as gz, open(tmp, "wb") as out:
+                # Download to a file, not to an io.BytesIO. The dashboard DB is ~147 MB and
+                # compresses to ~32 MB, so buffering it in memory meant a 32 MB spike every
+                # time the cloud refresher saw a new fingerprint — on a 512 MB Render instance
+                # that is a real share of the budget, taken every couple of minutes.
+                self._c().download_file(self.bucket, key, gz_tmp, Config=self._transfer_cfg())
+                with gzip.open(gz_tmp, "rb") as gz, open(tmp, "wb") as out:
                     for chunk in iter(lambda: gz.read(1 << 20), b""):
                         out.write(chunk)
+                os.remove(gz_tmp)
             else:
-                self._c().download_file(self.bucket, key, tmp)
+                self._c().download_file(self.bucket, key, tmp, Config=self._transfer_cfg())
         except Exception as e:
-            if os.path.exists(tmp):
-                os.remove(tmp)
+            for junk in (tmp, gz_tmp):
+                if os.path.exists(junk):
+                    try:
+                        os.remove(junk)
+                    except OSError:
+                        pass
             if "NoSuchKey" in str(e) or "Not Found" in str(e) or "404" in str(e):
                 return False
             raise

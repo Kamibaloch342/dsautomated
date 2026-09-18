@@ -11,7 +11,7 @@ Six modules, each returns ready-to-render data with the ACTION surfaced:
 
 Read-only against automations_unified.db (+ the Zoro catalog combined_reports.db).
 """
-import os, re, sqlite3, json
+import os, re, sqlite3, json, time, threading, contextlib
 from datetime import date, datetime, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -49,11 +49,82 @@ def _acct_where(account, zoro_account=None, date_from=None, date_to=None):
     return w, a
 
 
+# The columns this module actually reads off a closing_orders row.
+#
+# _rows() used to SELECT *: 122 columns x 72,107 rows, built into Python dicts. Measured at
+# 469 MB for a single call — on a 512 MB Render instance, and today() makes five of them. One
+# visit to the Analytics tab was enough to exceed the memory limit and trigger a restart.
+#
+# Keep this list in step with the code. A column that is read but missing here comes back as
+# None from r.get() and quietly produces a WRONG number rather than raising, so
+# scripts/test_analytics_columns.py re-scans this module and fails if anything is read that is
+# not listed.
+_ROW_COLS = (
+    "amazon_order_id", "account", "order_status", "order_label",
+    "asin", "sku", "title", "quantity",
+    "earnings", "purchase_date", "deliver_by_date", "wb_order_id",
+    "zoro_account_name", "zoro_sku", "zoro_qty", "zoro_subtotal",
+    "zoro_order_total", "profit_dollars", "profit_percent", "net_profit_after_refund",
+    "time_to_ship_hrs", "on_time", "tracking_ids", "delivery_status",
+    "return_requested", "return_reason", "refund_done", "refund_amount",
+    "refund_reason", "zoro_case_number", "zoro_ra_number", "zoro_refund_amount",
+    "case_status", "flag_color", "manual_delivered",
+)
+_ROW_SEL_CACHE = {}
+
+
+def _row_select(c):
+    """The SELECT list, intersected with what this database actually has.
+
+    The cloud copy and the master can differ by a column or two, and asking for one that is
+    absent would fail the whole query.
+    """
+    key = id(c.__class__)
+    sel = _ROW_SEL_CACHE.get(key)
+    if sel is None:
+        have = {r[1] for r in c.execute("PRAGMA table_info(closing_orders)")}
+        sel = ", ".join(x for x in _ROW_COLS if x in have) or "*"
+        _ROW_SEL_CACHE[key] = sel
+    return sel
+
+
+_ROWS_TL = threading.local()
+
+
+@contextlib.contextmanager
+def _shared_rows():
+    """Let one composite computation load the orders once and reuse them.
+
+    today() asks five separate functions for their numbers and each one used to load the whole
+    table again — five identical scans for one screen, which is where its 21 s came from. The
+    cache is per thread and dropped as soon as the block ends, so nothing is held between
+    requests: on a 512 MB instance a long-lived copy of this would be its own problem.
+    """
+    outer = getattr(_ROWS_TL, "cache", None)
+    if outer is not None:            # already inside one — let the outer block own it
+        yield
+        return
+    _ROWS_TL.cache = {}
+    try:
+        yield
+    finally:
+        _ROWS_TL.cache = None
+
+
 def _rows(account, zoro_account=None, date_from=None, date_to=None):
+    cache = getattr(_ROWS_TL, "cache", None)
+    key = (account, zoro_account, date_from, date_to)
+    if cache is not None and key in cache:
+        return cache[key]
     w, a = _acct_where(account, zoro_account, date_from, date_to)
     c = _ro()
-    rows = [dict(r) for r in c.execute(f"SELECT * FROM closing_orders WHERE 1=1{w}", a)]
-    c.close()
+    try:
+        rows = [dict(r) for r in
+                c.execute(f"SELECT {_row_select(c)} FROM closing_orders WHERE 1=1{w}", a)]
+    finally:
+        c.close()
+    if cache is not None:
+        cache[key] = rows
     return rows
 
 
@@ -183,14 +254,21 @@ def health(account=None, zoro_account=None, date_from=None, date_to=None):
         zw, za = " AND zoro_account_name=?", [zoro_account]
     out = []
     for acct in accts:
-        rows = [dict(r) for r in c.execute(f"SELECT * FROM closing_orders WHERE account=?{zw}", [acct] + za)]
-        n = len(rows) or 1
-        cancelled = sum(1 for r in rows if r.get("order_status") == "Cancelled")
-        late = sum(1 for r in rows if r.get("on_time") == "Late")
-        ontime_n = sum(1 for r in rows if r.get("on_time") in ("Late", "On Time")) or 1
-        refunds = sum(1 for r in rows if r.get("refund_done") == "Yes")
-        returns = sum(1 for r in rows if r.get("return_requested") == "Yes")
-        exc = sum(1 for r in rows if r.get("delivery_status") in ("Shipment exception", "Delivery exception"))
+        # Six counts, done by SQLite instead of by pulling every column of every order into
+        # Python. This loaded the whole table per account — 469 MB and 7.5 s measured on the
+        # 72k-row copy, which on its own exceeded Render's 512 MB instance.
+        r = c.execute(f"""
+            SELECT COUNT(*),
+                   SUM(order_status='Cancelled'),
+                   SUM(on_time='Late'),
+                   SUM(on_time IN ('Late','On Time')),
+                   SUM(refund_done='Yes'),
+                   SUM(return_requested='Yes'),
+                   SUM(delivery_status IN ('Shipment exception','Delivery exception'))
+            FROM closing_orders WHERE account=?{zw}""", [acct] + za).fetchone()
+        total, cancelled, late, ontime_n, refunds, returns, exc = [int(x or 0) for x in r]
+        n = total or 1
+        ontime_n = ontime_n or 1
         def band(v, amber, red):
             return "red" if v >= red else "amber" if v >= amber else "green"
         cancel_rate = round(cancelled / n * 100, 2)
@@ -571,6 +649,11 @@ def margin_radar(account=None, zoro_account=None, date_from=None, date_to=None):
 
 # ── TODAY / COMMAND CENTER ───────────────────────────────────────────────────
 def today(account=None, zoro_account=None, date_from=None, date_to=None):
+    with _shared_rows():
+        return _today(account, zoro_account, date_from, date_to)
+
+
+def _today(account=None, zoro_account=None, date_from=None, date_to=None):
     lk = leakage(account, zoro_account, date_from, date_to); op = ops(account, zoro_account, date_from, date_to); pf = portfolio(account, zoro_account, date_from, date_to)
     mg = margin_radar(account, zoro_account, date_from, date_to); hl = health(account, zoro_account, date_from, date_to)
     risk_accts = [a["account"] for a in hl["accounts"] if a["verdict"] == "red"]
@@ -590,6 +673,57 @@ def today(account=None, zoro_account=None, date_from=None, date_to=None):
     ]
     return {"cards": cards}
 
+
+# ── result cache ─────────────────────────────────────────────────────────────
+# These answers only change when the database does. In cloud mode that is every few minutes,
+# when the refresher swaps in a new copy — so between swaps every analytics tab can be served
+# from the last computed answer instead of re-scanning 72k orders.
+#
+# The lock is deliberately held across the computation: one 130 MB scan at a time is the point.
+# Four of them at once is 520 MB, which is the whole Render instance.
+_RESULT_CACHE = {}
+_RESULT_LOCK = threading.RLock()
+_RESULT_TTL = 300
+
+
+def _db_stamp():
+    """Identity of the current database file — a new copy invalidates every cached answer."""
+    try:
+        st = os.stat(DB)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return (0, 0)
+
+
+def _memoize(fn):
+    def wrapper(*args, **kw):
+        if kw:                                   # keyword calls are rare; don't cache them
+            return fn(*args, **kw)
+        stamp, now = _db_stamp(), time.time()
+        key = (fn.__name__, args)
+        with _RESULT_LOCK:
+            if _RESULT_CACHE.get("_stamp") != stamp:
+                _RESULT_CACHE.clear()
+                _RESULT_CACHE["_stamp"] = stamp
+            hit = _RESULT_CACHE.get(key)
+            if hit is not None and now - hit[0] < _RESULT_TTL:
+                return hit[1]
+            val = fn(*args)
+            if _RESULT_CACHE.get("_stamp") == stamp:
+                _RESULT_CACHE[key] = (now, val)
+            return val
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    wrapper.__wrapped__ = fn
+    return wrapper
+
+
+for _name in ("today", "sourcing", "portfolio", "leakage", "health", "ops", "margin_radar",
+              "data_health", "refund_issues", "severe_issues"):
+    _fn = globals().get(_name)
+    if callable(_fn):
+        globals()[_name] = _memoize(_fn)
+del _name, _fn
 
 _FUNCS = {"today": today, "sourcing": sourcing, "portfolio": portfolio,
           "leakage": leakage, "health": health, "ops": ops, "margin": margin_radar}

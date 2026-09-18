@@ -9,7 +9,7 @@ never collide with a running closing job.
 
 Run:  ../.venv/bin/python dashboard/server.py 8000
 """
-import os, sys, json, sqlite3, time, urllib.parse, re, gzip as _gzip
+import os, sys, json, sqlite3, time, urllib.parse, re, gzip as _gzip, io as _io
 from datetime import date, timedelta, datetime
 from typing import Dict, Any, List, Optional
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -481,6 +481,26 @@ def _f(v):
 
 
 # ── read views ────────────────────────────────────────────────────────────
+def _cols(c, table, wanted):
+    """SELECT list for an aggregate scan, intersected with what this database has.
+
+    These endpoints walk the whole orders table to add up a handful of numbers, and used to
+    ask for every column to do it — 122 of them. On the 72k-row cloud copy that was hundreds
+    of megabytes of Python dicts per request, which is what kept killing the 512 MB Render
+    instance. The aggregation code is unchanged; it just no longer carries what it never reads.
+    """
+    live = _live_cols(c, table)
+    keep = [x for x in wanted if x in live]
+    return ", ".join(keep) if keep else "*"
+
+
+_OVERVIEW_COLS = ("earnings", "profit_dollars", "quantity", "purchase_date",
+                  "asin", "sku", "title", "order_label")
+_ASINLIST_COLS = ("asin", "sku", "title", "zoro_account_name", "quantity", "earnings",
+                  "profit_dollars", "return_requested", "refund_done", "profit_percent",
+                  "purchase_date", "time_to_ship_hrs")
+
+
 def overview(q):
     if not _has_table("closing_orders"):
         return {"kpi": {"earnings": 0, "profit": 0, "margin": 0, "units": 0, "orders": 0},
@@ -488,7 +508,8 @@ def overview(q):
     where, args, *_ = _filters(q)
     c = ro()
     try:
-        rows = [dict(r) for r in c.execute(f"SELECT * FROM closing_orders WHERE {where}", args)]
+        rows = [dict(r) for r in c.execute(
+            f"SELECT {_cols(c, 'closing_orders', _OVERVIEW_COLS)} FROM closing_orders WHERE {where}", args)]
     finally:
         c.close()
     earn = sum(_f(r.get("earnings")) for r in rows)
@@ -529,7 +550,8 @@ def asin_list(q):
     where, args, *_ = _filters(q)
     c = ro()
     try:
-        rows = [dict(r) for r in c.execute(f"SELECT * FROM closing_orders WHERE {where}", args)]
+        rows = [dict(r) for r in c.execute(
+            f"SELECT {_cols(c, 'closing_orders', _ASINLIST_COLS)} FROM closing_orders WHERE {where}", args)]
     finally:
         c.close()
     cutoff = (date.today() - timedelta(days=7)).isoformat()
@@ -2352,19 +2374,80 @@ def update_cell(body):
     return {"ok": True, "updated": n}
 
 
+_PAGE_CACHE = {}          # path -> (mtime, body, etag)
+_PAGE_LOCK = threading.Lock()
+
+
+def _page_bytes(path):
+    """The page's bytes and its ETag, read once per deploy instead of once per request."""
+    mtime = os.path.getmtime(path)
+    hit = _PAGE_CACHE.get(path)
+    if hit and hit[0] == mtime:
+        return hit[1], hit[2]
+    with _PAGE_LOCK:
+        hit = _PAGE_CACHE.get(path)
+        if hit and hit[0] == mtime:
+            return hit[1], hit[2]
+        with open(path, "rb") as f:
+            body = f.read()
+        etag = '"%s"' % _hashlib.md5(body).hexdigest()[:16]
+        _PAGE_CACHE.clear()          # only ever two pages; never let this grow
+        _PAGE_CACHE[path] = (mtime, body, etag)
+        return body, etag
+
+
+# How many requests may be building a response at the same time. ThreadingHTTPServer starts a
+# thread per connection with no ceiling, so one page load firing a dozen endpoints — times two
+# browsers — used to allocate every payload at once. Render's free instance has 512 MB, and
+# that is what kept exceeding it. Queuing past this point costs a little latency under burst
+# and nothing at all the rest of the time. Local runs have real RAM, so they get a wider gate.
+MAX_INFLIGHT = int(os.environ.get("DASH_MAX_INFLIGHT") or (4 if OPS.CLOUD_MODE else 16))
+_INFLIGHT = threading.Semaphore(MAX_INFLIGHT)
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    # The gate goes around the request handlers, not handle_one_request: a keep-alive
+    # connection sits inside handle_one_request waiting for its next request, and holding a
+    # permit while idle would deadlock the whole server.
+    def do_GET(self):
+        with _INFLIGHT:
+            return self._handle_get()
+
+    def do_POST(self):
+        with _INFLIGHT:
+            return self._handle_post()
+
     def _send(self, obj, code=200, ctype="application/json", hdrs=None):
-        body = obj if isinstance(obj, bytes) else json.dumps(obj, default=str).encode()
+        want_gzip = "gzip" in (self.headers.get("Accept-Encoding") or "")
+        gzipped = False
+        if isinstance(obj, bytes):
+            body = obj
+            # gzip large responses — the orders payload shrinks ~10x, which is the difference
+            # between ~10s and ~1s page loads for remote (funnel/tunnel/tailscale) users.
+            if want_gzip and len(body) > 512:
+                body = _gzip.compress(body, 5)
+                gzipped = True
+        elif want_gzip:
+            # Stream the JSON straight into the gzip buffer. Building the whole document as a
+            # str, then its bytes, then a third compressed copy was the single biggest memory
+            # cost in the process: /api/orders (3000 rows x 57 cols) peaked at 17.5 MB that
+            # way and sent 0.44 MB. Encoding chunk by chunk keeps the peak near the compressed
+            # size, which is what got Render's 512 MB instance killed on concurrent loads.
+            buf = _io.BytesIO()
+            with _gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=5) as gz:
+                for chunk in json.JSONEncoder(default=str).iterencode(obj):
+                    gz.write(chunk.encode())
+            body = buf.getvalue()
+            gzipped = True
+        else:
+            body = json.dumps(obj, default=str).encode()
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-store")
-        # gzip large responses — the orders payload shrinks ~10x, which is the difference
-        # between ~10s and ~1s page loads for remote (funnel/tunnel/tailscale) users.
-        if len(body) > 512 and "gzip" in (self.headers.get("Accept-Encoding") or ""):
-            body = _gzip.compress(body, 5)
+        if gzipped:
             self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         for k, v in (hdrs or []):
@@ -2425,7 +2508,7 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self):
+    def _handle_get(self):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         p = u.path
@@ -2453,9 +2536,19 @@ class H(BaseHTTPRequestHandler):
                     page = "index.html"
                 else:
                     page = "v2.html" if v2_default else "index.html"
-                with open(os.path.join(HERE, page), "rb") as f:
-                    return self._send(f.read(), ctype="text/html; charset=utf-8",
-                                      hdrs=[ck] if ck else None)
+                body, etag = _page_bytes(os.path.join(HERE, page))
+                # v2.html is 240 KB and changes only on deploy, so re-reading and re-gzipping
+                # it per page load was pure waste. Served from a cached compressed copy, and
+                # a browser that already has it gets a 304 with no body at all.
+                if (self.headers.get("If-None-Match") or "") == etag:
+                    self.send_response(304)
+                    self.send_header("ETag", etag)
+                    if ck:
+                        self.send_header(*ck)
+                    self.end_headers()
+                    return
+                hdrs = [("ETag", etag)] + ([ck] if ck else [])
+                return self._send(body, ctype="text/html; charset=utf-8", hdrs=hdrs)
             # ── v2 ops layer (dashboard/ops.py) ──
             if p == "/api/ops/machines":
                 return self._send({"machines": OPS.machines(), "host": OPS.machine_id(), "cloud": OPS.cloud_status()})
@@ -2624,11 +2717,26 @@ class H(BaseHTTPRequestHandler):
 
             return self._send({"error": "not found"}, 404)
 
+        except sqlite3.OperationalError as e:
+            # The cloud copy carries the order tables but not the Gmail archive ones
+            # (archive_zoro / archive_returns / archive_tracking / archive_messages — 604 MB
+            # between them, against a 512 MB instance). Say so plainly instead of returning a
+            # raw SQL error the page cannot explain.
+            msg = str(e)
+            if "no such table" in msg:
+                missing = msg.rsplit(":", 1)[-1].strip()
+                return self._send({
+                    "error": f"Not available on the cloud dashboard: this view reads '{missing}', "
+                             f"one of the Gmail archive tables, which is too large to ship. "
+                             f"Open it on the local dashboard instead.",
+                    "missing_table": missing, "cloud_limited": bool(OPS.CLOUD_MODE)}, 503)
+            import traceback; traceback.print_exc()
+            return self._send({"error": msg}, 500)
         except Exception as e:
             import traceback; traceback.print_exc()
             return self._send({"error": str(e)}, 500)
 
-    def do_POST(self):
+    def _handle_post(self):
         u = urllib.parse.urlparse(self.path)
         if u.path == "/login":
             ln = int(self.headers.get("Content-Length", 0))
