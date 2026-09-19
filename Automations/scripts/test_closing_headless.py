@@ -145,9 +145,17 @@ def main():
     for rel, fn in (("scripts/send_delivery_messages.py", "messaging"),
                     ("scripts/scrape_sc_fields.py", "SC scrape")):
         text = src(rel)
-        launches = ("webdriver.Chrome(" in text and "debuggerAddress" not in text)
-        check(f"{fn} attaches to the chain's Chrome rather than launching its own",
-              not launches and "_connect_chrome" in text, rel)
+        check(f"{fn} never builds its own Chrome with its own options",
+              "webdriver.Chrome(" not in text and "_connect_chrome" in text, rel)
+    # Messaging is normally run on its own, long after the closing run that used to leave a
+    # browser behind — so it may START one. It must do that through ensure_chrome, which
+    # honours the switch and uses the same profile, never with options of its own.
+    msg = src("scripts/send_delivery_messages.py")
+    check("messaging starts a Chrome only through closing.ensure_chrome",
+          "closing.ensure_chrome(sc_port)" in msg and msg.count("import closing") == 2,
+          "at startup and on the mid-run re-attach")
+    check("it still prefers attaching to one that is already up",
+          msg.index("_connect_chrome(sc_port)") < msg.index("closing.ensure_chrome(sc_port)"))
     check("_connect_chrome really is attach-only (no launch fallback)",
           "debuggerAddress" in func_src(src("engine/amazon_scraper.py"), "_connect_chrome")
           and "--headless" not in func_src(src("engine/amazon_scraper.py"), "_connect_chrome"))

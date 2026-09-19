@@ -122,10 +122,23 @@ def _run(pd_cfg, sc_port):
 
     driver = None
     if not DRY:
+        # Attach to the closing chain's Chrome if it is still up, otherwise start one exactly
+        # as closing does. ensure_chrome honours the closing headless switch and uses the same
+        # ~/.closing_chrome_profiles profile, so messaging inherits the logged-in session and
+        # the same windowless mode instead of demanding a browser someone left open. Messaging
+        # is usually run on its own, long after the closing run that used to leave one behind.
         driver = _connect_chrome(sc_port)
         if not driver:
+            try:
+                import closing
+                print(f"[MSG] No Chrome on port {sc_port} — starting one the way closing does...")
+                driver = closing.ensure_chrome(sc_port)
+            except Exception as e:
+                print(f"[MSG] ⚠️ Could not start Chrome on {sc_port}: {type(e).__name__}: {e}")
+                driver = None
+        if not driver:
             print(f"[MSG] ⚠️ No logged-in Chrome on port {sc_port} — messages stay pending. "
-                  f"Start the headed SC Chrome for {ACCOUNT} and re-run.")
+                  f"Run ▶ Run Closing for {ACCOUNT} first, or press 🚀 Chrome, and re-run.")
             return 2
 
     gmail_services = _get_gmail_services(gmail_tokens())
@@ -140,6 +153,12 @@ def _run(pd_cfg, sc_port):
     for o in pending:
         if driver is not None and not _is_driver_alive(driver):
             driver = _connect_chrome(sc_port)
+            if not driver:
+                try:                       # same recovery as at startup
+                    import closing
+                    driver = closing.ensure_chrome(sc_port)
+                except Exception:
+                    driver = None
             if not driver:
                 print("[MSG] ⚠️ Chrome died mid-run and would not re-attach — stopping; "
                       "the rest stay pending.")
