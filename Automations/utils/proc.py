@@ -42,6 +42,30 @@ def pid_exists(pid):
         return False
 
 
+def port_open(port, timeout=0.35):
+    """Is anything accepting connections on this local port? Answers in milliseconds.
+
+    Ask this BEFORE trying to attach a WebDriver. Selenium's attach path works through
+    chromedriver, and when the port is empty each strategy still spends most of a minute
+    timing out — system chromedriver, then webdriver-manager, then undetected-chromedriver —
+    so "no Chrome here" took two minutes to establish. Measured 19 Sep: 06:18:28 to 06:20:29
+    before the launch even started, and closing paid the same on every run that had to start
+    its own browser.
+    """
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(timeout)
+    try:
+        return s.connect_ex(("127.0.0.1", int(port))) == 0
+    except (OSError, ValueError, OverflowError, TypeError):
+        return False                       # unusable port number — nothing is listening on it
+    finally:
+        try:
+            s.close()
+        except OSError:
+            pass
+
+
 def pids_on_port(port):
     """Return the PIDs listening on *port* (LISTEN state), cross-platform."""
     port = str(port)

@@ -127,7 +127,8 @@ def _run(pd_cfg, sc_port):
         # ~/.closing_chrome_profiles profile, so messaging inherits the logged-in session and
         # the same windowless mode instead of demanding a browser someone left open. Messaging
         # is usually run on its own, long after the closing run that used to leave one behind.
-        driver = _connect_chrome(sc_port)
+        from utils.proc import port_open
+        driver = _connect_chrome(sc_port) if port_open(sc_port) else None
         if not driver:
             try:
                 import closing

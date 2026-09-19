@@ -193,6 +193,39 @@ def main():
     check("a normal click still happens immediately (no added delay)",
           "el.click()" in func_src(cl, "_click_retry"))
 
+    # ── 9. no more two-minute stall on an empty port ─────────────────────────
+    print("\n── an empty port is recognised instantly, not after 2 minutes ──")
+    import socket, time as _t
+    from utils.proc import port_open
+    t0 = _t.time(); empty = port_open(59999); dt_empty = (_t.time() - t0) * 1000
+    srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(1)
+    t0 = _t.time(); live = port_open(srv.getsockname()[1]); dt_live = (_t.time() - t0) * 1000
+    srv.close()
+    check("an empty port answers False in milliseconds",
+          empty is False and dt_empty < 500, f"{dt_empty:.0f} ms")
+    check("a real listener answers True", live is True, f"{dt_live:.0f} ms")
+    check("a nonsense port number is False, not an exception",
+          port_open(-1) is False and port_open("abc") is False and port_open(None) is False)
+    check("closing only attempts the attach when something is listening",
+          "port_open(port)" in func_src(cl, "ensure_chrome")
+          and "_connect_chrome(port) if occupied else None" in cl)
+    check("messaging does the same before its attach",
+          "port_open(sc_port)" in src("scripts/send_delivery_messages.py"))
+    check("if the check itself fails, the old attach still happens",
+          "occupied = True" in func_src(cl, "ensure_chrome"))
+
+    # ── 10. review requests say WHY they failed ──────────────────────────────
+    print("\n── a failed review request explains itself ──")
+    pdsrc = func_src(src("engine/post_delivery.py"), "request_amazon_review")
+    check("a missing Yes button reports the buttons it did find",
+          "no 'Yes' button appeared" in pdsrc and "buttons on the page" in pdsrc)
+    check("a click with no confirmation reports what the page said",
+          "clicked Yes but saw no confirmation" in pdsrc)
+    check("other errors name the exception type instead of a bare message",
+          "type(e).__name__" in pdsrc)
+    check("the eligibility answers are unchanged",
+          all(x in pdsrc for x in ("No Permission", "Already Requested", "Expired")))
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))

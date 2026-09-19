@@ -433,7 +433,14 @@ def ensure_chrome(port, tries=4, headless=None):
         except Exception:
             headless = False
     from engine.amazon_scraper import _connect_chrome
-    d = _connect_chrome(port)
+    # Only try to attach if something is actually there. Asking chromedriver to connect to an
+    # empty port costs ~2 minutes across its three fallbacks before admitting defeat.
+    try:
+        from utils.proc import port_open
+        occupied = port_open(port)
+    except Exception:
+        occupied = True                    # cannot tell — attempt the attach as before
+    d = _connect_chrome(port) if occupied else None
     if d:
         d._closing_launched = False        # attached to an existing (logged-in) Chrome
         return d

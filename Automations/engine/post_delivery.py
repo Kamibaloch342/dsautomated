@@ -461,7 +461,27 @@ def request_amazon_review(driver, order_id: str) -> str:
         if (plain) { plain.click(); return true; }
         return false;
         """
-        WebDriverWait(driver, 10).until(lambda d: d.execute_script(js_click_yes))
+        try:
+            WebDriverWait(driver, 10).until(lambda d: d.execute_script(js_click_yes))
+        except TimeoutException:
+            # A bare TimeoutException here said nothing, and every failure came back as a
+            # plain "No" — indistinguishable from Amazon declining. Report what the page
+            # actually offered, the same way the Send-button failure does.
+            try:
+                seen = driver.execute_script("""
+                    var out = [];
+                    document.querySelectorAll('kat-button, button').forEach(function (b) {
+                        var t = (b.getAttribute('label') || b.textContent || '').trim();
+                        if (t) out.push(t.slice(0, 24));
+                    });
+                    return out.slice(0, 8);
+                """) or []
+            except Exception:
+                seen = []
+            logger.warning("  [REVIEW] %s — no 'Yes' button appeared in 10s "
+                           "(buttons on the page: %s)", order_id, seen or "none")
+            return "No"
+
         time.sleep(random.uniform(2, 4))
 
         body_after = driver.find_element(By.TAG_NAME, "body").text.lower()
@@ -469,9 +489,11 @@ def request_amazon_review(driver, order_id: str) -> str:
             return "Already Requested"
         if "review will be requested" in body_after or "thank you" in body_after:
             return "Yes"
+        logger.warning("  [REVIEW] %s — clicked Yes but saw no confirmation "
+                       "(page says: %s)", order_id, " ".join(body_after.split())[:120])
         return "No"
     except Exception as e:
-        logger.warning("  [REVIEW] Failed for %s: %s", order_id, e)
+        logger.warning("  [REVIEW] Failed for %s: %s: %s", order_id, type(e).__name__, str(e)[:120])
         return "No"
 
 
