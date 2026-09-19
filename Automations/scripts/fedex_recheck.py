@@ -40,7 +40,7 @@ from engine.fedex_api import FedExTracker
 
 _PERSIST = ("delivery_status", "delivery_date", "signed_by", "left_at", "estimated_window",
             "last_scan_location", "last_scan_time", "delivery_note", "delivery_from", "delivery_to")
-_counter = {"done": 0, "completed": 0}
+_counter = {"done": 0, "completed": 0, "unresolved": 0, "blocked": False}
 _lock = threading.Lock()
 
 
@@ -78,6 +78,12 @@ def load_orders():
 
 
 def persist(conn, o):
+    # Only rows FedEx actually answered. bulk_fedex_check marks those _fedex_touched; an
+    # unresolved lookup (Unknown / Blocked) leaves the order exactly as it was — the old
+    # code wrote whatever delivery_status the dict happened to hold, and stamped
+    # enriched_from_fedex=1 on it, for every order in every batch.
+    if not o.get("_fedex_touched"):
+        return False
     sets = ["enriched_from_fedex=1", "order_label=?", "delivery_status=?"]
     vals = [o.get("order_label"), o.get("delivery_status")]
     for k in _PERSIST[1:]:
@@ -113,11 +119,15 @@ def worker(idx, chunk, total):
             print(f"[w{idx}] prime_session notice ({e}) — continuing")
 
     conn = sqlite3.connect(DB, timeout=60); conn.execute("PRAGMA busy_timeout=60000")
+    _dead_batches = 0
     for i in range(0, len(chunk), BATCH):
         batch = chunk[i:i + BATCH]
+        summary = {}
         try:
-            closing.bulk_fedex_check(batch, fedex)          # sets delivery_status etc.
+            summary = closing.bulk_fedex_check(batch, fedex) or {}   # sets delivery_status etc.
             for o in batch:
+                if not o.get("_fedex_touched"):
+                    continue
                 pd, pp = closing.calculate_profit(o)
                 if pd is not None:
                     o["profit_dollars"], o["profit_percent"] = pd, pp
@@ -129,6 +139,22 @@ def worker(idx, chunk, total):
         with _lock:
             _counter["done"] += len(batch)
             _counter["completed"] += sum(1 for o in batch if o.get("order_label") == "Completed")
+            _counter["unresolved"] += int(summary.get("unresolved") or 0)
+            if summary.get("blocked"):
+                _counter["blocked"] = True
+        # Two batches in a row with nothing resolved means FedEx is serving error pages to
+        # this session. Carrying on burns ~6 s per id on three browsers and deepens the
+        # block; it cannot produce a result. Stop this worker and let the run report it.
+        if summary and summary.get("resolved", 0) == 0 and summary.get("orders", 0) > 0:
+            _dead_batches += 1
+        else:
+            _dead_batches = 0
+        if _dead_batches >= 2 or summary.get("blocked"):
+            with _lock:
+                _counter["blocked"] = True
+            print(f"[w{idx}] 🚫 FedEx is refusing this session — stopping this worker "
+                  f"({len(chunk) - i - len(batch)} orders left untouched)", flush=True)
+            break
             print(f"{_counter['done']}/{total} checked | {_counter['completed']} → Completed")
         time.sleep(2)   # gentle pacing
     conn.close()
@@ -154,7 +180,18 @@ def main():
         time.sleep(2)   # stagger browser launches
     for t in threads:
         t.join()
-    print(f"\nDONE — {_counter['done']} re-checked, {_counter['completed']} flipped to Completed.")
+    print(f"\nDONE — {_counter['done']} re-checked, {_counter['completed']} flipped to Completed, "
+          f"{_counter['unresolved']} unresolved.")
+    if _counter["blocked"]:
+        # Exit 2, not 0: daily_bulk must not read a refused run as "nothing was delivered".
+        # And not 1 either — that is the code for a real crash. The remedy is the official
+        # FedEx Track API (apis.fedex.com), already wired in engine/fedex_api.py: put the
+        # developer client_id / client_secret in config/accounts.json → fedex_api and this
+        # whole browser path stops mattering.
+        print("🚫 FedEx refused this session (bot defence): the unresolved orders were left exactly as "
+              "they were — nothing was marked Unknown. Register a FedEx Developer key "
+              "(config/accounts.json → fedex_api) to track over the official API instead.")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

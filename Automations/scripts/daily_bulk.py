@@ -218,10 +218,14 @@ def main():
     #    pkills its port before launching) → both hung to timeout (2026-07-16).
     _fedex_bases = {acct: 9341 + 10 * i for i, acct in enumerate(_cfg_accounts())}
     for a in ACCTS:
+        # Not critical: FedEx's public tracking refuses automated sessions from time to time
+        # (it did for all of 19 Sep 2026 evening), and that must not mark the whole closing
+        # chain as failed — the report, ingest, scrape and messaging all still happened.
+        # fedex_recheck exits 2 when it was refused, so the summary names it separately.
         run(f"FedEx re-check {a}", [PY, "scripts/fedex_recheck.py"],
             env={"FEDEX_ACCOUNT": a, "FEDEX_WORKERS": "3", "FEDEX_MONTHS": MONTHS,
                  "FEDEX_PORT_BASE": str(_fedex_bases.get(a, 9341))},
-            timeout=int(os.environ.get("FEDEX_TIMEOUT", "5400")))
+            timeout=int(os.environ.get("FEDEX_TIMEOUT", "5400")), critical=False)
 
     # 5b) LIVE-GMAIL GAP-FILL — the archive is the optimization, live Gmail is the
     #     guarantee: any Shipped order still missing earnings/sold-time/zoro-cost/

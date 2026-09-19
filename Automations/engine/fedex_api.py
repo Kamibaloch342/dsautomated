@@ -39,6 +39,70 @@ logger = logging.getLogger("fedex_api")
 # FedEx public client ID (used by fedex.com frontend)
 _FEDEX_WEB_CLIENT_ID = "l7b8ada987a4544ff7a839c8e1f6548eea"
 _FEDEX_CDP_BATCH_SIZE = 30
+
+# Every tier — official API, in-page CDP, DOM scrape — turns FedEx's wording into ONE of these.
+# FedEx renamed its statuses in 2026 ("On the way", "We have your package", "Delivery updated",
+# "We tried to deliver"); the old maps did not know them, so the CDP tier stored the raw
+# phrase and the DOM tier matched "Label created" out of the travel history instead. On
+# 19 Sep 2026 that left 4,703 live orders at "Unknown" and ~800 on phrases nothing downstream
+# understands. Raw FedEx text is never stored: unknown wording becomes "Unknown", loudly.
+STATUS_RANK = {"Unknown": 0, "Blocked": 0, "LabelCreated": 1, "InTransit": 2,
+               "DeliveryException": 2, "OutForDelivery": 3, "PartialDelivered": 4,
+               "Delivered": 5, "AllDelivered": 5}
+_STATUS_PHRASES = (   # checked in this order; first hit wins
+    ("Delivered",         ("delivered",)),
+    ("OutForDelivery",    ("out for delivery", "on fedex vehicle")),
+    ("DeliveryException", ("we tried to deliver", "delivery exception", "shipment exception",
+                           "delivery updated", "exception", "return to shipper", "returned")),
+    ("InTransit",         ("in transit", "on the way", "we have your package", "picked up",
+                           "departed", "arrived at", "at destination", "at local facility",
+                           "in progress", "shipment in progress")),
+    ("LabelCreated",      ("label created", "shipment information sent", "initiated")),
+)
+BLOCKED_PAGE_MARKERS = ("can't find that tracking number", "can\u2019t find that tracking number",
+                        "system-error", "please check with the shipper")
+
+
+def normalize_status(text, code=""):
+    """FedEx status text/code → one canonical status. Never returns FedEx's raw wording."""
+    code = str(code or "").strip().upper()
+    if code == "DL":
+        return "Delivered"
+    if code == "OD":
+        return "OutForDelivery"
+    if code in ("IT", "DP", "AR", "PU", "AF"):
+        return "InTransit"
+    if code in ("OC", "PX", "LP"):
+        return "LabelCreated"
+    if code in ("DE", "SE", "RS"):
+        return "DeliveryException"
+    low = " ".join(str(text or "").lower().split())
+    if not low:
+        return "Unknown"
+    for canon, needles in _STATUS_PHRASES:
+        if any(n in low for n in needles):
+            return canon
+    return "Unknown"
+
+
+def status_from_page_text(body):
+    """Best status on a whole tracking page — by precedence, NOT by position.
+
+    The page lists the current status in the header and every past scan in the travel
+    history below it, and "Label created" is always in that history. Taking the first
+    match in document order returned the oldest event for delivered shipments; taking the
+    highest-ranked match anywhere returns the real state. A FedEx "can't find that tracking
+    number" page (what the bot defence serves) is reported as Blocked, not as a status."""
+    low = " ".join(str(body or "").lower().split())
+    if not low:
+        return "Unknown"
+    if any(m in low for m in BLOCKED_PAGE_MARKERS):
+        return "Blocked"
+    best, best_rank = "Unknown", -1
+    for canon, needles in _STATUS_PHRASES:
+        if any(n in low for n in needles) and STATUS_RANK.get(canon, 0) > best_rank:
+            best, best_rank = canon, STATUS_RANK.get(canon, 0)
+    return best
 _FEDEX_COOKIE_REFRESH_INTERVAL = 30 * 60  # 30 minutes
 
 
@@ -65,6 +129,11 @@ class FedExTracker:
         """
         self.driver = driver
         self.client_id = client_id or _FEDEX_WEB_CLIENT_ID
+        # Set when FedEx starts refusing this session; read by closing/fedex_recheck so a
+        # blocked run stops early and reports itself instead of writing "Unknown" everywhere.
+        self.blocked = False
+        self.blocked_chunks = 0
+        self._consecutive_blocked = 0
         self.headless = headless
         self._owns_driver = False
 
@@ -422,10 +491,26 @@ class FedExTracker:
                 continue
 
             if not payload.get("ok"):
+                # closing mutes this module's logger, so a blocked run used to be silent —
+                # 118 batches of "0 fully delivered" with no explanation. Say it on stdout.
+                self.blocked_chunks += 1
+                self._consecutive_blocked += 1
                 logger.warning("[FedEx] CDP track blocked (status=%s) — chunk falls back", payload.get("status"))
+                print(f"     ⛔ FedEx CDP blocked (status={payload.get('status')}, "
+                      f"{str(payload.get('error') or '')[:60]}) — chunk of {len(chunk)} unresolved", flush=True)
                 for tid in chunk:
                     all_details[tid] = dict(empty)
+                if self._consecutive_blocked >= 2 and not self.blocked:
+                    self.blocked = True
+                    remaining = len(tracking_ids) - (i + len(chunk))
+                    print(f"     🚫 FedEx is refusing this session — stopping after {self._consecutive_blocked} "
+                          f"blocked chunks in a row; {remaining} lookups left untouched rather than "
+                          f"deepening the block", flush=True)
+                    for tid in tracking_ids[i + len(chunk):]:
+                        all_details[tid] = dict(empty)
+                    break
                 continue
+            self._consecutive_blocked = 0
 
             try:
                 result = json.loads(payload.get("body") or "{}")
@@ -447,7 +532,11 @@ class FedExTracker:
     _STATUS_WORDS = (
         "Delivered", "In transit", "Out for delivery", "Label created",
         "Arrived at", "Shipment exception", "Picked up", "On FedEx vehicle",
-        "Departed FedEx", "At destination", "Delivery exception"
+        "Departed FedEx", "At destination", "Delivery exception",
+        # FedEx's 2026 wording
+        "On the way", "We have your package", "Delivery updated", "We tried to deliver",
+        # the bot-defence page — stop waiting the moment it appears
+        "can't find that tracking number", "can\u2019t find that tracking number",
     )
 
     def track_batch_via_browser(
@@ -519,23 +608,11 @@ class FedExTracker:
             return detail
 
         # Status matching
-        status_match = re.search(
-            r"\b(Delivered|In transit|Out for delivery|Label created|Arrived at|At destination|Shipment exception|Delivery exception|Picked up|On FedEx vehicle for delivery)\b",
-            body,
-            re.IGNORECASE
-        )
-        if status_match:
-            status = status_match.group(1).capitalize()
-            low = status.lower()
-            if low == "in transit":
-                status = "InTransit"
-            elif low in ("out for delivery", "on fedex vehicle for delivery"):
-                status = "OutForDelivery"
-            elif low == "label created":
-                status = "LabelCreated"
-            elif "exception" in low:
-                status = "ShipmentException"
-            detail["status"] = status
+        # By precedence across the whole page, never by position: the first status word in
+        # document order was "Label created" from the travel history for delivered parcels.
+        # FedEx's "can't find that tracking number" page becomes Blocked — a distinct,
+        # never-persisted answer — instead of being read as Unknown or as a stale event.
+        detail["status"] = status_from_page_text(body)
 
         # Delivery date / time - e.g. "Tuesday, 8/30/2026 at 2:20 pm" or "8/30/2026 2:20 PM"
         dt_match = re.search(r"([A-Za-z]+,\s+\d{1,2}/\d{1,2}/\d{4})\s+at\s+(\d{1,2}:\d{2}\s+[ap]m)", body, re.IGNORECASE)
@@ -603,6 +680,12 @@ class FedExTracker:
             idx for idx, r in enumerate(results)
             if r.get("status") in ("", "Unknown")
         ]
+        if unresolved_indices and self.blocked:
+            # The scraper loads the same refused endpoint, one page per id, ~6 s each, on
+            # three browsers — pure loss once FedEx has decided to serve error pages, and it
+            # only deepens the block. Leave them unresolved; nothing downstream persists that.
+            print(f"     🚫 FedEx blocked — skipping DOM fallback for {len(unresolved_indices)} ids", flush=True)
+            unresolved_indices = []
         if unresolved_indices:
             unresolved_ids = [clean_ids[i] for i in unresolved_indices]
             logger.info("[FedEx] %d IDs unresolved after CDP — running fallback DOM scrape", len(unresolved_ids))
@@ -628,18 +711,9 @@ class FedExTracker:
         key_status = pkg.get("keyStatus", "")
         status_cd = pkg.get("keyStatusCD", "")
 
-        if status_cd == "DL" or key_status == "Delivered":
-            status = "Delivered"
-        elif key_status in ("In transit", "In Transit"):
-            status = "InTransit"
-        elif "Out for Delivery" in key_status:
-            status = "OutForDelivery"
-        elif key_status == "Label created":
-            status = "LabelCreated"
-        elif key_status:
-            status = key_status
-        else:
-            status = "Unknown"
+        # One vocabulary for every tier. The old chain stored any unrecognised keyStatus
+        # verbatim — that is how "On the way" and "We have your package" reached the DB.
+        status = normalize_status(key_status, status_cd)
 
         delivery_date = pkg.get("displayActDeliveryDt", "") or ""
         delivery_time = pkg.get("displayActDeliveryTm", "") or ""

@@ -1322,7 +1322,7 @@ def bulk_fedex_check(batch, fedex):
                 all_tids.append(tid)
     if not all_tids:
         print("[CLOSING]   FedEx: no tracking IDs in this batch")
-        return
+        return {"delivered": 0, "resolved": 0, "unresolved": 0, "blocked": False, "orders": len(batch)}
     print(f"[CLOSING]   FedEx: {len(all_tids)} tracking IDs across {len(batch)} orders")
 
     # Fast & robust multi-tier track (Official REST API -> Headless CDP -> DOM Scraper)
@@ -1335,8 +1335,12 @@ def bulk_fedex_check(batch, fedex):
         if not by_tid.get(t):
             by_tid[t] = fedex._empty_detail()
 
-    delivered = 0
+    delivered = resolved = unresolved = 0
     DELIV = ("Delivered", "AllDelivered")
+    try:
+        from engine.fedex_api import STATUS_RANK
+    except Exception:
+        STATUS_RANK = {}
     for o in batch:
         tids = _order_tids(o)
         details = [by_tid[t] for t in tids if t in by_tid]
@@ -1347,21 +1351,31 @@ def bulk_fedex_check(batch, fedex):
         if n_deliv == len(details):
             agg = "Delivered" if len(details) == 1 else "AllDelivered"
             pick = [d for d in details if d.get("status") in DELIV][-1]   # latest delivery info
-            delivered += 1
         elif n_deliv > 0:
             agg = "PartialDelivered"               # some packages still moving → stays Incomplete
             pick = [d for d in details if d.get("status") in DELIV][-1]
         else:
-            # none delivered → surface the most-informative package, not just [0]
-            informative = [d for d in details if d.get("status") not in ("", "Unknown")]
+            informative = [d for d in details if d.get("status") not in ("", "Unknown", "Blocked")]
             pick = informative[0] if informative else details[0]
             agg = pick.get("status") or "Unknown"
-        # Never DOWNGRADE: a stale FedEx session can resolve a whole batch as
-        # "Unknown" — persisting that would overwrite a previously-good status
-        # (even "Delivered" on a not-yet-Completed order) and flip it back to
-        # Incomplete. Keep the existing informative status instead.
-        if agg == "Unknown" and str(o.get("delivery_status") or "").strip() not in ("", "Unknown", "None"):
+
+        # An unresolved lookup is not a status. "Unknown" (nothing parsed) and "Blocked"
+        # (FedEx served its bot-defence page) are never written — not even onto a blank row.
+        # On 19 Sep 2026 the old rule wrote "Unknown" onto 4,703 live orders and stamped
+        # them enriched_from_fedex=1, so nothing ever looked at them again.
+        if agg in ("", "Unknown", "Blocked"):
+            unresolved += 1
             continue
+        # Never move an order BACKWARDS. A partial or stale page can answer "Label created"
+        # for a parcel already recorded In transit or Out for delivery; FedEx's own history
+        # never runs in reverse, so a lower-ranked answer is a worse read, not a change.
+        prev = str(o.get("delivery_status") or "").strip()
+        if prev and STATUS_RANK.get(agg, 0) < STATUS_RANK.get(prev, 0):
+            resolved += 1
+            continue
+        if agg in DELIV:
+            delivered += 1
+        resolved += 1
         o["delivery_status"] = agg
         o["delivery_date"] = pick.get("delivery_date", "")
         o["estimated_window"] = pick.get("estimated_window", "")
@@ -1373,7 +1387,15 @@ def bulk_fedex_check(batch, fedex):
         o["delivery_from"] = pick.get("from_loc", "")
         o["delivery_to"] = pick.get("to_loc", "")
         o["enriched_from_fedex"] = 1
-    print(f"[CLOSING]   FedEx: {delivered} fully delivered / {len(batch)} in batch")
+        o["_fedex_touched"] = True                # only rows FedEx actually answered get persisted
+    blocked = bool(getattr(fedex, "blocked", False))
+    line = (f"[CLOSING]   FedEx: {delivered} delivered / {resolved} resolved / "
+            f"{unresolved} unresolved of {len(batch)} orders")
+    if blocked:
+        line += "  🚫 FedEx is refusing this session (bot defence) — unresolved orders left as they were"
+    print(line)
+    return {"delivered": delivered, "resolved": resolved, "unresolved": unresolved,
+            "blocked": blocked, "orders": len(batch)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
