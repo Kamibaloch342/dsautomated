@@ -226,6 +226,60 @@ def main():
     check("the eligibility answers are unchanged",
           all(x in pdsrc for x in ("No Permission", "Already Requested", "Expired")))
 
+    # ── 11. Amazon's "Select an account" page ────────────────────────────────
+    print("\n── the account switcher ──")
+    import json as _json
+    accts = _json.load(open(os.path.join(AUTO, "config", "accounts.json")))["accounts"]
+    check("both stores have their Seller Central name in config",
+          accts["HOANK"].get("sc_store_name") == "HYPER SALE STORE"
+          and accts["Hathoro"].get("sc_store_name") == "Discounted Mall",
+          str({k: v.get("sc_store_name") for k, v in accts.items()}))
+    check("closing consults the switcher before giving up on the page",
+          "on_account_switcher(driver)" in cl and "pick_account(driver" in cl)
+    check("it passes the configured name, never a guess",
+          '_acfg.get("sc_store_name")' in cl)
+
+    # The picker itself, against a page built like the real one.
+    import tempfile
+    from platforms.auth import _SWITCHER_PICK_JS
+    html = ("<html><body><div>Select an account</div>"
+            + "".join(f"<button>{n}</button>" for n in
+                      ("Arctrade Ltd", "HYPER SALE STORE", "Discounted Mall",
+                       "Twin Store", "Twin Store"))
+            + "<script>document.querySelectorAll('button').forEach(function(b){"
+              "b.addEventListener('click',function(){window.__picked=b.innerText;});});"
+              "</script></body></html>")
+    f = os.path.join(tempfile.mkdtemp(), "sw.html")
+    open(f, "w").write(html)
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        o = Options(); o.add_argument("--headless=new")
+        o.add_argument("--user-data-dir=" + tempfile.mkdtemp())
+        drv = webdriver.Chrome(options=o)
+    except Exception as e:
+        print(f"  ⏭️  picker skipped — Chrome would not start ({str(e)[:50]})")
+        drv = None
+    if drv is not None:
+        try:
+            def pick(want):
+                drv.get("file://" + f)
+                r = drv.execute_script(_SWITCHER_PICK_JS, want) or {}
+                return r, drv.execute_script("return window.__picked || null")
+            r, got = pick("Discounted Mall")
+            check("it clicks the store it was told to", r.get("ok") and got == "Discounted Mall")
+            r, got = pick("hyper sale store")
+            check("the name is matched case-insensitively", r.get("ok") and got == "HYPER SALE STORE")
+            r, got = pick("Twin Store")
+            check("two buttons with the same name → clicks NOTHING",
+                  not r.get("ok") and got is None and r.get("count") == 2,
+                  "picking the wrong store would pull another catalogue's report into closing")
+            r, got = pick("Not A Real Store")
+            check("a name that matches nothing → clicks NOTHING and reports what was offered",
+                  not r.get("ok") and got is None and r.get("seen"))
+        finally:
+            drv.quit()
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))

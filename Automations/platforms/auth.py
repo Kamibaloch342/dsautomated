@@ -274,6 +274,76 @@ def auto_login(driver, account_identifier, max_attempts=2):
     return False
 
 
+def on_account_switcher(driver):
+    """Is Amazon showing the 'Select an account' page instead of what we asked for?"""
+    try:
+        return "account-switcher" in (driver.current_url or "").lower()
+    except Exception:
+        return False
+
+
+_SWITCHER_PICK_JS = """
+var want = (arguments[0] || '').trim().toLowerCase().replace(/\\s+/g, ' ');
+var hits = [], all = [];
+document.querySelectorAll('button').forEach(function (b) {
+    var t = (b.innerText || '').trim().replace(/\\s+/g, ' ');
+    if (!t) return;
+    all.push(t.slice(0, 40));
+    if (t.toLowerCase() === want) hits.push(b);
+});
+if (hits.length !== 1) return {ok: false, count: hits.length, seen: all.slice(0, 12)};
+hits[0].click();
+return {ok: true};
+"""
+
+
+def pick_account(driver, store_name, marketplace=None, target_url=None, timeout=25):
+    """Get past Amazon's 'Select an account' page by choosing OUR store.
+
+    A session that is signed in but has not chosen an account lands here instead of the page
+    that was requested, and every selector after it then times out — the closing run on
+    19 Sep died this way with the report page never rendering. Only an exact name match is
+    clicked: these accounts sell different catalogues, and picking the wrong one would pull
+    another store's 30-day report into closing. Nothing is clicked when the name matches zero
+    buttons or more than one.
+    """
+    if not store_name:
+        return False
+    deadline = time.time() + timeout
+    picked_account = False
+    while time.time() < deadline:
+        if not on_account_switcher(driver):
+            return True                                   # through it (or never on it)
+        want = store_name if not picked_account else (marketplace or "")
+        if not want:
+            return True
+        try:
+            r = driver.execute_script(_SWITCHER_PICK_JS, want) or {}
+        except Exception:
+            time.sleep(1)
+            continue
+        if r.get("ok"):
+            print(f"  [AUTH] Account switcher: chose {want!r}")
+            picked_account = True
+            time.sleep(4)
+            if target_url and not on_account_switcher(driver):
+                driver.get(target_url)
+                time.sleep(3)
+            continue
+        if r.get("count", 0) > 1:
+            print(f"  [AUTH] ⛔ {r['count']} buttons match {want!r} — refusing to guess. "
+                  f"Set sc_store_name in config/accounts.json to the exact name.")
+            return False
+        time.sleep(1.5)
+    try:
+        seen = (driver.execute_script(_SWITCHER_PICK_JS, "\x00") or {}).get("seen", [])
+    except Exception:
+        seen = []
+    print(f"  [AUTH] ⛔ Stuck on the account switcher — no button named {store_name!r}. "
+          f"Accounts offered: {seen}")
+    return False
+
+
 def ensure_logged_in(driver, account_identifier, target_url=None):
     """
     Convenience wrapper:  if on a login page, attempts auto-login,

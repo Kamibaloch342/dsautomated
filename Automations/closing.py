@@ -544,6 +544,20 @@ def download_report(port, days=30, start_date=None, end_date=None):
             except Exception as _e:
                 print(f"[CLOSING] ⚠️ Auto-login unavailable ({type(_e).__name__}: {str(_e)[:70]})")
 
+        # Signed in but no account chosen → Amazon serves "Select an account" instead of the
+        # report page, and every selector after it times out. Choose ours and carry on.
+        try:
+            from platforms.auth import on_account_switcher, pick_account
+            if on_account_switcher(driver):
+                _acfg = ACCOUNTS.get(ACCOUNT, {})
+                if not pick_account(driver, _acfg.get("sc_store_name"),
+                                    _acfg.get("sc_marketplace"), target_url=url):
+                    print(f"[CLOSING] ❌ Could not get past the account switcher for {ACCOUNT}.")
+                    return None
+        except Exception as _sw_err:
+            print(f"[CLOSING] ⚠️ Account-switcher check failed "
+                  f"({type(_sw_err).__name__}: {str(_sw_err)[:70]}) — continuing")
+
         login_waited = 0
         # If auto-login could not get us in, headless has no window for a human to use, so
         # waiting is pointless: say what actually fixes it instead of burning LOGIN_WAIT_MINS.
