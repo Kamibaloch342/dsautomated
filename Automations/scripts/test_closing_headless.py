@@ -232,7 +232,7 @@ def main():
     accts = _json.load(open(os.path.join(AUTO, "config", "accounts.json")))["accounts"]
     check("both stores have their Seller Central name in config",
           accts["HOANK"].get("sc_store_name") == "HYPER SALE STORE"
-          and accts["Hathoro"].get("sc_store_name") == "Discounted Mall",
+          and accts["Hathoro"].get("sc_store_name") == "Discounted Maal",
           str({k: v.get("sc_store_name") for k, v in accts.items()}))
     check("closing consults the switcher before giving up on the page",
           "on_account_switcher(driver)" in cl and "pick_account(driver" in cl)
