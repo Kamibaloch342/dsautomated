@@ -85,11 +85,42 @@ def main():
             check("tax read raw", s["tax"] == 21.42, str(s))
             check("discount read as a positive amount", s["discount"] == 33.00, str(s))
             check("total taken from Zoro's own data-za hook", s["total"] == 318.41, str(s))
-            check("'Free' shipping is None, not 0 invented", s["shipping"] is None, str(s))
+            check("'Free' shipping is $0.00 — Zoro charged nothing for that line", s["shipping"] == 0.0, str(s))
+            check("a tax line on the page is read, not derived", s["tax_derived"] is False, str(s))
             d.get("data:text/html,<html><body>nothing here</body></html>")
             s2 = _extract_checkout_summary(d)
             check("a page with no summary yields all None, never raises",
-                  all(v is None for v in s2.values()), str(s2))
+                  all(s2[k] is None for k in ("subtotal", "shipping", "tax", "discount", "total")), str(s2))
+
+            # 20 Sep 2026, order WB1965328687: Zoro's checkout showed no tax line at all, yet the
+            # total carried $2.21 of tax — the placer logged Tax:N/A and lost it.
+            page_notax = """<html><body><div>Order Summary</div>
+              <div>Subtotal</div><div>$29.70</div>
+              <div>Shipping</div><div>$5.99</div>
+              <div>Total</div><div>$37.90</div></body></html>"""
+            f2 = os.path.join(tempfile.mkdtemp(), "notax.html"); open(f2, "w").write(page_notax)
+            d.get("file://" + f2)
+            s3 = _extract_checkout_summary(d)
+            check("no tax line: tax is the remainder of Zoro's total (37.90 - 29.70 - 5.99 = 2.21)",
+                  s3["tax"] == 2.21 and s3["tax_derived"] is True, str(s3))
+            page_labels = """<html><body><div>Order Summary</div>
+              <div>Merchandise Subtotal: $29.70</div>
+              <div>Shipping: Free</div>
+              <div>Est. Sales Tax: $1.78</div>
+              <div>Order Total: $31.48</div></body></html>"""
+            f3 = os.path.join(tempfile.mkdtemp(), "labels.html"); open(f3, "w").write(page_labels)
+            d.get("file://" + f3)
+            s4 = _extract_checkout_summary(d)
+            check("'Est. Sales Tax' on the label's own line is read raw, shipping 'Free' is 0",
+                  s4["tax"] == 1.78 and s4["tax_derived"] is False and s4["shipping"] == 0.0
+                  and s4["subtotal"] == 29.70 and s4["total"] == 31.48, str(s4))
+            page_absurd = """<html><body><div>Subtotal</div><div>$29.70</div>
+              <div>Shipping</div><div>$5.99</div><div>Total</div><div>$99.00</div></body></html>"""
+            f4 = os.path.join(tempfile.mkdtemp(), "absurd.html"); open(f4, "w").write(page_absurd)
+            d.get("file://" + f4)
+            s5 = _extract_checkout_summary(d)
+            check("an absurd remainder (63.31 on a 29.70 subtotal) is a misread page → tax stays None",
+                  s5["tax"] is None and s5["tax_derived"] is False, str(s5))
         finally:
             d.quit()
 

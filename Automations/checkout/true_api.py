@@ -1718,7 +1718,8 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
         driver._zuhra_checkout_summary = _extract_checkout_summary(driver)
         _s = driver._zuhra_checkout_summary
         print(f"   🧾 Page summary: subtotal={_s['subtotal']} shipping={_s['shipping']} "
-              f"tax={_s['tax']} discount={_s['discount']} total={_s['total']}")
+              f"tax={_s['tax']}{' (remainder of the total — the page showed no tax line)' if _s.get('tax_derived') else ''} "
+              f"discount={_s['discount']} total={_s['total']}")
     except Exception as _sum_err:
         print(f"   ⚠️ Could not read the page summary ({type(_sum_err).__name__}) — continuing")
         try:

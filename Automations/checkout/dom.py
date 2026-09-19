@@ -1626,7 +1626,7 @@ def _switch_payment_to_credit_card(driver):
             var buttons = document.querySelectorAll('button');
             for (var btn of buttons) {
                 if (!isVis(btn) || btn.disabled) continue;
-                var text = (btn.textContent || '').replace(/\s+/g, ' ').trim();
+                var text = (btn.textContent || '').replace(/[ \t\r\n]+/g, ' ').trim();
                 if (wanted.indexOf(text) !== -1) {
                     btn.click();
                     return text;
@@ -2033,6 +2033,12 @@ var money = function (s) {
     var v = parseFloat(m[1].replace(/,/g, ''));
     return (s.indexOf('-') !== -1 && s.indexOf('-') < s.indexOf('$')) ? -v : v;
 };
+// "Free" is an amount: Zoro charged nothing for that line.
+var amount = function (s) {
+    var v = money(s);
+    if (v === null && /^\s*[:\-]?\s*(free|no charge|\$?0(\.00)?)\s*$/i.test(s || '')) v = 0;
+    return v;
+};
 // 1) Zoro's own hooks, when present.
 var za = {subtotal: ['order-summary-subtotal'], shipping: ['order-summary-shipping'],
           tax: ['order-summary-tax', 'order-summary-estimated-tax'],
@@ -2042,19 +2048,24 @@ Object.keys(za).forEach(function (k) {
     za[k].forEach(function (sel) {
         if (out[k] !== null) return;
         var el = document.querySelector('[data-za="' + sel + '"]');
-        if (el && el.textContent) out[k] = money(el.textContent);
+        if (el && el.textContent) out[k] = amount(el.textContent);
     });
 });
-// 2) Fall back to the visible summary text: a label, then the amount on the same or next line.
+// 2) Fall back to the visible summary text: a short label line, then the amount on the same
+//    line (after the label) or on the next one. Labels as Zoro has written them over time:
+//    "Estimated Tax", "Est. Sales Tax", "Taxes", "Merchandise Subtotal", "Shipping  Free".
 var lines = (document.body.innerText || '').split('\n').map(function (l) { return l.trim(); });
-var labels = {subtotal: /^(merchandise\s+)?subtotal\b/i, shipping: /^(shipping|delivery)\b/i,
-              tax: /^(estimated\s+|sales\s+)?tax\b/i, discount: /^(discount|promo|coupon|savings)\b/i,
-              total: /^(order\s+)?total\b/i};
+var labels = {subtotal: /^(merchandise\s+)?subtotal\b/i,
+              shipping: /^(shipping|delivery|freight)\b/i,
+              tax: /^((est\.?|estimated|sales)\s+){0,2}tax(es)?\b/i,
+              discount: /^(discount|promo(tion)?|coupon|savings)\b/i,
+              total: /^(order\s+|grand\s+)?total\b/i};
 for (var i = 0; i < lines.length; i++) {
+    if (lines[i].length > 60) continue;
     Object.keys(labels).forEach(function (k) {
         if (out[k] !== null || !labels[k].test(lines[i])) return;
-        var v = money(lines[i]);
-        if (v === null && lines[i + 1]) v = money(lines[i + 1]);
+        var v = amount(lines[i].replace(labels[k], ''));
+        if (v === null && lines[i + 1]) v = amount(lines[i + 1]);
         if (v !== null) out[k] = v;
     });
 }
@@ -2062,15 +2073,37 @@ return out;
 """
 
 
+_SUMMARY_KEYS = ("subtotal", "shipping", "tax", "discount", "total")
+
+
+def _derive_tax(s):
+    """Tax as the remainder of Zoro's own total, for a page that shows no tax line.
+
+    Zoro's summary adds up as total = subtotal - discount + shipping + tax, so once the other
+    four are read the tax is what is left (20 Sep: subtotal 29.70 + shipping 5.99 = 35.69,
+    total 37.90 → tax 2.21, and the page had no line saying so). A remainder that is negative
+    or absurd — more than a quarter of the subtotal — means a line was misread, so None."""
+    if s["total"] is None or s["subtotal"] is None or s["shipping"] is None:
+        return None, False
+    rem = round(s["total"] - (s["subtotal"] - (s["discount"] or 0.0) + s["shipping"]), 2)
+    if rem < 0 or rem > max(1.0, 0.25 * s["subtotal"]):
+        return None, False
+    return (0.0 if rem < 0.005 else rem), True
+
+
 def _extract_checkout_summary(driver):
-    """{subtotal, shipping, tax, discount, total} from the checkout page, or Nones. Never raises."""
-    empty = {"subtotal": None, "shipping": None, "tax": None, "discount": None, "total": None}
+    """{subtotal, shipping, tax, discount, total, tax_derived} from the checkout page. Never raises.
+
+    Amounts are None when the page did not show them. tax_derived is True when tax was not
+    on the page and was taken as the remainder of the total (see _derive_tax)."""
+    empty = {k: None for k in _SUMMARY_KEYS}
+    empty["tax_derived"] = False
     try:
         got = driver.execute_script(_SUMMARY_JS) or {}
     except Exception:
         return empty
     out = dict(empty)
-    for k in out:
+    for k in _SUMMARY_KEYS:
         v = got.get(k)
         try:
             out[k] = None if v is None else round(float(v), 2)
@@ -2078,6 +2111,8 @@ def _extract_checkout_summary(driver):
             out[k] = None
     if out["discount"] is not None:
         out["discount"] = abs(out["discount"])
+    if out["tax"] is None:
+        out["tax"], out["tax_derived"] = _derive_tax(out)
     return out
 
 
