@@ -460,16 +460,29 @@ def request_amazon_review(driver, order_id: str) -> str:
         if "5-30 day" in body_text or "outside the" in body_text:
             return "Expired"
 
+        # Only a button that is actually the review confirmation. The old selector also
+        # accepted variant="primary", i.e. ANY primary button on the page — so when Amazon
+        # served plain Seller Central instead of the review dialog (seen repeatedly on
+        # 19 Sep: "buttons on the page: ['Products', 'Supply chain', 'Orders', ...]") it
+        # clicked whichever primary control happened to be there and then reported on it.
+        # Clicking an unidentified button on a live Seller Central page is not worth any
+        # number of review requests.
         js_click_yes = """
+        const box = document.querySelector('.ayb-reviews-button-container');
+        if (box) {
+            const inner = box.querySelector('button');
+            if (inner) { inner.click(); return true; }
+            const kb = box.querySelector('kat-button');
+            const kin = kb && kb.shadowRoot ? kb.shadowRoot.querySelector('button') : null;
+            if (kin) { kin.click(); return true; }
+        }
         const btns = document.querySelectorAll('kat-button');
         for (let b of btns) {
-            if (b.getAttribute('label') === 'Yes' || b.getAttribute('variant') === 'primary') {
-                const inner = b.shadowRoot && b.shadowRoot.querySelector('button');
-                if (inner) { inner.click(); return true; }
-            }
+            const label = (b.getAttribute('label') || '').trim().toLowerCase();
+            if (label !== 'yes' && label !== 'request a review') continue;
+            const inner = b.shadowRoot && b.shadowRoot.querySelector('button');
+            if (inner) { inner.click(); return true; }
         }
-        const plain = document.querySelector('.ayb-reviews-button-container button');
-        if (plain) { plain.click(); return true; }
         return false;
         """
         try:
@@ -498,7 +511,13 @@ def request_amazon_review(driver, order_id: str) -> str:
         body_after = driver.find_element(By.TAG_NAME, "body").text.lower()
         if "already requested a review" in body_after:
             return "Already Requested"
-        if "review will be requested" in body_after or "thank you" in body_after:
+        # A bare "thank you" is not evidence: it appears all over Seller Central chrome, so it
+        # reported "Yes" for orders where nothing had been requested. Require wording that only
+        # the review confirmation uses.
+        if any(x in body_after for x in ("review will be requested",
+                                         "review request sent",
+                                         "we'll send a review request",
+                                         "your review request has been sent")):
             return "Yes"
         logger.warning("  [REVIEW] %s — clicked Yes but saw no confirmation "
                        "(page says: %s)", order_id, " ".join(body_after.split())[:120])

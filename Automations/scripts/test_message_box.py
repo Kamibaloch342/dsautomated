@@ -169,6 +169,24 @@ def main():
     check("a Send failure now names the reason that was selected",
           "reason=[" in fn and "chosen_reason" in fn)
 
+    # ── review requests: only click the review button, only believe real wording ──
+    print("\n── review requests ──")
+    rv = func_src(pd, "request_amazon_review")
+    check("it no longer clicks ANY primary button on the page",
+          "variant') === 'primary'" not in rv and 'variant") === "primary"' not in rv,
+          "on 19 Sep this clicked buttons on Seller Central's nav when the review page "
+          "did not render")
+    check("it clicks the review container, or a button actually labelled Yes",
+          "ayb-reviews-button-container" in rv and "label !== 'yes'" in rv)
+    check("a bare 'thank you' is no longer treated as success",
+          '"thank you" in body_after' not in rv and "'thank you' in body_after" not in rv)
+    check("success needs wording only the review confirmation uses",
+          "review will be requested" in rv and "review request sent" in rv)
+    check("'Already Requested' is still recognised", "already requested a review" in rv)
+    check("a click with no confirmation still logs the page text, so the real wording "
+          "shows up in the next run's log",
+          "clicked Yes but saw no confirmation" in rv)
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))
