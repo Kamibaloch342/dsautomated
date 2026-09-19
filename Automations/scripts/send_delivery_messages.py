@@ -138,8 +138,19 @@ def _run(pd_cfg, sc_port):
                 print(f"[MSG] ⚠️ Could not start Chrome on {sc_port}: {type(e).__name__}: {e}")
                 driver = None
         if not driver:
-            print(f"[MSG] ⚠️ No logged-in Chrome on port {sc_port} — messages stay pending. "
+            print(f"[MSG] ⚠️ No Chrome on port {sc_port} — messages stay pending. "
                   f"Run ▶ Run Closing for {ACCOUNT} first, or press 🚀 Chrome, and re-run.")
+            return 2
+        # Having a browser is not having a session. A freshly launched headless Chrome lands
+        # on sign-in (Amazon refuses the profile cookie once the UA says HeadlessChrome), and
+        # every order then reports "no contact reason available" because the contact page is
+        # really the login page. Clear login and the account switcher before touching order 1.
+        from platforms.auth import ensure_sc_session
+        if not ensure_sc_session(driver, ACCOUNT,
+                                 target_url="https://sellercentral.amazon.com/home",
+                                 label="MSG"):
+            print(f"[MSG] ⚠️ Could not get a signed-in Seller Central for {ACCOUNT} — "
+                  f"messages stay pending, nothing was sent.")
             return 2
 
     gmail_services = _get_gmail_services(gmail_tokens())

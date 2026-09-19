@@ -146,6 +146,45 @@ def resolve_account_key(identifier):
     return s
 
 
+def _submit_otp(driver, totp_secret):
+    """Fill and submit Amazon's 2-step verification code. True if it was submitted.
+
+    One implementation, used both when sign-in leads here and when the browser is already
+    sitting on the page.
+    """
+    if not totp_secret or "FILL_IN" in totp_secret:
+        print("  ⚠️  OTP page detected but no TOTP secret configured. Manual OTP required.")
+        return False
+    code = _generate_totp(totp_secret)
+    if not code:
+        return False
+    print("  🔑  Entering TOTP code...")
+    try:
+        otp_field = WebDriverWait(driver, 8).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, _SEL_OTP_FIELD)))
+    except TimeoutException:
+        print("  ⚠️  OTP field did not appear.")
+        return False
+    otp_field.clear()
+    _type_slowly(otp_field, code, 0.05, 0.12)
+    time.sleep(0.5)
+    # "Remember this device" — so the next headless run is not asked again.
+    try:
+        remember = driver.find_element(By.CSS_SELECTOR, _SEL_REMEMBER_CB)
+        if not remember.is_selected():
+            remember.click()
+    except Exception:
+        pass
+    try:
+        WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, _SEL_OTP_SUBMIT))).click()
+    except TimeoutException:
+        print("  ⚠️  OTP submit button not found.")
+        return False
+    time.sleep(random.uniform(3.0, 5.0))
+    return True
+
+
 def auto_login(driver, account_identifier, max_attempts=2):
     """
     Detects and handles Amazon Seller Central login + OTP automatically.
@@ -183,6 +222,22 @@ def auto_login(driver, account_identifier, max_attempts=2):
         print(f"  🔐  Auto-login attempt {attempt}/{max_attempts} for '{account_key}'...")
 
         try:
+            # ── Step 0: already past the password? ────────────────
+            # Amazon keeps the 2SV step on its own page, and a session can arrive here
+            # directly — a retry after the password was accepted, or a tab that was already
+            # part-way through. Restarting from the email field then hunts for a password
+            # box that is no longer on the page and reports "Password field not found",
+            # which is what a real 2SV prompt looked like on 19 Sep. Go straight to the code.
+            if "ap/mfa" in (driver.current_url or "").lower() or _otp_field_present(driver):
+                print("  🔐  Already at the 2-step verification page — entering the code.")
+                if not _submit_otp(driver, totp_secret):
+                    continue
+                if not is_login_page(driver):
+                    print(f"  ✅  Auto-login successful for '{account_key}'.")
+                    return True
+                print(f"  ⚠️  Still on a login page after the code (attempt {attempt}).")
+                continue
+
             # ── Step 1: Email ─────────────────────────────────────
             email_field = _find_with_fallbacks(driver, _SEL_EMAIL_OPTS, timeout=8)
             if email_field:
@@ -226,38 +281,7 @@ def auto_login(driver, account_identifier, max_attempts=2):
             # ── Step 4: OTP / MFA ─────────────────────────────────
             # Check if we landed on an OTP page
             if "ap/mfa" in driver.current_url.lower() or _otp_field_present(driver):
-                if not totp_secret or "FILL_IN" in totp_secret:
-                    print("  ⚠️  OTP page detected but no TOTP secret configured. Manual OTP required.")
-                    return False
-
-                code = _generate_totp(totp_secret)
-                if not code:
-                    return False
-
-                print(f"  🔑  Entering TOTP code...")
-                otp_field = WebDriverWait(driver, 8).until(
-                    EC.visibility_of_element_located((By.CSS_SELECTOR, _SEL_OTP_FIELD))
-                )
-                otp_field.clear()
-                _type_slowly(otp_field, code, 0.05, 0.12)
-                time.sleep(0.5)
-
-                # Tick "Remember this device" if present
-                try:
-                    remember = driver.find_element(By.CSS_SELECTOR, _SEL_REMEMBER_CB)
-                    if not remember.is_selected():
-                        remember.click()
-                except Exception:
-                    pass
-
-                try:
-                    otp_btn = WebDriverWait(driver, 5).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, _SEL_OTP_SUBMIT))
-                    )
-                    otp_btn.click()
-                    time.sleep(random.uniform(3.0, 5.0))
-                except TimeoutException:
-                    print("  ⚠️  OTP submit button not found.")
+                if not _submit_otp(driver, totp_secret):
                     continue
 
             # ── Step 5: Verify success ────────────────────────────
@@ -291,10 +315,33 @@ document.querySelectorAll('button').forEach(function (b) {
     all.push(t.slice(0, 40));
     if (t.toLowerCase() === want) hits.push(b);
 });
-if (hits.length !== 1) return {ok: false, count: hits.length, seen: all.slice(0, 12)};
+if (hits.length !== 1) return {ok: false, count: hits.length, seen: all.slice(0, 14)};
 hits[0].click();
 return {ok: true};
 """
+
+# The switcher does not act on the tiles alone — store and marketplace are selections, and a
+# "Select account" button commits them. Clicking only the tiles leaves the page exactly where
+# it was, which is what made the first version click "United States" over and over.
+_SWITCHER_COMMIT_JS = """
+var btns = document.querySelectorAll('kat-button, button');
+for (var i = 0; i < btns.length; i++) {
+    var b = btns[i];
+    var t = ((b.getAttribute('label') || '') + ' ' + (b.innerText || '')).trim().toLowerCase();
+    if (t.indexOf('select account') === -1) continue;
+    var inner = b.shadowRoot ? b.shadowRoot.querySelector('button') : null;
+    (inner || b).click();
+    return true;
+}
+return false;
+"""
+
+
+def _click_switcher(driver, want):
+    try:
+        return driver.execute_script(_SWITCHER_PICK_JS, want) or {}
+    except Exception:
+        return {}
 
 
 def pick_account(driver, store_name, marketplace=None, target_url=None, timeout=25):
@@ -302,46 +349,96 @@ def pick_account(driver, store_name, marketplace=None, target_url=None, timeout=
 
     A session that is signed in but has not chosen an account lands here instead of the page
     that was requested, and every selector after it then times out — the closing run on
-    19 Sep died this way with the report page never rendering. Only an exact name match is
-    clicked: these accounts sell different catalogues, and picking the wrong one would pull
-    another store's 30-day report into closing. Nothing is clicked when the name matches zero
-    buttons or more than one.
+    19 Sep died this way. Three steps, in order: pick the store, pick its marketplace, then
+    press "Select account" to commit.
+
+    Only an exact name match is clicked. These accounts sell different catalogues, so picking
+    the wrong one would pull another store's 30-day report into closing; zero matches or more
+    than one clicks nothing and says what the page offered.
     """
     if not store_name:
         return False
+    if not on_account_switcher(driver):
+        return True
+
+    r = _click_switcher(driver, store_name)
+    if not r.get("ok"):
+        if r.get("count", 0) > 1:
+            print(f"  [AUTH] ⛔ {r['count']} accounts are named {store_name!r} — refusing to guess.")
+        else:
+            print(f"  [AUTH] ⛔ No account named {store_name!r}. Offered: {r.get('seen')}")
+        return False
+    print(f"  [AUTH] Account switcher: {store_name}")
+    time.sleep(1.5)
+
+    if marketplace:
+        if _click_switcher(driver, marketplace).get("ok"):
+            print(f"  [AUTH] Account switcher: {marketplace}")
+            time.sleep(1.0)
+
+    try:
+        committed = driver.execute_script(_SWITCHER_COMMIT_JS)
+    except Exception:
+        committed = False
+    if not committed:
+        print("  [AUTH] ⛔ Could not find the 'Select account' button to confirm with.")
+        return False
+
     deadline = time.time() + timeout
-    picked_account = False
     while time.time() < deadline:
         if not on_account_switcher(driver):
-            return True                                   # through it (or never on it)
-        want = store_name if not picked_account else (marketplace or "")
-        if not want:
-            return True
-        try:
-            r = driver.execute_script(_SWITCHER_PICK_JS, want) or {}
-        except Exception:
-            time.sleep(1)
-            continue
-        if r.get("ok"):
-            print(f"  [AUTH] Account switcher: chose {want!r}")
-            picked_account = True
-            time.sleep(4)
-            if target_url and not on_account_switcher(driver):
+            if target_url:
                 driver.get(target_url)
-                time.sleep(3)
-            continue
-        if r.get("count", 0) > 1:
-            print(f"  [AUTH] ⛔ {r['count']} buttons match {want!r} — refusing to guess. "
-                  f"Set sc_store_name in config/accounts.json to the exact name.")
-            return False
-        time.sleep(1.5)
-    try:
-        seen = (driver.execute_script(_SWITCHER_PICK_JS, "\x00") or {}).get("seen", [])
-    except Exception:
-        seen = []
-    print(f"  [AUTH] ⛔ Stuck on the account switcher — no button named {store_name!r}. "
-          f"Accounts offered: {seen}")
+                time.sleep(2)
+            return not on_account_switcher(driver)
+        time.sleep(1)
+    print("  [AUTH] ⛔ Still on the account switcher after confirming.")
     return False
+
+
+def ensure_sc_session(driver, account_identifier, target_url=None, label=""):
+    """Get this browser to a usable, signed-in Seller Central — login AND account switcher.
+
+    Starting a browser is not the same as having a session in it. A headless Chrome presents
+    itself as "HeadlessChrome", which Amazon treats as a different device, so the profile's
+    cookie is refused and the tab lands on sign-in; and even once signed in, an account that
+    has not been chosen yields the switcher instead of the page asked for. Anything that gets
+    a driver from ensure_chrome and then drives Seller Central has to clear both, or it works
+    on a login page and reports every order as "not available".
+
+    Returns True when the browser is ready to use.
+    """
+    tag = f"[{label}] " if label else ""
+    if target_url:
+        try:
+            driver.get(target_url)
+            time.sleep(2)
+        except Exception:
+            pass
+
+    if is_login_page(driver):
+        print(f"  {tag}🔐 Not signed in — auto-logging in as {account_identifier}...")
+        if not auto_login(driver, account_identifier):
+            print(f"  {tag}⛔ Auto-login failed for {account_identifier}.")
+            return False
+        if target_url:
+            driver.get(target_url)
+            time.sleep(2)
+
+    if on_account_switcher(driver):
+        try:
+            from utils.accounts_config import accounts as _accts
+            cfg = (_accts() or {}).get(account_identifier, {})
+        except Exception:
+            cfg = {}
+        if not pick_account(driver, cfg.get("sc_store_name"),
+                            cfg.get("sc_marketplace"), target_url=target_url):
+            return False
+
+    if is_login_page(driver):            # bounced straight back — do not pretend otherwise
+        print(f"  {tag}⛔ Still on the sign-in page after logging in.")
+        return False
+    return True
 
 
 def ensure_logged_in(driver, account_identifier, target_url=None):

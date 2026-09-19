@@ -280,6 +280,32 @@ def main():
         finally:
             drv.quit()
 
+    # ── 12. the switcher needs committing, and a session needs logging in ────
+    print("\n── switcher: select is not the same as commit ──")
+    au = src("platforms/auth.py")
+    check("picking the store and marketplace is followed by 'Select account'",
+          "_SWITCHER_COMMIT_JS" in au and "select account" in au.lower())
+    check("the commit reaches inside a kat-button's shadow root",
+          "shadowRoot ? b.shadowRoot.querySelector('button')" in au)
+    check("it waits to actually leave the switcher before claiming success",
+          "Still on the account switcher after confirming" in au)
+
+    print("\n── a browser is not a session ──")
+    check("ensure_sc_session clears login AND the switcher",
+          "def ensure_sc_session" in au and "auto_login(" in func_src(au, "ensure_sc_session")
+          and "pick_account(" in func_src(au, "ensure_sc_session"))
+    check("it refuses to report success while still on a login page",
+          "Still on the sign-in page after logging in" in au)
+    check("messaging calls it before touching the first order",
+          "ensure_sc_session(driver, ACCOUNT" in msg
+          and msg.index("ensure_sc_session") < msg.index("for o in pending"))
+    check("2-step verification is handled when the page is ALREADY on it",
+          "Already at the 2-step verification page" in au)
+    check("the OTP submit is one shared implementation, called from both paths",
+          au.count("def _submit_otp") == 1
+          and au.count("if not _submit_otp(driver, totp_secret)") == 2,
+          "once when sign-in leads to 2SV, once when the browser is already on it")
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))
