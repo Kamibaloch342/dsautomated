@@ -306,6 +306,26 @@ def main():
           and au.count("if not _submit_otp(driver, totp_secret)") == 2,
           "once when sign-in leads to 2SV, once when the browser is already on it")
 
+    # ── 13. chaining messaging onto the end of closing ───────────────────────
+    print("\n── ▶ Run Closing can continue into messaging ──")
+    db = src("scripts/daily_bulk.py")
+    check("daily_bulk already has the messaging step, gated on SKIP_MESSAGES",
+          "if SKIP_MESSAGES:" in db and "send_delivery_messages.py" in db)
+    check("that step runs AFTER the closing chain, so the two never share a browser",
+          db.index("fedex_recheck") < db.index("send_delivery_messages.py"))
+    check("the launcher has a '✉ Message after closing' switch",
+          "Message after closing" in lp and "_cls_chain_var" in lp)
+    check("unticked it still passes SKIP_MESSAGES=1, so today's behaviour is unchanged",
+          '"SKIP_MESSAGES": "0" if chain else "1"' in lp)
+    check("ticked it forwards the Msg limit and Dry Run already on the page",
+          'extra_env["MSG_LIMIT"]' in lp and 'extra_env["MSG_DRY"] = "1"' in lp)
+    check("the setting persists under closing.message_after_closing",
+          'cfg.setdefault("closing", {})["message_after_closing"]' in lp)
+    check("toggling it starts or stops nothing",
+          "_launch(" not in lp.split("def _toggle_chain_messaging")[1].split("\n    def ")[0])
+    check("the tooltip explains WHY chaining is safer than pressing both buttons",
+          "navigate each" in lp and "one Chrome per account" in lp)
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))

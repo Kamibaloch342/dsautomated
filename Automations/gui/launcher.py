@@ -1640,6 +1640,28 @@ class App(tk.Tk):
         self.cls_msg_dry = tk.BooleanVar()
         ttk.Checkbutton(ctrl, text="Msg Dry Run", variable=self.cls_msg_dry).pack(side="left", padx=(8, 0))
 
+        # Chain messaging onto the end of ▶ Run Closing. daily_bulk already has the step — the
+        # launcher has simply been switching it off with SKIP_MESSAGES=1.
+        #
+        # Worth doing for more than convenience: closing and messaging share one Chrome per
+        # account (report_port == sc_port == 9331 / 9333) and lock under DIFFERENT names, so
+        # pressing both buttons at once has them navigating each other's tabs. That is what
+        # halted the HOANK tracker at 17:53 on 19 Sep, mid report-download, on a review page it
+        # never opened. Run as one chain they are sequential, and cannot collide at all.
+        self._cls_chain_var = tk.BooleanVar(
+            value=bool((_read_cfg_file().get("closing") or {}).get("message_after_closing")))
+        self._cls_chain_cb = ttk.Checkbutton(ctrl, text="✉ Message after closing",
+                                             variable=self._cls_chain_var,
+                                             command=self._toggle_chain_messaging)
+        self._cls_chain_cb.pack(side="left", padx=(12, 0))
+        self._tip(self._cls_chain_cb,
+                  "CHAIN MESSAGING — ▶ Run Closing continues straight into delivery\n"
+                  "check-ins and review requests when the closing chain finishes.\n\n"
+                  "Uses the Msg limit and Msg Dry Run set here, per account.\n\n"
+                  "Safer than pressing ▶ and ✉ together: closing and messaging share\n"
+                  "one Chrome per account, so run at the same time they navigate each\n"
+                  "other's pages. Chained, they run one after the other.")
+
         # One switch for the whole chain, both accounts. Every later step attaches to the
         # Chrome the first one launches, so this single choice carries all of them.
         tk.Frame(ctrl, bg=self.MUTED, width=1).pack(side="left", fill="y", padx=(16, 12), pady=4)
@@ -1755,14 +1777,22 @@ class App(tk.Tk):
             messagebox.showinfo("Info", f"{account} closing is already running.")
             return
         cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "scripts", "daily_bulk.py")]
-        extra_env = {"ACCOUNTS": str(account), "SKIP_MESSAGES": "1"}
+        chain = bool(self._cls_chain_var.get())
+        extra_env = {"ACCOUNTS": str(account), "SKIP_MESSAGES": "0" if chain else "1"}
+        if chain:
+            # daily_bulk's step 7 reads these; same knobs the ✉ button uses.
+            extra_env["MSG_LIMIT"] = (self.cls_msg_limit.get() or "300").strip()
+            if self.cls_msg_dry.get():
+                extra_env["MSG_DRY"] = "1"
         self._filter.set("All")
         self._launch(name, cmd, account, extra_env=extra_env)
         # Start stays enabled so the OTHER account can also be launched. Stop targets
         # whichever account is selected in the dropdown.
         self._set_cls_state(account, running=True)
         self._refresh_cls_lbl()
-        self._feed_line(f"Closing bulk started ({account})", "ok")
+        self._feed_line(f"Closing bulk started ({account})"
+                        + (f" → then messaging, limit {extra_env['MSG_LIMIT']}"
+                           + (" DRY" if self.cls_msg_dry.get() else "") if chain else ""), "ok")
         self._update_hdr()
 
     def _start_messaging(self, account):
@@ -4234,6 +4264,21 @@ class App(tk.Tk):
                         "ok" if on else "warn")
         self._log_line(f"🫥 Trackers headless {'ON' if on else 'OFF'} "
                        f"(restart a running tracker to switch it)", source="remote")
+
+    def _toggle_chain_messaging(self):
+        """Persist whether ▶ Run Closing continues into messaging. Changes nothing in flight."""
+        on = bool(self._cls_chain_var.get())
+        try:
+            cfg = _read_cfg_file()
+            cfg.setdefault("closing", {})["message_after_closing"] = on
+            _write_cfg_file(cfg)
+        except Exception as e:
+            self._feed_line(f"Could not save the chain-messaging setting: {e}", "warn")
+            return
+        self._feed_line("Closing will " + ("continue into messaging" if on else
+                                           "stop after the closing chain")
+                        + " — applies to the next run", "ok" if on else "warn")
+        self._log_line(f"✉ Message-after-closing {'ON' if on else 'OFF'}", source="remote")
 
     def _closing_headless(self):
         """Is the closing chain set to run without windows? Read fresh, never cached."""
