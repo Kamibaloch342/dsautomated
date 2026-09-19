@@ -2019,10 +2019,72 @@ def _extract_checkout_total(driver, attempts=5):
     return None
 
 
+# The order-summary lines on Zoro's checkout page, read as separate numbers. Every field is
+# None when it is not on the page; nothing is derived from anything else.
+#
+# This exists because the page-checkout path has no API order response to read a summary
+# from. Before it, "Cost" fell back to the cart total (which excludes tax and shipping) and
+# "Tax" was N/A on every attributed order — 97% tax capture until 17 Sep, 0% from the 19th.
+_SUMMARY_JS = r"""
+var out = {subtotal: null, shipping: null, tax: null, discount: null, total: null};
+var money = function (s) {
+    var m = /-?\$\s*([\d,]+\.\d{2})/.exec(s || '');
+    if (!m) return null;
+    var v = parseFloat(m[1].replace(/,/g, ''));
+    return (s.indexOf('-') !== -1 && s.indexOf('-') < s.indexOf('$')) ? -v : v;
+};
+// 1) Zoro's own hooks, when present.
+var za = {subtotal: ['order-summary-subtotal'], shipping: ['order-summary-shipping'],
+          tax: ['order-summary-tax', 'order-summary-estimated-tax'],
+          discount: ['order-summary-discount', 'order-summary-promo'],
+          total: ['order-summary-total', 'total-price', 'checkout-order-total']};
+Object.keys(za).forEach(function (k) {
+    za[k].forEach(function (sel) {
+        if (out[k] !== null) return;
+        var el = document.querySelector('[data-za="' + sel + '"]');
+        if (el && el.textContent) out[k] = money(el.textContent);
+    });
+});
+// 2) Fall back to the visible summary text: a label, then the amount on the same or next line.
+var lines = (document.body.innerText || '').split('\n').map(function (l) { return l.trim(); });
+var labels = {subtotal: /^(merchandise\s+)?subtotal\b/i, shipping: /^(shipping|delivery)\b/i,
+              tax: /^(estimated\s+|sales\s+)?tax\b/i, discount: /^(discount|promo|coupon|savings)\b/i,
+              total: /^(order\s+)?total\b/i};
+for (var i = 0; i < lines.length; i++) {
+    Object.keys(labels).forEach(function (k) {
+        if (out[k] !== null || !labels[k].test(lines[i])) return;
+        var v = money(lines[i]);
+        if (v === null && lines[i + 1]) v = money(lines[i + 1]);
+        if (v !== null) out[k] = v;
+    });
+}
+return out;
+"""
+
+
+def _extract_checkout_summary(driver):
+    """{subtotal, shipping, tax, discount, total} from the checkout page, or Nones. Never raises."""
+    empty = {"subtotal": None, "shipping": None, "tax": None, "discount": None, "total": None}
+    try:
+        got = driver.execute_script(_SUMMARY_JS) or {}
+    except Exception:
+        return empty
+    out = dict(empty)
+    for k in out:
+        v = got.get(k)
+        try:
+            out[k] = None if v is None else round(float(v), 2)
+        except (TypeError, ValueError):
+            out[k] = None
+    if out["discount"] is not None:
+        out["discount"] = abs(out["discount"])
+    return out
+
+
 def _format_checkout_result(status, *, wb_id=None, checkout_total=None,
                             profit=None, margin=None, return_details=False,
                             used_coupon_code=None, split_plan=None, tax=None,
-                            discount=None):
+                            discount=None, subtotal=None, shipping=None):
     """Return either legacy string output or structured checkout details."""
     if return_details:
         return {
@@ -2031,6 +2093,9 @@ def _format_checkout_result(status, *, wb_id=None, checkout_total=None,
             "checkout_total": checkout_total,
             "tax": tax,
             "discount": discount,
+            # Raw facts as Zoro states them — recorded separately, never derived from each other.
+            "subtotal": subtotal,
+            "shipping": shipping,
             "profit": profit,
             "margin": margin,
             "used_coupon_code": used_coupon_code,

@@ -861,7 +861,76 @@ def get_stats(db_path=None) -> dict:
 
 # ── order_placer_orders ──────────────────────────────────────────────────────
 
+# Raw Zoro price facts, one column each, never derived from one another:
+#   zoro_list_price  — the undiscounted per-unit list price Zoro returned at cart-add
+#                      ($2.19 for G3057148, $329.99 for a G7747482)
+#   zoro_subtotal    — merchandise subtotal Zoro reported for the checkout
+#   zoro_shipping    — shipping Zoro charged
+# (zoro_order_total, zoro_tax, zoro_qty, coupon_savings already exist.)
+#
+# Why: a price-change alert used to be produced by dividing an order total by a quantity and
+# un-applying a coupon by name. For G3057148 — MOQ 25, so Amazon qty 1 and Zoro qty 25 on the
+# same $43.80 order — that gives $43.80/unit one day and $1.75/unit the next. Recording the
+# list price Zoro itself states lets the alert compare like with like.
+PLACER_PRICE_COLUMNS = {"zoro_list_price": "REAL", "zoro_subtotal": "REAL", "zoro_shipping": "REAL"}
+_placer_cols_ensured_for: set = set()
+
+
+def ensure_placer_price_columns(db_path=None, conn=None) -> list:
+    """Add the raw price columns to order_placer_orders if missing. Idempotent; cached per
+    process per database so the PRAGMA runs once, not per order. Returns the columns added."""
+    key = str(db_path or "default")
+    if key in _placer_cols_ensured_for and conn is None:
+        return []
+    added = []
+
+    def _do(c):
+        have = {r[1] for r in c.execute("PRAGMA table_info(order_placer_orders)")}
+        for col, typ in PLACER_PRICE_COLUMNS.items():
+            if col not in have:
+                c.execute(f"ALTER TABLE order_placer_orders ADD COLUMN {col} {typ}")
+                added.append(col)
+
+    if conn is not None:
+        _do(conn)
+    else:
+        with get_conn(db_path) as c:
+            _do(c)
+        _placer_cols_ensured_for.add(key)
+    return added
+
+
+def last_list_price(sku: str, exclude_amazon_id: str = "", db_path=None, conn=None):
+    """The most recent recorded zoro_list_price for this Zoro code, or None.
+
+    Excludes the order being evaluated so a first placement seeds the baseline instead of
+    comparing with itself. Only rows that carry a list price count — older rows, written
+    before the column existed, are not a baseline."""
+    sku = str(sku or "").strip().upper()
+    if not sku:
+        return None
+    sql = ("SELECT zoro_list_price FROM order_placer_orders "
+           "WHERE UPPER(sku)=? AND zoro_list_price IS NOT NULL AND zoro_list_price > 0 "
+           "AND amazon_order_id != ? ORDER BY id DESC LIMIT 1")
+    args = (sku, str(exclude_amazon_id or ""))
+    try:
+        if conn is not None:
+            row = conn.execute(sql, args).fetchone()
+        else:
+            with get_conn(db_path) as c:
+                row = c.execute(sql, args).fetchone()
+        return float(row[0]) if row and row[0] is not None else None
+    except Exception:
+        return None
+
+
 def upsert_placer_order(data: dict, db_path=None) -> bool:
+    # The table predates these columns; make sure they exist before a row that carries them.
+    try:
+        if any(k in data for k in PLACER_PRICE_COLUMNS):
+            ensure_placer_price_columns(db_path)
+    except Exception:
+        pass
     """Insert or replace an order_placer_orders row."""
     with get_conn(db_path) as conn:
         cols = list(data.keys())

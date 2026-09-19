@@ -461,6 +461,9 @@ def _upsert_unified_db(amazon_id, detail, **extra):
             "order_status": detail.get("status", "Open"),
             "source": "automations",
         }
+        # Raw Zoro price facts live on order_placer_orders only. insert_order builds its
+        # column list from data.keys(), so an unknown key would fail the orders-table write.
+        _placer_only = {k: extra.pop(k, None) for k in ("zoro_list_price", "zoro_subtotal", "zoro_shipping")}
         # Merge extra fields (amazon_fees, shipping_amt, coupon, dates, etc.)
         for key, val in extra.items():
             if val is not None and val != "":
@@ -471,6 +474,38 @@ def _upsert_unified_db(amazon_id, detail, **extra):
             # Already exists — try to enrich
             updates = {k: v for k, v in data.items() if k not in ("amazon_order_id", "account", "source")}
             update_order(amazon_id, updates, changed_by="orders_engine")
+
+        try:
+            from utils.unified_db import upsert_placer_order
+            placer_data = {
+                "amazon_order_id": amazon_id,
+                "wb_order_id": data.get("wb_order_id", ""),
+                "account": account,
+                "asin": data.get("asin", ""),
+                "sku": data.get("sku", ""),
+                "quantity": data.get("quantity", 0),
+                "earnings": data.get("earnings"),
+                "amazon_fees": data.get("amazon_fees"),
+                "shipping_amt": data.get("shipping_amt"),
+                "zoro_order_total": data.get("zoro_order_total"),
+                "zoro_tax": data.get("zoro_tax"),
+                "zoro_list_price": _placer_only.get("zoro_list_price"),
+                "zoro_subtotal": _placer_only.get("zoro_subtotal"),
+                "zoro_shipping": _placer_only.get("zoro_shipping"),
+                "profit_dollars": data.get("profit_dollars"),
+                "coupon_used": data.get("coupon_used", ""),
+                "coupon_savings": data.get("coupon_savings", 0.0),
+                "ship_city": data.get("ship_city", ""),
+                "ship_state": data.get("ship_state", ""),
+                "ship_postal_code": data.get("ship_postal_code", ""),
+                "purchase_date": data.get("purchase_date", ""),
+                "ship_by_date": data.get("ship_by_date", ""),
+                "deliver_by_date": data.get("deliver_by_date", ""),
+                "zoro_qty": data.get("zoro_qty", 0),
+            }
+            upsert_placer_order(placer_data)
+        except Exception:
+            pass
     except Exception as e:
         # Order flow must never break — but a lost DB write must never be silent.
         # Warn + append to a dead-letter file so the order can be re-synced later.
@@ -3780,6 +3815,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             return "failed"
 
         item_unit_price = api_price
+        item["api_price"] = api_price
         print(f"  🛒 Cart: {item['sku']} x{item['final_qty']} @ ${api_price:.2f} each")
         
         # Log price/status change in price_tracker
@@ -4153,6 +4189,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 
     _checkout_kwargs = dict(
         earnings=earnings, pre_price=real_cost,
+        # Zoro's undiscounted per-unit list price, as returned when the item was added to the
+        # cart ($2.19 for G3057148, $329.99 for a G7747482). Recorded raw so price changes can
+        # be seen without dividing totals by quantities or un-applying coupons.
+        list_price=primary_item.get("api_price"),
         original_sku=note_amazon_sku,  # page SKU (under ASIN) preferred, email SKU fallback — keeps log/sheet/note in sync
         shipping_amt=shipping_amt,
         amazon_fees=amazon_fees,
@@ -4405,6 +4445,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             checkout_total = checkout_result.get("checkout_total")
             logged_tax = checkout_result.get("tax")
             logged_discount = checkout_result.get("discount")
+            logged_subtotal = checkout_result.get("subtotal")
+            logged_shipping = checkout_result.get("shipping")
             if checkout_result.get("profit") is not None:
                 profit = checkout_result.get("profit")
             if checkout_result.get("margin") is not None:
@@ -4469,7 +4511,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     shipping_amt=shipping_amt,
                     purchase_date=pd,
                     ship_by_date=sb,
-                    deliver_by_date=db)
+                    deliver_by_date=db,
+                    zoro_tax=split_taxes[idx] if idx < len(split_taxes) else (logged_tax / len(all_wb_ids) if logged_tax else None),
+                    zoro_list_price=primary_item.get("api_price"),
+                    zoro_subtotal=logged_subtotal,
+                    zoro_shipping=logged_shipping,
+                    coupon_used=(last_checkout_result.get("used_coupon_code") if last_checkout_result else None),
+                    coupon_savings=split_discounts[idx] if idx < len(split_discounts) else (logged_discount / len(all_wb_ids) if logged_discount else None))
             # Write seller note for split order (driver already on Amazon page)
             try:
                 from utils.seller_notes import format_seller_note, enrich_note_basis
@@ -4537,6 +4585,15 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 insight_data["alt_used"] = alt_used_any
                 insight_data["alt_of"] = alt_main_sku
                 insight_data["main_sku"] = alt_main_sku
+                insight_data["zoro_code"] = primary_item.get("sku") or ""
+                insight_data["seller_sku"] = note_amazon_sku
+                insight_data["zoro_catalog_price"] = primary_item.get("api_price") or primary_item.get("unit_price")
+                insight_data["unit_cost"] = primary_item.get("api_price") or primary_item.get("unit_price")
+                insight_data["wb_order_id"] = wb_id
+                insight_data["wb_id"] = wb_id
+                insight_data["zoro_tax"] = split_taxes[idx] if 'split_taxes' in locals() and idx < len(split_taxes) else logged_tax
+                insight_data["coupon_savings"] = split_discounts[idx] if 'split_discounts' in locals() and idx < len(split_discounts) else logged_discount
+                insight_data["coupon_used"] = (last_checkout_result.get("used_coupon_code") if last_checkout_result else None)
                 order_acct = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
                 insight_data["account"] = order_acct
                 triggered_insights = analyze_order_insights(insight_data)
@@ -4582,7 +4639,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 shipping_amt=shipping_amt,
                 purchase_date=pd,
                 ship_by_date=sb,
-                deliver_by_date=db)
+                deliver_by_date=db,
+                zoro_tax=logged_tax,
+                zoro_list_price=primary_item.get("api_price"),
+                zoro_subtotal=logged_subtotal,
+                zoro_shipping=logged_shipping,
+                coupon_used=(last_checkout_result.get("used_coupon_code") if last_checkout_result else None),
+                coupon_savings=logged_discount)
         # Write seller note (driver already on Amazon page from update_amazon_seller_id)
         try:
             from utils.seller_notes import format_seller_note, enrich_note_basis
@@ -4652,6 +4715,15 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             insight_data["alt_used"] = alt_used_any
             insight_data["alt_of"] = alt_main_sku
             insight_data["main_sku"] = alt_main_sku
+            insight_data["zoro_code"] = primary_item.get("sku") or ""
+            insight_data["seller_sku"] = note_amazon_sku
+            insight_data["zoro_catalog_price"] = primary_item.get("api_price") or primary_item.get("unit_price")
+            insight_data["unit_cost"] = primary_item.get("api_price") or primary_item.get("unit_price")
+            insight_data["wb_order_id"] = result_id
+            insight_data["wb_id"] = result_id
+            insight_data["zoro_tax"] = logged_tax
+            insight_data["coupon_savings"] = logged_discount
+            insight_data["coupon_used"] = (last_checkout_result.get("used_coupon_code") if last_checkout_result else None)
             if last_checkout_result:
                 insight_data["zoro_stock"] = last_checkout_result.get("stock_level") or last_checkout_result.get("zoro_stock")
                 insight_data["zoro_deliver_by"] = last_checkout_result.get("est_delivery") or last_checkout_result.get("zoro_deliver_by")

@@ -42,7 +42,9 @@ def _ensure_columns():
     with get_conn() as conn:
         have = {r[1] for r in conn.execute("PRAGMA table_info(order_placer_orders)")}
         for col, typ in (("zoro_qty", "INTEGER"), ("zoro_deliver_by", "TEXT"), ("zoro_stock", "INTEGER"),
-                         ("alt_used", "TEXT"), ("main_sku", "TEXT")):
+                         ("alt_used", "TEXT"), ("main_sku", "TEXT"),
+                         # raw Zoro price facts (see utils.unified_db.PLACER_PRICE_COLUMNS)
+                         ("zoro_list_price", "REAL"), ("zoro_subtotal", "REAL"), ("zoro_shipping", "REAL")):
             if col not in have:
                 conn.execute(f"ALTER TABLE order_placer_orders ADD COLUMN {col} {typ}")
 
@@ -127,6 +129,11 @@ def entry_to_db_data(entry: dict) -> dict | None:
         "shipping_amt": _parse_money(entry.get("ShippingAmt", "")),
         "zoro_order_total": _parse_money(entry.get("Cost", "")),
         "zoro_tax": _parse_money(entry.get("Tax", "")),
+        # Recorded raw from the audit line: ListPrice is Zoro's per-unit list price at cart-add,
+        # Subtotal/Shipping are what the order summary stated. N/A parses to NULL, not 0.
+        "zoro_list_price": _parse_money(entry.get("ListPrice", "")),
+        "zoro_subtotal": _parse_money(entry.get("Subtotal", "")),
+        "zoro_shipping": _parse_money(entry.get("Shipping", "")),
         "profit_dollars": _parse_money(entry.get("Profit", "")),
         "profit_percent": _parse_money(entry.get("FinalMargin", "")),
         "coupon_used": entry.get("Coupon", ""),

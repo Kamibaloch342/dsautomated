@@ -1005,7 +1005,8 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
                        item_title="", est_shipping=None,
                        est_profit=None, est_margin=None,
                        original_sku=None, shipping_amt=None,
-                       amazon_fees=None, alt_of=None, zoro_select=None):
+                       amazon_fees=None, alt_of=None, zoro_select=None,
+                       tax=None, discount=None, list_price=None, page_summary=None):
     """Append a detailed multi-line order audit block to a single master log file.
     Cost falls back to the cart total we computed at checkout when the order was placed by
     the DOM fallback (no API order response): 16–36 rows/day were landing in the DB with
@@ -1067,15 +1068,28 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
             return str(v).replace("|", "-").replace("\n", " ").strip()
 
         # ── Compact one-liner (machine-readable, ALL fields) ──
+        # API order response first; the checkout page's own summary when there is none (page
+        # checkout). Both are Zoro's numbers. Nothing here is computed from anything else.
+        _pg = page_summary if isinstance(page_summary, dict) else {}
+        _subtotal = summary.get('subTotal') if summary.get('subTotal') is not None else _pg.get('subtotal')
+        _discount = (summary.get('discountTotal') if summary.get('discountTotal') is not None
+                     else (discount if discount is not None else _pg.get('discount')))
+        _shipping = summary.get('shippingTotal') if summary.get('shippingTotal') is not None else _pg.get('shipping')
+        _tax = (summary.get('taxTotal') if summary.get('taxTotal') is not None
+                else (tax if tax is not None else _pg.get('tax')))
+        # What Zoro charged: order response total, else the page total, else the cart total.
+        _charged = (summary.get('total') if summary.get('total') is not None
+                    else (_pg.get('total') if _pg.get('total') else checkout_total))
+
         one_liner = (
             f"[{now}] | WB:{s(wb_id)} | Profile:{s(profile)} | Amazon:{s(amazon_id)}"
             f" | ASIN:{s(asin)} | Title:{s(item_title)} | AQty:{s(amazon_order_qty)}"
             f" | SKU:{s(sku)} | ZMultiple:{s(zoro_multiple)} | ZMultiplier:{s(qty_multiplier)}"
-            f" | ZQty:{s(qty)} | Earnings:{s(fmt_money(earnings))} | Cost:{s(fmt_money(summary.get('total') if summary.get('total') is not None else checkout_total))}"
+            f" | ZQty:{s(qty)} | Earnings:{s(fmt_money(earnings))} | Cost:{s(fmt_money(_charged))} | ListPrice:{s(fmt_money(list_price))}"
             f" | Profit:{s(fmt_money(profit))} | FinalMargin:{s(fmt_pct(margin))} | EstMargin:{s(fmt_pct(est_margin))}"
             f" | Coupon:{s(used_coupon or 'None')} | Status:{s(zoro_response.get('orderStatus') if isinstance(zoro_response, dict) else 'N/A')}"
-            f" | Subtotal:{s(fmt_money(summary.get('subTotal')))} | Discount:{s(fmt_money(summary.get('discountTotal')))}"
-            f" | Shipping:{s(fmt_money(summary.get('shippingTotal')))} | Tax:{s(fmt_money(summary.get('taxTotal')))}"
+            f" | Subtotal:{s(fmt_money(_subtotal))} | Discount:{s(fmt_money(_discount))}"
+            f" | Shipping:{s(fmt_money(_shipping))} | Tax:{s(fmt_money(_tax))}"
             f" | Payment:{s(payment_str)} | ShipName:{s(ship_name)} | ShipStreet:{s(ship.get('address1',''))}"
             f" | ShipCity:{s(ship.get('city',''))} | ShipState:{s(ship.get('state',''))} | ShipZIP:{s(ship.get('zip',''))}"
             f" | ShipPhone:{s(address.get('phone',''))}"
@@ -1173,6 +1187,7 @@ def _compute_ratio_split(qty, unit_price, tiers):
 
 def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profile,
                                earnings=None, pre_price=None, coupon_list=None,
+                              list_price=None,
                                asin=None, asin_coupon_cache=None,
                                priority_coupons=None,
                                skip_priority_coupons=False,
@@ -1565,6 +1580,8 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 amazon_fees=amazon_fees,
                 alt_of=alt_of,
                 zoro_select=zoro_select,
+                list_price=list_price,
+                page_summary=getattr(driver, "_zuhra_checkout_summary", None),
             )
         else:
             print(f"  ❌ ORDER FAILED")
@@ -1577,6 +1594,8 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
         # "T:" so a thin profit can be traced to tax.
         checkout_tax = None
         checkout_discount = None
+        checkout_subtotal = None
+        checkout_shipping = None
         try:
             if isinstance(zoro_response, dict):
                 _summary = zoro_response.get("orderSummary", {}) or {}
@@ -1586,8 +1605,29 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 _disc = _summary.get("discountTotal")
                 if _disc is not None:
                     checkout_discount = abs(float(_disc))
+                if _summary.get("subTotal") is not None:
+                    checkout_subtotal = float(_summary.get("subTotal"))
+                if _summary.get("shippingTotal") is not None:
+                    checkout_shipping = float(_summary.get("shippingTotal"))
         except (TypeError, ValueError):
             pass
+
+        # No API response (page checkout): take the same numbers from the checkout page's
+        # order summary, read just before Place Order was clicked. Its total is what Zoro
+        # actually charged — tax and shipping included — so it replaces the cart total, which
+        # excludes both and understated "Cost" on every attributed order.
+        _page = getattr(driver, "_zuhra_checkout_summary", None) or {}
+        if not isinstance(zoro_response, dict) and _page:
+            if checkout_tax is None and _page.get("tax") is not None:
+                checkout_tax = float(_page["tax"])
+            if checkout_discount is None and _page.get("discount") is not None:
+                checkout_discount = abs(float(_page["discount"]))
+            if checkout_subtotal is None and _page.get("subtotal") is not None:
+                checkout_subtotal = float(_page["subtotal"])
+            if checkout_shipping is None and _page.get("shipping") is not None:
+                checkout_shipping = float(_page["shipping"])
+            if _page.get("total") and float(_page["total"]) > 0:
+                checkout_total = float(_page["total"])
 
         return _format_checkout_result(
             "SUCCESS" if zoro_id else "FAILED",
@@ -1595,7 +1635,8 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
             profit=profit, margin=margin,
             return_details=return_details,
             used_coupon_code=used_coupon_code,
-            tax=checkout_tax, discount=checkout_discount)
+            tax=checkout_tax, discount=checkout_discount,
+            subtotal=checkout_subtotal, shipping=checkout_shipping)
 
     except Exception as e:
         _time("True API TOTAL checkout (exception)", t_start)
@@ -1667,6 +1708,23 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
         else:
             from checkout.dom import _switch_payment_to_credit_card
             _switch_payment_to_credit_card(driver)
+
+    # Read the order summary NOW, while it is on screen. The page path has no API order
+    # response to take tax/subtotal/shipping from afterwards, which is why every attributed
+    # order since 18 Sep logged Tax:N/A and a pre-tax "Cost". Stashed on the driver so none of
+    # the call sites that read this function's bare return value have to change.
+    try:
+        from checkout.dom import _extract_checkout_summary
+        driver._zuhra_checkout_summary = _extract_checkout_summary(driver)
+        _s = driver._zuhra_checkout_summary
+        print(f"   🧾 Page summary: subtotal={_s['subtotal']} shipping={_s['shipping']} "
+              f"tax={_s['tax']} discount={_s['discount']} total={_s['total']}")
+    except Exception as _sum_err:
+        print(f"   ⚠️ Could not read the page summary ({type(_sum_err).__name__}) — continuing")
+        try:
+            driver._zuhra_checkout_summary = None
+        except Exception:
+            pass
 
     zoro_id = _click_place_order(driver)
     print(f"   DOM fallback result: {zoro_id}")
