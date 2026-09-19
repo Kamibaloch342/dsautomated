@@ -2,7 +2,7 @@
     "profiles": {
         "DM_COUPON": {
             "target_label": "MR",
-            "min_margin": -5,
+            "min_margin": -2,
             "order_limit": 0,
             "target_label_2": "",
             "min_margin_2": -10,
@@ -68,8 +68,9 @@
         "promo_strike_hours": 24
     },
     "chrome": {
-        "headless": false,
-        "headless_tracking": false
+        "headless": true,
+        "headless_tracking": true,
+        "headless_closing": true
     },
     "automation": {
         "auto_closing": {
@@ -111,5 +112,8 @@
     },
     "checkout": {
         "page_checkout": true
+    },
+    "closing": {
+        "message_after_closing": true
     }
 }
