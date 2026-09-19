@@ -903,6 +903,23 @@ def upsert_closing_order(data: dict, db_path=None, conn=None) -> bool:
     If conn is provided, it is used directly (caller must commit).
     Otherwise a new connection is opened via get_conn().
     """
+    # Every closing row goes through here, so this is the one place that can guarantee a
+    # tracking number is never stored twice. 360 orders held exact doublings on 19 Sep — 4
+    # ids written as 8 — and the delivery message then told the buyer their order shipped in
+    # 8 separate packages, listing each number twice (111-1549917-2638602 went out that way).
+    # The writers each dedupe their own input; a merge of two already-clean sets does not.
+    tids = data.get("tracking_ids")
+    if isinstance(tids, str) and "," in tids:
+        seen, keep = set(), []
+        for t in tids.split(","):
+            t = t.strip()
+            if t and t not in seen:
+                seen.add(t)
+                keep.append(t)
+        cleaned = ", ".join(keep)
+        if cleaned != tids:
+            data = {**data, "tracking_ids": cleaned}
+
     cols = list(data.keys())
     placeholders = ", ".join("?" for _ in cols)
     upsert_cols = [c for c in cols if c != "amazon_order_id"]

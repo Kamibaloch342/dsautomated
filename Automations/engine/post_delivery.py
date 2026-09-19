@@ -512,7 +512,17 @@ def request_amazon_review(driver, order_id: str) -> str:
 
 def _build_tracking_lines(tracking_ids_str: str) -> Tuple[str, str]:
     """Return (formatted tracking lines, multi-package note)."""
-    tids = [t.strip() for t in str(tracking_ids_str or "").split(",") if t.strip()]
+    # De-duplicate, keeping first-seen order. closing_orders.tracking_ids can hold the same
+    # number more than once — 360 orders on 19 Sep, every one of them an exact doubling
+    # (4 ids stored as 8). Listing them raw told a buyer their order shipped in 8 separate
+    # packages and gave each number twice; 111-1549917-2638602 went out like that. Whatever
+    # writes the column, the message must never repeat a tracking number to a customer.
+    seen, tids = set(), []
+    for t in str(tracking_ids_str or "").split(","):
+        t = t.strip()
+        if t and t not in seen:
+            seen.add(t)
+            tids.append(t)
     lines = "\n".join(f"  {i}) {tid}" for i, tid in enumerate(tids, 1)) or "  (see order details)"
     multi_note = ""
     if len(tids) > 1:
