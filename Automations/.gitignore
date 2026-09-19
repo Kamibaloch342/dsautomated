@@ -71,3 +71,6 @@ bin/
 # work-in-progress dashboard page + default-route gate
 dashboard/*.wip
 dashboard/.v2_disabled
+
+# WhatsApp pairing QR the gateway writes while linking (transient)
+whatsapp_gateway/latest_qr.png

@@ -221,7 +221,20 @@ def format_boss_note_text(data: dict) -> str:
     else:
         c_str = "Not Used"
 
-    lines = [
+    amazon_id = str(data.get("amazon_id") or data.get("amazon_order_id") or "").strip()
+    wb_id = str(data.get("wb_id") or data.get("result_id") or "").strip()
+    if wb_id and not wb_id.upper().startswith("WB"):
+        wb_id = f"WB{wb_id}"
+
+    lines = []
+    if amazon_id and wb_id:
+        lines.append(f"{amazon_id} {{ {wb_id} }}")
+    elif amazon_id:
+        lines.append(amazon_id)
+    elif wb_id:
+        lines.append(f"{{ {wb_id} }}")
+
+    lines.extend([
         f"Title: {title[:80] if title else 'Product Listing'}",
         f"SKU: {sku if sku else 'N/A'} | ASIN: {asin}",
         f"Zoro Code Used: {code}",
@@ -231,7 +244,7 @@ def format_boss_note_text(data: dict) -> str:
         f"Amazon Earnings: {earn_str}",
         f"Profit Margin: {pm_str} ({pp_str})",
         f"Coupon: {c_str}",
-    ]
+    ])
     
     return "\n".join(lines)
 
@@ -287,16 +300,16 @@ def notify_order_placed(order_data: dict, driver=None, account: str = ""):
         status_header = f"🔴 <b>LOW MARGIN ORDER (&lt; 8%): {pp_display}</b>"
         log_msg = f"  📱 [Telegram] Low margin order (< 8%: {pp_display}) — sending Amazon screenshot + Copy for Boss in background..."
     elif pp is not None and margin_decimal <= 0.20:
-        status_header = f"🟡 <b>ORDER PLACED: {pfx}{pp_display}</b>"
+        status_header = f"🟡 <b>ORDER PLACED ({pfx}{pp_display})</b>"
         log_msg = f"  📱 [Telegram] Order placed ({pfx}{pp_display}) — sending Amazon screenshot + order details in background..."
     else:
-        status_header = f"🟢 <b>PROFIT ORDER: +{pp_display}</b>"
+        status_header = f"🟢 <b>PROFIT ORDER (+{pp_display})</b>"
         log_msg = f"  📱 [Telegram] Profit order (+{pp_display}) — sending Amazon screenshot + details in background..."
 
     print(log_msg)
 
-    # Pure note text block only
-    caption = f"<pre>{html.escape(boss_text)}</pre>"
+    # Status header + 1-tap copyable preformatted note block
+    caption = f"{status_header}\n\n<pre>{html.escape(boss_text)}</pre>"
     followup = None
 
     screenshot_bytes = None

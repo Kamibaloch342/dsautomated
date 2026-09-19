@@ -282,15 +282,15 @@ def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, acc
             db_title, db_sku = _lookup_title_and_sku(asin_val)
         except Exception:
             db_title, db_sku = "", ""
+        order_line = f"{order_data.get('amazon_id', 'N/A')} {{ {order_data.get('wb_id', 'N/A')} }}"
         boss_text = (
+            f"{order_line}\n"
             f"Title: {order_data.get('title') or db_title or 'Product Listing'}\n"
             f"SKU: {order_data.get('sku') or db_sku or 'N/A'} | ASIN: {asin_val}\n"
-            f"Amazon Order: {order_data.get('amazon_id', 'N/A')}\n"
-            f"WB Order: {order_data.get('wb_id', 'N/A')}\n"
             f"Earnings: ${earn_val:.2f} | Cost: ${cost_val:.2f} | Profit: ${profit_val:.2f} ({pp_display})"
         )
 
-    caption = f"{wa_header}\n\n{boss_text}"
+    caption = f"{wa_header}\n{boss_text}"
 
     if screenshot_bytes:
         return send_whatsapp_photo(screenshot_bytes, caption=caption, to=target_group, background=True)

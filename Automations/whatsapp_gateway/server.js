@@ -51,6 +51,12 @@ async function startWhatsApp() {
             currentQR = qr;
             try {
                 currentQRDataURL = await QRCode.toDataURL(qr);
+                const qrBuffer = await QRCode.toBuffer(qr);
+                fs.writeFileSync(path.join(__dirname, 'latest_qr.png'), qrBuffer);
+                const artifactDir = '/Users/kamibaloch342/.gemini/antigravity-ide/brain/75658f8e-7a00-4255-968c-76f07b8dd58e';
+                if (fs.existsSync(artifactDir)) {
+                    fs.writeFileSync(path.join(artifactDir, 'whatsapp_qr.png'), qrBuffer);
+                }
             } catch (e) {
                 currentQRDataURL = null;
             }
@@ -72,7 +78,14 @@ async function startWhatsApp() {
             if (shouldReconnect) {
                 setTimeout(startWhatsApp, 3000);
             } else {
-                console.log('❌ WhatsApp session logged out. Delete auth_session/ folder and restart to re-link.');
+                console.log('❌ WhatsApp session logged out. Purging auth_session/ and generating fresh QR...');
+                try {
+                    const files = fs.readdirSync(AUTH_DIR);
+                    for (const f of files) {
+                        fs.unlinkSync(path.join(AUTH_DIR, f));
+                    }
+                } catch (e) {}
+                setTimeout(startWhatsApp, 2000);
             }
         } else if (connection === 'open') {
             isConnected = true;
@@ -191,6 +204,41 @@ app.get('/', (req, res) => {
     `);
 });
 
+// Relink endpoint to force clearing session and generating new QR
+app.all('/relink', async (req, res) => {
+    try {
+        if (sock) {
+            try { sock.logout(); } catch (e) {}
+            try { sock.end(); } catch (e) {}
+        }
+        const files = fs.readdirSync(AUTH_DIR);
+        for (const f of files) {
+            fs.unlinkSync(path.join(AUTH_DIR, f));
+        }
+        isConnected = false;
+        currentQR = null;
+        currentQRDataURL = null;
+        userJid = null;
+        setTimeout(startWhatsApp, 1000);
+        return res.json({ success: true, message: 'Session reset. Generating fresh QR code now.' });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// Direct QR PNG image
+app.get('/qr.png', async (req, res) => {
+    if (!currentQR) {
+        return res.status(404).send('No QR available. Already connected or initializing.');
+    }
+    try {
+        const buf = await QRCode.toBuffer(currentQR);
+        res.type('png').send(buf);
+    } catch (e) {
+        res.status(500).send('Error generating QR image.');
+    }
+});
+
 // JSON Status API
 app.get('/status', (req, res) => {
     res.json({
@@ -198,6 +246,8 @@ app.get('/status', (req, res) => {
         phone: isConnected && sock?.user?.id ? sock.user.id.split(':')[0] : null,
         user_jid: userJid,
         has_qr: !!currentQR,
+        qr: currentQR,
+        qr_data_url: currentQRDataURL,
     });
 });
 
