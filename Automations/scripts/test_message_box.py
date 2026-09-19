@@ -148,6 +148,27 @@ def main():
     check("the three insertion tiers are untouched",
           "CDP insertText" in fn and "execCommand" in fn and "native setter" in fn)
 
+    # ── the contact reason decides which form Amazon renders ────────────────
+    print("\n── the contact reason (measured on a live page, 19 Sep) ──")
+    # Reading the real contact page for 111-7536749-7759436:
+    #   unexpectedProblem "Notify of a problem with shipping your order" -> Cancel, Submit
+    #   contactBuyer      "Other"                                        -> Add attachment, Send
+    # The helper drives a Send button, so only 'contactBuyer' can ever work. It is also the
+    # truthful category for a delivery check-in on an order that arrived.
+    pd = open(os.path.join(AUTO, "engine", "post_delivery.py"), encoding="utf-8").read()
+    send_fn = func_src(pd, "send_delivery_message") if "def send_delivery_message" in pd else pd
+    check("delivery messages ask for 'Other' (contactBuyer)",
+          "radio_priority=['contactBuyer']" in pd)
+    check("they no longer file themselves as a shipping problem",
+          "radio_priority=['unexpectedProblem'" not in pd)
+    check("the reason is explained where it is set, not just changed",
+          "there is no Send at all" in pd and "misleading heading" in pd)
+    check("the tracker's own default is unchanged (it sends shipping confirmations)",
+          "radio_priority = ['contactBuyer', 'unexpectedProblem']" in
+          open(os.path.join(AUTO, "engine", "tracking.py"), encoding="utf-8").read())
+    check("a Send failure now names the reason that was selected",
+          "reason=[" in fn and "chosen_reason" in fn)
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))

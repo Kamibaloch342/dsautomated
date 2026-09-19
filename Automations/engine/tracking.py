@@ -824,7 +824,8 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
 
     try:
         result = wait.until(_pick_radio)
-        print(f"     ✔  Radio button selected: [{result.get('chosen', '?')}]")
+        chosen_reason = result.get("chosen", "?")
+        print(f"     ✔  Radio button selected: [{chosen_reason}]")
         time.sleep(2)
     except TimeoutException:
         print(f"     ⚠️  Order {order_id}: no contact reason available "
@@ -1035,8 +1036,11 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
             """) or {}
         except Exception:
             diag = {}
+        # Name the contact reason: Amazon renders a different form for each one, and only
+        # some of them have a Send button at all ('unexpectedProblem' offers Submit instead).
+        # found=0 with no reason named cost a full run to diagnose on 19 Sep.
         why = (f"Send button(s) found={diag.get('found', '?')} enabled={diag.get('enabled', '?')}, "
-               f"box has {diag.get('chars', '?')} chars")
+               f"box has {diag.get('chars', '?')} chars, reason=[{locals().get('chosen_reason', '?')}]")
         if diag.get("found") and not diag.get("enabled"):
             why += " — Amazon is keeping Send DISABLED, so it never registered the text"
         print(f"     ❌  Send button error for {order_id}: {why} [{type(e).__name__}]")

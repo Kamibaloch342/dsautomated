@@ -376,10 +376,21 @@ def send_amazon_message(driver, order_id: str, message_text: str, store_name: st
     message_text = message_text.replace("Hello {buyer_name}", f"Hello {buyer_name}" if buyer_name else "Hello")
     message_text = message_text.replace("{buyer_name}", buyer_name)
 
-    # Use tracking.py's battle-tested helper
+    # Use tracking.py's battle-tested helper.
+    #
+    # 'contactBuyer' ("Other"), not 'unexpectedProblem'. Amazon renders a DIFFERENT form per
+    # reason: under "Notify of a problem with shipping your order" the buttons are Cancel and
+    # Submit — there is no Send at all, which is why every delivery message failed on 19 Sep
+    # with "Send button(s) found=0". "Other" renders Add attachment / Send, which is the form
+    # the helper drives and the one the tracker has always used.
+    #
+    # It is also the honest category. These are delivery check-ins on orders that arrived;
+    # filing them as a shipping problem would tell the buyer something untrue. No fallback
+    # here for that reason: if "Other" is not offered, the message is skipped rather than
+    # sent under a misleading heading.
     wait = WebDriverWait(driver, 15)
     success = _click_radio_and_type(driver, wait, order_id, message_text,
-                                     radio_priority=['unexpectedProblem', 'contactBuyer'])
+                                     radio_priority=['contactBuyer'])
     if not success:
         # Distinguish between "no permission" and outright failure
         page_src_lower = driver.page_source.lower()
