@@ -217,50 +217,80 @@ def sync_all(log_path: str = ORDER_LOG_PATH, verbose: bool = True) -> dict:
 
 
 def sync_incremental(log_path: str = ORDER_LOG_PATH, verbose: bool = True) -> dict:
-    """
-    Only sync orders that don't exist in the DB yet.
-    Faster for frequent background syncs.
-    """
+    """Insert orders the DB does not have, and fill blanks on the ones it does.
+
+    This used to skip every amazon_order_id already present. The placer writes its own row the
+    moment an order is placed, carrying only what checkout knows — so that row already existed
+    when this sync first saw the line, and the fields only the log has (profile, title, margin,
+    buyer name and street, phone, alt code, and the tracking that arrives later) were never
+    filled. They landed only at the next closing, which runs sync_all. On 21 Sep 2026 that left
+    359 of the last 400 orders with no profile and no title.
+
+    Blanks only: a value already stored is never overwritten here (sync_all still reconciles
+    everything at closing), so this is safe to run every few minutes and settles to no writes
+    at all once the rows are complete."""
     if not os.path.exists(log_path):
         if verbose:
             print(f"⚠️  order_log.txt not found: {log_path}")
-        return {"total": 0, "inserted": 0, "errors": 0}
+        return {"total": 0, "inserted": 0, "enriched": 0, "errors": 0}
 
     _ensure_columns()
-    # Get all existing amazon IDs in one query
+    # Everything already stored, read once: an untouched row then costs a dict lookup, no query.
     with get_conn() as conn:
-        existing_ids = set(
-            r[0] for r in conn.execute("SELECT amazon_order_id FROM order_placer_orders").fetchall()
-        )
+        stored_cols = [d[0] for d in conn.execute(
+            "SELECT * FROM order_placer_orders LIMIT 0").description]
+        have = {r["amazon_order_id"]: r for r in conn.execute(
+            "SELECT * FROM order_placer_orders")}
+
+    def _blank(v):
+        return v is None or (isinstance(v, str) and not v.strip())
 
     with open(log_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    inserted = 0
-    errors = 0
+    inserted = enriched = errors = skipped = 0
 
     for line in lines:
         entry = parse_log_line(line)
         if not entry:
             continue
         amazon_id = entry.get("Amazon", "")
-        if not amazon_id or amazon_id in existing_ids:
+        if not amazon_id:
             continue
         data = entry_to_db_data(entry)
         if not data:
-            errors += 1
+            # Walmart placements share this log ("Amazon:WALMART:PO…") and belong in
+            # walmart_orders, not here — skipped, not an error.
+            if amazon_id.upper().startswith("WALMART"):
+                skipped += 1
+            else:
+                errors += 1
             continue
+        row = have.get(amazon_id)
+        if row is not None:
+            # only what this line can fill and the row is still missing
+            fill = {k: v for k, v in data.items()
+                    if k in stored_cols and not _blank(v) and _blank(row[k])}
+            if not fill:
+                continue
+            data = dict(fill, amazon_order_id=amazon_id)
         try:
             upsert_placer_order(data)
-            inserted += 1
+            if row is None:
+                inserted += 1
+                have[amazon_id] = None      # a later line for the same order enriches instead
+            else:
+                enriched += 1
         except Exception as e:
             errors += 1
             if verbose:
                 print(f"  ⚠️  Error syncing {amazon_id}: {e}")
 
-    stats = {"total": inserted, "inserted": inserted, "errors": errors}
+    stats = {"total": inserted + enriched, "inserted": inserted,
+             "enriched": enriched, "errors": errors, "skipped_non_amazon": skipped}
     if verbose:
-        print(f"✅ Incremental sync: {inserted} new orders inserted, {errors} errors")
+        print(f"✅ Incremental sync: {inserted} new, {enriched} enriched, {errors} errors"
+              + (f", {skipped} Walmart rows skipped" if skipped else ""))
     return stats
 
 

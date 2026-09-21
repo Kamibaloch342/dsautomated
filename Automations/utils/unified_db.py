@@ -936,7 +936,12 @@ def upsert_placer_order(data: dict, db_path=None) -> bool:
         cols = list(data.keys())
         placeholders = ", ".join("?" for _ in cols)
         upsert_cols = [c for c in cols if c != "amazon_order_id"]
-        set_clause = ", ".join(f"{c}=excluded.{c}" for c in upsert_cols)
+        # Never blank a stored value with a NULL or '' from the caller. Two writers fill this
+        # table: the placer writes what it knows the moment an order is placed, and the log
+        # sync fills the rest from order_log.txt (the source of truth) — including fields that
+        # only arrive later, such as tracking_ids. Plain excluded.<col> let whichever ran last
+        # erase the other's work; a real value always wins over an absent one.
+        set_clause = ", ".join(f"{c}=COALESCE(NULLIF(excluded.{c}, ''), {c})" for c in upsert_cols)
         sql = f"""
             INSERT INTO order_placer_orders ({', '.join(cols)})
             VALUES ({placeholders})
