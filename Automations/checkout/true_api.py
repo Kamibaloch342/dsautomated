@@ -997,6 +997,21 @@ def _submit_order_api(driver, cart_id, payment_method, billing_addr, po_number="
 #  ORDER AUDIT LOG
 # ==============================================================================
 
+def _ship_from_address(address):
+    """The shipping address in the shape Zoro's order response uses, from the buyer address we
+    prepared (platforms.amazon.validate_and_prepare_address). Empty dict when there is none."""
+    if not isinstance(address, dict):
+        return {}
+    parts = str(address.get("name") or address.get("original_name") or "").split()
+    out = {"firstName": parts[0] if parts else "",
+           "lastName": " ".join(parts[1:]),
+           "address1": address.get("street_address") or "",
+           "city": address.get("city") or "",
+           "state": address.get("state_abbr") or "",
+           "zip": address.get("zip_code") or ""}
+    return out if any(v for v in out.values()) else {}
+
+
 def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
                        earnings, checkout_total, profit, margin,
                        used_coupon, profile, address, timing_seconds,
@@ -1029,6 +1044,12 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
         payments = zoro_response.get("payments", []) if isinstance(zoro_response, dict) else []
         ship = zoro_response.get("shippingAddress", {}) if isinstance(zoro_response, dict) else {}
         bill = zoro_response.get("billingAddress", {}) if isinstance(zoro_response, dict) else {}
+        # Page checkout has no order response, so Zoro's copy of the shipping address is absent
+        # and this line logged an empty ShipName / ShipStreet / ShipCity / ShipState / ShipZIP —
+        # about a fifth of every order, which is exactly what reached order_placer_orders.
+        # It is the same address we sent: use ours when Zoro's is missing.
+        if not ship:
+            ship = _ship_from_address(address)
 
         # ── Format helpers ──
         def fmt_money(v):

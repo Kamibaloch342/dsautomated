@@ -126,6 +126,23 @@ def main():
     check("a Walmart placement is skipped, not counted as an error",
           st["errors"] == 0 and st["skipped_non_amazon"] == 1, str(st))
 
+    # ── 5. the audit line carries the address even when Zoro sends no order response ──────
+    print("\n── page checkout still logs the buyer address ──")
+    from checkout.true_api import _ship_from_address
+    addr = {"original_name": "WILLIAM BISHOP", "name": "William Bishop", "street_address": "21863 CHANEY RD",
+            "city": "DALLAS", "state_abbr": "TX", "zip_code": "75001", "phone": "4044619909"}
+    sh = _ship_from_address(addr)
+    check("name, street, city, state and ZIP come from the address we sent",
+          sh["firstName"] == "William" and sh["lastName"] == "Bishop" and sh["address1"] == "21863 CHANEY RD"
+          and sh["city"] == "DALLAS" and sh["state"] == "TX" and sh["zip"] == "75001", str(sh))
+    check("a one-word name keeps a blank last name, never crashes",
+          _ship_from_address(dict(addr, name="Cher"))["lastName"] == "")
+    check("no address at all yields an empty dict, so the line says N/A as before",
+          _ship_from_address(None) == {} and _ship_from_address({}) == {})
+    src_ta = open(os.path.join(AUTO, "checkout", "true_api.py"), encoding="utf-8").read()
+    check("the audit only falls back when Zoro's own copy is missing",
+          "if not ship:\n            ship = _ship_from_address(address)" in src_ta)
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL)); sys.exit(1)
