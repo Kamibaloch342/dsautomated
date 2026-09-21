@@ -183,6 +183,189 @@ def main():
     check("a missing table returns a plain explanation, not a raw SQL error",
           "no such table" in sv and "cloud_limited" in sv and "503" in sv)
 
+
+    # ══════════════════════════════════════════════════════════════════════════════════════
+    # 21 Sep 2026 — "make the dashboard fast": measured on a local replica of the Render
+    # service (cloud mode, the real 154 MB slim copy): /api/insights loaded 32k rows x 122
+    # columns (RSS 27 → 373 MB) and then 503'd on the missing Gmail archive; /api/overview
+    # built 75k dicts per call (+106 MB); every list ran through the UNION-ALL view with a
+    # temp-b-tree sort of all rows; each refresh re-copied 154 MB page by page through a WAL.
+    # ══════════════════════════════════════════════════════════════════════════════════════
+    import sqlite3 as _sq
+    import time as _tm
+    import types as _types
+    from datetime import date as _date, timedelta as _td
+    sys.path.insert(0, os.path.join(AUTO, "dashboard"))
+    import dbq
+    import insights as INS
+    slim = os.path.join(AUTO, "data", "dashboard_slim.db")
+    have_slim = os.path.exists(slim)
+
+    def _rocon():
+        c = _sq.connect(f"file:{slim}?mode=ro", uri=True, timeout=10)
+        c.row_factory = _sq.Row
+        return c
+
+    print("\n── the UNION view is read as two indexed halves, not one big sort ──")
+    if not have_slim:
+        print("  ⏭️  no data/dashboard_slim.db — skipped")
+    else:
+        c = _rocon()
+        halves = dbq.view_halves(c, "v_orders_all")
+        check("v_orders_all splits into exactly two SELECT halves", bool(halves) and len(halves) == 2)
+        frm = (_date.today() - _td(days=13)).isoformat()
+        cases = [("1=1", [], "purchase_date", 3000),
+                 ("substr(replace(purchase_date,'T',' '),1,10) >= ?", [frm], "purchase_date", 20000),
+                 ("account=?", ["Hathoro"], "placed_at", 500),
+                 ("1=1", [], "shipped_email_time", 1000)]
+        same = True; faster = []
+        for where, args, dc, lim in cases:
+            t = _tm.time()
+            plain = c.execute(f"SELECT amazon_order_id, {dc} FROM v_orders_all WHERE {where} "
+                              f"ORDER BY {dc} DESC LIMIT {lim}", args).fetchall()
+            tp = _tm.time() - t; t = _tm.time()
+            split = dbq.union_query(c, "v_orders_all", f"amazon_order_id, {dc}", where, args, dc, lim)
+            ts = _tm.time() - t
+            faster.append((dc, round(tp, 3), round(ts, 3)))
+            # Rows tied on the date column at the LIMIT boundary may legitimately be chosen
+            # differently (dates carry minute resolution). Everything else must be identical:
+            # the sequence of dates, and the membership away from that boundary date.
+            pd, sd = [r[1] for r in plain], [r[1] for r in split]
+            dates = {r[0]: r[1] for r in plain}; dates.update({r[0]: r[1] for r in split})
+            diff = {r[0] for r in plain} ^ {r[0] for r in split}
+            boundary = pd[-1] if pd else None
+            if len(plain) != len(split) or pd != sd or any(dates[o] != boundary for o in diff):
+                same = False
+        check("both halves return the same rows (ties at the boundary aside) and the same date sequence", same)
+        tot_plain = sum(x[1] for x in faster); tot_split = sum(x[2] for x in faster)
+        check(f"the split is faster on this machine ({tot_plain:.2f}s → {tot_split:.2f}s over 4 queries)",
+              tot_split < tot_plain, str(faster))
+        h1, _ = halves
+        plan = " | ".join(r[3] for r in c.execute(
+            f"EXPLAIN QUERY PLAN SELECT * FROM ({h1}) WHERE 1=1 ORDER BY purchase_date DESC LIMIT 3000"))
+        check("the closing_orders half walks its purchase_date index instead of sorting", "idx_closing_purchase" in plan, plan)
+        fb = dbq.union_query(c, "v_no_such_view", "*", "1=1", [], "x", 5) if False else None
+        c.close()
+    src_dbq = src("dashboard/dbq.py")
+    check("a view that cannot be split falls back to the plain query", "return c.execute(plain, args).fetchall()" in src_dbq)
+    sv2 = src("dashboard/server.py"); dbk = src("dashboard/daybook.py")
+    check("orders() and daybook._fetch go through union_query", "dbq.union_query(c, \"v_orders_all\"" in sv2
+          and "dbq.union_query(c, \"v_orders_all\"" in dbk)
+
+    print("\n── overview and the ASIN list are summed in SQL and agree with the old loops ──")
+    ov_src = func_src(sv2, "overview"); al_src = func_src(sv2, "asin_list")
+    check("overview has no per-row Python loop left", "for r in rows" not in ov_src and "dict(r)" not in ov_src)
+    check("asin_list has no per-row Python loop left", "for r in rows" not in al_src and "dict(r)" not in al_src)
+    if have_slim:
+        def _f(v):
+            try: return float(v)
+            except (TypeError, ValueError): return 0.0
+        ns = {"_has_table": lambda n: True, "_filters": lambda q, date_col="purchase_date": ("1=1", [], "", "", ""),
+              "ro": _rocon, "_f": _f, "date": _date, "timedelta": _td}
+        exec(ov_src, ns); exec(al_src, ns)
+        # reference = the loops this commit removed, run on the same database
+        c = _rocon()
+        rows = [dict(r) for r in c.execute("SELECT earnings, profit_dollars, quantity, purchase_date, asin, sku, title, "
+                                           "order_label, zoro_account_name, return_requested, refund_done, profit_percent, "
+                                           "time_to_ship_hrs FROM closing_orders")]
+        c.close()
+        earn = sum(_f(r["earnings"]) for r in rows); profit = sum(_f(r["profit_dollars"]) for r in rows)
+        labels = {}
+        for r in rows:
+            labels[r["order_label"] or "?"] = labels.get(r["order_label"] or "?", 0) + 1
+        days = {(r["purchase_date"] or "")[:10] for r in rows} - {""}
+        agg = {}
+        for r in rows:
+            k = (r["asin"] or "?", r["sku"] or "?"); a = agg.setdefault(k, 0); agg[k] = a + _f(r["quantity"])
+        ref_top = {k for k, _ in sorted(agg.items(), key=lambda kv: -kv[1])[:50]}
+        ov = ns["overview"]({})
+        check("overview: same order count", ov["kpi"]["orders"] == len(rows), f"{ov['kpi']['orders']} vs {len(rows)}")
+        check("overview: earnings and profit within 0.5% of the loop", abs(ov["kpi"]["earnings"] - earn) <= 0.005 * abs(earn) + 1
+              and abs(ov["kpi"]["profit"] - profit) <= 0.005 * abs(profit) + 1, f"{ov['kpi']} vs {earn:.2f}/{profit:.2f}")
+        check("overview: one series point per purchase day", len(ov["series"]) == len(days), f"{len(ov['series'])} vs {len(days)}")
+        check("overview: label counts identical", ov["labels"] == labels, f"{ov['labels']} vs {labels}")
+        got_top = {(t["asin"], t["sku"]) for t in ov["top"]}
+        check("overview: top-50 by units matches (ties aside)", len(got_top & ref_top) >= 45, f"overlap {len(got_top & ref_top)}")
+        al = ns["asin_list"]({})["asins"]
+        ref = {}
+        for r in rows:
+            g = ref.setdefault(r["asin"] or "?", {"orders": 0, "units": 0.0, "returns": 0, "m": []})
+            g["orders"] += 1; g["units"] += _f(r["quantity"])
+            if r["return_requested"] == "Yes": g["returns"] += 1
+            if r["profit_percent"] is not None: g["m"].append(_f(r["profit_percent"]))
+        by = {a["asin"]: a for a in al}
+        check("asin_list: same set of ASINs", set(by) == set(ref), f"{len(by)} vs {len(ref)}")
+        bad = [a for a in ref if a in by and (by[a]["orders"] != ref[a]["orders"] or by[a]["returns"] != ref[a]["returns"]
+                                              or abs(by[a]["units"] - int(ref[a]["units"])) > 1)]
+        check("asin_list: orders, returns and units agree per ASIN", not bad, f"{len(bad)} differ, e.g. {bad[:3]}")
+        mm = [a for a in ref if a in by and ref[a]["m"] and by[a]["margin_all"] is not None
+              and abs(by[a]["margin_all"] - round(sum(ref[a]["m"]) / len(ref[a]["m"]), 1)) > 0.15]
+        check("asin_list: average margin agrees per ASIN", not mm, f"{len(mm)} differ, e.g. {mm[:3]}")
+        check("asin_list: sorted by units, most first", all(al[i]["units"] >= al[i+1]["units"] for i in range(len(al) - 1)))
+
+    print("\n── insights: fewer columns, works without the Gmail archive, remembered per copy ──")
+    ins = src("dashboard/insights.py")
+    check("closing_orders and order_placer_orders are read through needed_cols()", ins.count("{needed_cols(con, '") == 2)
+    check("the archive lookup is guarded by a table check, before anything is loaded",
+          'if fresh_wbs and _has_table(con, "archive_zoro")' in ins)
+    check("compute() is the cached wrapper around _compute()", "def _compute(" in ins and "_RESULT_CACHE[key] = (stamp, now, val)" in ins)
+    if have_slim:
+        c = _rocon()
+        sel = INS.needed_cols(c, "closing_orders").split(", ")
+        ncols = len([r for r in c.execute("PRAGMA table_info(closing_orders)")])
+        c.close()
+        check(f"insights asks closing_orders for {len(sel)} of its {ncols} columns", len(sel) < ncols * 0.6, str(len(sel)))
+        need = {"amazon_order_id", "purchase_date", "profit_dollars", "delivery_status", "zoro_order_total", "refund_done", "order_label"}
+        check("...and every field the rules read is among them", need <= set(sel), str(need - set(sel)))
+        t = _tm.time(); r1 = INS.compute(db_path=slim); t1 = _tm.time() - t
+        check("compute() succeeds on the cloud copy (no archive_zoro) instead of a 503",
+              isinstance(r1, dict) and "insights" in r1 and "counts" in r1)
+        calls = {"n": 0}; real = _sq.connect
+        def counting(*a, **k):
+            calls["n"] += 1; return real(*a, **k)
+        INS.sqlite3.connect = counting
+        try:
+            t = _tm.time(); r2 = INS.compute(db_path=slim); t2 = _tm.time() - t
+        finally:
+            INS.sqlite3.connect = real
+        check(f"a repeat call is served from memory ({t1:.2f}s → {t2*1000:.0f} ms, 0 connections)", calls["n"] == 0 and r2 is r1)
+
+    print("\n── the cloud copy is swapped in whole, and kept out of WAL so that is safe ──")
+    ops = src("dashboard/ops.py")
+    inst = func_src(ops, "_install_download")
+    check("a refresh installs the download with os.replace", "os.replace(tmp_dl, CLOUD_DB_PATH)" in inst)
+    check("...retiring a stale -wal first, and copying page by page only if it cannot", "journal_mode=DELETE" in inst and "src.backup(dst)" in inst)
+    check("cloud_db_refresh no longer puts the copy back into WAL", "journal_mode=WAL" not in func_src(ops, "cloud_db_refresh"))
+    check("server start-up and rw() leave the cloud copy out of WAL",
+          '"PRAGMA journal_mode=DELETE" if OPS.CLOUD_MODE' in sv2 and "if not OPS.CLOUD_MODE:" in func_src(sv2, "rw"))
+
+    print("\n── daybook and growth are remembered per copy ──")
+    import daybook as _dbk
+    check("growth() and daybook() are memoized", hasattr(_dbk.growth, "__wrapped__") and hasattr(_dbk.daybook, "__wrapped__"))
+    check("callers get their own copy of a cached answer", "copy.deepcopy" in func_src(dbk, "_memo"))
+
+
+    print("\n── the caches are warmed after every refresh, so no visitor pays the cold cost ──")
+    ops2 = src("dashboard/ops.py"); sv3 = src("dashboard/server.py")
+    check("ops exposes on_refresh() and runs the hooks after a copy is installed",
+          "def on_refresh(fn)" in ops2 and "_run_after_refresh()" in func_src(ops2, "cloud_db_refresh"))
+    check("the hooks run in a background thread and never overlap themselves",
+          "threading.Thread(target=go, daemon=True" in ops2 and "_AFTER_LOCK.acquire(blocking=False)" in ops2)
+    warm = func_src(sv3, "_warm_caches")
+    check("the server warms today, insights, growth, daybook and overview",
+          all(k in warm for k in ("AN.today(", "INS.compute(", "_dbk.growth(", "_dbk.daybook(", "overview(")))
+    check("...only in cloud mode, and once for the copy downloaded at start-up",
+          "if OPS.CLOUD_MODE:\n    OPS.on_refresh(_warm_caches)\n    OPS._run_after_refresh()" in sv3)
+    import importlib as _il, ops as _ops
+    ran = []
+    _ops._AFTER_REFRESH.clear(); _ops.on_refresh(lambda: ran.append(1)); _ops.on_refresh(lambda: ran.append(2))
+    _ops._run_after_refresh()
+    for _ in range(50):
+        if len(ran) == 2: break
+        _tm.sleep(0.05)
+    check("registered hooks run, in order, off-thread", ran == [1, 2], str(ran))
+    _ops._AFTER_REFRESH.clear()
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))

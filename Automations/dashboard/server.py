@@ -54,15 +54,44 @@ if OPS.CLOUD_MODE:
         PRICE_TRACKER = os.path.join(os.path.dirname(OPS.CLOUD_DB_PATH), "price_tracker.json")
 try:
     with sqlite3.connect(DB, timeout=30) as _init_c:
-        _init_c.execute("PRAGMA journal_mode=WAL")
+        # The cloud copy stays OUT of WAL on purpose: each refresh swaps the whole file in with
+        # os.replace (ops._install_download), which is only safe when no -wal can be replayed
+        # onto the new file. Local runs keep WAL for the many concurrent writers.
+        _init_c.execute("PRAGMA journal_mode=DELETE" if OPS.CLOUD_MODE else "PRAGMA journal_mode=WAL")
         _init_c.execute("PRAGMA synchronous=NORMAL")
         _init_c.execute("PRAGMA busy_timeout=30000")
 except Exception:
     pass
 import insights as INS
 import analytics as AN
+import dbq
 INS.DB = DB
 AN.DB = DB
+
+
+def _warm_caches():
+    """Compute, once per new database copy, the answers the home page and the analytics tabs
+    ask for with no filters — the parameters v2 sends until the visitor picks a range. Each
+    result then sits in its module's per-copy cache; every visitor for the next five minutes
+    gets it from memory instead of paying the cold cost on Render's fractional CPU."""
+    import daybook as _dbk
+    _dbk.DB = DB
+    for name, fn in (("today", lambda: AN.today(None, None, None, None)),
+                     ("insights", lambda: INS.compute(db_path=DB)),
+                     ("growth", lambda: _dbk.growth({})),
+                     ("daybook", lambda: _dbk.daybook({})),
+                     ("overview", lambda: overview({}))):
+        try:
+            t0 = time.time()
+            fn()
+            print(f"   [warm] {name} ready in {time.time() - t0:.1f}s", flush=True)
+        except Exception as e:
+            print(f"   [warm] {name} failed: {e}", flush=True)
+
+
+if OPS.CLOUD_MODE:
+    OPS.on_refresh(_warm_caches)
+    OPS._run_after_refresh()          # the copy downloaded at start-up counts as a refresh
 try:
     import repricer_engine as REPRICER      # needs pandas + the local offers reports
 except ImportError as _e:                   # cloud mode ships without pandas: repricer is local-only
@@ -437,10 +466,11 @@ def ro():
 
 def rw():
     c = sqlite3.connect(DB, timeout=30)
-    try:
-        c.execute("PRAGMA journal_mode=WAL")
-    except Exception:
-        pass
+    if not OPS.CLOUD_MODE:                 # see the startup note: the cloud copy stays out of WAL
+        try:
+            c.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
     c.execute("PRAGMA busy_timeout=30000")
     c.row_factory = sqlite3.Row
     return c
@@ -506,41 +536,41 @@ def overview(q):
         return {"kpi": {"earnings": 0, "profit": 0, "margin": 0, "units": 0, "orders": 0},
                 "series": [], "top": [], "labels": {}, "status": "syncing"}
     where, args, *_ = _filters(q)
+    # Summed in SQL. SQLite walks the 75k rows in C and hands back a few hundred numbers; the
+    # previous dict-per-row version peaked above 100 MB per call on the cloud copy, and the
+    # home page fires it alongside a dozen other requests.
     c = ro()
     try:
-        rows = [dict(r) for r in c.execute(
-            f"SELECT {_cols(c, 'closing_orders', _OVERVIEW_COLS)} FROM closing_orders WHERE {where}", args)]
+        k = c.execute(f"SELECT COALESCE(SUM(earnings),0), COALESCE(SUM(profit_dollars),0), "
+                      f"COALESCE(SUM(quantity),0), COUNT(*) FROM closing_orders WHERE {where}",
+                      args).fetchone()
+        earn, profit, units, n = float(k[0]), float(k[1]), float(k[2]), int(k[3])
+        series = [{"date": r[0], "earnings": float(r[1] or 0), "profit": float(r[2] or 0),
+                   "units": float(r[3] or 0), "orders": int(r[4])}
+                  for r in c.execute(
+                      f"SELECT substr(purchase_date,1,10) d, SUM(earnings), SUM(profit_dollars), "
+                      f"SUM(quantity), COUNT(*) FROM closing_orders WHERE {where} "
+                      f"AND COALESCE(purchase_date,'')!='' GROUP BY d ORDER BY d", args)]
+        top = []
+        for r in c.execute(
+                f"SELECT CASE WHEN COALESCE(asin,'')='' THEN '?' ELSE asin END a, "
+                f"CASE WHEN COALESCE(sku,'')='' THEN '?' ELSE sku END s, MAX(title), "
+                f"SUM(quantity) u, COUNT(*), SUM(earnings), SUM(profit_dollars) "
+                f"FROM closing_orders WHERE {where} GROUP BY a, s ORDER BY u DESC LIMIT 50", args):
+            e, p = float(r[5] or 0), float(r[6] or 0)
+            top.append({"asin": r[0], "sku": r[1], "title": r[2], "units": float(r[3] or 0),
+                        "orders": int(r[4]), "earnings": round(e, 2), "profit": round(p, 2),
+                        "margin": round(p / e * 100, 1) if e else 0})
+        labels = {}
+        for r in c.execute(f"SELECT order_label, COUNT(*) FROM closing_orders WHERE {where} "
+                           f"GROUP BY order_label", args):
+            lab = r[0] or "?"
+            labels[lab] = labels.get(lab, 0) + int(r[1])
     finally:
         c.close()
-    earn = sum(_f(r.get("earnings")) for r in rows)
-    profit = sum(_f(r.get("profit_dollars")) for r in rows)
-    units = sum(_f(r.get("quantity")) for r in rows)
-    daily = {}
-    for r in rows:
-        d = (r.get("purchase_date") or "")[:10]
-        if not d:
-            continue
-        s = daily.setdefault(d, {"date": d, "earnings": 0, "profit": 0, "units": 0, "orders": 0})
-        s["earnings"] += _f(r.get("earnings")); s["profit"] += _f(r.get("profit_dollars"))
-        s["units"] += _f(r.get("quantity")); s["orders"] += 1
-    series = sorted(daily.values(), key=lambda x: x["date"])
-    agg = {}
-    for r in rows:
-        k = (r.get("asin") or "?", r.get("sku") or "?")
-        a = agg.setdefault(k, {"asin": k[0], "sku": k[1], "title": r.get("title"), "units": 0,
-                               "orders": 0, "earnings": 0, "profit": 0})
-        a["units"] += _f(r.get("quantity")); a["orders"] += 1
-        a["earnings"] += _f(r.get("earnings")); a["profit"] += _f(r.get("profit_dollars"))
-    for a in agg.values():
-        a["margin"] = round(a["profit"] / a["earnings"] * 100, 1) if a["earnings"] else 0
-        a["earnings"] = round(a["earnings"], 2); a["profit"] = round(a["profit"], 2)
-    top = sorted(agg.values(), key=lambda x: -x["units"])[:50]
-    labels = {}
-    for r in rows:
-        labels[r.get("order_label") or "?"] = labels.get(r.get("order_label") or "?", 0) + 1
     return {"kpi": {"earnings": round(earn, 2), "profit": round(profit, 2),
                     "margin": round(profit / earn * 100, 1) if earn else 0,
-                    "units": int(units), "orders": len(rows)},
+                    "units": int(units), "orders": n},
             "series": series, "top": top, "labels": labels}
 
 
@@ -548,43 +578,33 @@ def asin_list(q):
     if not _has_table("closing_orders"):
         return {"asins": []}
     where, args, *_ = _filters(q)
+    cutoff = (date.today() - timedelta(days=7)).isoformat()
+    # One GROUP BY instead of a dict per order row (see overview): AVG ignores NULLs exactly
+    # as the old "is not None" guards did, and SUM(flag='Yes') counts the way the loop counted.
     c = ro()
     try:
-        rows = [dict(r) for r in c.execute(
-            f"SELECT {_cols(c, 'closing_orders', _ASINLIST_COLS)} FROM closing_orders WHERE {where}", args)]
+        cur = c.execute(
+            f"SELECT CASE WHEN COALESCE(asin,'')='' THEN '?' ELSE asin END a, MAX(sku), MAX(title), "
+            f"MAX(zoro_account_name), COUNT(*), SUM(quantity), SUM(earnings), SUM(profit_dollars), "
+            f"SUM(return_requested='Yes'), SUM(refund_done='Yes'), AVG(profit_percent), "
+            f"AVG(CASE WHEN substr(purchase_date,1,10) >= ? THEN profit_percent END), "
+            f"AVG(time_to_ship_hrs) "
+            f"FROM closing_orders WHERE {where} GROUP BY a ORDER BY 6 DESC", [cutoff] + list(args))
+        out = []
+        for r in cur:
+            orders = int(r[4]); n = orders or 1
+            rets, refs = int(r[8] or 0), int(r[9] or 0)
+            out.append({"asin": r[0], "sku": r[1], "title": r[2], "zoro_account": r[3],
+                        "orders": orders, "units": int(r[5] or 0),
+                        "earnings": round(float(r[6] or 0), 2), "profit": round(float(r[7] or 0), 2),
+                        "margin_all": round(r[10], 1) if r[10] is not None else None,
+                        "margin_7d": round(r[11], 1) if r[11] is not None else None,
+                        "avg_ship_hrs": round(r[12], 1) if r[12] is not None else None,
+                        "return_rate": round(rets / n * 100, 1), "refund_rate": round(refs / n * 100, 1),
+                        "returns": rets, "refunds": refs})
     finally:
         c.close()
-    cutoff = (date.today() - timedelta(days=7)).isoformat()
-    agg = {}
-    for r in rows:
-        a = r.get("asin") or "?"
-        g = agg.setdefault(a, {"asin": a, "sku": r.get("sku"), "title": r.get("title"),
-                               "zoro_account": r.get("zoro_account_name"), "orders": 0, "units": 0,
-                               "earnings": 0, "profit": 0, "returns": 0, "refunds": 0, "m_all": [], "m_7": [], "tts": []})
-        g["orders"] += 1; g["units"] += _f(r.get("quantity"))
-        g["earnings"] += _f(r.get("earnings")); g["profit"] += _f(r.get("profit_dollars"))
-        if r.get("return_requested") == "Yes": g["returns"] += 1
-        if r.get("refund_done") == "Yes": g["refunds"] += 1
-        if r.get("profit_percent") is not None:
-            g["m_all"].append(_f(r.get("profit_percent")))
-            if (r.get("purchase_date") or "")[:10] >= cutoff:
-                g["m_7"].append(_f(r.get("profit_percent")))
-        if r.get("time_to_ship_hrs") is not None:
-            g["tts"].append(_f(r.get("time_to_ship_hrs")))
-
-    def avg(x):
-        return round(sum(x) / len(x), 1) if x else None
-    out = []
-    for g in agg.values():
-        n = g["orders"] or 1
-        out.append({"asin": g["asin"], "sku": g["sku"], "title": g["title"],
-                    "zoro_account": g["zoro_account"], "orders": g["orders"], "units": int(g["units"]),
-                    "earnings": round(g["earnings"], 2), "profit": round(g["profit"], 2),
-                    "margin_all": avg(g["m_all"]), "margin_7d": avg(g["m_7"]),
-                    "avg_ship_hrs": avg(g["tts"]),
-                    "return_rate": round(g["returns"] / n * 100, 1), "refund_rate": round(g["refunds"] / n * 100, 1),
-                    "returns": g["returns"], "refunds": g["refunds"]})
-    return {"asins": sorted(out, key=lambda x: -x["units"])}
+    return {"asins": out}
 
 
 def asin_detail(asin, q):
@@ -855,8 +875,11 @@ def orders(q):
         if flag == "unresolved":
             sel += (", (SELECT 1 FROM archive_returns ar WHERE ar.amazon_order_id=v_orders_all.amazon_order_id "
                     "AND ar.refund_done='Yes') AS gmail_refund")
-        rows = [dict(r) for r in c.execute(
-            f"SELECT {sel} FROM v_orders_all WHERE {where} ORDER BY {dc} DESC LIMIT 3000", args)]
+        if flag == "unresolved":   # its correlated archive_returns subquery needs the view's alias
+            rows = [dict(r) for r in c.execute(
+                f"SELECT {sel} FROM v_orders_all WHERE {where} ORDER BY {dc} DESC LIMIT 3000", args)]
+        else:
+            rows = [dict(r) for r in dbq.union_query(c, "v_orders_all", sel, where, args, dc, 3000)]
         _apply_crm_overlay(c, rows)
     finally:
         c.close()

@@ -134,6 +134,70 @@ _cloud = {"fingerprint": None, "refreshed_at": None, "manifest": None, "error": 
           "lock": threading.Lock(), "thread": None}
 
 
+_AFTER_REFRESH = []
+_AFTER_LOCK = threading.Lock()
+
+
+def on_refresh(fn) -> None:
+    """Register a callable to run (in a background thread, never concurrently with itself)
+    each time a new database copy has been installed. The dashboard uses it to warm the
+    answers the home page asks for, so the first visitor after a refresh is as fast as the
+    tenth — on Render's fractional CPU a cold growth()/insights() is many seconds."""
+    if fn not in _AFTER_REFRESH:
+        _AFTER_REFRESH.append(fn)
+
+
+def _run_after_refresh() -> None:
+    if not _AFTER_REFRESH or not _AFTER_LOCK.acquire(blocking=False):
+        return                                  # still warming the previous copy — skip
+
+    def go():
+        try:
+            for fn in list(_AFTER_REFRESH):
+                try:
+                    fn()
+                except Exception:
+                    pass
+        finally:
+            _AFTER_LOCK.release()
+    threading.Thread(target=go, daemon=True, name="cloud-db-warm").start()
+
+
+def _install_download(tmp_dl: str) -> str:
+    """Put a freshly downloaded copy in place of CLOUD_DB_PATH; returns how it was done.
+
+    The old way copied every page through src.backup(dst) into a WAL database: 154 MB written
+    twice (WAL, then checkpoint) on every refresh, on Render's fractional CPU, while requests
+    queued behind the lock. Requests open their own short-lived connections, so os.replace is
+    enough: new connections see the new file, in-flight ones finish on the old inode. The one
+    hazard is a stale -wal beside the file — SQLite would replay it onto the new copy — so the
+    copy is kept in rollback-journal mode, and if a -wal is present and cannot be retired the
+    page copy runs instead."""
+    if not os.path.exists(CLOUD_DB_PATH) or os.path.getsize(CLOUD_DB_PATH) == 0:
+        os.replace(tmp_dl, CLOUD_DB_PATH)
+        return "replaced"
+    try:
+        if os.path.exists(CLOUD_DB_PATH + "-wal"):
+            with sqlite3.connect(CLOUD_DB_PATH, timeout=5) as old:
+                old.execute("PRAGMA journal_mode=DELETE")      # checkpoints and removes the -wal
+        if not os.path.exists(CLOUD_DB_PATH + "-wal"):
+            os.replace(tmp_dl, CLOUD_DB_PATH)
+            return "replaced"
+    except sqlite3.Error:
+        pass
+    try:
+        with sqlite3.connect(tmp_dl, timeout=15) as src, sqlite3.connect(CLOUD_DB_PATH, timeout=30) as dst:
+            src.backup(dst)
+            dst.commit()
+        return "copied"
+    finally:
+        if os.path.exists(tmp_dl):
+            try:
+                os.remove(tmp_dl)
+            except OSError:
+                pass
+
+
 def cloud_db_refresh(force: bool = False) -> dict:
     s = r2()
     if not s:
@@ -147,26 +211,8 @@ def cloud_db_refresh(force: bool = False) -> dict:
                 tmp_dl = CLOUD_DB_PATH + ".dl"
                 ok = s.get_file(man.get("key") or KEY_SLIM_GZ, tmp_dl, gunzip=True)
                 if ok:
-                    if not os.path.exists(CLOUD_DB_PATH) or os.path.getsize(CLOUD_DB_PATH) == 0:
-                        os.replace(tmp_dl, CLOUD_DB_PATH)
-                    else:
-                        try:
-                            with sqlite3.connect(tmp_dl, timeout=15) as src, sqlite3.connect(CLOUD_DB_PATH, timeout=30) as dst:
-                                src.backup(dst)
-                                dst.commit()
-                        finally:
-                            if os.path.exists(tmp_dl):
-                                try:
-                                    os.remove(tmp_dl)
-                                except Exception:
-                                    pass
-                    try:
-                        with sqlite3.connect(CLOUD_DB_PATH, timeout=15) as conn:
-                            conn.execute("PRAGMA journal_mode=WAL")
-                            conn.execute("PRAGMA synchronous=NORMAL")
-                            conn.execute("PRAGMA busy_timeout=30000")
-                    except Exception:
-                        pass
+                    _cloud["install"] = _install_download(tmp_dl)
+                    _run_after_refresh()
                     _cloud["fingerprint"] = fp
                     _cloud["refreshed_at"] = utcnow()
                     _cloud["manifest"] = man

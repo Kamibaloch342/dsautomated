@@ -94,7 +94,90 @@ def _resolved_keys(con: sqlite3.Connection) -> Dict[str, Set[str]]:
     return s
 
 
+
+# ── what compute() loads, and for how long the answer is kept ────────────────────────────
+import ast as _ast
+import os as _os
+import threading as _threading
+import time as _time
+
+_SRC_LITERALS = None
+_NEED_CACHE = {}
+_JOIN_KEYS = ("amazon_order_id", "wb_order_id", "account")
+
+
+def _source_literals():
+    """Every string literal in this module — a superset of the column names it can read."""
+    global _SRC_LITERALS
+    if _SRC_LITERALS is None:
+        try:
+            tree = _ast.parse(open(__file__, encoding="utf-8").read())
+            _SRC_LITERALS = {n.value for n in _ast.walk(tree)
+                             if isinstance(n, _ast.Constant) and isinstance(n.value, str)}
+        except Exception:
+            _SRC_LITERALS = set()
+    return _SRC_LITERALS
+
+
+def needed_cols(con, table):
+    """SELECT list of the columns of `table` this module actually reads.
+
+    closing_orders has 122 columns and the default 60-day window is ~32k rows: `SELECT *` built
+    ~350 MB of Python dicts per call on the cloud copy — the one request that reliably pushed
+    Render's 512 MB instance over its limit. A column is kept when its name appears as a string
+    literal anywhere in this file (over-inclusive by design, never under), plus the join keys."""
+    live = [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
+    key = (table, tuple(live))
+    sel = _NEED_CACHE.get(key)
+    if sel is None:
+        lits = _source_literals()
+        keep = [c for c in live if c in lits or c in _JOIN_KEYS]
+        sel = ", ".join(keep) if keep else "*"
+        _NEED_CACHE[key] = sel
+    return sel
+
+
+def _has_table(con, name):
+    try:
+        return con.execute("SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?",
+                           (name,)).fetchone() is not None
+    except sqlite3.Error:
+        return False
+
+
+_RESULT_CACHE = {}
+_RESULT_LOCK = _threading.Lock()
+_RESULT_TTL = 300
+
+
+def _db_stamp(path):
+    try:
+        st = _os.stat(path)
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return (0, 0)
+
+
 def compute(account: Optional[str] = None, date_from: Optional[str] = None,
+            date_to: Optional[str] = None, db_path: Optional[str] = None) -> Dict[str, Any]:
+    """_compute(), remembered for five minutes per database copy (the policy analytics uses).
+    The cloud copy changes every few minutes; between copies, every visitor gets the same answer."""
+    path = db_path or DB
+    key = (path, account, date_from, date_to)
+    stamp, now = _db_stamp(path), _time.time()
+    with _RESULT_LOCK:
+        hit = _RESULT_CACHE.get(key)
+        if hit and hit[0] == stamp and now - hit[1] < _RESULT_TTL:
+            return hit[2]
+    val = _compute(account, date_from, date_to, db_path)
+    with _RESULT_LOCK:
+        if len(_RESULT_CACHE) >= 16:
+            _RESULT_CACHE.clear()
+        _RESULT_CACHE[key] = (stamp, now, val)
+    return val
+
+
+def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
             date_to: Optional[str] = None, db_path: Optional[str] = None) -> Dict[str, Any]:
     """Compute all operational insights across the requested account and date window."""
     con = sqlite3.connect(db_path or DB, timeout=10)
@@ -118,7 +201,8 @@ def compute(account: Optional[str] = None, date_from: Optional[str] = None,
         cw.append("substr(purchase_date,1,10) <= ?")
         ca.append(date_to)
 
-    closing_rows = [dict(r) for r in con.execute(f"SELECT * FROM closing_orders WHERE {' AND '.join(cw)}", ca)]
+    closing_rows = [dict(r) for r in con.execute(
+        f"SELECT {needed_cols(con, 'closing_orders')} FROM closing_orders WHERE {' AND '.join(cw)}", ca)]
 
     # 2. Fetch order_placer_orders in window (real-time stream)
     pw, pa = ["1=1"], []
@@ -132,7 +216,8 @@ def compute(account: Optional[str] = None, date_from: Optional[str] = None,
         pw.append("(substr(purchase_date,1,10) <= ? OR substr(placed_at,1,10) <= ?)")
         pa.extend([date_to, date_to])
 
-    placer_rows = [dict(r) for r in con.execute(f"SELECT * FROM order_placer_orders WHERE {' AND '.join(pw)}", pa)]
+    placer_rows = [dict(r) for r in con.execute(
+        f"SELECT {needed_cols(con, 'order_placer_orders')} FROM order_placer_orders WHERE {' AND '.join(pw)}", pa)]
 
     # Merge orders by amazon_order_id
     orders_map: Dict[str, Dict[str, Any]] = {}
@@ -160,7 +245,9 @@ def compute(account: Optional[str] = None, date_from: Optional[str] = None,
                     existing[fld] = val
 
     # Fast chunked lookup in archive_zoro using indexed wb_order_id for fresh orders
-    if fresh_wbs:
+    # The Gmail archive is not shipped to the cloud copy; without it the enrichment is skipped
+    # and every other insight still comes back (it used to fail here — after loading everything).
+    if fresh_wbs and _has_table(con, "archive_zoro"):
         for i in range(0, len(fresh_wbs), 500):
             chunk = fresh_wbs[i:i + 500]
             q = "SELECT wb_order_id, subtotal, shipping_cost, sku, ship_zip, coupon_savings FROM archive_zoro WHERE wb_order_id IN (%s)" % (",".join("?" * len(chunk)))

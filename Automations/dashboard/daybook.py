@@ -11,12 +11,17 @@ growth(q)       business analytics for the period vs the previous period: trends
 Every function takes the parsed query dict `q` (urllib.parse.parse_qs shape) and honours
 account / from / to / profile / zoro_account like the rest of server.py.
 """
+import copy
 import csv
 import io
 import os
 import sqlite3
+import threading
+import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+
+import dbq
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AUTO = os.path.dirname(HERE)
@@ -241,8 +246,9 @@ def _fetch(q, datecol_key, frm, to, extra_where="", extra_args=()):
     c = _ro()
     have = _live_cols(c, "v_orders_all")
     cols = [x for x in dict.fromkeys(ORDER_COLS) if x in have]
-    rows = [dict(r) for r in c.execute(
-        f"SELECT {', '.join(cols)} FROM v_orders_all WHERE {where} ORDER BY {datecol} DESC LIMIT 20000", args)]
+    if datecol not in cols:
+        cols.append(datecol)
+    rows = [dict(r) for r in dbq.union_query(c, "v_orders_all", ", ".join(cols), where, args, datecol, 20000)]
     _crm_overlay(c, rows)
     ids = {r["amazon_order_id"] for r in rows}
     msgs = _messages(c, ids)
@@ -302,6 +308,40 @@ def freshness():
 
 
 # ── DAYBOOK ──────────────────────────────────────────────────────────────
+_MEMO, _MEMO_LOCK, _MEMO_TTL = {}, threading.Lock(), 300
+
+
+def _memo(fn):
+    """Reuse an answer for five minutes while the database copy is unchanged (the policy
+    analytics uses). growth() fetches two 30-day windows and aggregates them in Python — 2.6 s
+    on a Mac, far longer on Render's fractional CPU — and the home page asks for it on every
+    visit. Callers get their own copy, so nobody can edit the cached one."""
+    def wrapper(q):
+        try:
+            st = os.stat(DB)
+            stamp = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            stamp = (0, 0)
+        key = (fn.__name__, DB, tuple(sorted(
+            (k, tuple(v) if isinstance(v, (list, tuple)) else (v,)) for k, v in q.items())))
+        now = time.time()
+        with _MEMO_LOCK:
+            hit = _MEMO.get(key)
+            if hit and hit[0] == stamp and now - hit[1] < _MEMO_TTL:
+                return copy.deepcopy(hit[2])
+        val = fn(q)
+        with _MEMO_LOCK:
+            if len(_MEMO) >= 32:
+                _MEMO.clear()
+            _MEMO[key] = (stamp, now, val)
+        return copy.deepcopy(val)
+    wrapper.__name__ = fn.__name__
+    wrapper.__doc__ = fn.__doc__
+    wrapper.__wrapped__ = fn
+    return wrapper
+
+
+@_memo
 def daybook(q):
     """Orders grouped by day. q: account, from, to, profile, zoro_account, label,
     datecol=purchase|placed|shipped|delivered (default purchase), days (default 14 when no from)."""
@@ -432,6 +472,7 @@ def _bucket_series(rows_states, keyfn):
     return [dict(key=k, **_agg(by[k])) for k in sorted(by)]
 
 
+@_memo
 def growth(q):
     """Period analytics with a like-for-like comparison to the previous period."""
     frm, to = _period(q, 30)
