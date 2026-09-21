@@ -49,6 +49,7 @@ import hashlib
 import json
 import os
 import re
+import signal
 import platform
 import shutil
 import sqlite3
@@ -266,6 +267,28 @@ def pick_tunnel_url(name: str, text: str) -> str:
         return ""
     hits = [m.group(0) for m in rx.finditer(text or "") if m.group(1) != "api"]
     return hits[-1] if hits else ""
+
+
+def stale_tunnel_pids(ps_lines, port, own_pids=()):
+    """PIDs of tunnel processes for `port` that this agent did not start.
+
+    A restarted agent used to leave the previous one's tunnels running (they are started in
+    their own session so a launchd restart does not take them down): two localtunnels then
+    fought over the same subdomain — 79 address changes on 21 Sep 2026 — and the old QUIC
+    cloudflared kept failing next to the new one, so *.url could point at either."""
+    out = set()
+    for pid, cmd in ps_lines:
+        try:
+            pid = int(pid)
+        except (TypeError, ValueError):
+            continue
+        if pid in own_pids:
+            continue
+        low = (cmd or "").lower()
+        if ("cloudflared" in low and "tunnel" in low and f"127.0.0.1:{port}" in low) or \
+                ("localtunnel" in low and f"--port {port}" in low):
+            out.add(pid)
+    return out
 
 
 def _tg_send(text: str) -> None:
@@ -759,6 +782,20 @@ class Agent:
         if time.time() < self._tunnel_backoff.get(name, 0):
             return
         logp = os.path.join(DATA, f"{name}.log")
+        # Ours is not running: before starting another, retire any tunnel for this port that
+        # an earlier agent left behind, so there is exactly one of each.
+        try:
+            from utils.proc import _ps_lines
+            own = {q.pid for q in self._tunnel_procs.values() if q and q.poll() is None}
+            port = int(self.cfg.get("dashboard_port", 8000))
+            for pid in stale_tunnel_pids(_ps_lines(), port, own):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    log(f"🧹 retired stale tunnel process {pid} (port {port})")
+                except OSError:
+                    pass
+        except Exception as e:
+            log(f"⚠️ stale-tunnel sweep: {e}")
         try:
             if os.path.exists(logp) and os.path.getsize(logp) > 5 * 1048576:
                 open(logp, "w").close()

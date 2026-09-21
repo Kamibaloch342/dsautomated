@@ -52,6 +52,18 @@ def main():
     check("the message names the tunnel and the address", sent and "Dashboard address (cloudflared)" in sent[0])
     check("the last address is remembered in the agent state", agent.state.get("cloudflared_last_url") == "https://b.trycloudflare.com")
 
+    print("\n── one tunnel of each: an earlier agent's leftovers are retired before starting ──")
+    ps = [(1530, "/x/bin/cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate"),
+          (47336, "npm exec localtunnel --port 8000 --subdomain kamran-ds-dashboard"),
+          (47340, "node /x/node_modules/localtunnel/bin/lt.js --port 8000 --subdomain kamran-ds-dashboard"),
+          (49507, "/x/bin/cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate --protocol http2"),
+          (900, "cloudflared tunnel --url http://127.0.0.1:9000"), (901, "python dashboard/server.py 8000")]
+    check("every tunnel for the port that is not ours is retired (cloudflared, npm wrapper, node child)",
+          CA.stale_tunnel_pids(ps, 8000, own_pids={49507}) == {1530, 47336, 47340})
+    check("other ports and the dashboard itself are left alone", 900 not in CA.stale_tunnel_pids(ps, 8000) and 901 not in CA.stale_tunnel_pids(ps, 8000))
+    check("_ensure_tunnel sweeps before it starts a new process",
+          src.index("stale_tunnel_pids(_ps_lines(), port, own)") < src.index("self._tunnel_procs[name] = subprocess.Popen("))
+
     print("\n── the process itself ──")
     check("cloudflared runs over HTTP/2 (QUIC failed ~600 times an hour)", '"--protocol", "http2"' in src)
     check("only the new process's output is scanned (start_at) and both tunnels are scraped",
