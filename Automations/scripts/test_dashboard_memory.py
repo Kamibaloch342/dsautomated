@@ -354,8 +354,8 @@ def main():
     check("the hooks run in a background thread and never overlap themselves",
           "threading.Thread(target=go, daemon=True" in ops2 and "_AFTER_LOCK.acquire(blocking=False)" in ops2)
     warm = func_src(sv3, "_warm_caches")
-    check("the server warms today, insights, growth, daybook and overview",
-          all(k in warm for k in ("AN.today(", "INS.compute(", "_dbk.growth(", "_dbk.daybook(", "overview(")))
+    check("the server warms only what the home page needs: today and overview",
+          all(k in warm for k in ("AN.today(", "overview(")) and not any(k in warm for k in ("INS.compute(", "_dbk.growth(", "_dbk.daybook(")))
     check("...only in cloud mode, and once for the copy downloaded at start-up",
           "if OPS.CLOUD_MODE:\n    OPS.on_refresh(_warm_caches)\n    OPS._run_after_refresh()" in sv3)
     import importlib as _il, ops as _ops

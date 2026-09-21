@@ -70,16 +70,16 @@ AN.DB = DB
 
 
 def _warm_caches():
-    """Compute, once per new database copy, the answers the home page and the analytics tabs
-    ask for with no filters — the parameters v2 sends until the visitor picks a range. Each
-    result then sits in its module's per-copy cache; every visitor for the next five minutes
-    gets it from memory instead of paying the cold cost on Render's fractional CPU."""
+    """Compute, once per new database copy, the answers the HOME page asks for with no filters
+    (today, overview) so the first visitor after a refresh gets them from memory.
+
+    Only those two. Warming insights, growth and daybook as well cost ~5 s of CPU on a Mac per
+    copy — on Render's fractional CPU that became a minute or more every five minutes during
+    which even the login page stalled for 7–9 s (measured 21 Sep 2026), for tabs the visitor
+    may never open. Those three are still cached on first use."""
     import daybook as _dbk
     _dbk.DB = DB
     for name, fn in (("today", lambda: AN.today(None, None, None, None)),
-                     ("insights", lambda: INS.compute(db_path=DB)),
-                     ("growth", lambda: _dbk.growth({})),
-                     ("daybook", lambda: _dbk.daybook({})),
                      ("overview", lambda: overview({}))):
         try:
             t0 = time.time()
