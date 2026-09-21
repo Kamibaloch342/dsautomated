@@ -248,23 +248,29 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
     # The Gmail archive is not shipped to the cloud copy; without it the enrichment is skipped
     # and every other insight still comes back (it used to fail here — after loading everything).
     if fresh_wbs and _has_table(con, "archive_zoro"):
+        # Index the orders by WB once. The previous version scanned every order for every
+        # archive row — 1,100 fresh WBs x 32k orders = 35 million comparisons, 11 of the 13
+        # seconds /api/insights took on the master DB (21 Sep 2026).
+        by_wb: Dict[str, List[Dict[str, Any]]] = {}
+        for o in orders_map.values():
+            wb = o.get("wb_order_id")
+            if wb:
+                by_wb.setdefault(wb, []).append(o)
         for i in range(0, len(fresh_wbs), 500):
             chunk = fresh_wbs[i:i + 500]
             q = "SELECT wb_order_id, subtotal, shipping_cost, sku, ship_zip, coupon_savings FROM archive_zoro WHERE wb_order_id IN (%s)" % (",".join("?" * len(chunk)))
             for ar in con.execute(q, chunk):
-                wb_id = ar["wb_order_id"]
-                for o in orders_map.values():
-                    if o.get("wb_order_id") == wb_id:
-                        if not o.get("zoro_subtotal") and ar["subtotal"] is not None:
-                            o["zoro_subtotal"] = ar["subtotal"]
-                        if not o.get("zoro_shipping") and ar["shipping_cost"] is not None:
-                            o["zoro_shipping"] = ar["shipping_cost"]
-                        if not o.get("zoro_sku") and ar["sku"]:
-                            o["zoro_sku"] = ar["sku"]
-                        if not o.get("zoro_buyer_zip") and ar["ship_zip"]:
-                            o["zoro_buyer_zip"] = ar["ship_zip"]
-                        if not o.get("coupon_savings") and ar["coupon_savings"] is not None:
-                            o["coupon_savings"] = ar["coupon_savings"]
+                for o in by_wb.get(ar["wb_order_id"], ()):
+                    if not o.get("zoro_subtotal") and ar["subtotal"] is not None:
+                        o["zoro_subtotal"] = ar["subtotal"]
+                    if not o.get("zoro_shipping") and ar["shipping_cost"] is not None:
+                        o["zoro_shipping"] = ar["shipping_cost"]
+                    if not o.get("zoro_sku") and ar["sku"]:
+                        o["zoro_sku"] = ar["sku"]
+                    if not o.get("zoro_buyer_zip") and ar["ship_zip"]:
+                        o["zoro_buyer_zip"] = ar["ship_zip"]
+                    if not o.get("coupon_savings") and ar["coupon_savings"] is not None:
+                        o["coupon_savings"] = ar["coupon_savings"]
 
     # 3. Fetch bot_decisions in window
     bw, ba = ["1=1"], []

@@ -309,6 +309,8 @@ def main():
     check("the archive lookup is guarded by a table check, before anything is loaded",
           'if fresh_wbs and _has_table(con, "archive_zoro")' in ins)
     check("compute() is the cached wrapper around _compute()", "def _compute(" in ins and "_RESULT_CACHE[key] = (stamp, now, val)" in ins)
+    check("the archive enrichment indexes orders by WB once instead of scanning them per archive row",
+          "by_wb.setdefault(wb, []).append(o)" in ins and "for o in orders_map.values():\n                    if o.get(\"wb_order_id\") == wb_id" not in ins)
     if have_slim:
         c = _rocon()
         sel = INS.needed_cols(c, "closing_orders").split(", ")
