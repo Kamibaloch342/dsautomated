@@ -815,6 +815,14 @@ def enrich_from_archive(conn, amazon_id, wb_id, run_id):
                 if val not in (None, ""):
                     enriched[dest] = val
                     log_enrichment(run_id, amazon_id, "archive_tracking", dest, None, val, confidence=0.9)
+            # Zoro's own delivery estimate, stated in every shipping email. It is an
+            # expectation, not a delivery — so it goes to zoro_deliver_by, never to
+            # delivery_status, and it is what makes "overdue" computable without FedEx.
+            eta = _CS.extract_zoro_eta(row["raw_body_snippet"], row["email_timestamp"])
+            if eta:
+                enriched["zoro_deliver_by"] = eta
+                log_enrichment(run_id, amazon_id, "archive_tracking", "zoro_deliver_by",
+                               None, eta, confidence=0.9)
 
     rows = conn.execute(
         "SELECT * FROM archive_returns WHERE amazon_order_id = ? ORDER BY email_timestamp DESC",
