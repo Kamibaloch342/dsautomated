@@ -48,6 +48,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import platform
 import shutil
 import sqlite3
@@ -248,6 +249,30 @@ def dashboard_up(port: int) -> bool:
 
 
 # ── the agent ─────────────────────────────────────────────────────────────
+
+_TUNNEL_URL_RE = {
+    "cloudflared": re.compile(r"https://([a-z0-9-]+)\.trycloudflare\.com"),
+    "localtunnel": re.compile(r"https://([a-z0-9-]+)\.loca\.lt"),
+}
+
+
+def pick_tunnel_url(name: str, text: str) -> str:
+    """The public address a tunnel process printed, or ''. Takes the LAST one in the text.
+    For cloudflared, api.trycloudflare.com is the control endpoint it talks to, not our
+    tunnel — the old scrape took the first match it saw and wrote exactly that into
+    cloudflared.url, so the file pointed at a host that answers 405 to everything."""
+    rx = _TUNNEL_URL_RE.get(name)
+    if not rx:
+        return ""
+    hits = [m.group(0) for m in rx.finditer(text or "") if m.group(1) != "api"]
+    return hits[-1] if hits else ""
+
+
+def _tg_send(text: str) -> None:
+    from utils.telegram import send_telegram_message
+    send_telegram_message(text, background=False)
+
+
 class Agent:
     def __init__(self, cfg: dict):
         self.cfg = cfg
@@ -724,7 +749,8 @@ class Agent:
                 cf = shutil.which("cloudflared") or ""
             if cf:
                 self._ensure_tunnel("cloudflared",
-                                    [cf, "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate"])
+                                    [cf, "tunnel", "--url", f"http://127.0.0.1:{port}", "--no-autoupdate",
+                                     "--protocol", "http2"])
 
     def _ensure_tunnel(self, name: str, cmd: list[str], url_hint: str = "") -> None:
         p = self._tunnel_procs.get(name)
@@ -737,6 +763,7 @@ class Agent:
             if os.path.exists(logp) and os.path.getsize(logp) > 5 * 1048576:
                 open(logp, "w").close()
             logf = open(logp, "a", encoding="utf-8")
+            start_at = os.path.getsize(logp) if os.path.exists(logp) else 0
             self._tunnel_procs[name] = subprocess.Popen(cmd, cwd=AUTO, stdout=logf, stderr=subprocess.STDOUT,
                                                         stdin=subprocess.DEVNULL, start_new_session=not IS_WIN)
             # exponential backoff between restarts: 30 s → 60 → 120 → … ≤ 10 min
@@ -746,26 +773,49 @@ class Agent:
             log(f"🌐 {name} started (pid {self._tunnel_procs[name].pid})")
             if url_hint:
                 self._tunnel_urls[name] = url_hint
-            elif name == "cloudflared":
-                threading.Thread(target=self._scrape_cf_url, args=(logp,), daemon=True).start()
+            # Both services print the address they actually gave us; the hint is only what we
+            # asked for (localtunnel fell back to a random name 79 times on 21 Sep 2026).
+            threading.Thread(target=self._scrape_tunnel_url, args=(name, logp, start_at), daemon=True).start()
         except Exception as e:
             log(f"⚠️ {name}: {e}")
             self._tunnel_backoff[name] = time.time() + 300
 
-    def _scrape_cf_url(self, logp: str) -> None:
-        import re
+    def _scrape_tunnel_url(self, name: str, logp: str, start_at: int = 0) -> None:
+        """Read only what THIS tunnel process wrote (from start_at) so an earlier run's address
+        in the same log is never mistaken for the new one; then publish and announce it."""
         for _ in range(60):
             time.sleep(2)
-            for ln in tail_lines(logp, 200):
-                m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", ln)
-                if m:
-                    self._tunnel_urls["cloudflared"] = m.group(0)
-                    try:
-                        with open(os.path.join(DATA, "cloudflared.url"), "w") as f:
-                            f.write(m.group(0))
-                    except OSError:
-                        pass
-                    return
+            try:
+                with open(logp, "r", encoding="utf-8", errors="replace") as f:
+                    f.seek(start_at)
+                    url = pick_tunnel_url(name, f.read())
+            except OSError:
+                url = ""
+            if url:
+                self._tunnel_urls[name] = url
+                try:
+                    with open(os.path.join(DATA, f"{name}.url"), "w") as f:
+                        f.write(url)
+                except OSError:
+                    pass
+                self._announce_tunnel(name, url)
+                return
+
+    def _announce_tunnel(self, name: str, url: str) -> None:
+        """Tell the owner on Telegram when a tunnel's public address changes. The quick tunnel
+        and localtunnel hand out a new one on every restart, and nothing else surfaced it."""
+        key = f"{name}_last_url"
+        if not url or self.state.get(key) == url:
+            return
+        self.state[key] = url
+        try:
+            self._save_state()
+        except Exception:
+            pass
+        try:
+            _tg_send(f"🌐 Dashboard address ({name}): {url}")
+        except Exception as e:
+            log(f"⚠️ could not announce {name} url: {e}")
 
     # ── scheduler ─────────────────────────────────────────────────────────
     # ── DB sync between machines (journal → R2 → other machines) ──────────
