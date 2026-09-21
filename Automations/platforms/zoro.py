@@ -549,18 +549,40 @@ def _resolve_cart_item_state(driver, sku, cart_response):
 #  CART
 # ==============================================================================
 
-def clear_cart_selenium(driver):
-    """Clear all cart items via Selenium (API DELETE is unreliable)."""
+def clear_cart_selenium(driver, timeout=90):
+    """Clear all cart items via Selenium (API DELETE is unreliable). Bounded.
+
+    21 Sep 2026: Zoro answered DELETE /v1/cart/<id>/items/<zoroNo> with HTTP 500, so the item
+    never left the cart. This was `while True` with a two-second sleep, and the Remove button it
+    clicked went to the same failing backend — DM_RESELLER clicked it for thirteen minutes and
+    placed nothing, twice in one evening, with no line in the log after the first click.
+
+    It now stops when the cart stops shrinking, or when `timeout` seconds have passed, and
+    returns False so the caller abandons the order before any money is spent instead of the
+    whole placer standing still."""
     try:
         driver.get("https://www.zoro.com/cart")
         time.sleep(3)
-        while True:
+        deadline = time.time() + timeout
+        last, stalls = None, 0
+        while time.time() < deadline:
             btns = driver.find_elements(By.CSS_SELECTOR, 'button[data-za*="-remove-cta"]')
-            if not btns:
-                break
+            n = len(btns)
+            if not n:
+                return True
+            if last is not None and n >= last:
+                stalls += 1
+                if stalls >= 3:
+                    print(f"   [ZORO] cart still holds {n} item(s) after {stalls} remove clicks "
+                          f"— Zoro is refusing the removal, giving up")
+                    return False
+            else:
+                stalls = 0
+            last = n
             driver.execute_script("arguments[0].click();", btns[0])
             time.sleep(2)
-        return True
+        print(f"   [ZORO] cart clear gave up after {timeout}s — {last} item(s) still there")
+        return False
     except Exception as e:
         print(f"   [ZORO API] Selenium cart clear failed: {e}")
         return False
