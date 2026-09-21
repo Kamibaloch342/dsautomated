@@ -121,6 +121,26 @@ def main():
             s5 = _extract_checkout_summary(d)
             check("an absurd remainder (63.31 on a 29.70 subtotal) is a misread page → tax stays None",
                   s5["tax"] is None and s5["tax_derived"] is False, str(s5))
+
+            # Every piece of JavaScript checkout/ ships must at least parse in Chrome. (20 Sep
+            # 2026: a control character inside one regex literal made every DM_RESELLER checkout
+            # throw "Invalid regular expression: missing /" before Place Order.)
+            import ast as _ast
+            import re as _re
+            _blobs = []
+            for _rel in ("checkout/dom.py", "checkout/true_api.py"):
+                for _n in _ast.walk(_ast.parse(src(_rel))):
+                    if (isinstance(_n, _ast.Constant) and isinstance(_n.value, str) and "\n" in _n.value
+                            and ("document." in _n.value or "arguments[" in _n.value)):
+                        _js = _re.sub(r"%\([^)]*\)[sdrf]|%[sdrf]", "0", _n.value)   # %-templates
+                        _blobs.append((f"{_rel}:{_n.lineno}", _js))
+            _fails = []
+            for _where, _js in _blobs:
+                _err = d.execute_script(
+                    "try { new Function(arguments[0]); return null; } catch (e) { return String(e); }", _js)
+                if _err:
+                    _fails.append(f"{_where} → {str(_err)[:80]}")
+            check(f"all {len(_blobs)} JavaScript blobs in checkout/ parse in Chrome", not _fails, " | ".join(_fails[:4]))
         finally:
             d.quit()
 

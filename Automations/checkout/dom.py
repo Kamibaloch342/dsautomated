@@ -1626,7 +1626,7 @@ def _switch_payment_to_credit_card(driver):
             var buttons = document.querySelectorAll('button');
             for (var btn of buttons) {
                 if (!isVis(btn) || btn.disabled) continue;
-                var text = (btn.textContent || '').replace(/[ \t\r\n]+/g, ' ').trim();
+                var text = (btn.textContent || '').replace(/\\s+/g, ' ').trim();
                 if (wanted.indexOf(text) !== -1) {
                     btn.click();
                     return text;

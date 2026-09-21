@@ -270,6 +270,39 @@ def main():
         check(f"says '{want}' when that is what it was waiting on",
               dom._why_not_clickable(state) == want, dom._why_not_clickable(state))
 
+
+    # ── every JavaScript regex literal we ship is one Chrome can parse ────────
+    # 20 Sep 2026: `[ \t\r\n]` written inside a NON-raw Python string reached Chrome as a real
+    # tab, CR and newline inside /[...]+/g — "Invalid regular expression: missing /" — and every
+    # DM_RESELLER checkout (the one profile that confirms a credit card) failed for 14 hours.
+    print("\n── JavaScript regex literals hold no real control characters ──")
+    import glob as _glob
+    import re as _re
+
+    def _js_regex_faults(text):
+        faults = []
+        for m in _re.finditer(r"(?:replace|test|match|exec|split|search)\(\s*/", text):
+            rest = text[m.end():].split("\n", 1)[0]          # a regex literal cannot span lines
+            close = _re.search(r"(?<!\\)/", rest)
+            if close is None or _re.search(r"[\t\r\x08\x0c\x0b]", rest[:close.start()]):
+                faults.append(text[m.start():m.start() + 30])
+        return faults
+
+    check("the scanner catches the 20 Sep literal", _js_regex_faults("t.replace(/[ \t\r\n]+/g, ' ')"))
+    check("...and passes the correct one", not _js_regex_faults(r"t.replace(/\s+/g, ' ')"))
+    _bad = []
+    for _f in _glob.glob(os.path.join(AUTO, "**", "*.py"), recursive=True):
+        if ".venv" in _f or "site-packages" in _f or os.path.basename(_f).startswith("test_"):
+            continue
+        try:
+            _tree = ast.parse(open(_f, encoding="utf-8").read())
+        except Exception:
+            continue
+        for _n in ast.walk(_tree):
+            if isinstance(_n, ast.Constant) and isinstance(_n.value, str) and _js_regex_faults(_n.value):
+                _bad.append(f"{os.path.relpath(_f, AUTO)}:{_n.lineno}")
+    check("no JavaScript string in the repo carries a broken regex literal", not _bad, ", ".join(_bad[:5]))
+
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} passed")
     if FAIL:
         print("FAILED:", ", ".join(FAIL))
