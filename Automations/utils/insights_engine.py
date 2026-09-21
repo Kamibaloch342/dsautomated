@@ -47,10 +47,15 @@ def _parse_date(d_str: Any) -> Optional[date]:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
         except ValueError:
             pass
-    # "Fri, Sep 11, 2026" or "Sep 11, 2026"
-    for fmt in ("%a, %b %d, %Y", "%b %d, %Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+    # "Fri, Sep 11, 2026" or "Sep 11, 2026" (a trailing zone like " PDT" is ignored).
+    # NOTE: this used to do s.split("T")[0] to drop an ISO time — which turned every date
+    # starting with Tue/Thu into "" and parsed it to None, so Amazon promise dates on Tuesdays
+    # and Thursdays silently disabled every rule that reads them. ISO forms are handled above.
+    s = re.sub(r"\s+[A-Z]{2,4}$", "", s)
+    for fmt in ("%a, %b %d, %Y", "%A, %b %d, %Y", "%a, %B %d, %Y", "%A, %B %d, %Y",
+                "%b %d, %Y", "%B %d, %Y", "%m/%d/%Y"):
         try:
-            return datetime.strptime(s.split("T")[0], fmt).date()
+            return datetime.strptime(s, fmt).date()
         except ValueError:
             pass
     return None
@@ -483,31 +488,29 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
         except Exception:
             _last_list = None
         if _last_list and _last_list > 0:
-            _d = _cur_list - _last_list
-            _pct = (_d / _last_list) * 100.0
-            if abs(_pct) >= LIST_PRICE_ALERT_PCT:
-                _dir = "UP" if _d > 0 else "DOWN"
-                _emoji = "📈" if _d > 0 else "📉"
+            # Rises only, and any rise counts: prices are compared to the cent, so a float
+            # artefact like 10.552000000000001 against 10.55 stays silent.
+            _d = round(round(_cur_list, 2) - round(_last_list, 2), 2)
+            if _d >= 0.01:
+                _pct = (_d / _last_list) * 100.0
                 insights.append({
                     "code": "ZORO_LIST_PRICE_CHANGED",
-                    "severity": "high" if abs(_pct) >= 10 else "medium",
+                    "severity": "high" if _pct >= 10 else "medium",
                     "zoro_code": zoro_code,
                     "asin": asin,
                     "sku": order.get("seller_sku") or order.get("sku") or "",
                     "title": order.get("title") or order.get("item_title") or "",
                     "account": order.get("account") or "",
                     "summary": (
-                        f"{_emoji} *ZORO LIST PRICE {_dir}* ({_pct:+.1f}%)\n\n"
-                        f"• Zoro Code: `{zoro_code}`\n"
-                        f"• Now:       *${_cur_list:.2f}* / unit\n"
-                        f"• Before:    *${_last_list:.2f}* / unit\n"
-                        f"• Change:    *{'+$' if _d >= 0 else '-$'}{abs(_d):.2f}* per unit\n"
-                        f"• Order:     {current_amz_id}"
+                        f"📈 *ZORO PRICE UP* — `{zoro_code}`\n\n"
+                        f"• Was: *${_last_list:.2f}* /ea  →  Now: *${_cur_list:.2f}* /ea\n"
+                        f"• Change: *+${_d:.2f}* /ea ({_pct:+.1f}%)\n"
+                        f"• Order: `{current_amz_id}`"
                         + (f"  (Zoro qty {zoro_qty})" if zoro_qty > 1 else "")
                     ),
                     "data": {"current_list_price": round(_cur_list, 2),
                              "last_list_price": round(_last_list, 2),
-                             "delta": round(_d, 2), "pct": round(_pct, 2)},
+                             "delta": _d, "pct": round(_pct, 2)},
                 })
 
     # -------------------------------------------------------------
@@ -701,7 +704,9 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     # -------------------------------------------------------------
     zoro_date = _parse_date(zoro_deliver_str)
     amz_deliver_by = _parse_date(deliver_by_str)
-    if zoro_date and amz_deliver_by and zoro_date > amz_deliver_by:
+    # Alert when Zoro's own "Delivery by" date is two or more days after the date Amazon
+    # promised the buyer. One day late is within the carrier's normal variance.
+    if zoro_date and amz_deliver_by and (zoro_date - amz_deliver_by).days >= 2:
         days_late = (zoro_date - amz_deliver_by).days
         order_line = f"• Order: `{current_amz_id}`\n" if current_amz_id else ""
         insights.append({
@@ -713,15 +718,13 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             "sku": sku_str,
             "product_title": title_str,
             "summary": (
-                f"⏰ *DELIVERY WINDOW MISMATCH (Late Risk)*\n\n"
+                f"⏰ *ZORO DELIVERS LATE* — `{zoro_code}`\n\n"
                 f"• Title: *{title_str}*\n"
                 f"• SKU: `{sku_str}`\n"
                 f"• ASIN: `{asin}`\n"
                 f"{order_line}\n"
-                f"• Amazon Promise Date: *{amz_deliver_by.strftime('%a, %b %d')}*\n"
-                f"• Zoro Est. Delivery:  *{zoro_date.strftime('%a, %b %d')}* (🚨 *{days_late} day{'s' if days_late > 1 else ''} LATE*)\n"
-                f"• Carrier:             FedEx Ground\n"
-                f"• Defect Risk:         Potential Late Delivery defect on OTDR"
+                f"• Amazon deliver by: *{amz_deliver_by.strftime('%a, %b %d')}*\n"
+                f"• Zoro delivery by:  *{zoro_date.strftime('%a, %b %d')}*  (*{days_late} days* later)"
             ),
             "data": {
                 "amazon_deliver_by": str(amz_deliver_by),
@@ -867,3 +870,14 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
             })
 
     return insights
+
+
+# ── what the placer is allowed to send ───────────────────────────────────────────────────
+# Exactly two alerts, chosen by the owner on 21 Sep 2026: Zoro's /ea price went up against the
+# last one we recorded for that code, and Zoro's delivery date is 2+ days after Amazon's
+# promise. Every other rule still runs for the dashboard, but never reaches WhatsApp.
+PLACER_ALERT_CODES = ("ZORO_LIST_PRICE_CHANGED", "DELIVERY_MISMATCH_LATE")
+
+
+def placer_alerts(order: Dict[str, Any]) -> List[Dict[str, Any]]:
+    return [i for i in analyze_order_insights(order) if i.get("code") in PLACER_ALERT_CODES]

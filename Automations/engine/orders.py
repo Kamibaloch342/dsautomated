@@ -472,7 +472,7 @@ def _upsert_unified_db(amazon_id, detail, **extra):
         }
         # Raw Zoro price facts live on order_placer_orders only. insert_order builds its
         # column list from data.keys(), so an unknown key would fail the orders-table write.
-        _placer_only = {k: extra.pop(k, None) for k in ("zoro_list_price", "zoro_subtotal", "zoro_shipping")}
+        _placer_only = {k: extra.pop(k, None) for k in ("zoro_list_price", "zoro_subtotal", "zoro_shipping", "zoro_deliver_by")}
         # Merge extra fields (amazon_fees, shipping_amt, coupon, dates, etc.)
         for key, val in extra.items():
             if val is not None and val != "":
@@ -501,6 +501,7 @@ def _upsert_unified_db(amazon_id, detail, **extra):
                 "zoro_list_price": _placer_only.get("zoro_list_price"),
                 "zoro_subtotal": _placer_only.get("zoro_subtotal"),
                 "zoro_shipping": _placer_only.get("zoro_shipping"),
+                "zoro_deliver_by": _placer_only.get("zoro_deliver_by"),
                 "profit_dollars": data.get("profit_dollars"),
                 "coupon_used": data.get("coupon_used", ""),
                 "coupon_savings": data.get("coupon_savings", 0.0),
@@ -4524,6 +4525,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     deliver_by_date=db,
                     zoro_tax=split_taxes[idx] if idx < len(split_taxes) else (logged_tax / len(all_wb_ids) if logged_tax else None),
                     zoro_list_price=primary_item.get("api_price"),
+                zoro_deliver_by=(addr.get("_zoro_deliver_by") if isinstance(addr, dict) else None),
                     zoro_subtotal=logged_subtotal,
                     zoro_shipping=logged_shipping,
                     coupon_used=(last_checkout_result.get("used_coupon_code") if last_checkout_result else None),
@@ -4578,7 +4580,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 
             # Operational Insights & Anomaly Analysis
             try:
-                from utils.insights_engine import analyze_order_insights
+                from utils.insights_engine import placer_alerts
                 from utils.whatsapp import notify_insight
                 insight_data = dict(split_detail)
                 if 'note_data' in locals():
@@ -4606,7 +4608,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 insight_data["coupon_used"] = (last_checkout_result.get("used_coupon_code") if last_checkout_result else None)
                 order_acct = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
                 insight_data["account"] = order_acct
-                triggered_insights = analyze_order_insights(insight_data)
+                # Zoro's "Delivery by" date was scraped from the PDP before the cart flow (addr).
+                insight_data["zoro_deliver_by"] = ((addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "")
+                                                   or insight_data.get("zoro_deliver_by") or "")
+                triggered_insights = placer_alerts(insight_data)
                 for ins in triggered_insights:
                     ins["account"] = order_acct
                     print(f"   💡 [Insight] Triggered: {ins.get('title')} ({ins.get('code')})")
@@ -4653,6 +4658,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 deliver_by_date=db,
                 zoro_tax=logged_tax,
                 zoro_list_price=primary_item.get("api_price"),
+                zoro_deliver_by=(addr.get("_zoro_deliver_by") if isinstance(addr, dict) else None),
                 zoro_subtotal=logged_subtotal,
                 zoro_shipping=logged_shipping,
                 coupon_used=(last_checkout_result.get("used_coupon_code") if last_checkout_result else None),
@@ -4709,7 +4715,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 
         # Operational Insights & Anomaly Analysis
         try:
-            from utils.insights_engine import analyze_order_insights
+            from utils.insights_engine import placer_alerts
             from utils.whatsapp import notify_insight
             insight_data = dict(normal_detail)
             if 'note_data' in locals():
@@ -4740,7 +4746,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 insight_data["zoro_deliver_by"] = last_checkout_result.get("est_delivery") or last_checkout_result.get("zoro_deliver_by")
             order_acct = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
             insight_data["account"] = order_acct
-            triggered_insights = analyze_order_insights(insight_data)
+            # Zoro's "Delivery by" date was scraped from the PDP before the cart flow (addr).
+            insight_data["zoro_deliver_by"] = ((addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "")
+                                               or insight_data.get("zoro_deliver_by") or "")
+            triggered_insights = placer_alerts(insight_data)
             for ins in triggered_insights:
                 ins["account"] = order_acct
                 print(f"   💡 [Insight] Triggered: {ins.get('title')} ({ins.get('code')})")

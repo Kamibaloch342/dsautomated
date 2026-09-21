@@ -223,7 +223,7 @@ def main():
     check("case-insensitive on the code", U.last_list_price("g3057148", conn=con) == 2.29)
     check("unknown code → None", U.last_list_price("G0000000", conn=con) is None)
     check("the placer keeps these off the orders-table write (its columns come from data.keys())",
-          '_placer_only = {k: extra.pop(k, None) for k in ("zoro_list_price", "zoro_subtotal", "zoro_shipping")}'
+          '_placer_only = {k: extra.pop(k, None) for k in ("zoro_list_price", "zoro_subtotal", "zoro_shipping", "zoro_deliver_by")}'
           in src("engine/orders.py"))
     con.close()
 
@@ -243,18 +243,20 @@ def main():
     try:
         check("first placement (no baseline) → no alert", alerts(2.19, None) == [])
         check("same price → no alert", alerts(2.19, 2.19) == [])
-        check("+1.9% → no alert", alerts(2.19 * 1.019, 2.19) == [])
+        check("+1.9% (a rise of 4¢) → alert — any rise counts", len(alerts(2.19 * 1.019, 2.19)) == 1)
         a = alerts(2.19 * 1.021, 2.19)
         check("+2.1% → alert", len(a) == 1 and "UP" in a[0]["summary"], str(a)[:90])
         a = alerts(2.19 * 0.97, 2.19)
-        check("-3% → alert, direction DOWN", len(a) == 1 and "DOWN" in a[0]["summary"])
+        check("-3% (a drop) → no alert — only rises are alerts", a == [])
+        a = alerts(2.30, 2.19)
         check("the alert names both prices and the delta",
-              "$2.12" in a[0]["summary"] and "$2.19" in a[0]["summary"] and "per unit" in a[0]["summary"])
+              "$2.19" in a[0]["summary"] and "$2.30" in a[0]["summary"] and "+$0.11" in a[0]["summary"] and "/ea" in a[0]["summary"])
         a1 = alerts(2.19, 2.19, zqty=25)
         a2 = alerts(2.19, 2.19, zqty=1)
         check("an MOQ-25 order and a qty-1 order at the same list price both stay silent",
               a1 == [] and a2 == [])
-        check("the threshold is the one chosen (2%)", IE.LIST_PRICE_ALERT_PCT == 2.0)
+        check("one cent is enough; a sub-cent float artefact is not",
+              len(alerts(2.20, 2.19)) == 1 and alerts(2.194, 2.19) == [] and alerts(10.552000000000001, 10.55) == [])
         check("the old derived-from-totals rule is off unless explicitly re-enabled",
               IE._LEGACY_BASE_PRICE_ALERT is False
               and "if _LEGACY_BASE_PRICE_ALERT and current_base_unit > 0 and zoro_code:" in src("utils/insights_engine.py"))

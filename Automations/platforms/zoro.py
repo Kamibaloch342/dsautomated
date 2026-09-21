@@ -205,6 +205,11 @@ def last_inventory_qty(sku):
 
 _DELIV_RE1 = re.compile(r"font-weight-cart[^>]*>\s*Delivery (?:on or before|by) (?:tomorrow,?\s*)?([A-Z][a-z]{2,9}\.?\s+\d{1,2})")
 _DELIV_RE2 = re.compile(r"Delivery on or before (?:tomorrow,?\s*)?([A-Z][a-z]{2,9}\.?\s+\d{1,2})")
+# Sep 2026 wording: "Delivery by Thursday, September 24" — a weekday before the month. The two
+# patterns above never matched it, so only 257 of 5,382 orders in the week to 21 Sep carried a
+# Zoro delivery date and the late-delivery alert could not fire.
+_DELIV_RE3 = re.compile(r"Delivery (?:on or before|by) (?:tomorrow,?\s*)?"
+                        r"(?:(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day,?\s+)?([A-Z][a-z]{2,9}\.?\s+\d{1,2})")
 
 
 def _parse_deliv(s):
@@ -235,7 +240,7 @@ def get_zoro_delivery_date(driver, sku):
                 time.sleep(4)
         html = driver.page_source or ""
         _record_pdp_promo(sku, html)                 # free: same rendered page
-        m = _DELIV_RE1.search(html) or _DELIV_RE2.search(html)
+        m = _DELIV_RE1.search(html) or _DELIV_RE2.search(html) or _DELIV_RE3.search(html)
         return _parse_deliv(m.group(1)) if m else ""
     except Exception as e:
         print(f"  ⚠️ get_zoro_delivery_date({sku}) failed: {e}")
