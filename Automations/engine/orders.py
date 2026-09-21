@@ -442,6 +442,15 @@ def _upsert_unified_db(amazon_id, detail, **extra):
         # (every multi-item order was missing from the dashboard). Sum the
         # per-item quantities instead; a plain int is unchanged.
         qty_total = sum(int(n) for n in re.findall(r"\d+", str(detail.get("qty", 0) or 0)))
+        # detail["qty"] is what we ordered on ZORO (a 25-pack listing buys 25 boxes). The
+        # Amazon quantity — units the buyer bought — travels in amazon_qty. Writing the Zoro
+        # count into `quantity` made every per-unit price downstream 25x too small (the
+        # "$36.99 was $1.48, +2399%" alert of 21 Sep 2026).
+        _amz_units = extra.pop("amazon_qty", None)
+        try:
+            amazon_units = int(_amz_units) if _amz_units not in (None, "") else qty_total
+        except (TypeError, ValueError):
+            amazon_units = qty_total
         data = {
             "amazon_order_id": amazon_id,
             "merchant_order_id": detail.get("wb_id", ""),
@@ -449,7 +458,7 @@ def _upsert_unified_db(amazon_id, detail, **extra):
             "account": account,
             "asin": detail.get("asin", ""),
             "sku": detail.get("sku", ""),
-            "quantity": qty_total,
+            "quantity": amazon_units,
             "ship_city": detail.get("city", ""),
             "ship_state": detail.get("state", ""),
             "ship_postal_code": detail.get("zip", ""),
@@ -4507,6 +4516,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 }
                 _log_order(split_detail)
                 _upsert_unified_db(amazon_id, split_detail,
+                    amazon_qty=primary_item.get("order_qty"),
                     amazon_fees=amazon_fees,
                     shipping_amt=shipping_amt,
                     purchase_date=pd,
@@ -4635,6 +4645,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             }
             _log_order(normal_detail)
             _upsert_unified_db(amazon_id, normal_detail,
+                amazon_qty=primary_item.get("order_qty"),
                 amazon_fees=amazon_fees,
                 shipping_amt=shipping_amt,
                 purchase_date=pd,

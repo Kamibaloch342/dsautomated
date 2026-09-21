@@ -56,6 +56,36 @@ def _parse_date(d_str: Any) -> Optional[date]:
     return None
 
 
+def last_amazon_unit_price(asin: str, exclude_amazon_id: str = "") -> Optional[Dict[str, Any]]:
+    """The previous Amazon selling price per unit for this ASIN, from closing_orders — the
+    table filled from Amazon's own order report (item_price = line total, quantity = units the
+    buyer bought). order_placer_orders is not a safe source for this: until 21 Sep 2026 the
+    placer wrote the ZORO quantity into its `quantity` column, so a 25-pack sold once looked
+    like 25 units at $1.48 and the alert reported a +2399% price rise."""
+    if not asin:
+        return None
+    c = _get_db()
+    if not c:
+        return None
+    try:
+        r = c.execute(
+            """SELECT item_price, quantity, purchase_date FROM closing_orders
+               WHERE UPPER(asin) = ? AND amazon_order_id != ?
+                 AND CAST(item_price AS REAL) > 0 AND CAST(quantity AS INTEGER) > 0
+               ORDER BY purchase_date DESC LIMIT 1""",
+            (asin.strip().upper(), str(exclude_amazon_id or ""))).fetchone()
+        if not r:
+            return None
+        return {"unit_price": round(float(r[0]) / int(r[1]), 2), "date": r[2]}
+    except Exception:
+        return None
+    finally:
+        try:
+            c.close()
+        except Exception:
+            pass
+
+
 def get_historical_asin_orders(asin: str, limit: int = 10) -> List[Dict[str, Any]]:
     """Retrieve historical orders for an ASIN from automations_unified.db."""
     if not asin:
@@ -67,7 +97,7 @@ def get_historical_asin_orders(asin: str, limit: int = 10) -> List[Dict[str, Any
     try:
         # Search both order_placer_orders and orders tables
         rows = c.execute(
-            """SELECT amazon_order_id, asin, sku, title, quantity, earnings, amazon_fees,
+            """SELECT amazon_order_id, asin, sku, title, quantity, zoro_qty, earnings, amazon_fees,
                       shipping_amt, zoro_order_total, purchase_date, ship_by_date, deliver_by_date,
                       zoro_deliver_by, zoro_stock, alt_used, main_sku, placed_at
                FROM order_placer_orders
@@ -80,7 +110,7 @@ def get_historical_asin_orders(asin: str, limit: int = 10) -> List[Dict[str, Any
 
         # Fallback to general orders table
         rows = c.execute(
-            """SELECT amazon_order_id, asin, sku, title, quantity, earnings, amazon_fees,
+            """SELECT amazon_order_id, asin, sku, title, quantity, zoro_qty, earnings, amazon_fees,
                       shipping_amt, zoro_order_total, purchase_date, ship_by_date, deliver_by_date,
                       item_price, shipping_price
                FROM orders
@@ -375,22 +405,34 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     # -------------------------------------------------------------
     # 1. Amazon Item Price Changed
     # -------------------------------------------------------------
-    if item_unit_price > 0 and last_order:
-        last_item_price = float(last_order.get("item_price") or 0.0)
-        last_qty = max(1, int(last_order.get("amazon_qty") or last_order.get("quantity") or 1))
-        if last_item_price > 0:
-            last_item_unit_price = round(last_item_price / last_qty, 2)
+    _amz_prev = last_amazon_unit_price(asin, exclude_amazon_id=current_amz_id) if item_unit_price > 0 else None
+    if item_unit_price > 0 and (_amz_prev or last_order):
+        if _amz_prev:
+            # Amazon's own report: line total / units bought. Authoritative.
+            last_item_unit_price = _amz_prev["unit_price"]
+            last_date_str = _amz_prev["date"] or "earlier"
         else:
-            # If item_price wasn't directly in orders, compute from earnings / qty
-            last_earn = float(last_order.get("earnings") or 0.0)
-            last_fees = float(last_order.get("amazon_fees") or 0.0)
-            last_ship = float(last_order.get("shipping_amt") or 0.0)
-            last_item_unit_price = round((last_earn + last_fees - last_ship) / last_qty, 2)
+            # No closed order for this ASIN yet — fall back to the placer's record, dividing by
+            # the AMAZON quantity only. A row whose quantity equals its Zoro quantity above 1
+            # was written before the 21 Sep 2026 fix and would divide by the Zoro count, so it
+            # is not a baseline.
+            last_item_price = float(last_order.get("item_price") or 0.0)
+            last_qty = max(1, int(last_order.get("amazon_qty") or last_order.get("quantity") or 1))
+            _zq = int(last_order.get("zoro_qty") or 0)
+            if last_item_price > 0:
+                last_item_unit_price = round(last_item_price / last_qty, 2)
+            elif _zq > 1 and last_qty == _zq:
+                last_item_unit_price = 0.0
+            else:
+                last_earn = float(last_order.get("earnings") or 0.0)
+                last_fees = float(last_order.get("amazon_fees") or 0.0)
+                last_ship = float(last_order.get("shipping_amt") or 0.0)
+                last_item_unit_price = round((last_earn + last_fees - last_ship) / last_qty, 2)
+            last_date_str = last_order.get("purchase_date") or last_order.get("placed_at") or "earlier"
 
         if last_item_unit_price > 0 and abs(item_unit_price - last_item_unit_price) >= 0.50:
             delta = item_unit_price - last_item_unit_price
             pct = (delta / last_item_unit_price) * 100.0
-            last_date_str = last_order.get("purchase_date") or last_order.get("placed_at") or "earlier"
             direction = "INCREASED" if delta > 0 else "DECREASED"
             emoji = "📈" if delta > 0 else "📉"
             status_badge = "🟢" if delta > 0 else "🔴"
