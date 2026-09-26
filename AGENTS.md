@@ -57,8 +57,9 @@ agent and the dashboard run as macOS LaunchAgents.
 * **Closing chain** — `scripts/daily_bulk.py` (▶ Run Closing, or auto-closing from `bot_config.json`):
   Gmail archive fetch + incremental sync → `closing.py` **report-diff ingest** (only new / changed /
   new-evidence orders get a pass) → placer sync → `scripts/reconcile_and_reenrich.py` →
-  exception-only SC scrape (`scripts/scrape_sc_fields.py`) → delivery re-check
-  (`scripts/fedex_recheck.py`, only with carrier API keys) → live-Gmail gap-fill → reconcile →
+  exception-only SC scrape (`scripts/scrape_sc_fields.py`) → **delivery check through Zoro's own
+  order tracking** (`scripts/zoro_delivery_check.py`, since 27 Sep 2026 — no carrier key, no
+  Chrome; `docs/ZORO_TRACKING.md`) → live-Gmail gap-fill → reconcile →
   messaging (`scripts/send_delivery_messages.py`) → coverage. Telemetry: `closing_run_log`
   (`/api/runs` on the dashboard).
 * **Dashboard** `dashboard/server.py` (:8000, `v2.html`); **cloud agent** `scripts/cloud_agent.py`
@@ -70,9 +71,11 @@ agent and the dashboard run as macOS LaunchAgents.
   (accounts, inboxes, carrier API keys), `bot_config.json` (runtime knobs).
 
 Order lifecycle: Amazon sale → placer buys on Zoro (WB id) → Zoro "received" / "shipped" emails
-→ tracker uploads tracking + messages the buyer → carrier confirms delivery → closing labels the
-order (Completed / Loss / Refunded / Cancelled / Incomplete) → delivery check-in (6 d) and review
-request (12 d).
+→ tracker uploads tracking + messages the buyer → Zoro's tracking confirms delivery → closing labels
+the order (Completed / Loss / Refunded / Cancelled / Incomplete) → delivery check-in the day of
+delivery, review request 6 days later, and one delay notice when a shipment has had no carrier
+scan for 3 days (all in `bot_config.json → messaging`). Late (2 d past deliver-by) and stalled
+(3 d) shipments, Zoro-cancelled orders and untrackable freight sit under Attention → Delivery.
 
 ---
 
@@ -102,7 +105,7 @@ request (12 d).
 | How is an order placed / routed | `engine/orders.py` (`process_order`), `docs/CLOUD_ARCHITECTURE.md` §5 |
 | Why did closing (not) touch an order | `closing.py` `_select_work` (reasons printed per run); `Final_Testing_Logs/runs/<run>.jsonl` |
 | What the tracker uploaded | `order_placer_orders.tracking_id_uploaded`, `action_log` |
-| Delivery status source | `engine/fedex_api.py` — official FedEx Track API and UPS API; the browser tiers are off (Akamai) |
+| Delivery status source | `engine/zoro_tracking.py` + `scripts/zoro_delivery_check.py` — Zoro's guest order tracking (`docs/ZORO_TRACKING.md`); `engine/fedex_api.py` (FedEx/UPS APIs) only with `DELIVERY_SOURCE=carrier` and keys |
 | Messaging guards | `engine/post_delivery.py` (`prefetch_guards`, `process_single_order`) |
 | DB size / WAL / backups | `scripts/slim_database.py`, agent `wal_checkpoint`, `~/.zuhra/backups` |
 | Run durations | `closing_run_log`, `/api/runs` |

@@ -656,8 +656,8 @@ html[data-theme="dark"] .dbk-pill .cnt{background:rgba(255,255,255,0.1)}
     </section>
 
     <section class="sec" id="sec-attention">
-      <div class="sec-head"><h1>Attention</h1><span class="sub">severe money leaks, placer blockers, bot decisions, and the tracker</span><span class="grow"></span><span class="upd" id="att-upd"></span><button class="b s" onclick="Att.load(true)">Refresh</button></div>
-      <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="log">Supervisor log<span class="cnt" id="att-c-log"></span></button><button data-tab="tracker">Tracker<span class="cnt" id="att-c-tracker"></span></button></div>
+      <div class="sec-head"><h1>Attention</h1><span class="sub">severe money leaks, late and stalled deliveries, placer blockers, bot decisions, and the tracker</span><span class="grow"></span><span class="upd" id="att-upd"></span><button class="b s" onclick="Att.load(true)">Refresh</button></div>
+      <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="delivery">Delivery<span class="cnt" id="att-c-delivery"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="log">Supervisor log<span class="cnt" id="att-c-log"></span></button><button data-tab="tracker">Tracker<span class="cnt" id="att-c-tracker"></span></button></div>
       <div id="att-body"><span class="skel"></span><span class="skel"></span></div>
     </section>
 
@@ -961,20 +961,24 @@ const Home = {
   async loadAtt(){
     const acct = S.gp.account;
     const q = {account: acct};
-    const r = await Promise.allSettled([GET("/api/severe", q), GET("/api/unmapped", q), GET("/api/needs_priority", q), GET("/api/placer_events", {hours:24, status:"SUPERVISED,ROUTED_TO_RESELLER,ROUTED_TO_COUPON,SUPERVISOR_RETRY", limit:500})]);
+    const r = await Promise.allSettled([GET("/api/severe", q), GET("/api/unmapped", q), GET("/api/needs_priority", q), GET("/api/placer_events", {hours:24, status:"SUPERVISED,ROUTED_TO_RESELLER,ROUTED_TO_COUPON,SUPERVISOR_RETRY", limit:500}), GET("/api/delivery_watch", Object.assign({counts:1}, q))]);
     const v = r.map(x => x.status==="fulfilled" ? x.value : null);
     const sev = v[0] || {}; const sevN = (sev.refund_no_return?.open||0)+(sev.refund_loss?.open||0);
     const pnc = sev.placed_not_captured?.count||0;
     const um = v[1]?.total_orders||0, np = v[2]?.total_orders||0;
     const ev = v[3]?.events||[]; const byS = {}; ev.forEach(e => byS[e.status]=(byS[e.status]||0)+1);
+    const dw = v[4] || {}; const lateN = dw.late_count||0, stallN = dw.stalled_count||0, zcN = dw.zoro_cancelled_count||0;
     const rows = [
       ["Severe refunds", sevN, `refund without return / refund at a loss · ${U.money((sev.refund_no_return?.exposure||0)+(sev.refund_loss?.exposure||0),0)} exposure (${esc(sev.account||"Hathoro")})`, "attention","severe"],
+      ["Zoro cancelled", zcN, `Zoro cancelled the supplier order while Amazon shows it shipped — refund or re-place`, "attention","delivery"],
+      ["Late deliveries", lateN, `not delivered ${dw.late_days||2}+ days after the deliver-by date (Zoro tracking${dw.last_check?", checked "+esc(String(dw.last_check).slice(0,16)):""})`, "attention","delivery"],
+      ["Stalled shipments", stallN, `no carrier movement for ${dw.stalled_days||3}+ days · the buyer gets one delay notice`, "attention","delivery"],
       ["Placed, not captured", pnc, `Zoro orders with no Amazon order · ${U.money(sev.placed_not_captured?.exposure||0,0)}`, "attention","severe"],
       ["Unmapped ASINs", um, `${v[1]?.total_asins||0} ASINs blocking placement (last 45 min of runs)`, "attention","unmapped"],
       ["Needs priority", np, `${v[2]?.total_asins||0} ASINs skipped — unlabelled and not in priority control`, "attention","needs_priority"],
       ["Bot decisions (24 h)", ev.length, Object.entries(byS).map(([k,n])=>`${k.toLowerCase().replace(/_/g," ")} ${n}`).join(" · ")||"supervised / routed / retried", "attention","bot"],
     ];
-    const total = sevN+pnc+um+np;
+    const total = sevN+pnc+um+np+lateN+stallN+zcN;
     $("#cnt-attention").textContent = total||"";
     $("#home-att").innerHTML = `<div class="att">${rows.map(([l,n,s,sec,sub])=>`<a class="item" href="#${sec}/${sub}" onclick="event.preventDefault();Nav.go('${sec}','${sub}')"><span class="n ${n?"":"zero"}">${U.int(n)}</span><span class="l">${l}<small>${s}</small></span><span class="muted">›</span></a>`).join("")}</div>`
       + (r.some(x=>x.status==="rejected") ? `<div class="smallnote">some counters failed: ${r.filter(x=>x.status==="rejected").map(x=>esc(x.reason.message)).join("; ")}</div>` : "");
@@ -1388,6 +1392,7 @@ const Att = {
   fetch(tab){
     const acct = S.gp.account;
     if (tab === "severe") return GET("/api/severe", {account: acct});
+    if (tab === "delivery") return GET("/api/delivery_watch", {account: acct});
     if (tab === "unmapped") return GET("/api/unmapped", {account: acct});
     if (tab === "needs_priority") return GET("/api/needs_priority", {account: acct});
     if (tab === "bot") return GET("/api/placer_events", {hours: this.botHours, limit: 1000});
@@ -1460,6 +1465,19 @@ const Att = {
   },
   /* ── tracker: flagged / commented / follow-up orders, grouped by day of last activity ── */
   trk: {group:true, follow:true, flags:new Set(), tags:new Set(), status:"", q:""},
+  r_delivery(d){
+    const late = d.late||[], st = d.stalled||[], un = d.untracked||[], zc = d.zoro_cancelled||[];
+    $("#att-c-delivery").textContent = (late.length+st.length+zc.length)||"";
+    const dt = v => v ? esc(String(v).slice(0,16)) : "—";
+    const notice = r => r.delay_notice_sent==="Yes" ? `<span class="pill ok">notice sent ${dt(r.delay_notice_at)}</span>` : r.customer_messaged==="Yes" ? `<span class="pill warn">buyer wrote</span>` : `<span class="muted">—</span>`;
+    const row = (r, extra) => `<tr class="click" data-open="${esc(r.amazon_order_id)}"><td class="mono">${esc(r.amazon_order_id)}<br><span class="muted small">${esc(r.wb_order_id||"")}</span></td><td>${esc(r.account||"")}</td><td>${esc(r.ship_name||"")}<br><span class="muted small">${esc([r.ship_city,r.ship_state].filter(Boolean).join(", "))}</span></td><td class="mono small">${esc(r.deliver_by_date||"")}${r.zoro_deliver_by?`<br><span class="muted">Zoro ${esc(r.zoro_deliver_by)}</span>`:""}</td>${extra}<td><span class="pill ${/Exception/.test(r.delivery_status||"")?"bad":"warn"}">${esc(r.delivery_status||"—")}</span></td><td class="wrap" style="max-width:360px">${esc(r.delivery_note||"")}<br><span class="muted small">${dt(r.last_scan_time)} ${esc(r.last_scan_location||"")}</span></td><td class="small">${notice(r)}</td><td class="mono small wrap" style="max-width:200px">${esc(r.tracking_ids||"")}</td></tr>`;
+    const table = (title, sub, rows, hdr, mk) => `<div class="card grp"><div class="hd"><h2>${title}</h2><span class="sub">${sub}</span></div>${rows.length ? `<div class="tblwrap" style="border:0;border-radius:0;box-shadow:none;max-height:520px"><table class="t"><thead><tr><th>Order</th><th>Store</th><th>Buyer</th><th>Deliver by</th>${hdr}<th>Status</th><th>Last scan</th><th>Delay notice</th><th>Tracking</th></tr></thead><tbody>${rows.slice(0,500).map(mk).join("")}</tbody></table></div>` : `<div class="bd muted">nothing here</div>`}</div>`;
+    return `<div class="smallnote" style="margin-bottom:10px">From Zoro's own order tracking — last check ${esc(d.last_check||"never")}, ${U.int(d.checked||0)} orders answered${d.note?` · ${esc(d.note)}`:""}. <b>Zoro cancelled</b> = Zoro cancelled the supplier order while Amazon shows it shipped · <b>Late</b> = not delivered ${d.late_days}+ days after the Amazon deliver-by date · <b>Stalled</b> = no carrier scan for ${d.stalled_days}+ days (the messaging run sends the buyer one delay notice) · <b>Freight</b> = LTL carriers Zoro cannot track.</div>`
+      + (zc.length ? `<div class="card grp"><div class="hd"><h2><span class="pill bad">Zoro cancelled</span> <span class="cnt">${zc.length}</span></h2><span class="sub">the buyer will not receive these — refund or re-place</span></div><div class="tblwrap" style="border:0;border-radius:0;box-shadow:none;max-height:360px"><table class="t"><thead><tr><th>Order</th><th>Store</th><th>Buyer</th><th>Purchased</th><th>Amazon</th><th>Earnings</th><th>Tracking</th></tr></thead><tbody>${zc.slice(0,300).map(r=>`<tr class="click" data-open="${esc(r.amazon_order_id)}"><td class="mono">${esc(r.amazon_order_id)}<br><span class="muted small">${esc(r.wb_order_id||"")}</span></td><td>${esc(r.account||"")}</td><td>${esc(r.ship_name||"")}<br><span class="muted small">${esc([r.ship_city,r.ship_state].filter(Boolean).join(", "))}</span></td><td class="mono small">${esc(String(r.purchase_date||"").slice(0,10))}</td><td>${esc(r.order_status||"")}</td><td class="mono">${U.money(r.earnings||0)}</td><td class="mono small">${esc(r.tracking_ids||"")}</td></tr>`).join("")}</tbody></table></div></div>` : "")
+      + table(`Late deliveries <span class="cnt">${late.length}</span>`, `undelivered ${d.late_days}+ days past deliver-by · most overdue first`, late, `<th>Days late</th>`, r => row(r, `<td class="mono"><b>${U.int(r.days_late)}</b></td>`))
+      + table(`Stalled shipments <span class="cnt">${st.length}</span>`, `no carrier movement for ${d.stalled_days}+ days · longest first`, st, `<th>Stalled</th>`, r => row(r, `<td class="mono"><b>${U.int(r.stalled_days)}</b> d</td>`))
+      + (un.length ? `<details class="card grp"><summary style="cursor:pointer;padding:10px 14px"><b>Freight / untracked</b> <span class="cnt">${un.length}</span> <span class="muted small">— shipped via carriers Zoro cannot track (WARD, Dayton, US Cargo…) or not found under any account; confirm by hand</span></summary><div class="tblwrap" style="border:0;border-radius:0;box-shadow:none;max-height:360px"><table class="t"><thead><tr><th>Order</th><th>Store</th><th>Buyer</th><th>Deliver by</th><th>Carrier</th><th>Note</th><th>Tracking</th></tr></thead><tbody>${un.slice(0,300).map(r=>`<tr class="click" data-open="${esc(r.amazon_order_id)}"><td class="mono">${esc(r.amazon_order_id)}<br><span class="muted small">${esc(r.wb_order_id||"")}</span></td><td>${esc(r.account||"")}</td><td>${esc(r.ship_name||"")}</td><td class="mono small">${esc(r.deliver_by_date||"")}</td><td>${esc(r.carrier||"")}</td><td class="wrap">${esc(r.delivery_note||"")}</td><td class="mono small">${esc(r.tracking_ids||"")}</td></tr>`).join("")}</tbody></table></div></details>` : "");
+  },
   r_tracker(d){
     const items = d.items||[]; $("#att-c-tracker").textContent = items.length||"";
     return `<div class="row trk-row"><input class="in s" id="trk-q" placeholder="filter: order, WB, ASIN, tag, note, account…" value="${esc(this.trk.q)}" oninput="Att.trk.q=this.value;Att.trkQ()" style="min-width:260px"><div id="trk-ctl" class="row grow" style="gap:6px">${this.trkControls(items)}</div></div>

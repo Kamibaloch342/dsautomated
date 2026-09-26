@@ -623,6 +623,16 @@ class App(tk.Tk):
                 return False, "account must be HOANK or Hathoro"
             self._start_messaging(acct_title)
             return True, f"messaging started ({acct_title})"
+        if a == "run_delivery_check":
+            if "delivery_all" in self._procs:
+                return True, "a delivery check is already running"
+            self._start_delivery_check("ALL")
+            return True, "delivery check started (Zoro tracking, both stores)"
+        if a == "stop_delivery_check":
+            if "delivery_all" in self._procs:
+                self._stop("delivery_all")
+                return True, "stopping the delivery check"
+            return True, "no delivery check running"
         if a == "reload_config":
             self._load_config()
             return True, "config reloaded"
@@ -1702,6 +1712,19 @@ class App(tk.Tk):
                   "The Gmail archive fetch/sync runs once instead of twice and the two\n"
                   "accounts never contend for the database. Same steps as the per-store\n"
                   "buttons; the per-store Stop buttons stop the whole chain.")
+        # Delivery on its own (27 Sep 2026): Zoro's order tracking for every shipped,
+        # undelivered order of both stores — the step the chain runs as step 5, runnable
+        # any time without the report/scrape/messaging around it. No Chrome needed.
+        dlv_btn = self._btn(ctrl, "🚚 Delivery check", self.CYAN,
+                            lambda: self._start_delivery_check(), small=True)
+        dlv_btn.pack(side="left", padx=(8, 0))
+        self._tip(dlv_btn,
+                  "DELIVERY CHECK (both stores) — asks Zoro's own order tracking for every\n"
+                  "shipped, undelivered order of the last 60 days (rechecked every 20 h):\n"
+                  "delivery status + date, last scan, stalled days, missing tracking IDs,\n"
+                  "then Completed labels. Feeds the dashboard's Attention → Delivery lists\n"
+                  "(late / stalled) and the messaging run (check-in on delivery, delay\n"
+                  "notice after 3 days without movement). No Chrome, ~0.5 s per order.")
 
         self.lbl_cls = tk.Label(ctrl, text="Idle", font=(self.MONO, 9),
                                 bg=self.CARD, fg=self.MUTED)
@@ -1819,6 +1842,21 @@ class App(tk.Tk):
                            + (" DRY" if self.cls_msg_dry.get() else "") if chain else ""), "ok")
         self._update_hdr()
 
+    def _start_delivery_check(self, account="ALL"):
+        """🚚 Delivery check = scripts/zoro_delivery_check.py: Zoro's own order tracking for
+        every shipped, undelivered order (both stores in one run, one lock). The closing
+        chain runs the same script as its step 5; this button runs it alone."""
+        name = "delivery_all"
+        if name in self._procs:
+            messagebox.showinfo("Info", "A delivery check is already running.")
+            return
+        cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "scripts", "zoro_delivery_check.py")]
+        extra_env = {"ZORO_TRACK_ACCOUNT": str(account or "ALL")}
+        self._filter.set("All")
+        self._launch(name, cmd, "both", extra_env=extra_env)
+        self._feed_line("Delivery check started (Zoro tracking, both stores)", "ok")
+        self._update_hdr()
+
     def _start_messaging(self, account):
         """✉ Run Messaging = scripts/send_delivery_messages.py for the selected
         account: delivery check-ins + review requests for every delivered order
@@ -1843,7 +1881,7 @@ class App(tk.Tk):
     def _stop_closing_procs(self, account):
         """Stop this account's bulk and/or messaging runs (a combined both-store chain too)."""
         acct = account.lower()
-        for name in (f"bulk_{acct}", f"messages_{acct}", "bulk_all"):
+        for name in (f"bulk_{acct}", f"messages_{acct}", "bulk_all", "delivery_all"):
             if name in self._procs:
                 self._stop(name)
 
@@ -4044,9 +4082,9 @@ class App(tk.Tk):
         if filt == "Tracking Hathoro":
             return source == "tracking_hathoro"
         if filt == "Closing HOANK":
-            return source == "bulk_all" or (source.endswith("_hoank") and source.startswith(("bulk_", "messages_", "closing_")))
+            return source in ("bulk_all", "delivery_all") or (source.endswith("_hoank") and source.startswith(("bulk_", "messages_", "closing_")))
         if filt == "Closing Hathoro":
-            return source == "bulk_all" or (source.endswith("_hathoro") and source.startswith(("bulk_", "messages_", "closing_")))
+            return source in ("bulk_all", "delivery_all") or (source.endswith("_hathoro") and source.startswith(("bulk_", "messages_", "closing_")))
         if filt == "Coupons":
             return source == "coupon"
         if filt == "Listings":
@@ -4448,7 +4486,7 @@ class App(tk.Tk):
         # The closing chain: bulk_<acct> (report → ingest → SC scrape → FedEx) and
         # messages_<acct> (delivery messages + review requests). closing.ensure_chrome and
         # post_delivery both read this, so the chain stays windowless end to end.
-        if name.startswith(("bulk_", "messages_")) and self._closing_headless():
+        if name.startswith(("bulk_", "messages_", "delivery_")) and self._closing_headless():
             env["ZUHRA_HEADLESS_CLOSING"] = "1"
         tag = f"{name}_{label}" if label else name
         self._tags[name] = tag

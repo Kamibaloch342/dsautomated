@@ -1089,6 +1089,76 @@ def tracking_uploads_from_action_log(amazon_order_ids=None, db_path=None) -> dic
     return out
 
 
+# ── Zoro delivery tracking (27 Sep 2026) ─────────────────────────────────────
+ZORO_PACKAGE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS zoro_package_tracking (
+    wb_order_id        TEXT NOT NULL,
+    tracking_number    TEXT NOT NULL,
+    amazon_order_id    TEXT,
+    carrier            TEXT,
+    status             TEXT,
+    delivered_at       TEXT,
+    shipped_at         TEXT,
+    last_event         TEXT,
+    last_event_at      TEXT,
+    last_exception     TEXT,
+    last_location      TEXT,
+    last_movement_at   TEXT,
+    estimated_delivery TEXT,
+    delayed            INTEGER DEFAULT 0,
+    n_events           INTEGER DEFAULT 0,
+    events_json        TEXT,
+    url                TEXT,
+    checked_at         TEXT,
+    PRIMARY KEY (wb_order_id, tracking_number)
+);
+CREATE INDEX IF NOT EXISTS idx_zpt_amazon ON zoro_package_tracking(amazon_order_id);
+CREATE INDEX IF NOT EXISTS idx_zpt_status ON zoro_package_tracking(status);
+"""
+# closing_orders columns the Zoro delivery check and the delay notices write.
+ZORO_TRACKING_COLUMNS = {
+    "zoro_order_status": "TEXT",      # Zoro's own order status text
+    "delivery_source": "TEXT",        # 'zoro' | 'fedex_api' | 'ups_api' | 'manual'
+    "delivery_checked_at": "TEXT",    # last time a delivery source answered for this order
+    "last_movement_at": "TEXT",       # latest physical carrier scan across all packages
+    "stalled_days": "INTEGER",        # days since last_movement_at while undelivered
+    "delay_notice_sent": "TEXT",      # Yes / No Permission / No
+    "delay_notice_at": "TEXT",
+}
+
+
+def ensure_zoro_tracking_schema(db_path=None) -> list:
+    """Create the package table and add the closing_orders columns (idempotent)."""
+    added = []
+    with get_conn(db_path) as conn:
+        conn.executescript(ZORO_PACKAGE_SCHEMA)
+        have = {r[1] for r in conn.execute("PRAGMA table_info(closing_orders)")}
+        for col, typ in ZORO_TRACKING_COLUMNS.items():
+            if col not in have:
+                conn.execute(f"ALTER TABLE closing_orders ADD COLUMN {col} {typ}")
+                added.append(col)
+    return added
+
+
+def upsert_package_tracking(rows: list, conn=None, db_path=None) -> int:
+    """rows: dicts with the zoro_package_tracking columns (events_json already a string)."""
+    if not rows:
+        return 0
+    cols = ["wb_order_id", "tracking_number", "amazon_order_id", "carrier", "status", "delivered_at",
+            "shipped_at", "last_event", "last_event_at", "last_exception", "last_location",
+            "last_movement_at", "estimated_delivery", "delayed", "n_events", "events_json", "url", "checked_at"]
+    sql = (f"INSERT INTO zoro_package_tracking ({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))}) "
+           f"ON CONFLICT(wb_order_id, tracking_number) DO UPDATE SET "
+           + ", ".join(f"{c}=excluded.{c}" for c in cols if c not in ("wb_order_id", "tracking_number")))
+    vals = [[r.get(c) for c in cols] for r in rows]
+    if conn is not None:
+        conn.executemany(sql, vals)
+        return len(vals)
+    with get_conn(db_path) as c:
+        c.executemany(sql, vals)
+    return len(vals)
+
+
 def wal_checkpoint(mode: str = "TRUNCATE", db_path=None, busy_ms: int = 30000) -> dict:
     """PRAGMA wal_checkpoint(mode) → {'busy', 'wal_pages', 'checkpointed'}. TRUNCATE also
     resets the -wal file to zero bytes when no reader is still using it."""

@@ -57,8 +57,52 @@ AMAZON_REVIEW_URL = (
     "https://sellercentral.amazon.com/messaging/reviews?orderID={oid}&marketplaceID=ATVPDKIKX0DER"
 )
 
-DAYS_AFTER_DELIVERY_TO_MESSAGE = 6
-DAYS_AFTER_DELIVERY_TO_REVIEW = 12
+# ── Timing (owner, 27 Sep 2026) ──────────────────────────────────────────────
+# The delivery check-in goes out as soon as Zoro's tracking shows the package delivered, the
+# review request 6 days after delivery, and a buyer whose package has not moved for 3 days
+# hears from us before they have to ask. Every number comes from bot_config.json →
+# "messaging" (the launcher's file) with these defaults; the day windows are inclusive.
+_MSG_DEFAULTS = {
+    "delivery_message_days": 0,        # days after delivery before the check-in (0 = same day)
+    "delivery_message_max_days": 7,    # older deliveries are no longer "did it arrive?" material
+    "review_days": 6,                  # days after delivery before the review request
+    "review_max_days": 30,             # Amazon's own request window closes at 30 days
+    "delay_notice_enabled": True,
+    "delay_notice_stalled_days": 3,    # no carrier movement for this long → tell the buyer
+    "delay_notice_max_stalled_days": 10,  # a stall older than this is a case for a person, not a template
+    "delay_notice_max_days": 45,       # purchase age beyond which we do not start a delay thread
+    "delay_notice_fresh_hours": 36,    # the tracking answer must be at most this old
+}
+
+
+def messaging_cfg() -> dict:
+    cfg = dict(_MSG_DEFAULTS)
+    try:
+        from utils.config import load_gui_config
+        raw = (load_gui_config().get("messaging") or {})
+        for k, d in _MSG_DEFAULTS.items():
+            v = raw.get(k)
+            if v in (None, ""):
+                continue
+            if isinstance(d, bool):
+                cfg[k] = v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on")
+            else:
+                cfg[k] = int(float(v))
+    except Exception:
+        pass
+    return cfg
+
+
+_MCFG = messaging_cfg()
+DAYS_AFTER_DELIVERY_TO_MESSAGE = _MCFG["delivery_message_days"]
+DELIVERY_MESSAGE_MAX_DAYS = _MCFG["delivery_message_max_days"]
+DAYS_AFTER_DELIVERY_TO_REVIEW = _MCFG["review_days"]
+REVIEW_MAX_DAYS = _MCFG["review_max_days"]
+DELAY_NOTICE_ENABLED = _MCFG["delay_notice_enabled"]
+DELAY_NOTICE_STALLED_DAYS = _MCFG["delay_notice_stalled_days"]
+DELAY_NOTICE_MAX_STALLED_DAYS = _MCFG["delay_notice_max_stalled_days"]
+DELAY_NOTICE_MAX_DAYS = _MCFG["delay_notice_max_days"]
+DELAY_NOTICE_FRESH_HOURS = _MCFG["delay_notice_fresh_hours"]
 HIGH_VALUE_EARNINGS_THRESHOLD = 100.0
 
 RETURN_SUBJECT_PATTERN = "Return authorization notification"
@@ -725,11 +769,17 @@ def build_delivery_message(order: dict, store_name: str) -> str:
             f"Kind regards,\nCustomer Support Team\n{store_name}"
         )
 
-    # Standard template
+    # Standard template. Since 27 Sep 2026 this goes out the day Zoro's tracking shows the
+    # delivery, so a same-day note says so instead of "following up".
+    if _delivery_days_ago(str(delivery_date)) == 0:
+        opening = (f"Hope you're doing well! Our tracking shows your order ({oid}) was "
+                   f"delivered today via FedEx — we just wanted to make sure it arrived safely.\n\n")
+    else:
+        opening = (f"Hope you're doing well! Just wanted to follow up and make sure your "
+                   f"order ({oid}) arrived safely via FedEx.\n\n")
     return (
         "Hello {buyer_name},\n\n"
-        f"Hope you're doing well! Just wanted to follow up and make sure your "
-        f"order ({oid}) arrived safely via FedEx.\n\n"
+        f"{opening}"
         f"{multi_note}"
         f"Tracking ID(s):\n{tracking_lines}\n"
         f"{delivery_info}\n\n"
@@ -738,6 +788,166 @@ def build_delivery_message(order: dict, store_name: str) -> str:
         f"Thanks again for your order — we really appreciate it.\n\n"
         f"Kind regards,\nCustomer Support Team\n{store_name}"
     )
+
+
+# ── Delay notice (27 Sep 2026) ───────────────────────────────────────────────
+# A shipped order whose carrier scans stopped for DELAY_NOTICE_STALLED_DAYS (from Zoro's own
+# tracking — scripts/zoro_delivery_check.py writes stalled_days / last_movement_at) gets ONE
+# honest heads-up before the buyer has to ask. Same guards as the check-in: no open return or
+# refund, no buyer thread (a human answers those), no cancellation request, zip match, and
+# never twice (delay_notice_sent + the "Your e-mail to" copy in Gmail).
+_DELAY_STRONG = (
+    "has not had a carrier scan",
+    "no carrier scan",
+    "appears to be delayed",
+    "delayed in transit",
+    "has not been delivered yet",
+    "days without movement",
+)
+
+
+def _stalled_days(order: dict) -> Optional[int]:
+    """Days since the last physical carrier movement, from the sweep's column or its timestamp."""
+    v = order.get("stalled_days")
+    try:
+        if v not in (None, ""):
+            return int(float(v))
+    except (TypeError, ValueError):
+        pass
+    lm = _parse_date_loose(str(order.get("last_movement_at") or ""))
+    if lm:
+        return max(0, (datetime.now() - lm).days)
+    return None
+
+
+def check_delay_notice_already_sent(gmail_services: Dict[str, object], order_id: str) -> bool:
+    """Our own copy of an earlier delay notice for this order ('Your e-mail to …' in Gmail)."""
+    for svc in gmail_services.values():
+        for msg_meta in _search_gmail(svc, f'subject:"Your e-mail to" "{order_id}"', max_results=5):
+            try:
+                full = svc.users().messages().get(userId="me", id=msg_meta["id"], format="full").execute()
+                body = clean_html(get_email_body(full)).lower()
+            except Exception:
+                continue
+            if any(p in body for p in _DELAY_STRONG):
+                logger.info("  [DELAY-Check] %s — found a prior delay notice in Gmail", order_id)
+                return True
+    return False
+
+
+def build_delay_message(order: dict, store_name: str) -> str:
+    oid = order["amazon_order_id"]
+    tracking_lines, multi_note = _build_tracking_lines(order.get("tracking_ids", ""))
+    days = _stalled_days(order)
+    last_at = _parse_date_loose(str(order.get("last_movement_at") or order.get("last_scan_time") or ""))
+    last_txt = last_at.strftime("%A, %B %d") if last_at else "several days ago"
+    scan = str(order.get("delivery_note") or "").strip()
+    where = str(order.get("last_scan_location") or "").strip()
+    scan_line = ""
+    if scan or where:
+        scan_line = "Last carrier scan: " + " — ".join(x for x in (scan, where) if x) + "\n"
+    since = f"since {last_txt}" + (f" ({days} days without movement)" if days else "")
+    return (
+        "Hello {buyer_name},\n\n"
+        f"We're reaching out about your order ({oid}). Our carrier tracking shows the package "
+        f"has not had a carrier scan {since}, and it has not been delivered yet. "
+        f"We're sorry about the delay.\n\n"
+        f"{multi_note}"
+        f"Tracking ID(s):\n{tracking_lines}\n"
+        f"{scan_line}\n"
+        f"We are monitoring the shipment closely. If it does not start moving again within the "
+        f"next couple of days, we will make it right with a replacement or a full refund — "
+        f"whichever you prefer; just reply to this message and let us know. If the package "
+        f"arrives in the meantime, no action is needed on your end.\n\n"
+        f"Thank you for your patience, and again, our apologies for the inconvenience.\n\n"
+        f"Kind regards,\nCustomer Support Team\n{store_name}"
+    )
+
+
+def process_delay_notice(
+    driver,
+    order: dict,
+    account_config: dict,
+    gmail_services: Dict[str, object],
+    closing_table: bool = True,
+    dry_run: bool = False,
+    guards: Optional[dict] = None,
+) -> dict:
+    """One delay notice for a stalled, undelivered order. Modifies `order` in place and
+    returns it; order['delay_notice_sent'] ends as Yes | No Permission | No | '' (not due)."""
+    store_name = account_config.get("name", "HOANK")
+    oid = order.get("amazon_order_id", "")
+    if not oid or not DELAY_NOTICE_ENABLED or not account_config.get("send_messages", True):
+        return order
+    original = dict(order)
+    if (order.get("delay_notice_sent") or "") in ("Yes", "No Permission"):
+        return order
+    if order.get("delivery_status") in ("Delivered", "AllDelivered") or not order.get("delivery_status"):
+        return order                     # delivered, or nothing trackable (freight / not found)
+    stalled = _stalled_days(order)
+    if stalled is None or stalled < DELAY_NOTICE_STALLED_DAYS:
+        return order
+    if stalled > DELAY_NOTICE_MAX_STALLED_DAYS:
+        # Weeks without movement is not "a heads-up": the order sits in Attention → Delivery
+        # for a person to resolve (refund / replacement), and no template goes out.
+        return order
+
+    g = guards if (guards and guards.get("complete")) else None
+    if g is not None and oid not in g["inquiry"]:
+        inquiry = ""
+    else:
+        inquiry = customer_inquiry_status(gmail_services, oid) if gmail_services else ""
+    if inquiry:
+        logger.info("  [%s] %s — buyer already wrote (%s); a person answers, no delay notice", store_name, oid, inquiry)
+        order["customer_messaged"] = "Yes"
+        order["customer_inquiry"] = inquiry
+        _persist(oid, {"customer_messaged": "Yes", "customer_inquiry": inquiry}, closing_table, dry_run, existing=original)
+        return order
+    if g is not None and oid not in g["returns"] and oid not in g["refunds"]:
+        return_found, refund_found = False, False
+    else:
+        return_found, refund_found = check_returns_refunds(gmail_services, oid) if gmail_services else (False, False)
+    if return_found or refund_found:
+        updates = {}
+        if return_found:
+            updates["return_requested"] = "Yes"
+        if refund_found:
+            updates["refund_done"] = "Yes"
+        logger.info("  [%s] %s — return/refund in progress, no delay notice", store_name, oid)
+        _persist(oid, updates, closing_table, dry_run, existing=original)
+        order.update(updates)
+        return order
+    if gmail_services and (g is None or oid in g["cancel"]) and check_cancellation_requested(gmail_services, oid):
+        logger.info("  [%s] %s — buyer asked to cancel; a person handles it, no delay notice", store_name, oid)
+        order["delay_notice_sent"] = "No"
+        _persist(oid, {"delay_notice_sent": "No"}, closing_table, dry_run, existing=original)
+        return order
+    ship_zip = (order.get("ship_postal_code") or "").replace("-", "").strip()
+    zoro_zip = (order.get("zoro_buyer_zip") or "").replace("-", "").strip()
+    if ship_zip and zoro_zip and ship_zip != zoro_zip:
+        logger.info("  [%s] %s — zip mismatch (%s vs %s), no delay notice", store_name, oid, ship_zip, zoro_zip)
+        order["delay_notice_sent"] = "No"
+        _persist(oid, {"delay_notice_sent": "No"}, closing_table, dry_run, existing=original)
+        return order
+    if gmail_services and (g is None or oid in g["sent"]) and check_delay_notice_already_sent(gmail_services, oid):
+        order["delay_notice_sent"] = "Yes"
+        _persist(oid, {"delay_notice_sent": "Yes"}, closing_table, dry_run, existing=original)
+        return order
+    if dry_run:
+        logger.info("  [DRY] [%s] %s — would send the delay notice (%s days without movement)", store_name, oid, stalled)
+        return order
+    text = build_delay_message(order, store_name)
+    fallback = (order.get("ship_name") or order.get("buyer_name") or "").strip()
+    result = send_amazon_message(driver, oid, text, store_name, fallback_name=fallback)
+    order["delay_notice_sent"] = result
+    updates = {"delay_notice_sent": result}
+    if result == "Yes":
+        order["delay_notice_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        updates["delay_notice_at"] = order["delay_notice_at"]
+    logger.info("  [%s] %s — delay notice result: %s", store_name, oid, result)
+    _persist(oid, updates, closing_table, dry_run, existing=original)
+    time.sleep(random.uniform(3, 6))
+    return order
 
 
 # ── Main orchestrator ────────────────────────────────────────────────────────
@@ -769,7 +979,7 @@ def _is_driver_alive(driver) -> bool:
 _TERMINAL_STATUSES = ("Yes", "No Permission", "Already Requested", "Expired")
 _GUARDED_FIELDS = (
     "delivered_msg_sent", "review_requested", "return_requested",
-    "refund_done", "customer_messaged", "customer_inquiry",
+    "refund_done", "customer_messaged", "customer_inquiry", "delay_notice_sent",
 )
 
 
@@ -889,7 +1099,8 @@ def process_single_order(
     zoro_zip = (order.get("zoro_buyer_zip") or "").replace("-", "").strip()
 
     # ── Delivery message ──
-    if can_message and msg_sent not in ("Yes", "No Permission") and days_since >= DAYS_AFTER_DELIVERY_TO_MESSAGE:
+    if can_message and msg_sent not in ("Yes", "No Permission") \
+            and DAYS_AFTER_DELIVERY_TO_MESSAGE <= days_since <= DELIVERY_MESSAGE_MAX_DAYS:
         if ship_zip and zoro_zip and ship_zip != zoro_zip:
             logger.info("  [%s] %s — zip mismatch (%s vs %s), skipping msg", store_name, oid, ship_zip, zoro_zip)
             order["delivered_msg_sent"] = "No"

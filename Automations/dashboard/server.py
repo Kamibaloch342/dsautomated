@@ -2336,6 +2336,94 @@ def tracker(q):
     return {"items": out, "count": len(out)}
 
 
+def _pdate(s):
+    """deliver_by_date / timestamps in the formats closing stores → date, or None."""
+    if not s:
+        return None
+    s = re.sub(r"\s+(?:PST|PDT|EST|EDT|CST|CDT|MST|MDT|UTC|GMT)\b.*$", "", str(s).strip())
+    for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%a, %b %d, %Y", "%b %d, %Y",
+                "%m/%d/%Y", "%A, %m/%d/%Y %I:%M %p", "%A, %m/%d/%Y", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(s[:19]).date()
+    except Exception:
+        return None
+
+
+def delivery_watch(q):
+    """GET /api/delivery_watch?account=…[&counts=1] — the two delivery alerts (27 Sep 2026),
+    straight from what scripts/zoro_delivery_check.py wrote:
+      late     shipped, undelivered, Amazon deliver-by passed ≥ late_days ago
+      stalled  undelivered, no carrier movement for ≥ stalled_days (one delay notice goes out)
+      untracked  shipped via carriers Zoro cannot track (freight) — context, not an alert
+    Only orders the check has answered count; never-checked orders are not "late" yet."""
+    from utils.accounts_config import zoro_tracking_cfg
+    cfg = zoro_tracking_cfg()
+    late_days, stalled_days = int(cfg.get("late_days", 2)), int(cfg.get("stalled_days", 3))
+    acct = q.get("account", [""])[0]
+    counts_only = q.get("counts", [""])[0] in ("1", "true", "yes")
+    out = {"late": [], "stalled": [], "untracked": [], "zoro_cancelled": [], "late_days": late_days,
+           "stalled_days": stalled_days, "checked": 0, "last_check": "", "late_count": 0, "stalled_count": 0,
+           "untracked_count": 0, "zoro_cancelled_count": 0}
+    c = ro()
+    try:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(closing_orders)")}
+        if "delivery_checked_at" not in cols:
+            out["note"] = "the Zoro delivery check has not run yet"
+            return out
+        wanted = ["amazon_order_id", "wb_order_id", "account", "asin", "title", "ship_name", "ship_city", "ship_state",
+                  "purchase_date", "deliver_by_date", "zoro_deliver_by", "delivery_status", "delivery_note",
+                  "last_scan_time", "last_scan_location", "last_movement_at", "stalled_days", "tracking_ids",
+                  "carrier", "earnings", "delay_notice_sent", "delay_notice_at", "customer_messaged",
+                  "delivery_checked_at", "zoro_order_status", "order_status"]
+        sel = ", ".join(k for k in wanted if k in cols)
+        where = ("COALESCE(wb_order_id,'')!='' AND COALESCE(delivery_status,'') NOT IN ('Delivered','AllDelivered') "
+                 "AND COALESCE(order_label,'') NOT IN ('Cancelled','Refunded') AND COALESCE(order_status,'')!='Cancelled' "
+                 "AND (order_status='Shipped' OR COALESCE(shipped_email_time,'')!='') "
+                 "AND COALESCE(delivery_checked_at,'')!='' ")
+        args = []
+        if acct:
+            where += "AND account=? "
+            args.append(acct)
+        rows = [dict(r) for r in c.execute(f"SELECT {sel} FROM closing_orders WHERE {where} ORDER BY purchase_date DESC", args)]
+        st = c.execute("SELECT COUNT(*), MAX(delivery_checked_at) FROM closing_orders WHERE COALESCE(delivery_checked_at,'')!=''"
+                       + (" AND account=?" if acct else ""), args).fetchone()
+        out["checked"], out["last_check"] = (st[0] or 0), (st[1] or "")
+    finally:
+        c.close()
+    today = date.today()
+    for r in rows:
+        note = str(r.get("delivery_note") or "")
+        if str(r.get("zoro_order_status") or "").strip().lower() == "cancelled" \
+                and r.get("delivery_status") not in ("Delivered", "AllDelivered"):
+            out["zoro_cancelled"].append(r)            # Zoro cancelled it; Amazon still shows it shipped
+            continue
+        if not r.get("delivery_status") or note.startswith(("Freight carrier", "Zoro:")):
+            out["untracked"].append(r)                 # freight (even with a FedEx-era status), or not found
+            continue
+        due = _pdate(r.get("deliver_by_date"))
+        r["days_late"] = (today - due).days if due else None
+        sd = r.get("stalled_days")
+        if sd in (None, "") and r.get("last_movement_at"):
+            lm = _pdate(r.get("last_movement_at"))
+            sd = (today - lm).days if lm else None
+        r["stalled_days"] = sd
+        if r["days_late"] is not None and r["days_late"] >= late_days:
+            out["late"].append(r)
+        if sd is not None and int(sd) >= stalled_days:
+            out["stalled"].append(r)
+    out["late"].sort(key=lambda r: -(r["days_late"] or 0))
+    out["stalled"].sort(key=lambda r: -int(r["stalled_days"] or 0))
+    out["late_count"], out["stalled_count"], out["untracked_count"], out["zoro_cancelled_count"] = \
+        len(out["late"]), len(out["stalled"]), len(out["untracked"]), len(out["zoro_cancelled"])
+    if counts_only:
+        out["late"], out["stalled"], out["untracked"], out["zoro_cancelled"] = [], [], [], []
+    return out
+
+
 # ── RAW DATA BROWSER (view + edit closing_orders like a DB browser) ──────────
 def _co_cols():
     c = ro()
@@ -2687,6 +2775,7 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/order_zoro": return self._send(order_zoro(q))
             if p == "/api/zoro_tsv":  return self._send(zoro_tsv(q))
             if p == "/api/tracker":   return self._send(tracker(q))
+            if p == "/api/delivery_watch": return self._send(delivery_watch(q))
             if p == "/api/unmapped":  return self._send(unmapped_asins(q))
             if p == "/api/needs_priority": return self._send(needs_priority_asins(q))
             if p == "/api/ops":       return self._send(AN.ops(acct, zacct, frm, to))

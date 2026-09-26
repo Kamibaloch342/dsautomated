@@ -1423,10 +1423,16 @@ The duplicate check searches ALL 15+ Gmail inboxes. If the search fails (network
 Customer messages (delivery check-in, review requests) go to real Amazon buyers. Sending wrong/duplicate messages damages seller reputation.
 
 **NEVER:**
-- Send a delivery message if `delivery_status ≠ "Delivered"` or `"AllDelivered"`
-- Send a message before the cooldown period (6 days for delivery, 12 days for review)
-- Remove the `Msg Sent? = Yes` / `Review Sent? = Yes` re-check
-- Send messages to cancelled/refunded orders
+- Send a delivery message if `delivery_status ≠ "Delivered"` or `"AllDelivered"` — and a
+  delivery is only what Zoro's tracking (or a carrier API) confirmed, never a presumption
+- Send a message outside the owner's timing (set 27 Sep 2026, `bot_config.json → messaging`):
+  delivery check-in on the delivery day (0–7 days), review request 6–30 days after delivery,
+  ONE delay notice when a shipment has had no carrier scan for 3–10 days — never a second
+  one, never for freight/untracked orders, never for stalls older than 10 days (a person's case)
+- Remove the `Msg Sent? = Yes` / `Review Sent? = Yes` / `delay_notice_sent = Yes` re-check
+  (DB flag + the "Your e-mail to" copy in Gmail)
+- Send messages to cancelled/refunded orders, to buyers who already wrote to us, or when the
+  ship-to zip does not match Zoro's
 - Auto-send messages to customers outside the dashboard — alerts only
 
 ---

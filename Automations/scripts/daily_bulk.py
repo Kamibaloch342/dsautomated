@@ -245,6 +245,12 @@ def main():
     #    PER-ACCOUNT port base: both runs defaulting to 9341 made concurrent
     #    HOANK+Hathoro runs kill each other's FedEx Chromes (ensure_chrome
     #    pkills its port before launching) → both hung to timeout (2026-07-16).
+    #
+    #    Since 27 Sep 2026 the default source is ZORO's own order tracking (scripts/
+    #    zoro_delivery_check.py): every shipped, undelivered order of the last 60 days, its
+    #    parcels' FedEx scans straight from Zoro's guest lookup on the reseller user agent —
+    #    no Chrome, no carrier key, ~0.5 s per order. Exit 2 = Zoro refused (nothing marked).
+    #    DELIVERY_SOURCE=carrier restores the FedEx/UPS API path below.
     _fedex_bases = {acct: 9341 + 10 * i for i, acct in enumerate(_cfg_accounts())}
     try:
         from utils.accounts_config import fedex_api_credentials, ups_api_credentials
@@ -252,7 +258,12 @@ def main():
     except Exception:
         _carrier_api = False
     _fedex_browser = os.environ.get("FEDEX_BROWSER", "").strip().lower() in ("1", "true", "yes", "on")
-    if not _carrier_api and not _fedex_browser:
+    _delivery_source = os.environ.get("DELIVERY_SOURCE", "zoro").strip().lower()
+    if _delivery_source == "zoro":
+        run("Delivery check (Zoro tracking)", [PY, "scripts/zoro_delivery_check.py"],
+            env={"ZORO_TRACK_ACCOUNT": "ALL" if len(ACCTS) > 1 else ACCTS[0]},
+            timeout=int(os.environ.get("ZORO_TRACK_TIMEOUT", "7200")), critical=False)
+    elif not _carrier_api and not _fedex_browser:
         print("\n(Delivery check skipped: no carrier API credentials in config/accounts.json → fedex_api / "
               "ups_api, and the FedEx browser tiers are off (Akamai). Register a FedEx Developer Track API "
               "key — free — to get delivery_status, Completed labels and delivery messages back.)")

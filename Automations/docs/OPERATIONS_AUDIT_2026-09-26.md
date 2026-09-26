@@ -47,6 +47,7 @@ run now selects **40 orders with new evidence, skips 10,292 and finishes in 18 s
 | 4.2 Tracker cadence | ✅ report reused for 30 min (`TRACKING_REPORT_MAX_AGE_MIN`), live re-sweep of a not-found WB at most every 30 min (`TRACKING_NOTFOUND_TTL_MIN`) | `engine/tracking.py` |
 | 4.3 Move out of the Drive mirror | ⏳ **owner** | |
 | 4.4 Docs | ✅ `AGENTS.md` rewritten; stale items marked in the complete documentation and the closing guide | |
+| **27 Sep — delivery via Zoro** (supersedes 0.2 / 2.1: no carrier key needed) | ✅ Zoro's guest order tracking is the delivery source: sweep, chain step 5, launcher button, dashboard Attention → Delivery (Zoro cancelled / late / stalled / freight), messaging re-timed (check-in on delivery, review at 6 d, delay notice at 3 d without movement) | `engine/zoro_tracking.py`, `scripts/zoro_delivery_check.py`, `scripts/daily_bulk.py`, `gui/launcher.py`, `dashboard/server.py`, `v2.html`, `engine/post_delivery.py`, `scripts/send_delivery_messages.py` — see `docs/ZORO_TRACKING.md` |
 
 Running processes pick up the new code on their next start (the placers and trackers were
 not running during the change; the HOANK bulk that was mid-run spawned the new step

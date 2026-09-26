@@ -37,6 +37,26 @@ _FALLBACK = {
     # silently dropped and only the FEDEX_* environment variables ever worked.
     "fedex_api": {"client_id": "", "client_secret": ""},
     "ups_api": {"client_id": "", "client_secret": ""},
+    # Gmail token name → the mailbox address behind it (Zoro's guest order lookup needs the
+    # e-mail of the Zoro account that placed the order). Resolved from each token's Gmail
+    # profile on 27 Sep 2026.
+    "gmail_addresses": {
+        "abecomllc02": "abecomllc02@gmail.com", "abecomllc26": "abecomllc26@gmail.com",
+        "asad_amazon_us": "asad.amazon.us@gmail.com", "excurellc": "excurellc@gmail.com",
+        "inhur_llc": "inuhrecomllc5@gmail.com", "kamibaloch342": "kamibaloch342@gmail.com",
+        "kamran_va_342": "kamran.va.342@gmail.com", "kamranwork342": "kamranwork342@gmail.com",
+        "qurtdis": "qurtdistribution.llc@gmail.com", "robstark771": "robstark771@gmail.com",
+        "salesmercentile1": "salesmercentile1@gmail.com", "salesmercentile": "salesmercentile@gmail.com",
+        "salestreendfitinc": "salestreendfitinc@gmail.com", "toolzsolutionsllc220": "toolzsolutionsllc220@gmail.com",
+        "toolzsolutionsllc": "toolzsolutionsllc@gmail.com", "wrenchly": "wrenchlysolutionsllc@gmail.com",
+        "wrenchlyllc": "wrenchlysolutionsllc@gmail.com",
+    },
+    # Placer profile → the Zoro inbox (token name) that profile buys with (owner, 27 Sep 2026).
+    "zoro_profile_inboxes": {"HS_COUPON": "inhur_llc", "HS_RESELLER": "asad_amazon_us",
+                             "DM_RESELLER": "abecomllc26", "DM_COUPON": "salesmercentile"},
+    # Zoro guest tracking sweep (engine/zoro_tracking.py, scripts/zoro_delivery_check.py).
+    "zoro_tracking": {"transport": "auto", "port": 9225, "delay_s": 0.4, "workers": 4, "days": 60,
+                      "recheck_hours": 20, "late_days": 2, "stalled_days": 3},
 }
 
 _cache = None
@@ -75,6 +95,27 @@ def ups_api_credentials() -> dict:
     client_id = os.environ.get("UPS_CLIENT_ID") or cfg.get("client_id", "")
     client_secret = os.environ.get("UPS_CLIENT_SECRET") or cfg.get("client_secret", "")
     return {"client_id": str(client_id).strip(), "client_secret": str(client_secret).strip()}
+
+
+def gmail_addresses() -> dict:
+    """{token name: mailbox address} merged over the built-in table."""
+    out = dict(_FALLBACK["gmail_addresses"])
+    out.update(_load().get("gmail_addresses") or {})
+    return out
+
+
+def zoro_profile_inboxes() -> dict:
+    """{placer profile: Gmail token name of the Zoro account it buys with}."""
+    out = dict(_FALLBACK["zoro_profile_inboxes"])
+    out.update(_load().get("zoro_profile_inboxes") or {})
+    return out
+
+
+def zoro_tracking_cfg() -> dict:
+    """Settings for the Zoro guest tracking sweep, merged over the defaults."""
+    out = dict(_FALLBACK["zoro_tracking"])
+    out.update(_load().get("zoro_tracking") or {})
+    return out
 
 
 def active_locks(prefixes=None) -> list:

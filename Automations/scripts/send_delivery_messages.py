@@ -38,16 +38,19 @@ print = __import__("functools").partial(print, flush=True)
 
 from utils.accounts_config import accounts, gmail_tokens, acquire_lock, release_lock
 from engine.post_delivery import (
-    process_single_order, _get_gmail_services, _delivery_days_ago,
+    process_single_order, process_delay_notice, _get_gmail_services, _delivery_days_ago,
     _is_driver_alive, ACCOUNT_CONFIGS, prefetch_guards,
-    DAYS_AFTER_DELIVERY_TO_MESSAGE, DAYS_AFTER_DELIVERY_TO_REVIEW,
+    DAYS_AFTER_DELIVERY_TO_MESSAGE, DELIVERY_MESSAGE_MAX_DAYS, DAYS_AFTER_DELIVERY_TO_REVIEW,
+    REVIEW_MAX_DAYS, DELAY_NOTICE_ENABLED, DELAY_NOTICE_STALLED_DAYS, DELAY_NOTICE_MAX_STALLED_DAYS,
+    DELAY_NOTICE_MAX_DAYS, DELAY_NOTICE_FRESH_HOURS,
 )
 from engine.amazon_scraper import _connect_chrome
 
 ACCOUNT  = os.environ.get("MSG_ACCOUNT", "HOANK").strip()
 DRY      = os.environ.get("MSG_DRY", "").strip().lower() in ("1", "true", "yes")
 LIMIT    = int(os.environ.get("MSG_LIMIT", "300") or 0)   # 0 = unlimited (deliberate only)
-MAX_DAYS = int(os.environ.get("MSG_MAX_DAYS") or 30)
+MAX_DAYS = int(os.environ.get("MSG_MAX_DAYS") or REVIEW_MAX_DAYS)
+DELAY_LIMIT = int(os.environ.get("MSG_DELAY_LIMIT", "100") or 0)   # delay notices per run
 DB       = os.path.join(_AUTO, "data", "automations_unified.db")
 
 _MSG_TERMINAL    = ("Yes", "No Permission")
@@ -118,15 +121,61 @@ def load_pending():
     for r in rows:
         o = dict(r)
         days = _delivery_days_ago(str(o.get("delivery_date") or ""))
-        if days < DAYS_AFTER_DELIVERY_TO_MESSAGE or days > MAX_DAYS:
+        if days < 0 or days > MAX_DAYS:
             continue
+        # check-in: from the delivery day (default 0) up to DELIVERY_MESSAGE_MAX_DAYS (7);
+        # review: from DAYS_AFTER_DELIVERY_TO_REVIEW (6) up to MAX_DAYS (30).
         msg_due = (o.get("delivered_msg_sent") or "") not in _MSG_TERMINAL \
-            and days >= DAYS_AFTER_DELIVERY_TO_MESSAGE
+            and DAYS_AFTER_DELIVERY_TO_MESSAGE <= days <= DELIVERY_MESSAGE_MAX_DAYS
         rev_due = (o.get("review_requested") or "") not in _REVIEW_TERMINAL \
             and days >= DAYS_AFTER_DELIVERY_TO_REVIEW
         if msg_due or rev_due:
+            o["_days"], o["_msg_due"] = days, msg_due
             pending.append(o)
+    # delivery_date is a weekday-first string, so the SQL order is alphabetical — sort here:
+    # check-ins first (freshest delivery first), then the review requests, oldest first.
+    pending.sort(key=lambda o: (0 if o["_msg_due"] else 1, o["_days"] if o["_msg_due"] else -o["_days"]))
     return pending
+
+
+def load_delayed():
+    """Shipped, undelivered orders of THIS account whose carrier scans stopped between
+    DELAY_NOTICE_STALLED_DAYS and DELAY_NOTICE_MAX_STALLED_DAYS days ago per the LAST Zoro
+    delivery check (fresh within DELAY_NOTICE_FRESH_HOURS — a stale answer is not a reason to
+    alarm a buyer), not yet noticed, not cancelled/refunded/returned, buyer silent, purchased
+    within DELAY_NOTICE_MAX_DAYS. Older stalls stay on the dashboard for a person; freight
+    orders never qualify (no delivery_status)."""
+    if not DELAY_NOTICE_ENABLED:
+        return []
+    conn = sqlite3.connect(DB, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=30000")
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(closing_orders)")}
+        if "stalled_days" not in cols:
+            return []
+        rows = conn.execute(
+            f"""SELECT * FROM closing_orders
+                WHERE account = ?
+                  AND COALESCE(wb_order_id, '') != ''
+                  AND COALESCE(delivery_status, '') NOT IN ('', 'Delivered', 'AllDelivered')
+                  AND COALESCE(delivery_note, '') NOT LIKE 'Freight carrier%'
+                  AND (order_status = 'Shipped' OR COALESCE(shipped_email_time, '') != '')
+                  AND COALESCE(order_status, '') != 'Cancelled'
+                  AND COALESCE(order_label, '') NOT IN ('Refunded', 'Cancelled')
+                  AND COALESCE(return_requested, '') != 'Yes'
+                  AND COALESCE(refund_done, '') != 'Yes'
+                  AND COALESCE(customer_messaged, '') != 'Yes'
+                  AND COALESCE(delay_notice_sent, '') NOT IN ({','.join('?' * len(_MSG_TERMINAL))})
+                  AND COALESCE(stalled_days, 0) BETWEEN ? AND ?
+                  AND COALESCE(delivery_checked_at, '') >= datetime('now', 'localtime', ?)
+                  AND substr(purchase_date, 1, 10) >= date('now', ?)
+                ORDER BY stalled_days ASC, purchase_date DESC""",
+            [ACCOUNT, *_MSG_TERMINAL, DELAY_NOTICE_STALLED_DAYS, DELAY_NOTICE_MAX_STALLED_DAYS,
+             f"-{DELAY_NOTICE_FRESH_HOURS} hours", f"-{DELAY_NOTICE_MAX_DAYS} day"]).fetchall()
+    finally:
+        conn.close()
+    return [dict(r) for r in rows]
 
 
 def main():
@@ -149,13 +198,19 @@ def main():
 
 def _run(pd_cfg, sc_port):
     pending = load_pending()
+    delayed = load_delayed()
     print(f"[MSG] {ACCOUNT}: {len(pending)} delivered order(s) owed a message/review "
-          f"(window {DAYS_AFTER_DELIVERY_TO_MESSAGE}–{MAX_DAYS} days, dry={DRY})")
-    if not pending:
+          f"(check-in {DAYS_AFTER_DELIVERY_TO_MESSAGE}–{DELIVERY_MESSAGE_MAX_DAYS} d, review "
+          f"{DAYS_AFTER_DELIVERY_TO_REVIEW}–{MAX_DAYS} d after delivery) and {len(delayed)} stalled "
+          f"shipment(s) owed a delay notice ({DELAY_NOTICE_STALLED_DAYS}+ days without movement"
+          f"{'' if DELAY_NOTICE_ENABLED else ', notices OFF'}), dry={DRY}")
+    if not pending and not delayed:
         print("[MSG] ✅ Nothing to send.")
         return 0
     if LIMIT:
         pending = pending[:LIMIT]
+    if DELAY_LIMIT:
+        delayed = delayed[:DELAY_LIMIT]
 
     driver = None
     if not DRY:
@@ -203,7 +258,7 @@ def _run(pd_cfg, sc_port):
     # per-order checks inside process_single_order.
     guards = None
     try:
-        guards = prefetch_guards(gmail_services, [o["amazon_order_id"] for o in pending])
+        guards = prefetch_guards(gmail_services, [o["amazon_order_id"] for o in pending + delayed])
     except Exception as e:
         print(f"[MSG] guard prefetch failed ({e}) — per-order Gmail checks will run")
 
@@ -235,8 +290,28 @@ def _run(pd_cfg, sc_port):
             failed += 1
             print(f"[MSG]   {o.get('amazon_order_id')}: failed — {e}")
 
+    # ── Delay notices: one per stalled shipment, same Chrome, same guards ──
+    delayed_sent = delayed_skipped = delayed_failed = 0
+    for o in delayed:
+        if driver is not None and not _is_driver_alive(driver):
+            print("[MSG] ⚠️ Chrome died before the delay notices — they stay pending.")
+            break
+        try:
+            res = process_delay_notice(driver, o, pd_cfg, gmail_services,
+                                       closing_table=True, dry_run=DRY, guards=guards)
+            if res.get("delay_notice_sent") == "Yes":
+                delayed_sent += 1
+            elif res.get("customer_messaged") == "Yes" or res.get("return_requested") == "Yes" \
+                    or res.get("refund_done") == "Yes" or res.get("delay_notice_sent") == "No":
+                delayed_skipped += 1
+        except Exception as e:
+            delayed_failed += 1
+            print(f"[MSG]   {o.get('amazon_order_id')}: delay notice failed — {e}")
+
     print(f"[MSG] ✅ DONE — {sent} delivery messages, {reviewed} review requests, "
-          f"{skipped} guarded-skip, {failed} errors (of {len(pending)} pending)")
+          f"{skipped} guarded-skip, {failed} errors (of {len(pending)} pending); "
+          f"delay notices: {delayed_sent} sent, {delayed_skipped} guarded-skip, {delayed_failed} errors "
+          f"(of {len(delayed)} stalled)")
     return 0
 
 
