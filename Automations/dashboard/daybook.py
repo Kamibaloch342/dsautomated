@@ -185,11 +185,16 @@ def _states(o, msgs, rets=None):
     late_ship = (not shipped and not cancelled and sby and sby < today)
     late_deliv = (not delivered and not cancelled and dby and dby < today) or (o.get("on_time") == "Late")
     pending = (lab == "Pending") or (not placed and not cancelled and lab not in FINAL_LABELS)
+    # Zoro's own delivery estimate (from the shipping email). Display only: it is an
+    # expectation, never a delivery — messaging and labels only ever use carrier confirmation.
+    zeta = _d10(o.get("zoro_deliver_by"))
+    expected_delivered = bool(shipped and not delivered and not cancelled and zeta and zeta < today)
     m = msgs.get(o.get("amazon_order_id"), {})
     return {
         "placed": placed, "cancelled": cancelled, "shipped": shipped, "delivered": delivered,
         "tracking": tracking, "refunded": refunded, "returned": returned, "pending": pending,
         "late_ship": bool(late_ship), "late_delivery": bool(late_deliv),
+        "expected_by": zeta or "", "expected_delivered": expected_delivered,
         "loss": lab == "Loss" or (_f(o.get("profit_dollars")) < 0 and lab in ("Completed", "Loss")),
         "incomplete": lab == "Incomplete",
         "tracking_msg_sent": bool(m.get("tracking_sent")) or (o.get("customer_messaged") == "Yes"),

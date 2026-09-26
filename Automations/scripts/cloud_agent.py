@@ -355,9 +355,11 @@ class Agent:
             "role": self.role,
             "sync": self._sync_summary(),
             "db": {"master_mb": round(os.path.getsize(MASTER_DB) / 1048576, 1) if os.path.exists(MASTER_DB) else None,
+                   "wal_mb": round(os.path.getsize(MASTER_DB + "-wal") / 1048576, 1) if os.path.exists(MASTER_DB + "-wal") else 0.0,
                    "slim_mb": round(os.path.getsize(SLIM_DB) / 1048576, 1) if os.path.exists(SLIM_DB) else None,
                    "last_slim_upload": self.state.get("last_slim_upload"),
-                   "last_backup": self.state.get("last_backup")},
+                   "last_backup": self.state.get("last_backup"),
+                   "last_checkpoint": self.state.get("last_checkpoint")},
             "last_placement": last_placement(),
             "lease_holder": None,
         }
@@ -728,6 +730,34 @@ class Agent:
         log("💾 " + msg)
         return True, msg
 
+    # ── 6b. WAL hygiene ───────────────────────────────────────────────────
+    def wal_checkpoint(self) -> None:
+        """Every 30 min: PRAGMA wal_checkpoint(TRUNCATE) on the master DB, unless a closing /
+        bulk / messaging / gap-fill run holds one of its locks. Nothing ever checkpointed the
+        WAL and it reached 4 GB on 26 Sep 2026 (constant readers + huge write bursts kept the
+        automatic passive checkpoints from ever finishing). Placers and the dashboard are
+        fine: TRUNCATE waits for in-flight readers (busy_timeout) and takes well under a
+        second on a 256 MB WAL."""
+        if not os.path.exists(MASTER_DB):
+            return
+        from utils.accounts_config import active_locks
+        from utils.unified_db import wal_checkpoint, wal_size_mb
+        before = wal_size_mb(MASTER_DB)
+        busy = active_locks(("closing_", "daily_bulk_", "messages_", "gapfill_", "gmail_fetch", "scrape_"))
+        if busy:
+            self.state["wal_mb"] = before
+            return
+        try:
+            res = wal_checkpoint("TRUNCATE", db_path=MASTER_DB, busy_ms=30000)
+        except Exception as e:
+            log(f"⚠️ wal_checkpoint: {e}")
+            return
+        after = wal_size_mb(MASTER_DB)
+        self.state.update({"wal_mb": after, "last_checkpoint": utcnow(), "last_checkpoint_result": res})
+        self._save_state()
+        if before >= 64 or res.get("busy"):
+            log(f"🧹 WAL checkpoint: {before} → {after} MB ({res})")
+
     # ── 7. dashboard supervision ──────────────────────────────────────────
     def ensure_dashboard(self) -> None:
         if not self.cfg.get("keep_dashboard_up", True):
@@ -935,6 +965,7 @@ class Agent:
             "dashboard": [30.0, 2.0, self.ensure_dashboard, True],
             "tunnels": [20.0, 5.0, self.ensure_tunnels, False],
             "prune": [1800.0, 120.0, self._prune, True],
+            "wal_checkpoint": [float(c.get("wal_checkpoint_s", 1800)), 240.0, self.wal_checkpoint, True],
         }
         t0 = time.time()
         for v in sched.values():
@@ -945,7 +976,7 @@ class Agent:
                 if now < nxt:
                     continue
                 sched[name][1] = now + interval
-                if not self.r2.available() and name not in ("dashboard", "tunnels"):
+                if not self.r2.available() and name not in ("dashboard", "tunnels", "wal_checkpoint"):
                     continue
                 if self.role != "master" and name in MASTER_ONLY:
                     continue                     # only the master feeds the dashboard / backups

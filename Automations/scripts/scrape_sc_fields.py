@@ -1,7 +1,13 @@
 """
-Multi-tab Seller-Central field scraper — fills the 3 scrape-only columns that the
-data-only closing backfill leaves empty: deliver_by_date, tracking_id_uploaded
-(+ carrier/date), and seller feedback. (ship_by_date is gap-filled as a bonus.)
+Multi-tab Seller-Central field scraper — the EXCEPTION path since 26 Sep 2026.
+
+It used to queue every order missing deliver_by_date OR tracking_id_uploaded (3,258 HOANK +
+1,443 Hathoro pages ≈ 3 hours on 26 Sep 2026), although the placer already captures the
+dates at placement (100 % coverage) and the tracker now records what it uploaded
+(order_placer_orders.tracking_id_uploaded + action_log). The queue is therefore: Shipped
+orders with NO upload record anywhere, never scraped or scraped more than SCRAPE_RETRY_DAYS
+ago, newest first, at most SCRAPE_LIMIT per run. Feedback is still read off the page while
+we are there (it exists on ~0.04 % of orders — not worth a pass of its own).
 
 WHY THIS DESIGN
 ---------------
@@ -47,7 +53,8 @@ ACCOUNT  = os.environ.get("SCRAPE_ACCOUNT", "HOANK").strip()
 PORTS    = {"HOANK": 9331, "Hathoro": 9333}
 PORT     = int(os.environ.get("SCRAPE_PORT") or PORTS.get(ACCOUNT, 9331))
 TABS     = int(os.environ.get("SCRAPE_TABS") or 4)
-LIMIT    = int(os.environ.get("SCRAPE_LIMIT") or 0)
+LIMIT    = int(os.environ.get("SCRAPE_LIMIT") or 400)      # per run; 0 = unbounded
+RETRY_DAYS = int(os.environ.get("SCRAPE_RETRY_DAYS") or 7)  # re-read a page that showed no shipment yet
 # default = previous+current month, computed — a hardcoded default here silently
 # excluded every new month's orders from the scrape.
 from utils.accounts_config import default_months
@@ -169,8 +176,14 @@ def _has(v):
 
 
 def persist(conn, aid, r):
-    """Non-destructive gap-fill: only writes a column that is currently empty."""
-    sets, vals = ["enriched_from_scrape=1", "scraped_at=?"], [time.strftime("%Y-%m-%d %H:%M:%S")]
+    """Non-destructive gap-fill: only writes a column that is currently empty.
+    enriched_from_scrape=1 is stamped only when the page actually showed a confirmed shipment;
+    a page read too early (Amazon's report says Shipped before the order page does) keeps
+    scraped_at only, so the RETRY_DAYS rule re-reads it instead of trapping it — 6,061 Shipped
+    orders were stuck that way on 26 Sep 2026."""
+    got_upload = _has(r.get("tracking_id_uploaded"))
+    sets, vals = (["enriched_from_scrape=1", "scraped_at=?"] if got_upload else ["scraped_at=?"]), \
+        [time.strftime("%Y-%m-%d %H:%M:%S")]
     for col in TEXT_COLS:
         v = r.get(col)
         if _has(v):
@@ -229,14 +242,30 @@ def count_total(conn):
 
 
 def build_queue(conn):
+    """Shipped orders of the scrape months with no upload record in closing_orders, the placer
+    table or the tracker's action_log, not scraped in the last RETRY_DAYS, newest first."""
     ph = ",".join("?" * len(MONTHS))
     q = (f"SELECT amazon_order_id FROM closing_orders "
          f"WHERE account=? AND substr(purchase_date,1,7) IN ({ph}) "
+         f"AND order_status='Shipped' "
          f"AND COALESCE(enriched_from_scrape,0)=0 "
-         f"AND ( deliver_by_date IS NULL OR TRIM(CAST(deliver_by_date AS TEXT)) IN ('','None') "
-         f"   OR tracking_id_uploaded IS NULL OR TRIM(CAST(tracking_id_uploaded AS TEXT)) IN ('','None') ) "
+         f"AND ( tracking_id_uploaded IS NULL OR TRIM(CAST(tracking_id_uploaded AS TEXT)) IN ('','None') ) "
+         f"AND ( scraped_at IS NULL OR scraped_at='' OR scraped_at < datetime('now', 'localtime', ?) ) "
+         f"AND amazon_order_id NOT IN (SELECT amazon_order_id FROM order_placer_orders "
+         f"      WHERE tracking_id_uploaded IS NOT NULL AND TRIM(CAST(tracking_id_uploaded AS TEXT)) NOT IN ('','None')) "
+         f"AND amazon_order_id NOT IN (SELECT amazon_order_id FROM action_log "
+         f"      WHERE action_type='tracking_upload' AND status IN ('success','already_shipped')) "
          f"ORDER BY purchase_date DESC")
-    rows = [r[0] for r in conn.execute(q, [ACCOUNT, *MONTHS]).fetchall()]
+    try:
+        rows = [r[0] for r in conn.execute(q, [ACCOUNT, *MONTHS, f"-{RETRY_DAYS} days"]).fetchall()]
+    except sqlite3.OperationalError as e:
+        # an older schema without the placer upload columns: fall back to the closing row only
+        print(f"[queue] fallback ({e})")
+        q2 = (f"SELECT amazon_order_id FROM closing_orders WHERE account=? AND substr(purchase_date,1,7) IN ({ph}) "
+              f"AND order_status='Shipped' AND COALESCE(enriched_from_scrape,0)=0 "
+              f"AND ( tracking_id_uploaded IS NULL OR TRIM(CAST(tracking_id_uploaded AS TEXT)) IN ('','None') ) "
+              f"ORDER BY purchase_date DESC")
+        rows = [r[0] for r in conn.execute(q2, [ACCOUNT, *MONTHS]).fetchall()]
     if LIMIT:
         rows = rows[:LIMIT]
     return rows
@@ -271,9 +300,9 @@ def main():
 
     # ── startup summary ──
     print(f"Total orders in DB ({ACCOUNT}, {'+'.join(MONTHS)}) : {total_db}")
-    print(f"Orders still missing these columns          : {total}")
+    print(f"Shipped orders with no upload record        : {total}" + (f"  (capped at {LIMIT} this run)" if LIMIT and total >= LIMIT else ""))
     if not total:
-        print("Nothing to scrape — all caught up. ✅"); return
+        print("Nothing to scrape — every shipped order has an upload record. ✅"); return
     print("Starting...\n")
 
     # early auth probe (fail fast before opening tabs)

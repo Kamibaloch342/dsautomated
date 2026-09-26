@@ -36,7 +36,7 @@ DB        = os.path.join(_AUTO, "data", "automations_unified.db")
 
 os.environ.setdefault("CLOSING_ACCOUNT", ACCOUNT)   # closing reads this at import
 import closing
-from engine.fedex_api import FedExTracker
+from engine.fedex_api import FedExTracker, browser_tier_allowed
 
 _PERSIST = ("delivery_status", "delivery_date", "signed_by", "left_at", "estimated_window",
             "last_scan_location", "last_scan_time", "delivery_note", "delivery_from", "delivery_to")
@@ -104,7 +104,9 @@ def worker(idx, chunk, total):
     port = PORT_BASE + idx
     fedex = FedExTracker(headless=True)
     driver = None
-    if not fedex.has_official_api:
+    # A browser is only worth starting for the (Akamai-blocked) page tiers, and only when
+    # they were explicitly re-enabled. API tiers need none.
+    if not fedex.has_official_api and browser_tier_allowed():
         driver = closing.ensure_chrome(port, headless=True)
         if not driver:
             print(f"[w{idx}] could not start Chrome on {port}"); return
@@ -164,7 +166,19 @@ def worker(idx, chunk, total):
 
 
 def main():
-    print(f"FedEx re-check | {ACCOUNT} | {WORKERS} browsers | months {'+'.join(MONTHS)}")
+    print(f"FedEx re-check | {ACCOUNT} | {WORKERS} workers | months {'+'.join(MONTHS)}")
+    probe = FedExTracker(headless=True)
+    if not probe.has_official_api and not probe.has_ups_api and not browser_tier_allowed():
+        # Nothing can answer: no carrier API keys, and the FedEx page tiers have been refused
+        # by Akamai since 19 Sep 2026. Say so and leave — three headless Chromes per account
+        # used to be launched here only to be blocked after two batches.
+        print("🚫 No carrier API credentials (config/accounts.json → fedex_api / ups_api) and the FedEx "
+              "browser tiers are off (Akamai bot defence). Skipping — register a FedEx Developer "
+              "Track API key (free, developer.fedex.com) to resolve deliveries again, or set "
+              "FEDEX_BROWSER=1 to force the old page path.")
+        sys.exit(2)
+    if not probe.has_official_api and probe.has_ups_api:
+        print("ℹ️  Only UPS credentials configured — FedEx numbers stay unresolved until fedex_api is set.")
     orders = load_orders()
     total = len(orders)
     print(f"Incomplete-with-tracking to re-check: {total}")

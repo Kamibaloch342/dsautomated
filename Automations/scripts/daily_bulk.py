@@ -119,7 +119,8 @@ RUN_CLOSING = os.environ.get("RUN_CLOSING", "1").strip().lower() not in ("0", "f
 SCRAPE_TIMEOUT = int(os.environ.get("SCRAPE_TIMEOUT", "7200"))   # was None → one hung tab froze the whole bulk
 t0 = time.time()
 
-RESULTS = []   # (label, rc, critical) — rc None = timeout/launch error
+RESULTS = []   # (label, rc, critical, seconds) — rc None = timeout/launch error
+RUN_ID = f"bulk-{'-'.join(ACCTS)}-{datetime.datetime.now():%Y%m%d-%H%M%S}"
 
 
 def run(label, cmd, cwd=_AUTO, env=None, timeout=None, critical=True):
@@ -128,16 +129,35 @@ def run(label, cmd, cwd=_AUTO, env=None, timeout=None, critical=True):
     if env:
         e.update(env)
     rc = None
+    t_step = time.time()
     try:
         r = subprocess.run(cmd, cwd=cwd, env=e, timeout=timeout)
         rc = r.returncode
-        print(f"   ↳ {label}: exit {rc}", flush=True)
+        print(f"   ↳ {label}: exit {rc} ({time.time() - t_step:.0f}s)", flush=True)
     except subprocess.TimeoutExpired:
         print(f"   ↳ {label}: TIMED OUT after {timeout}s — continuing", flush=True)
     except Exception as ex:
         print(f"   ↳ {label}: ERROR {ex} — continuing", flush=True)
-    RESULTS.append((label, rc, critical))
+    RESULTS.append((label, rc, critical, round(time.time() - t_step, 1)))
     return rc
+
+
+def _write_run_log(status, mins):
+    """One closing_run_log row per bulk run with every step's exit code and duration —
+    the table existed for months and nothing wrote it, so no run had a measurable cost."""
+    try:
+        from utils.unified_db import start_closing_run, update_closing_run, finish_closing_run
+        today = datetime.date.today()
+        start_closing_run(RUN_ID, (today - datetime.timedelta(days=30)).isoformat(), today.isoformat(), ACCTS)
+        update_closing_run(RUN_ID, {
+            "errors": sum(1 for _, rc, crit, _ in RESULTS if crit and rc != 0),
+            "error_details": json.dumps({"kind": "daily_bulk", "minutes": mins,
+                                         "steps": [{"step": l, "rc": rc, "critical": crit, "seconds": s}
+                                                   for l, rc, crit, s in RESULTS]}),
+        })
+        finish_closing_run(RUN_ID, status)
+    except Exception as e:
+        print(f"[daily_bulk] run log: {e}")
 
 
 def main():
@@ -194,38 +214,58 @@ def main():
     else:
         print("\n(RUN_CLOSING=0 → skipping report download/ingest; completing existing orders only)")
 
-    # 2) placer log → order_placer_orders
+    # 2) placer log → order_placer_orders. Incremental; sync_smart runs the full
+    #    reconciliation once a day (closing.py's own sync used sync_all too — four full
+    #    60k-line rewrites per bulk before 26 Sep 2026).
     run("Placer-log sync", [PY, "-c", "import sys;sys.path.insert(0,'.');"
-        "from scripts.sync_order_placer_logs import sync_all;sync_all(verbose=False)"], timeout=600)
+        "from scripts.sync_order_placer_logs import sync_smart;print(sync_smart(verbose=False))"], timeout=600)
 
     # 3) reconcile (backfill from archives + recompute) — gets tracking_ids into closing for FedEx
     for a in ACCTS:
         run(f"Reconcile {a} (pre-FedEx backfill)", [PY, "scripts/reconcile_and_reenrich.py", a, "--go"],
             timeout=1800)
 
-    # 4) SC scrape (deliver_by / tracking_uploaded / feedback) — needs logged-in Chrome; best-effort
+    # 4) SC scrape — exception-only since 26 Sep 2026: Shipped orders with no upload record
+    #    from the tracker (dates come from the placer, tracking_id_uploaded from the tracker's
+    #    own record), bounded per run by SCRAPE_LIMIT. Needs logged-in Chrome; best-effort.
     if SKIP_SCRAPE:
         print("\n(SKIP_SCRAPE=1 → skipping SC scrape; deliver_by/feedback stay amber)")
     else:
         for a in ACCTS:
-            run(f"SC scrape {a} (deliver_by/feedback)", [PY, "scripts/scrape_sc_fields.py"],
-                env={"SCRAPE_ACCOUNT": a, "SCRAPE_TABS": TABS, "SCRAPE_MONTHS": MONTHS},
+            run(f"SC scrape {a} (upload-record gaps)", [PY, "scripts/scrape_sc_fields.py"],
+                env={"SCRAPE_ACCOUNT": a, "SCRAPE_TABS": TABS, "SCRAPE_MONTHS": MONTHS,
+                     "SCRAPE_LIMIT": os.environ.get("SCRAPE_LIMIT", "400")},
                 timeout=SCRAPE_TIMEOUT, critical=False)
 
-    # 5) FedEx (delivery for in-transit orders with tracking) — public, no login.
+    # 5) Delivery (FedEx / UPS) for in-transit orders with tracking.
+    #    Runs only when a carrier API is configured (config/accounts.json → fedex_api / ups_api)
+    #    or the FedEx page tiers were explicitly re-enabled with FEDEX_BROWSER=1: they have been
+    #    refused by Akamai since 19 Sep 2026, and launching three headless Chromes per account to
+    #    be blocked after two batches was pure cost.
     #    PER-ACCOUNT port base: both runs defaulting to 9341 made concurrent
     #    HOANK+Hathoro runs kill each other's FedEx Chromes (ensure_chrome
     #    pkills its port before launching) → both hung to timeout (2026-07-16).
     _fedex_bases = {acct: 9341 + 10 * i for i, acct in enumerate(_cfg_accounts())}
-    for a in ACCTS:
-        # Not critical: FedEx's public tracking refuses automated sessions from time to time
-        # (it did for all of 19 Sep 2026 evening), and that must not mark the whole closing
-        # chain as failed — the report, ingest, scrape and messaging all still happened.
-        # fedex_recheck exits 2 when it was refused, so the summary names it separately.
-        run(f"FedEx re-check {a}", [PY, "scripts/fedex_recheck.py"],
-            env={"FEDEX_ACCOUNT": a, "FEDEX_WORKERS": "3", "FEDEX_MONTHS": MONTHS,
-                 "FEDEX_PORT_BASE": str(_fedex_bases.get(a, 9341))},
-            timeout=int(os.environ.get("FEDEX_TIMEOUT", "5400")), critical=False)
+    try:
+        from utils.accounts_config import fedex_api_credentials, ups_api_credentials
+        _carrier_api = bool(fedex_api_credentials().get("client_id")) or bool(ups_api_credentials().get("client_id"))
+    except Exception:
+        _carrier_api = False
+    _fedex_browser = os.environ.get("FEDEX_BROWSER", "").strip().lower() in ("1", "true", "yes", "on")
+    if not _carrier_api and not _fedex_browser:
+        print("\n(Delivery check skipped: no carrier API credentials in config/accounts.json → fedex_api / "
+              "ups_api, and the FedEx browser tiers are off (Akamai). Register a FedEx Developer Track API "
+              "key — free — to get delivery_status, Completed labels and delivery messages back.)")
+        RESULTS.append(("Delivery check (skipped: no carrier API)", 0, False, 0.0))
+    else:
+        for a in ACCTS:
+            # Not critical: a refused/blocked carrier session must not mark the whole chain as
+            # failed — the report, ingest, scrape and messaging all still happened.
+            # fedex_recheck exits 2 when it was refused, so the summary names it separately.
+            run(f"Delivery re-check {a} (FedEx/UPS)", [PY, "scripts/fedex_recheck.py"],
+                env={"FEDEX_ACCOUNT": a, "FEDEX_WORKERS": "3", "FEDEX_MONTHS": MONTHS,
+                     "FEDEX_PORT_BASE": str(_fedex_bases.get(a, 9341))},
+                timeout=int(os.environ.get("FEDEX_TIMEOUT", "5400")), critical=False)
 
     # 5b) LIVE-GMAIL GAP-FILL — the archive is the optimization, live Gmail is the
     #     guarantee: any Shipped order still missing earnings/sold-time/zoro-cost/
@@ -344,10 +384,11 @@ def main():
         print("  coverage read skipped:", e)
 
     # ── Failure summary + honest exit code ──────────────────────────────────
-    failed = [(l, rc) for l, rc, crit in RESULTS if crit and rc != 0]
-    soft = [(l, rc) for l, rc, crit in RESULTS if not crit and rc != 0]
+    failed = [(l, rc) for l, rc, crit, _ in RESULTS if crit and rc != 0]
+    soft = [(l, rc) for l, rc, crit, _ in RESULTS if not crit and rc != 0]
     mins = round((time.time() - t0) / 60, 1)
     print(f"\n{'='*72}")
+    print("⏱  step durations: " + " | ".join(f"{l.split(' (')[0]} {s:.0f}s" for l, _, _, s in RESULTS))
     if failed:
         print(f"🚨 daily_bulk finished in {mins} min WITH {len(failed)} FAILED critical step(s):")
         for l, rc in failed:
@@ -358,6 +399,7 @@ def main():
         print(f"⚠️  {len(soft)} best-effort step(s) did not finish (deliver_by/feedback/messages may lag):")
         for l, rc in soft:
             print(f"   ⚠️  {l}  (exit {rc if rc is not None else 'timeout/error'})")
+    _write_run_log("failed" if failed else "completed", mins)
     print("Open the dashboard Health tab to confirm.")
     return 1 if failed else 0
 

@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
 """
-sync_gmail_archive.py — Lossless sync from gmail_archive.db → automations_unified.db
+sync_gmail_archive.py — sync from gmail_archive.db → automations_unified.db archive_* tables
 
-Syncs ALL fields (not a subset) from the rich gmail_archive.db into the unified DB.
-Use this after schema changes or to backfill missing data.
+INCREMENTAL since 26 Sep 2026: only source rows fetched after the destination table's newest
+fetched_at are copied (the hourly run used to re-copy all 216k rows — with their email
+bodies — for 0–1 new emails). --full / SYNC_FULL=1 copies everything again.
+
+The raw email body is NOT copied any more (SYNC_RAW_BODIES=1 to keep doing so): it lives in
+gmail_archive.db and was ~500 MB of the unified DB. What closing needs from a body is
+derived here into columns instead:
+  archive_zoro     → zoro_promo_savings, zoro_promo_label, zoro_item_desc
+  archive_tracking → zoro_eta  (Zoro's own "Estimated Delivery" line)
 
 Usage:
-    cd /Users/kamranbaloch342/Desktop/Dropshipping/Development_Unit/Automations
-    source ../.venv/bin/activate
-    python scripts/sync_gmail_archive.py
+    python scripts/sync_gmail_archive.py            # incremental
+    python scripts/sync_gmail_archive.py --full     # everything (schema change / backfill)
 """
 
 from __future__ import annotations
@@ -20,6 +26,95 @@ from datetime import datetime
 
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, SCRIPT_DIR)
+
+from engine import closing_signals as _CS  # noqa: E402
+
+FULL = "--full" in sys.argv or os.environ.get("SYNC_FULL", "").strip().lower() in ("1", "true", "yes")
+COPY_BODIES = os.environ.get("SYNC_RAW_BODIES", "").strip().lower() in ("1", "true", "yes")
+
+# Derived columns per destination table: name → (type, fn(source_row_dict) -> value).
+# NULL means "not derived yet"; '' means "derived, nothing in the body" — that is what makes
+# --derive-existing idempotent and lets slim_database.py refuse to drop bodies too early.
+DERIVED = {
+    "archive_zoro": {
+        "zoro_promo_savings": ("REAL", lambda r: _CS.extract_zoro_promo(r.get("raw_body_snippet") or "")[0]),
+        "zoro_promo_label": ("TEXT", lambda r: _CS.extract_zoro_promo(r.get("raw_body_snippet") or "")[1] or ""),
+        "zoro_item_desc": ("TEXT", lambda r: _CS.extract_zoro_item(r.get("raw_body_snippet") or "") or ""),
+    },
+    "archive_tracking": {
+        "zoro_eta": ("TEXT", lambda r: _CS.extract_zoro_eta(r.get("raw_body_snippet") or "",
+                                                            r.get("email_timestamp") or "") or ""),
+    },
+}
+# The column whose NULL marks "not derived yet", per table.
+DERIVED_MARKER = {"archive_zoro": "zoro_promo_label", "archive_tracking": "zoro_eta"}
+
+
+def derive_existing(dst_conn: sqlite3.Connection, batch_size: int = 500) -> dict:
+    """One-time backfill: compute the derived columns for rows synced BEFORE they existed,
+    from the raw body those rows still carry in the unified DB. Run it before
+    slim_database.py drops raw_body_snippet (which checks that nothing is pending)."""
+    out = {}
+    for table, cols in DERIVED.items():
+        have = {c["name"] for c in dst_conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for name, (typ, _fn) in cols.items():
+            if name not in have:
+                dst_conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
+        dst_conn.commit()
+        if "raw_body_snippet" not in have:
+            print(f"  {table}: no raw bodies left — nothing to derive")
+            out[table] = 0
+            continue
+        marker = DERIVED_MARKER[table]
+        rowids = [r[0] for r in dst_conn.execute(
+            f"SELECT rowid FROM {table} WHERE {marker} IS NULL AND raw_body_snippet IS NOT NULL AND raw_body_snippet != ''")]
+        print(f"  {table}: {len(rowids):,} rows to derive")
+        names = list(cols.keys())
+        sql = f"UPDATE {table} SET {', '.join(f'{n}=?' for n in names)} WHERE rowid=?"
+        done = 0
+        for i in range(0, len(rowids), batch_size):
+            chunk = rowids[i:i + batch_size]
+            ph = ",".join("?" * len(chunk))
+            rows = dst_conn.execute(
+                f"SELECT rowid, raw_body_snippet, email_timestamp FROM {table} WHERE rowid IN ({ph})", chunk).fetchall()
+            payload = []
+            for rid, body, ts in rows:
+                rd = {"raw_body_snippet": body, "email_timestamp": ts}
+                vals = []
+                for n in names:
+                    try:
+                        vals.append(cols[n][1](rd))
+                    except Exception:
+                        vals.append("" if n != "zoro_promo_savings" else None)
+                payload.append(vals + [rid])
+            dst_conn.executemany(sql, payload)
+            dst_conn.commit()
+            done += len(rows)
+            print(f"  ... {done:,}/{len(rowids):,}", end="\r")
+        print(f"  ✓ {table}: {done:,} rows derived")
+        out[table] = done
+    return out
+
+
+def pending_derivations(conn: sqlite3.Connection) -> dict:
+    """{table: rows that still carry a body but were never derived} — must be 0 before the
+    bodies are dropped."""
+    out = {}
+    for table, marker in DERIVED_MARKER.items():
+        try:
+            have = {c[1] for c in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if "raw_body_snippet" not in have:
+                out[table] = 0
+            elif marker not in have:
+                out[table] = conn.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE raw_body_snippet IS NOT NULL AND raw_body_snippet != ''").fetchone()[0]
+            else:
+                out[table] = conn.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE {marker} IS NULL AND raw_body_snippet IS NOT NULL "
+                    f"AND raw_body_snippet != ''").fetchone()[0]
+        except sqlite3.OperationalError:
+            out[table] = -1
+    return out
 
 # The archive now lives in Automations/data/ (written by gmail_fetch/build_gmail_archive.py
 # — see gmail_fetch/config.py GMAIL_ARCHIVE_DB_PATH). The old sibling "Final Automation"
@@ -116,15 +211,28 @@ def _sync_table(
     # Get actual columns from dest table (to handle schema drift)
     dst_info = dst_conn.execute(f"PRAGMA table_info({dst_table})").fetchall()
     dst_col_names = {c["name"] for c in dst_info}
+    src_col_names = {c["name"] for c in src_conn.execute(f"PRAGMA table_info({src_table})").fetchall()}
 
-    # Filter columns to only those that exist in dest
-    usable_cols = [c for c in columns if c in dst_col_names]
+    # Derived columns (promo / item description / Zoro ETA) replace the raw body copy.
+    derived = DERIVED.get(dst_table, {})
+    for name, (typ, _fn) in derived.items():
+        if name not in dst_col_names:
+            dst_conn.execute(f"ALTER TABLE {dst_table} ADD COLUMN {name} {typ}")
+            dst_col_names.add(name)
+    dst_conn.commit()
+
+    # Filter columns to only those that exist in dest (and in the source)
+    usable_cols = [c for c in columns if c in dst_col_names and c in src_col_names
+                   and (c != "raw_body_snippet" or COPY_BODIES)]
     skipped_cols = [c for c in columns if c not in dst_col_names]
     if skipped_cols:
         print(f"  ℹ️  Columns skipped (not in dest): {', '.join(skipped_cols)}")
+    # The body is still READ from the source (for the derived columns) even when not copied.
+    read_cols = list(dict.fromkeys(usable_cols + (["raw_body_snippet"] if "raw_body_snippet" in src_col_names else [])))
+    insert_cols = usable_cols + list(derived.keys())
 
-    placeholders = ", ".join("?" for _ in usable_cols)
-    col_list = ", ".join(usable_cols)
+    placeholders = ", ".join("?" for _ in insert_cols)
+    col_list = ", ".join(insert_cols)
 
     pk_info = dst_conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
@@ -139,19 +247,37 @@ def _sync_table(
     verb = "INSERT OR REPLACE" if has_pk else "INSERT OR IGNORE"
     sql = f"{verb} INTO {dst_table} ({col_list}) VALUES ({placeholders})"
 
-    total = 0
-    cursor = src_conn.execute(f"SELECT {col_list} FROM {src_table}")
+    # Incremental: only source rows fetched after the newest row we already hold.
+    since = None
+    if not FULL and "fetched_at" in src_col_names and "fetched_at" in dst_col_names:
+        since = dst_conn.execute(f"SELECT MAX(fetched_at) FROM {dst_table}").fetchone()[0]
+    where, args = "", []
+    if since:
+        where, args = " WHERE fetched_at > ?", [since]
+    cursor = src_conn.execute(f"SELECT {', '.join(read_cols)} FROM {src_table}{where}", args)
 
+    total = 0
     while True:
         rows = cursor.fetchmany(batch_size)
         if not rows:
             break
-        dst_conn.executemany(sql, [[row[c] for c in usable_cols] for row in rows])
+        payload = []
+        for row in rows:
+            rd = {c: row[c] for c in read_cols}
+            vals = [rd[c] for c in usable_cols]
+            for _name, (_typ, fn) in derived.items():
+                try:
+                    vals.append(fn(rd))
+                except Exception:
+                    vals.append(None)
+            payload.append(vals)
+        dst_conn.executemany(sql, payload)
         total += len(rows)
         dst_conn.commit()
         print(f"  ... {total} rows synced", end="\r")
 
-    print(f"  ✓ {total} rows synced from {src_table} → {dst_table}")
+    print(f"  ✓ {total} rows synced from {src_table} → {dst_table}"
+          + (f" (since {since[:19]})" if since else " (full)"))
     return total
 
 
@@ -183,7 +309,7 @@ def ensure_unique_indexes(dst_conn: sqlite3.Connection) -> None:
 
 def main():
     print("=" * 70)
-    print(f"GMAIL ARCHIVE SYNC")
+    print(f"GMAIL ARCHIVE SYNC ({'FULL' if FULL else 'incremental'}, bodies {'copied' if COPY_BODIES else 'derived only'})")
     print(f"  Source: {GMAIL_ARCHIVE_DB}")
     print(f"  Dest:   {UNIFIED_DB}")
     print(f"  Time:   {datetime.now().isoformat()}")
@@ -195,6 +321,15 @@ def main():
 
     src = _connect(GMAIL_ARCHIVE_DB)
     dst = _connect(UNIFIED_DB)
+    dst.execute("PRAGMA busy_timeout=60000")
+
+    if "--derive-existing" in sys.argv:
+        print("\n🧮 Deriving promo / item / ETA columns for rows that still carry a body...")
+        derive_existing(dst)
+        print("   pending after run:", pending_derivations(dst))
+        src.close()
+        dst.close()
+        return
 
     print("\n🔒 Ensuring unique indexes (idempotency guard)...")
     ensure_unique_indexes(dst)

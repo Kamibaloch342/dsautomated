@@ -93,6 +93,15 @@ def main():
         dispatch_account_insights(account="Hathoro", days=0, limit=10)
     step("whatsapp_insights", ins)
 
+    # 3) keep the log files bounded (rename/copy-truncate when large, delete after 15 days)
+    def rot():
+        from scripts.rotate_logs import rotate
+        r = rotate(verbose=False)
+        if r["rotated"] or r["truncated"] or r["deleted"]:
+            print(f"[auto-sync] rotate_logs: {len(r['rotated'])} rotated, {len(r['truncated'])} truncated, "
+                  f"{r['deleted']} deleted, {r['freed_mb']:.0f} MB freed", flush=True)
+    step("rotate_logs", rot)
+
 
 if __name__ == "__main__":
     main()

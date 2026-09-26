@@ -879,6 +879,11 @@ Located in `private_label/`:
 
 ## 13. Identified Gaps & Missing Checks
 
+> **26 Sep 2026:** the measured state of the chain and what was changed that day are in
+> `docs/OPERATIONS_AUDIT_2026-09-26.md`. Items 1 (DB size), 8 (dates at placement), 9 (log
+> retention), 15 (FedEx) and 21 (upload verification) below are updated in place; the rest of
+> this section is as written on 5–7 Sep.
+
 ### 🔴 Critical Issues
 
 | # | Issue | Impact | Where |
@@ -890,7 +895,7 @@ Located in `private_label/`:
 | 5 | **Dates are in 5+ different formats** | No consistent display — breaks sorting, date math, and user comprehension | Across all modules |
 | 6 | **`zoro_payment_card` and `zoro_payment_method` are 2 separate columns** | Redundant — should be one `payment_method` (card last4 or "NET30") | `unified_db.py` schema |
 | 7 | **`coupon_used` only says Yes/No — doesn't say WHICH coupon** | Order placer logs the coupon code; closing doesn't copy it | `closing.py` → `coupon_used` field mapping |
-| 8 | **`purchase_date`, `ship_by_date`, `deliver_by_date` not extracted during order placement** | Only available after closing downloads the report — too late for time-sensitive decisions | `engine/orders.py` → should scrape from SC order page during placement |
+| 8 | ~~`purchase_date`, `ship_by_date`, `deliver_by_date` not extracted during order placement~~ **RESOLVED (7 Sep 2026)** — the placer scrapes all three from the SC order page (`engine/orders.py:2623`), writes them to `order_placer_orders` and `order_log.txt`, and closing takes them from there first (100 % coverage measured 26 Sep 2026). The all-orders report has no date columns at all. | — | see `docs/OPERATIONS_AUDIT_2026-09-26.md` §3.1 |
 
 ### 🟡 Significant Gaps
 
@@ -913,7 +918,7 @@ Located in `private_label/`:
 | 18 | **Zoro buyer_zip vs Amazon ship_postal_code mismatch detection** | ✅ Already exists | Already implemented in dashboard/closing — verify it's working correctly |
 | 19 | **Amazon qty vs Zoro qty mismatch detection** | ✅ Partially done | In dashboard insights — verify enforcement |
 | 20 | **Earnings $0 detection** | ❌ Missing | If `qurtdis` returns empty earnings, flag the order for manual review instead of proceeding with $0 |
-| 21 | **Tracking ID upload verification** | ❌ Missing — **HIGH VALUE** | After uploading tracking to Amazon, verify it appears on the order page. This would: (a) eliminate re-verification in closing, (b) solve the "two tabs" problem (tracking + note update could merge into one verified operation) |
+| 21 | **Tracking ID upload record** | ✅ Done (26 Sep 2026) | The tracker records every confirmed upload in `order_placer_orders.tracking_id_uploaded` (+ date/carrier) and `action_log`; closing and reconcile read it from there, so the per-order Seller Central scrape is exception-only. Note + upload already happen on one page load (the "two tabs" item was solved on 18 Sep). |
 | 22 | **Post-delivery message delivery confirmation** | ❌ Missing | Can verify via **Gmail archive** — search for sent message confirmation email |
 | 23 | **Coupon code tracking end-to-end** | ❌ Missing | Which coupon was used on which order → stored in order_placer_orders but not in closing_orders |
 | 24 | **Multi-item order split tracking** | ✅ Already done | Multi-package tracking already handled in `engine/tracking.py` (Add a Shipment flow) |

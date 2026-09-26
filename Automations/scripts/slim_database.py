@@ -24,8 +24,15 @@ DRY RUN by default — it only reports what it would do. Add --apply to do it.
 Stop the launcher (placers, closing) before --apply: VACUUM needs the file to
 itself for a few minutes; the dashboard can stay up (it only reads).
 
+The backup goes to --backup-dir (default ~/.zuhra/backups — OUTSIDE the Google-Drive-
+mirrored project folder), and the run ends with PRAGMA wal_checkpoint(TRUNCATE) so the
+-wal file (4 GB on 26 Sep 2026) is reset as well. Since 26 Sep 2026 the archive sync no
+longer copies raw bodies and closing/reconcile read the derived columns, so dropping the
+column costs nothing downstream.
+
     python scripts/slim_database.py               # report
     python scripts/slim_database.py --apply       # do it (backup first, automatic)
+    python scripts/slim_database.py --apply --keep-enrichment-days=7 --backup-dir=/Volumes/X
 """
 from __future__ import annotations
 
@@ -63,12 +70,27 @@ def main() -> None:
     c = sqlite3.connect(DB, timeout=60)
     c.execute("PRAGMA busy_timeout=60000")
     plan = []
+    # 0. the derived columns (promo / item / Zoro ETA) must exist for every row that still has
+    #    a body — closing and reconcile read them instead of the body since 26 Sep 2026.
+    try:
+        sys.path.insert(0, AUTO)
+        from scripts.sync_gmail_archive import pending_derivations
+        pending = pending_derivations(c)
+    except Exception as e:
+        pending = {"error": str(e)}
+    blocked = {t for t, n in pending.items() if isinstance(n, int) and n > 0}
+    if blocked:
+        print(f"  ⛔ derived columns pending on {', '.join(sorted(blocked))} ({pending}) — run\n"
+              f"     python scripts/sync_gmail_archive.py --derive-existing\n"
+              f"     first; those tables keep their raw bodies this run.")
     # 1. raw_body_snippet columns + gmail_archive safety check
     src = sqlite3.connect(f"file:{ARCHIVE}?mode=ro", uri=True) if os.path.exists(ARCHIVE) else None
     for t in ARCHIVE_TABLES:
         cols = [r[1] for r in c.execute(f"PRAGMA table_info({t})")]
         if "raw_body_snippet" not in cols:
             print(f"  ✓ {t}: no raw_body_snippet (already slim)")
+            continue
+        if t in blocked:
             continue
         n = c.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
         raw_mb = (c.execute(f"SELECT COALESCE(SUM(LENGTH(raw_body_snippet)),0) FROM {t}").fetchone()[0] or 0) / 1048576
@@ -104,9 +126,18 @@ def main() -> None:
               "dropped, old log rows purged and the file VACUUMed. Stop the launcher first.")
         return
 
-    # 0. backup (online backup API → consistent copy)
-    bak = DB + ".bak." + datetime.now().strftime("%Y%m%d_%H%M")
-    free = shutil.disk_usage(DATA).free / 1048576
+    # 0. backup (online backup API → consistent copy), outside the Drive-mirrored folder
+    bdir = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--backup-dir=")),
+                os.path.expanduser("~/.zuhra/backups"))
+    try:
+        os.makedirs(bdir, exist_ok=True)
+        if not os.access(bdir, os.W_OK):
+            raise OSError("not writable")
+    except OSError as e:
+        print(f"⚠️ backup dir {bdir} unusable ({e}) — falling back to {DATA}")
+        bdir = DATA
+    bak = os.path.join(bdir, "automations_unified.db.bak." + datetime.now().strftime("%Y%m%d_%H%M"))
+    free = shutil.disk_usage(bdir).free / 1048576
     if free < mb(DB) * 2.2:
         print(f"❌ not enough free disk for backup + vacuum ({free:.0f} MB free)")
         sys.exit(1)
@@ -167,8 +198,14 @@ def main() -> None:
     c.execute("DETACH DATABASE bodies")
     print("  🧽 VACUUM (this takes a few minutes)…")
     c.execute("VACUUM")
+    try:
+        r = c.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        print(f"  🧹 WAL checkpoint(TRUNCATE): busy={r[0]} pages={r[1]} checkpointed={r[2]}")
+    except Exception as e:
+        print(f"  ⚠️ wal_checkpoint: {e}")
     c.close()
-    print(f"\n✅ done in {time.time() - t0:.0f}s: {mb(bak):.0f} MB → {mb(DB):.0f} MB   "
+    wal = mb(DB + "-wal")
+    print(f"\n✅ done in {time.time() - t0:.0f}s: {mb(bak):.0f} MB → {mb(DB):.0f} MB (+ WAL {wal:.0f} MB)   "
           f"(backup kept at {bak}; raw bodies in {BODIES} = {mb(BODIES):.0f} MB)")
 
 

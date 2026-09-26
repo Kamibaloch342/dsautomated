@@ -293,6 +293,26 @@ def health(account=None, zoro_account=None, date_from=None, date_to=None):
     return {"accounts": out}
 
 
+# ── RUN TELEMETRY (closing_run_log, written since 26 Sep 2026) ───────────────
+def runs(limit=30):
+    """The last closing / daily_bulk runs with their counts and per-step durations —
+    what a run cost is visible here instead of being inferred from log timestamps."""
+    out = []
+    try:
+        c = _ro()
+        for r in c.execute("SELECT * FROM closing_run_log ORDER BY started_at DESC LIMIT ?", (int(limit),)):
+            d = dict(r)
+            try:
+                d["details"] = json.loads(d.pop("error_details") or "{}")
+            except Exception:
+                d["details"] = {}
+            out.append(d)
+        c.close()
+    except Exception as e:
+        return {"runs": [], "error": str(e)}
+    return {"runs": out}
+
+
 # ── DATA HEALTH / DISCREPANCY MONITOR ────────────────────────────────────────
 def data_health(account=None, zoro_account=None, date_from=None, date_to=None):
     """Data-integrity checks (NOT business KPIs): enrichment coverage, stale-derived

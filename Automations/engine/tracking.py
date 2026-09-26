@@ -62,6 +62,12 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 MASTER_CREDENTIALS_FILE = os.path.join(TOKEN_DIRECTORY, "AB ECOM Credentials.json")
 MESSAGE_LOG_FILE = os.path.join(os.path.dirname(script_directory), "data", "message_log.json")
 TRACKING_UPLOAD_LOG_FILE = os.path.join(os.path.dirname(script_directory), "data", "tracking_upload_log.json")
+# 26 Sep 2026 — cycle economics. A cycle used to request a fresh 30-day all-orders report
+# every ~10 min and re-sweep the same ~131 unshipped WBs across 8 inboxes for ~4 uploads.
+_REPORT_MAX_AGE_MIN = int(os.environ.get("TRACKING_REPORT_MAX_AGE_MIN", "30") or 0)   # reuse a report younger than this
+_NOTFOUND_TTL_MIN = int(os.environ.get("TRACKING_NOTFOUND_TTL_MIN", "30") or 0)       # don't re-search a WB live within this
+_NOT_FOUND_AT = {}          # wb_id -> epoch of the last clean live sweep that found no shipping email
+_ORDER_LOG_PENDING = {}     # wb_id -> (tracking_ids, shipped_email_time) — flushed to order_log.txt per batch
 
 account_names = [
     "qurtdis", "abecomllc26", "asad_amazon_us", "salesmercentile", "salesmercentile1",
@@ -724,11 +730,45 @@ def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_t
         with mutate_json(TRACKING_UPLOAD_LOG_FILE, [], indent=2) as entries:   # locked read-modify-write
             if not isinstance(entries, list):
                 entries.clear() if hasattr(entries, "clear") else None
+            if status == "no_tracking":
+                # One 'no_tracking' line per order per day. Every cycle appended one per
+                # unresolved WB (~4,900 a day), which pushed the real uploads out of the
+                # 5,000-entry window and left closing blind to them (26 Sep 2026).
+                cutoff = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 86400))
+                if any(e.get("status") == "no_tracking" and e.get("amazon_order_id") == amazon_id
+                       and (e.get("timestamp") or "") >= cutoff for e in entries):
+                    return
             entries.append(entry)
             if len(entries) > 5000:
                 del entries[:-5000]             # keep the last 5000 entries (in place)
     except Exception as e:
         print(f"⚠️ Could not save tracking upload log: {e}")
+
+
+def _record_upload_db(amazon_id, wb_ids, tracking_ids, status, note="", driver=None):
+    """Durable record of a confirmed shipment in the DB (order_placer_orders, closing_orders,
+    action_log) so closing never has to read it back off the Seller Central page. For an
+    'already_shipped' read, the order page is open — take the tracking Amazon actually shows
+    when it can be found there, otherwise the ids we would have uploaded (blank-fill only)."""
+    if not _HAS_UNIFIED_DB:
+        return
+    try:
+        from utils.unified_db import record_tracking_upload
+        ids = [t for t in (tracking_ids or []) if t]
+        carrier = ""
+        if status == "already_shipped" and driver is not None:
+            try:
+                from engine.amazon_scraper import AmazonScraper
+                body = driver.execute_script("return (document.body && document.body.innerText) || '';") or ""
+                got = AmazonScraper._extract_tracking_uploaded(body)
+                if got.get("tracking_id_uploaded"):
+                    ids = [got["tracking_id_uploaded"]]
+                    carrier = got.get("tracking_carrier_uploaded") or ""
+            except Exception:
+                pass
+        record_tracking_upload(amazon_id, wb_ids, ids, status, carrier=carrier, note=note)
+    except Exception as e:
+        print(f"     ⚠️ upload record not saved to DB: {e}")
 
 # --- Gmail Helper Functions ---
 
@@ -1254,6 +1294,18 @@ def _prefetch_batch_tracking(batch_wbs, gmail_services):
         # DB-only mode: no sweep ran, so absence from the DB proves nothing —
         # these WBs must stay eligible for retry, not be marked "not found".
         live_complete = False
+    if remaining and gmail_services and _NOTFOUND_TTL_MIN > 0:
+        # A WB a clean live sweep found nothing for less than _NOTFOUND_TTL_MIN ago is not
+        # searched again this cycle (the archive tiers above still catch its email the moment
+        # the hourly sync has it). This is what stops ~131 unshipped WBs × 8 inboxes being
+        # re-queried every 10 minutes.
+        _now = time.time()
+        fresh_miss = [w for w in remaining if _now - _NOT_FOUND_AT.get(w, 0) < _NOTFOUND_TTL_MIN * 60]
+        if fresh_miss:
+            remaining = [w for w in remaining if w not in fresh_miss]
+            print(f"     ⏭  {len(fresh_miss)} WB(s) searched live < {_NOTFOUND_TTL_MIN} min ago with no "
+                  f"shipping email — not re-searched this cycle")
+    swept = list(remaining)
     if remaining:
         TRACKING_ID_REGEX = r"\b\d{12}\b"
         or_block = " OR ".join(f'"{w}"' for w in remaining)
@@ -1327,6 +1379,13 @@ def _prefetch_batch_tracking(batch_wbs, gmail_services):
                 found[wb] = (sorted(ids), st)
                 matched_no_ids.discard(wb)
                 print(f"     ✅  {wb}: {len(ids)} tracking ID(s) via batched sweep [{account_name}]")
+        if live_complete:
+            _t = time.time()
+            for w in swept:
+                if w not in found and w not in matched_no_ids:
+                    _NOT_FOUND_AT[w] = _t
+        for w in found:
+            _NOT_FOUND_AT.pop(w, None)
     return found, matched_no_ids, live_complete
 
 
@@ -1437,61 +1496,84 @@ def find_all_tracking_in_emails(service, order_number):
 
 
 def _update_unified_db_tracking(wb_id, tracking_ids, shipped_email_time):
-    """Update unified DB with tracking IDs. Best-effort — never crashes flow."""
+    """Update the DB with tracking IDs. Best-effort — never crashes flow. Writes the placer
+    table (closing's first source) as well as the legacy orders table."""
     if not _HAS_UNIFIED_DB:
         return
+    tids_str = ", ".join(tracking_ids) if tracking_ids else ""
     try:
         from utils.unified_db import update_order, get_order_by_wb
         row = get_order_by_wb(wb_id)
         if row:
             amazon_id = row["amazon_order_id"]
             updates = {
-                "tracking_ids": ", ".join(tracking_ids) if tracking_ids else "",
+                "tracking_ids": tids_str,
                 "shipped_email_time": shipped_email_time or "",
             }
             update_order(amazon_id, updates, changed_by="tracking_uploader")
             print(f"     📝 Updated unified DB with tracking for {wb_id}")
     except Exception:
         pass
+    try:
+        from utils.unified_db import get_placer_order_by_wb, upsert_placer_order
+        prow = get_placer_order_by_wb(wb_id)
+        if prow and tids_str:
+            upsert_placer_order({"amazon_order_id": prow["amazon_order_id"], "tracking_ids": tids_str,
+                                 "shipped_email_time": shipped_email_time or ""})
+    except Exception:
+        pass
 
 
 def _update_order_log_tracking(wb_id, tracking_ids, shipped_email_time):
-    """Update the order_log.txt entry for wb_id with tracking IDs and shipped email time.
-    Modifies the existing line in-place."""
+    """Record tracking for wb_id: the DB right away, and the order_log.txt line via the
+    per-batch flush (_flush_order_log_tracking). The 56 MB / 60k-line log used to be read
+    and rewritten in full for every single WB."""
+    _ORDER_LOG_PENDING[wb_id] = (list(tracking_ids or []), shipped_email_time)
+    _update_unified_db_tracking(wb_id, tracking_ids, shipped_email_time)
+
+
+def _flush_order_log_tracking():
+    """Apply every queued TrackingIDs / ShippedEmailTime update to order_log.txt in ONE
+    read-rewrite. Same line format as before (Rule 6: keys are only appended/replaced)."""
+    if not _ORDER_LOG_PENDING:
+        return
+    pending = dict(_ORDER_LOG_PENDING)
+    _ORDER_LOG_PENDING.clear()
     try:
         log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "rajar_logs")
         log_path = os.path.join(log_dir, "order_log.txt")
         if not os.path.exists(log_path):
             return
-        
+
         with open(log_path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        
-        updated = False
+
+        updated = 0
         new_lines = []
         for line in lines:
-            if f"| WB:{wb_id} " in line or f"| WB:{wb_id}|" in line:
-                # Update existing fields or append new ones
+            m = re.search(r"\| WB:(WB\d+)(?=[ |])", line)
+            wb_id = m.group(1) if m else None
+            if wb_id and wb_id in pending:
+                tracking_ids, shipped_email_time = pending[wb_id]
                 tids_str = ", ".join(tracking_ids) if tracking_ids else ""
-                # Remove old TrackingIDs and ShippedEmailTime if present
+                # Remove old TrackingIDs and ShippedEmailTime if present, then append fresh ones
                 line = re.sub(r"\s*\|\s*TrackingIDs:[^|]*", "", line)
                 line = re.sub(r"\s*\|\s*ShippedEmailTime:[^|]*", "", line)
-                # Append new fields before the final newline
                 line = line.rstrip("\n")
                 if tids_str:
                     line += f" | TrackingIDs:{tids_str}"
                 if shipped_email_time:
                     line += f" | ShippedEmailTime:{shipped_email_time}"
                 line += "\n"
-                updated = True
+                updated += 1
             new_lines.append(line)
-        
+
         if updated:
-            with open(log_path, "w", encoding="utf-8") as f:
+            tmp = log_path + f".{os.getpid()}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
                 f.writelines(new_lines)
-            print(f"     📝 Updated order_log.txt with tracking for {wb_id}")
-            # Also update unified DB
-            _update_unified_db_tracking(wb_id, tracking_ids, shipped_email_time)
+            os.replace(tmp, log_path)
+            print(f"     📝 order_log.txt: {updated} line(s) updated with tracking ({len(pending)} WB)")
             # Trigger background sheet sync
             try:
                 from utils.sheet_sync import sync_order_log_async
@@ -1564,8 +1646,37 @@ The {store_name} Team"""
 
 # --- Helper Functions (Report Download & Filtering) ---
 
+def _prune_reports(dl_dir, keep=None):
+    """Delete downloaded reports in dl_dir except `keep` (the newest, reused next cycle)."""
+    try:
+        for f in os.listdir(dl_dir):
+            p = os.path.join(dl_dir, f)
+            if f.endswith(".txt") and p != keep:
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 def download_amazon_order_report(driver, wait, account_config=None, download_dir=None):
     dl_dir = download_dir or DOWNLOAD_DIRECTORY
+    # Reuse a report younger than _REPORT_MAX_AGE_MIN. Requesting and waiting for Amazon to
+    # generate a 30-day report was the dominant cost of every ~10-minute cycle, and the unshipped
+    # list changes far more slowly than that (26 Sep 2026).
+    if _REPORT_MAX_AGE_MIN > 0:
+        try:
+            cands = [os.path.join(dl_dir, f) for f in os.listdir(dl_dir) if f.endswith(".txt")]
+        except OSError:
+            cands = []
+        if cands:
+            newest = max(cands, key=os.path.getmtime)
+            age_min = (time.time() - os.path.getmtime(newest)) / 60.0
+            if age_min < _REPORT_MAX_AGE_MIN and os.path.getsize(newest) > 0:
+                print(f"\n📦 Reusing the all-orders report downloaded {age_min:.0f} min ago "
+                      f"({os.path.basename(newest)}); a new one is requested every {_REPORT_MAX_AGE_MIN} min")
+                return newest
     print("\n📦 DOWNLOADING AMAZON ORDER REPORT 📦")
     try:
         driver.get(REPORT_DOWNLOAD_URL)
@@ -2028,6 +2139,9 @@ def main_workflow(account_config, passed_driver=None):
                                         status="already_shipped",
                                         note="confirmed shipment already on Amazon (stale report row) — checked before messaging",
                                     )
+                                    _record_upload_db(amazon_id, order_wb_ids,
+                                                      tracking_id_string.split(", ") if tracking_id_string else [],
+                                                      "already_shipped", note="pre-check", driver=driver)
                                     continue
                             except Exception as _pre_err:
                                 print(f"     ⚠️  Could not pre-check shipment state ({str(_pre_err)[:80]}) — continuing")
@@ -2111,6 +2225,9 @@ def main_workflow(account_config, passed_driver=None):
                                         status="already_shipped",
                                         note="confirmed shipment already on Amazon (stale report row)",
                                     )
+                                    _record_upload_db(amazon_id, order_wb_ids,
+                                                      tracking_id_string.split(", ") if tracking_id_string else [],
+                                                      "already_shipped", note="upload page", driver=driver)
                                     continue
 
                                 tracking_field = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, TRACKING_ID_FIELD_SELECTOR)))
@@ -2200,6 +2317,11 @@ def main_workflow(account_config, passed_driver=None):
                                     message_type=_msg_type,
                                     status="success",
                                 )
+                                # Exactly what Amazon received: every id on a multi-package
+                                # form, otherwise only the primary one.
+                                _record_upload_db(amazon_id, order_wb_ids,
+                                                  list(_all_tids) if _multi_ok else list(_all_tids[:1]),
+                                                  "success", note="multi-package" if _multi_ok else "")
                             except Exception as e:
                                 failure_count += 1
                                 print(f"     ❌  Upload FAILED: {e}")
@@ -2216,6 +2338,7 @@ def main_workflow(account_config, passed_driver=None):
                         print(f"\n  ✅  Batch {batch_num} complete — {len(batch_with_tracking)} uploaded so far this batch.")
                     else:
                         print(f"\n  ⏩  Batch {batch_num} — no tracking IDs found, nothing to upload.")
+                    _flush_order_log_tracking()      # one rewrite of order_log.txt per batch
 
                 if _multi_package_orders:
                     print(f"\n  {'─'*54}")
@@ -2251,11 +2374,10 @@ def main_workflow(account_config, passed_driver=None):
     finally:
         # User requested to keep the browser open between runs
         # if driver: driver.quit()  <-- Removed
-        if amazon_report_path and os.path.exists(amazon_report_path):
-            try:
-                os.remove(amazon_report_path)
-            except:
-                pass
+        _flush_order_log_tracking()
+        # Keep the newest report so the next cycle can reuse it (see download_amazon_order_report);
+        # older downloads go.
+        _prune_reports(acct_download_dir, keep=amazon_report_path)
     return driver
 
 # --- Main Execution Loop ---

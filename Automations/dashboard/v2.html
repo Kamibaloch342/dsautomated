@@ -1934,6 +1934,7 @@ const Daybook = {
     if (s.late_delivery) return { text: "Late Delivery", cls: "bad", sub: "Past deliver-by date" };
     if (s.late_ship) return { text: "Late Shipment", cls: "bad", sub: "Past ship-by date" };
     if (s.delivered) return { text: "Delivered", cls: "ok", sub: o.delivered_at ? U.date(o.delivered_at) : (o.delivery_status || "Completed") };
+    if (s.expected_delivered) return { text: "Expected Delivered", cls: "warn", sub: `Zoro ETA ${s.expected_by} passed — carrier not confirmed` };
     if (s.shipped || s.tracking) return { text: "In Transit", cls: "info", sub: o.tracking ? `${o.carrier || "FedEx"} ${o.tracking}` : "Shipped" };
     if (s.placed && s.pending) return { text: "Placed (Pending Ship)", cls: "warn", sub: o.placed_at ? `Placed ${o.placed_at.slice(11,16)}` : "Awaiting shipment" };
     if (s.placed) return { text: "Placed", cls: "info", sub: o.wb || "On Zoro" };

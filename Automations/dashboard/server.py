@@ -2677,6 +2677,7 @@ class H(BaseHTTPRequestHandler):
             if p == "/api/portfolio": return self._send(AN.portfolio(acct, zacct, frm, to))
             if p == "/api/leakage":   return self._send(AN.leakage(acct, zacct, frm, to))
             if p == "/api/health":    return self._send(AN.health(acct, zacct, frm, to))
+            if p == "/api/runs":      return self._send(AN.runs(int(q.get("limit", ["30"])[0] or 30)))
             if p == "/api/data_health": return self._send(AN.data_health(acct, zacct, frm, to))
             if p == "/api/refund_issues": return self._send(AN.refund_issues(acct, zacct, frm, to))
             if p == "/api/pnl":       return self._send(get_pnl(q))

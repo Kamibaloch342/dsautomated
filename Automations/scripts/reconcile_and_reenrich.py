@@ -18,9 +18,14 @@ For EVERY order (incl. Completed/Refunded/Cancelled/non-WB), it:
 
 Idempotent, DB-only (no Gmail/network) → safe to run daily after sync+placer+closing+fedex.
 
+Scope (26 Sep 2026): orders purchased in the last RECONCILE_DAYS (default 120) — older rows
+practically never receive a new email — and the archives are loaded only for those orders'
+ids instead of all 216k rows with their bodies. --all processes every row of the account.
+
 Usage:
   ../.venv/bin/python scripts/reconcile_and_reenrich.py Hathoro          # preview
   ../.venv/bin/python scripts/reconcile_and_reenrich.py Hathoro --go
+  ../.venv/bin/python scripts/reconcile_and_reenrich.py Hathoro --go --all
 """
 import os, sys, sqlite3
 _AUTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -28,6 +33,8 @@ sys.path.insert(0, _AUTO)
 
 ACCT = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "Hathoro"
 GO = "--go" in sys.argv
+ALL = "--all" in sys.argv
+DAYS = int(os.environ.get("RECONCILE_DAYS", "120") or 0)
 os.environ.setdefault("CLOSING_ACCOUNT", ACCT)
 DB = os.path.join(_AUTO, "data", "automations_unified.db")
 
@@ -39,32 +46,74 @@ def empty(v): return v is None or str(v).strip() in ("", "None")
 con = sqlite3.connect(DB, timeout=120); con.execute("PRAGMA busy_timeout=120000")
 con.row_factory = sqlite3.Row
 
-# ---- build in-memory archive indexes (one pass each; latest row wins) ----
-print(f"[{ACCT}] indexing archives…")
-earn = {}
-for r in con.execute("SELECT * FROM archive_earnings ORDER BY email_timestamp"):
-    earn[r["amazon_order_id"]] = r
-zoro = {}
-for r in con.execute("SELECT * FROM archive_zoro ORDER BY email_timestamp"):
-    zoro[r["wb_order_id"]] = r           # latest leg row
-trk = {}
-for r in con.execute("SELECT * FROM archive_tracking WHERE wb_order_id IS NOT NULL ORDER BY email_timestamp"):
-    trk[r["wb_order_id"]] = r
+# ---- the rows in scope, then the archive rows those need (id-scoped, latest wins) ----
+_where, _args = "account=?", [ACCT]
+if not ALL and DAYS > 0:
+    _where += " AND substr(purchase_date,1,10) >= date('now', ?)"
+    _args.append(f"-{DAYS} day")
+rows = con.execute(f"SELECT * FROM closing_orders WHERE {_where}", _args).fetchall()
+print(f"[{ACCT}] orders in scope: {len(rows)}" + ("" if ALL else f" (last {DAYS} days; --all for every row)"))
+_aids = sorted({r["amazon_order_id"] for r in rows if r["amazon_order_id"]})
+_wbs = set()
+for r in rows:
+    _wbs.update(C._extract_wb_ids(r["merchant_order_id"]) or ([r["wb_order_id"]] if r["wb_order_id"] else []))
+_wbs = sorted(_wbs)
+
+
+def _chunks(seq, n=800):
+    for i in range(0, len(seq), n):
+        yield seq[i:i + n]
+
+
+def _index(table, key, keys, order="email_timestamp"):
+    out = {}
+    for ch in _chunks(keys):
+        ph = ",".join("?" * len(ch))
+        for r in con.execute(f"SELECT * FROM {table} WHERE {key} IN ({ph}) ORDER BY {order}", ch):
+            out[r[key]] = r                 # latest row wins
+    return out
+
+
+print(f"[{ACCT}] indexing archives for {len(_aids)} orders / {len(_wbs)} WB legs…")
+earn = _index("archive_earnings", "amazon_order_id", _aids)
+zoro = _index("archive_zoro", "wb_order_id", _wbs)             # latest leg row
+trk = _index("archive_tracking", "wb_order_id", _wbs)
 rets = {}
-for r in con.execute("SELECT * FROM archive_returns ORDER BY email_timestamp DESC"):
-    rets.setdefault(r["amazon_order_id"], []).append(r)
-# tracking-uploader log → tracking_id_uploaded (no SC scrape needed)
+for ch in _chunks(_aids):
+    ph = ",".join("?" * len(ch))
+    for r in con.execute(f"SELECT * FROM archive_returns WHERE amazon_order_id IN ({ph}) "
+                         f"ORDER BY email_timestamp DESC", ch):
+        rets.setdefault(r["amazon_order_id"], []).append(r)
+# tracking_id_uploaded: the tracker's own record first (action_log + placer table, written at
+# upload time since 26 Sep 2026), then the older JSON upload log — no SC scrape needed.
 upload = {}
+try:
+    from utils.unified_db import tracking_uploads_from_action_log
+    for aid, u in tracking_uploads_from_action_log(_aids).items():
+        upload[aid] = {k: v for k, v in u.items() if not k.startswith("_")}
+except Exception as e:
+    print(f"  action_log uploads unavailable: {e}")
+try:
+    for ch in _chunks(_aids):
+        ph = ",".join("?" * len(ch))
+        for r in con.execute(f"SELECT amazon_order_id, tracking_id_uploaded, tracking_upload_date, "
+                             f"tracking_carrier_uploaded FROM order_placer_orders WHERE amazon_order_id IN ({ph}) "
+                             f"AND tracking_id_uploaded IS NOT NULL AND TRIM(CAST(tracking_id_uploaded AS TEXT)) NOT IN ('','None')", ch):
+            upload.setdefault(r["amazon_order_id"], {"tracking_id_uploaded": r["tracking_id_uploaded"],
+                                                     "tracking_upload_date": r["tracking_upload_date"] or "",
+                                                     "tracking_carrier_uploaded": r["tracking_carrier_uploaded"] or ""})
+except sqlite3.OperationalError:
+    pass                                    # placer table predates the upload columns
 try:
     import json
     for e in json.load(open(os.path.join(_AUTO, "data", "tracking_upload_log.json"))):
         tids = [t for t in (e.get("tracking_ids") or []) if t]
-        if tids and e.get("amazon_order_id"):
+        if tids and e.get("amazon_order_id") and e.get("amazon_order_id") not in upload:
             upload[e["amazon_order_id"]] = {"tracking_id_uploaded": ", ".join(tids),
                                             "tracking_upload_date": e.get("timestamp", "")}
 except Exception:
     pass
-print(f"  earnings={len(earn)} zoro_legs={len(zoro)} tracking_legs={len(trk)} return_orders={len(rets)} upload_log={len(upload)}")
+print(f"  earnings={len(earn)} zoro_legs={len(zoro)} tracking_legs={len(trk)} return_orders={len(rets)} uploads={len(upload)}")
 
 EARN_MAP = {"earnings": "total_your_earnings", "amazon_fees": "total_amazon_fees",
             "shipping_amt": "total_shipping", "sold_email_time": "email_timestamp",
@@ -86,8 +135,6 @@ RECOMPUTE = ["order_received_pkt", "zoro_placed_pkt", "zoro_shipped_pkt", "place
 FLOAT_COLS = {"profit_dollars", "profit_percent", "net_profit_after_refund", "time_to_ship_hrs",
               "ship_margin_hrs", "placement_speed_hrs", "zoro_ship_speed_hrs"}
 
-rows = con.execute("SELECT * FROM closing_orders WHERE account=?", (ACCT,)).fetchall()
-print(f"  orders: {len(rows)}")
 w = sqlite3.connect(DB, timeout=120); w.execute("PRAGMA busy_timeout=120000")
 stats = {"earn": 0, "zoro": 0, "trk": 0, "ret": 0, "label": 0, "rows": 0}
 
@@ -118,17 +165,22 @@ for row in rows:
         for dest, src in ZORO_BASE.items():
             if empty(cur.get(dest)) and not empty(latest[src]):
                 gap[dest] = latest[src]
-        body = latest["raw_body_snippet"]
+        # promo / item description: derived columns from the archive sync (26 Sep 2026),
+        # body parse only for rows synced before that while the body is still present
+        lz = dict(latest)
+        body = lz.get("raw_body_snippet")
         if empty(cur.get("coupon_savings")):
-            cs, clabel = CS.extract_zoro_promo(body) if body else (None, None)
+            cs, clabel = lz.get("zoro_promo_savings"), lz.get("zoro_promo_label")
+            if empty(cs) and body:
+                cs, clabel = CS.extract_zoro_promo(body)
             if cs:
                 gap["coupon_savings"] = cs
                 if empty(cur.get("coupon_used")) and clabel:
                     gap["coupon_used"] = clabel
             elif not empty(latest["coupon_savings"]):
                 gap["coupon_savings"] = latest["coupon_savings"]
-        if empty(cur.get("zoro_item_desc")) and body:
-            zd = CS.extract_zoro_item(body)
+        if empty(cur.get("zoro_item_desc")):
+            zd = lz.get("zoro_item_desc") or (CS.extract_zoro_item(body) if body else "")
             if zd:
                 gap["zoro_item_desc"] = zd
 
@@ -139,12 +191,18 @@ for row in rows:
         for dest, src in TRACK_MAP.items():
             if empty(cur.get(dest)) and not empty(t[src]):
                 gap[dest] = t[src]
+        if empty(cur.get("zoro_deliver_by")):
+            lt = dict(t)
+            eta = lt.get("zoro_eta") or (CS.extract_zoro_eta(lt.get("raw_body_snippet"), lt.get("email_timestamp"))
+                                         if lt.get("raw_body_snippet") else "")
+            if eta:
+                gap["zoro_deliver_by"] = eta
 
-    # --- tracking_id_uploaded from the uploader log (no SC scrape) ---
+    # --- tracking_id_uploaded from the tracker's record (no SC scrape) ---
     ul = upload.get(o["amazon_order_id"])
     if ul:
-        for dest in ("tracking_id_uploaded", "tracking_upload_date"):
-            if empty(cur.get(dest)) and not empty(ul[dest]):
+        for dest in ("tracking_id_uploaded", "tracking_upload_date", "tracking_carrier_uploaded"):
+            if empty(cur.get(dest)) and not empty(ul.get(dest)):
                 gap[dest] = ul[dest]
 
     # --- archive_returns (authoritative flags) ---

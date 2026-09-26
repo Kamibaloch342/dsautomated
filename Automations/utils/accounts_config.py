@@ -32,6 +32,11 @@ _FALLBACK = {
                       "salestreendfitinc", "toolzsolutionsllc"],
     "walmart": {"zoro_port": 9361, "profile_dir": "port_9361",
                 "sc_port": 9362, "sc_profile_dir": "port_9362"},
+    # Carrier API credentials. These keys MUST be listed here: _load() keeps only the keys
+    # of _FALLBACK, so before 26 Sep 2026 a fedex_api block pasted into accounts.json was
+    # silently dropped and only the FEDEX_* environment variables ever worked.
+    "fedex_api": {"client_id": "", "client_secret": ""},
+    "ups_api": {"client_id": "", "client_secret": ""},
 }
 
 _cache = None
@@ -57,10 +62,42 @@ def accounts() -> dict:
 
 def fedex_api_credentials() -> dict:
     """Returns {'client_id': '...', 'client_secret': '...'} if configured in accounts.json or env."""
-    cfg = _load().get("fedex_api", {})
+    cfg = _load().get("fedex_api") or {}
     client_id = os.environ.get("FEDEX_API_KEY") or os.environ.get("FEDEX_CLIENT_ID") or cfg.get("client_id", "")
     client_secret = os.environ.get("FEDEX_SECRET_KEY") or os.environ.get("FEDEX_CLIENT_SECRET") or cfg.get("client_secret", "")
     return {"client_id": str(client_id).strip(), "client_secret": str(client_secret).strip()}
+
+
+def ups_api_credentials() -> dict:
+    """UPS Track API (developer.ups.com) OAuth client credentials, from accounts.json → ups_api
+    or the UPS_CLIENT_ID / UPS_CLIENT_SECRET environment variables. Empty strings when unset."""
+    cfg = _load().get("ups_api") or {}
+    client_id = os.environ.get("UPS_CLIENT_ID") or cfg.get("client_id", "")
+    client_secret = os.environ.get("UPS_CLIENT_SECRET") or cfg.get("client_secret", "")
+    return {"client_id": str(client_id).strip(), "client_secret": str(client_secret).strip()}
+
+
+def active_locks(prefixes=None) -> list:
+    """[(name, pid)] for every data/<name>.lock whose holder pid is alive. Used to answer
+    "is a closing / bulk / messaging run in progress?" before doing DB maintenance."""
+    out = []
+    try:
+        d = os.path.join(_AUTO, "data")
+        for fn in os.listdir(d):
+            if not fn.endswith(".lock"):
+                continue
+            name = fn[:-5]
+            if prefixes and not name.startswith(tuple(prefixes)):
+                continue
+            try:
+                pid = int((open(os.path.join(d, fn)).read() or "0").strip() or 0)
+            except Exception:
+                pid = 0
+            if pid and _pid_alive(pid):
+                out.append((name, pid))
+    except Exception:
+        pass
+    return out
 
 
 

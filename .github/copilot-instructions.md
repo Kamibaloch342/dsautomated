@@ -1,47 +1,28 @@
-# Project Rules — Dropshipping Automation (HOANK STORE)
+# Project Rules — Dropshipping Automation (HOANK STORE + Hathoro)
 
-> **Update (7 September 2026):** the `Final Automation/` stack described below no longer exists — `Automations/` IS the live production stack ("ZUHRA Software"). Ignore any line here that says not to modify `Automations/`. Before changing anything there read `Automations/automations_complete_documentation.md` (Appendix F guardrails) and `Automations/docs/CLOUD_ARCHITECTURE.md` (R2 cloud layer, launcher remote control, routing rules).
+> Rewritten 26 September 2026. The `Final Automation/` stack, `hoank_tracker.db` and
+> `unified_tracker.py` this file used to describe no longer exist. `Automations/` ("ZUHRA
+> Software") is the live production stack. **Read `AGENTS.md` at the repository root first** —
+> it is the authoritative guide — then `Automations/automations_complete_documentation.md`
+> Appendix F (the NEVER-DO rules) before changing anything under `Automations/`.
 
+## Architecture (current)
+- Live code lives in `Automations/` (engine/, checkout/, platforms/, utils/, scripts/, dashboard/, gui/).
+- Master data: `Automations/data/automations_unified.db` (SQLite, WAL); email archive:
+  `Automations/data/gmail_archive.db`; team-edited Google Sheet for SKU map / coupons / priority.
+- Account and inbox lists come from `Automations/config/accounts.json` only (never hardcode).
+- Tokens live in `Automations/data/All_Tokens/` (git-ignored). Never commit secrets, databases or logs.
 
-## Architecture
-- All new automation code lives in `Final Automation/` folder
-- Do NOT modify any existing `.py` files outside `Final Automation/`
-- Single SQLite database (`hoank_tracker.db`) is the source of truth — no Excel output
-- One main entry point: `Final Automation/unified_tracker.py`
+## Data conventions
+- Zoro order ids start with `WB` (phone orders `SO`); Amazon `merchant-order-id` carries the WB id
+  or a label (`OOS`, `Discontinued`, `Loss`, `Duplicate`, `20`, …).
+- FedEx tracking ids are 12 digits, UPS ids start with `1Z`. Marketplace `ATVPDKIKX0DER`.
+- Labels: `Completed` / `Loss` / `Refunded` / `Cancelled` / `Incomplete` (see `closing.py determine_label`).
 
-## Accounts & Credentials
-- **Amazon Store:** HOANK STORE only
-- **Earnings Gmail:** `qurtdis` (receives "Sold, ship now" emails)
-- **Zoro Order Gmails:** `asad_amazon_us`, `salesmercentile1` (receive Zoro order confirmations)
-- **All Gmail tokens:** `Zoro things/All_Tokens/` (single source, never duplicate)
-- **OAuth credentials file:** `AB ECOM Credentials.json`
-- **Chrome profile:** `hoank_normal_orders` (macOS), port `9223`
-
-## Data Conventions
-- Zoro order IDs start with `WB` (e.g., `WB-12345678`)
-- Amazon merchant-order-id field stores the WB ID (or "OOS"/"Discontinued"/"Loss"/"Duplicate")
-- FedEx tracking IDs are 12 digits, scraped from FedEx.com with `FDEG` qualifier
-- Marketplace ID: `ATVPDKIKX0DER` (Amazon US)
-
-## SQLite Schema Tables
-- `amazon_orders` — source of truth for all Amazon orders
-- `zoro_orders` — Zoro cost data linked via `wb_order_id`
-- `tracking_ids` — all tracking numbers with FedEx delivery status
-- `amazon_earnings` — revenue/fees/earnings per order
-- `run_log` — audit trail of each automation cycle
-
-## Lifecycle Statuses
-- `Pending` → `Shipped` → `AllDelivered` → `Completed`
-- Also: `Cancelled`, `Problem`
-
-## Key Patterns
-- Gmail auth: OAuth2 with JSON token files, auto-refresh
-- Selenium: Chrome remote debugging, anti-detection (remove navigator.webdriver, timezone override)
-- Incremental processing: only process new/changed orders each cycle
-- Duplicate detection: group by (ASIN + zip + buyer_name) within 3-day window
-- FedEx re-check: only if not "Delivered" and last checked > 2 hours ago
-
-## Don'ts
-- Never hardcode Windows paths — use macOS paths or `os.path` / `pathlib`
-- Never overwrite the SQLite DB — always UPSERT/INSERT incrementally
-- Never store credentials in source code — reference token files only
+## Working rules
+- Inspect the DB read-only; back up before any purge/VACUUM; placers stopped for VACUUM.
+- Never run `scripts/test_pipeline_orders.py`; never touch a running placer's Chrome (ports 9221–9224).
+- Do not weaken the placement lock, the fail-closed duplicate check, the Sheets loads, the
+  coupon/priority rules, the label criteria or the messaging guards.
+- Prefer incremental work: closing processes only new/changed orders, syncs are incremental —
+  keep it that way.

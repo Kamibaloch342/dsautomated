@@ -1,5 +1,10 @@
 # Closing Pipeline — Complete Guide & Roadmap
 
+> **SUPERSEDED (26 Sep 2026).** This guide describes `engine/closing_pipeline.py` and a
+> `Final Automation/` folder that no longer exist. The live chain is `closing.py` driven by
+> `scripts/daily_bulk.py` — see `docs/OPERATIONS_AUDIT_2026-09-26.md` §3.2 for the current
+> steps and `AGENTS.md` §3 for the one-page overview. Kept for the table-by-table background.
+
 > This document explains the **"One Car" architecture**: how data flows from order placement → database → enriched closing records.
 
 ---

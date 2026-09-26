@@ -39,7 +39,7 @@ print = __import__("functools").partial(print, flush=True)
 from utils.accounts_config import accounts, gmail_tokens, acquire_lock, release_lock
 from engine.post_delivery import (
     process_single_order, _get_gmail_services, _delivery_days_ago,
-    _is_driver_alive, ACCOUNT_CONFIGS,
+    _is_driver_alive, ACCOUNT_CONFIGS, prefetch_guards,
     DAYS_AFTER_DELIVERY_TO_MESSAGE, DAYS_AFTER_DELIVERY_TO_REVIEW,
 )
 from engine.amazon_scraper import _connect_chrome
@@ -54,13 +54,49 @@ _MSG_TERMINAL    = ("Yes", "No Permission")
 _REVIEW_TERMINAL = ("Yes", "Already Requested", "Expired")
 
 
+def _prefilter_from_archive(conn):
+    """Answer the guard questions from the Gmail ARCHIVE first (synced hourly), so the live
+    per-order searches only run for orders the archive knows nothing about. Same rules the
+    messaging pass applies, written to the row: a return/refund email → return_requested /
+    refund_done; an inbound buyer message → customer_messaged; one of OUR delivery check-ins
+    already archived (message_type='delivery_checkin') → delivered_msg_sent='Yes'. Only
+    delivered, non-terminal rows of this account are touched; nothing is ever un-set."""
+    live = ("account=? AND delivery_status IN ('Delivered','AllDelivered')"
+            " AND COALESCE(order_label,'') NOT IN ('Refunded','Cancelled')")
+    n = {}
+    try:
+        n["return"] = conn.execute(
+            f"UPDATE closing_orders SET return_requested='Yes' WHERE {live} AND COALESCE(return_requested,'')!='Yes'"
+            " AND amazon_order_id IN (SELECT amazon_order_id FROM archive_returns)", (ACCOUNT,)).rowcount
+        n["refund"] = conn.execute(
+            f"UPDATE closing_orders SET refund_done='Yes' WHERE {live} AND COALESCE(refund_done,'')!='Yes'"
+            " AND amazon_order_id IN (SELECT amazon_order_id FROM archive_returns"
+            "   WHERE email_type='refund_initiated' OR refund_done='Yes')", (ACCOUNT,)).rowcount
+        n["inquiry"] = conn.execute(
+            f"UPDATE closing_orders SET customer_messaged='Yes' WHERE {live} AND COALESCE(customer_messaged,'')!='Yes'"
+            " AND amazon_order_id IN (SELECT amazon_order_id FROM archive_messages"
+            "   WHERE direction='inbound' OR message_type IN ('buyer_inquiry','buyer_reply'))", (ACCOUNT,)).rowcount
+        n["checkin"] = conn.execute(
+            f"UPDATE closing_orders SET delivered_msg_sent='Yes' WHERE {live}"
+            f" AND COALESCE(delivered_msg_sent,'') NOT IN ({','.join('?' * len(_MSG_TERMINAL))})"
+            " AND amazon_order_id IN (SELECT amazon_order_id FROM archive_messages"
+            "   WHERE message_type='delivery_checkin')", (ACCOUNT, *_MSG_TERMINAL)).rowcount
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        print(f"[MSG] archive pre-filter skipped: {e}")
+    if any(n.values()):
+        print(f"[MSG] archive pre-filter: return +{n.get('return', 0)}, refund +{n.get('refund', 0)}, "
+              f"buyer wrote +{n.get('inquiry', 0)}, check-in already sent +{n.get('checkin', 0)}")
+
+
 def load_pending():
     """Delivered orders for THIS account still owed a message and/or review,
-    delivered 6–MAX_DAYS ago. Refunded/returned orders are excluded up front
-    (pd re-checks Gmail anyway — this just avoids wasted lookups)."""
+    delivered 6–MAX_DAYS ago. Refunded/returned orders and orders whose buyer wrote to us
+    are excluded up front (pd re-checks Gmail anyway — this just avoids wasted lookups)."""
     conn = sqlite3.connect(DB, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=30000")
+    _prefilter_from_archive(conn)
     ph_m = ",".join("?" * len(_MSG_TERMINAL))
     ph_r = ",".join("?" * len(_REVIEW_TERMINAL))
     rows = conn.execute(
@@ -71,6 +107,7 @@ def load_pending():
               AND COALESCE(order_label, '') NOT IN ('Refunded', 'Cancelled')
               AND COALESCE(return_requested, '') != 'Yes'
               AND COALESCE(refund_done, '') != 'Yes'
+              AND COALESCE(customer_messaged, '') != 'Yes'
               AND (COALESCE(delivered_msg_sent, '') NOT IN ({ph_m})
                    OR COALESCE(review_requested, '') NOT IN ({ph_r}))
             ORDER BY delivery_date ASC""",
@@ -161,6 +198,15 @@ def _run(pd_cfg, sc_port):
               "without the return/refund guards. Fix the tokens and re-run.")
         return 2
 
+    # One batched Gmail pass answers the guard questions for the whole run (a few OR-queries
+    # per inbox instead of ~25 searches per order); orders with mail still get the exact
+    # per-order checks inside process_single_order.
+    guards = None
+    try:
+        guards = prefetch_guards(gmail_services, [o["amazon_order_id"] for o in pending])
+    except Exception as e:
+        print(f"[MSG] guard prefetch failed ({e}) — per-order Gmail checks will run")
+
     sent = reviewed = skipped = failed = 0
     for o in pending:
         if driver is not None and not _is_driver_alive(driver):
@@ -177,7 +223,7 @@ def _run(pd_cfg, sc_port):
                 break
         try:
             res = process_single_order(driver, o, pd_cfg, gmail_services,
-                                       closing_table=True, dry_run=DRY)
+                                       closing_table=True, dry_run=DRY, guards=guards)
             if res.get("delivered_msg_sent") == "Yes":
                 sent += 1
             elif res.get("customer_messaged") == "Yes" or res.get("return_requested") == "Yes" \

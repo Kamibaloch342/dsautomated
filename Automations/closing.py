@@ -55,7 +55,7 @@ from utils.accounts_config import (
     accounts as _cfg_accounts, gmail_tokens as _cfg_gmail_tokens,
     preferred_inboxes, acquire_lock, release_lock,
 )
-from engine.fedex_api import FedExTracker, FedExSessionExpired
+from engine.fedex_api import FedExTracker, FedExSessionExpired, browser_tier_allowed
 from engine.live_gmail_per_order import (
     search_order_in_gmail, search_zoro_issue, search_zoro_cost, search_zoro_tracking,
 )
@@ -124,6 +124,17 @@ PREF = preferred_inboxes(ACCOUNT)
 # (interactive runs still wait for Enter). Prevents the old infinite signin
 # loop that burned the whole daily_bulk closing timeout doing nothing.
 LOGIN_WAIT_MINS = _env_int("CLOSING_LOGIN_WAIT_MINS", 5)
+# ── Report-diff ingest (26 Sep 2026) ────────────────────────────────────────
+# Resume only ever skipped terminal labels, and with delivery unconfirmed nothing became
+# terminal — so every run re-enriched the whole 30-day window (10,378 HOANK orders on
+# 26 Sep, every row rewritten, ~380k audit rows appended). With DIFF on, an order gets a
+# pass only when it is new to closing_orders, its report row changed, new email evidence
+# arrived since its last pass, the placer/tracker know something the row lacks, or a
+# core field is still missing and live Gmail may retry (at most every GAP_RETRY_HOURS).
+DIFF          = _env_bool("CLOSING_DIFF", True)
+ENRICH_LOG    = _env_bool("CLOSING_ENRICH_LOG", False)   # enrichment_log rows are opt-in now
+EVIDENCE_MARGIN_H = _env_int("CLOSING_EVIDENCE_MARGIN_H", 2)
+GAP_RETRY_HOURS   = _env_int("CLOSING_GAP_RETRY_HOURS", 24)
 
 CLOSING_PROFILE_ROOT = os.path.expanduser("~/.closing_chrome_profiles")
 # Per-account so HOANK and Hathoro can run in parallel without download_report's
@@ -744,6 +755,18 @@ def download_report(port, days=30, start_date=None, end_date=None):
 # ═══════════════════════════════════════════════════════════════════════════
 #  Enrichment: placer-log → archive → live Gmail → optional scrape
 # ═══════════════════════════════════════════════════════════════════════════
+def _log_enrich(run_id, amazon_id, source, field, old, new, confidence=1.0):
+    """enrichment_log rows are opt-in (CLOSING_ENRICH_LOG=1) since 26 Sep 2026: the table had
+    2.76 M rows that nothing reads, grew ~380k per run day, and every row cost its own SQLite
+    connection. Provenance for a run is still in Final_Testing_Logs/runs/<run>.jsonl."""
+    if not ENRICH_LOG:
+        return
+    try:
+        log_enrichment(run_id, amazon_id, source, field, old, new, confidence=confidence)
+    except Exception:
+        pass
+
+
 def enrich_from_archive(conn, amazon_id, wb_id, run_id):
     """Gap-fill from the archive_* mirror tables. Returns {field: value}."""
     enriched, flags = {}, {"enriched_from_archive": 0}
@@ -769,7 +792,7 @@ def enrich_from_archive(conn, amazon_id, wb_id, run_id):
                 val = amazon_order_date(archive_order_date=val)
             if val not in (None, ""):
                 enriched[dest] = val
-                log_enrichment(run_id, amazon_id, "archive_earnings", dest, None, val, confidence=0.9)
+                _log_enrich(run_id, amazon_id, "archive_earnings", dest, None, val, confidence=0.9)
 
     if wb_id:
         row = conn.execute(
@@ -792,15 +815,21 @@ def enrich_from_archive(conn, amazon_id, wb_id, run_id):
                 val = row[src]
                 if val not in (None, ""):
                     enriched[dest] = val
-                    log_enrichment(run_id, amazon_id, "archive_zoro", dest, None, val, confidence=0.9)
-            # Coupon / promo — parse the Zoro email body ('Promo applied: -$X.XX')
-            cs, clabel = _CS.extract_zoro_promo(row["raw_body_snippet"])
+                    _log_enrich(run_id, amazon_id, "archive_zoro", dest, None, val, confidence=0.9)
+            # Coupon / promo and Zoro's own item description. Since 26 Sep 2026 the archive
+            # sync derives these into columns (zoro_promo_savings / zoro_promo_label /
+            # zoro_item_desc) so the unified DB no longer needs the raw email body; rows
+            # synced before that are parsed from the body when it is still present.
+            zr = dict(row)
+            cs, clabel = zr.get("zoro_promo_savings"), zr.get("zoro_promo_label")
+            if cs in (None, "") and zr.get("raw_body_snippet"):
+                cs, clabel = _CS.extract_zoro_promo(zr.get("raw_body_snippet"))
             if cs:
                 enriched["coupon_savings"] = cs
-                enriched["coupon_used"] = clabel
-                log_enrichment(run_id, amazon_id, "archive_zoro", "coupon_savings", None, cs, confidence=0.9)
-            # Zoro's own item description (catches SKU-mapping errors vs Amazon title)
-            zdesc = _CS.extract_zoro_item(row["raw_body_snippet"])
+                enriched["coupon_used"] = clabel or "Promo applied"
+                _log_enrich(run_id, amazon_id, "archive_zoro", "coupon_savings", None, cs, confidence=0.9)
+            zdesc = zr.get("zoro_item_desc") or (
+                _CS.extract_zoro_item(zr.get("raw_body_snippet")) if zr.get("raw_body_snippet") else "")
             if zdesc:
                 enriched["zoro_item_desc"] = zdesc
 
@@ -814,15 +843,19 @@ def enrich_from_archive(conn, amazon_id, wb_id, run_id):
                 val = row[src]
                 if val not in (None, ""):
                     enriched[dest] = val
-                    log_enrichment(run_id, amazon_id, "archive_tracking", dest, None, val, confidence=0.9)
+                    _log_enrich(run_id, amazon_id, "archive_tracking", dest, None, val, confidence=0.9)
             # Zoro's own delivery estimate, stated in every shipping email. It is an
             # expectation, not a delivery — so it goes to zoro_deliver_by, never to
             # delivery_status, and it is what makes "overdue" computable without FedEx.
-            eta = _CS.extract_zoro_eta(row["raw_body_snippet"], row["email_timestamp"])
+            # Derived at sync time into zoro_eta since 26 Sep 2026; body parse for older rows.
+            tr = dict(row)
+            eta = tr.get("zoro_eta") or (
+                _CS.extract_zoro_eta(tr.get("raw_body_snippet"), tr.get("email_timestamp"))
+                if tr.get("raw_body_snippet") else "")
             if eta:
                 enriched["zoro_deliver_by"] = eta
-                log_enrichment(run_id, amazon_id, "archive_tracking", "zoro_deliver_by",
-                               None, eta, confidence=0.9)
+                _log_enrich(run_id, amazon_id, "archive_tracking", "zoro_deliver_by",
+                            None, eta, confidence=0.9)
 
     rows = conn.execute(
         "SELECT * FROM archive_returns WHERE amazon_order_id = ? ORDER BY email_timestamp DESC",
@@ -833,12 +866,13 @@ def enrich_from_archive(conn, amazon_id, wb_id, run_id):
         for r in rows:
             rd = dict(r)
             body = (rd.get("raw_body_snippet") or "").lower()
-            if rd.get("refund_done") == "Yes" or "refund initiated" in body or "refund of" in body:
+            if rd.get("refund_done") == "Yes" or rd.get("email_type") == "refund_initiated" \
+                    or "refund initiated" in body or "refund of" in body:
                 enriched["refund_done"] = "Yes"
                 enriched["refund_amount"] = rd.get("refund_amount")
                 enriched["refund_date"] = rd.get("refund_date")
                 enriched["refund_reason"] = rd.get("refund_reason") or rd.get("return_reason")
-                log_enrichment(run_id, amazon_id, "archive_returns", "refund_done", None, "Yes", confidence=0.9)
+                _log_enrich(run_id, amazon_id, "archive_returns", "refund_done", None, "Yes", confidence=0.9)
                 break
 
     # customer_messaged = the CUSTOMER wrote to us → inbound rows only
@@ -852,7 +886,7 @@ def enrich_from_archive(conn, amazon_id, wb_id, run_id):
         flags["enriched_from_archive"] = 1
         enriched["customer_messaged"] = "Yes"
         enriched["customer_inquiry_count"] = len(inbound)
-        log_enrichment(run_id, amazon_id, "archive_messages", "customer_messaged", None, "Yes", confidence=0.85)
+        _log_enrich(run_id, amazon_id, "archive_messages", "customer_messaged", None, "Yes", confidence=0.85)
 
     enriched.update(flags)
     return enriched
@@ -860,6 +894,8 @@ def enrich_from_archive(conn, amazon_id, wb_id, run_id):
 
 # Placer-log columns we trust (Worker A captures these at order placement).
 # NOTE: never copy wb_order_id (placer parser leaves it blank) — use the report.
+# tracking_id_uploaded / tracking_upload_date / tracking_carrier_uploaded are written by the
+# tracker at upload time (26 Sep 2026) — the fact the SC scrape used to re-read per order.
 _PLACER_TRUST = (
     "earnings", "amazon_fees", "shipping_amt", "zoro_order_total", "zoro_tax",
     "profit_dollars", "profit_percent", "asin", "sku", "title", "quantity", "zoro_qty",
@@ -867,12 +903,40 @@ _PLACER_TRUST = (
     "ship_state", "ship_postal_code", "ship_phone", "tracking_ids",
     "shipped_email_time", "ship_by_date", "deliver_by_date", "purchase_date",
     "zoro_deliver_by", "zoro_stock",
+    "tracking_id_uploaded", "tracking_upload_date", "tracking_carrier_uploaded",
 )
+
+# Bulk-loaded copies of closing_orders / order_placer_orders / tracker uploads for this
+# run's order ids (None = not preloaded → the per-order queries, as before). Loading the
+# rows once replaces ~32,000 connection opens per run.
+_EXISTING_ROWS = None
+_PLACER_ROWS = None
+_UPLOAD_ROWS = None
+
+
+def _preload(conn, order_ids):
+    global _EXISTING_ROWS, _PLACER_ROWS, _UPLOAD_ROWS
+    ids = [i for i in dict.fromkeys(order_ids) if i]
+    ex, pl = {}, {}
+    for i in range(0, len(ids), 800):
+        chunk = ids[i:i + 800]
+        ph = ",".join("?" * len(chunk))
+        for r in conn.execute(f"SELECT * FROM closing_orders WHERE amazon_order_id IN ({ph})", chunk):
+            ex[r["amazon_order_id"]] = dict(r)
+        for r in conn.execute(f"SELECT * FROM order_placer_orders WHERE amazon_order_id IN ({ph})", chunk):
+            pl[r["amazon_order_id"]] = dict(r)
+    _EXISTING_ROWS, _PLACER_ROWS = ex, pl
+    try:
+        from utils.unified_db import tracking_uploads_from_action_log
+        _UPLOAD_ROWS = tracking_uploads_from_action_log(ids)
+    except Exception:
+        _UPLOAD_ROWS = {}
+    return ex, pl
 
 
 def placer_lookup(amazon_id):
     """Pull what Worker A already captured at placement. None if not placed."""
-    row = get_placer_order(amazon_id)
+    row = _PLACER_ROWS.get(amazon_id) if _PLACER_ROWS is not None else get_placer_order(amazon_id)
     if not row:
         return None
     out = {}
@@ -1015,7 +1079,8 @@ def enrich_one(conn, order, run_id, gmail_ok=True, scraper=None):
     aid = order["amazon_order_id"]
     wb = order.get("wb_order_id", "")
     prov = {k: "report" for k in order if not _empty(order.get(k))}   # report = the TSV row
-    existing = get_closing_order(aid)
+    existing = _EXISTING_ROWS.get(aid) if _EXISTING_ROWS is not None else get_closing_order(aid)
+    order["_existing"] = existing          # persist_batch skips the write when nothing changed
     # Tag with the account whose report this order came from — authoritative.
     # (Previously this PRESERVED the existing value, but account was never set
     #  from CLOSING_ACCOUNT, so the schema DEFAULT 'HOANK' mislabeled every order.)
@@ -1051,8 +1116,13 @@ def enrich_one(conn, order, run_id, gmail_ok=True, scraper=None):
             except Exception as e:
                 print(f"[CLOSING]   {aid}: live Gmail error — {e}")
 
-    # 2b-tracking) tracking_id_uploaded from the uploader log → no SC scrape needed for
-    # tracking (gap-fill). With this, SC scrape is feedback-only.
+    # 2b-tracking) tracking_id_uploaded from the tracker's own record (action_log, written at
+    # upload time since 26 Sep 2026), then the older JSON upload log → no SC scrape needed
+    # for tracking (gap-fill). With this, SC scrape is feedback-only.
+    if _UPLOAD_ROWS:
+        ua = _UPLOAD_ROWS.get(aid)
+        if ua:
+            _gapfill(order, {k: v for k, v in ua.items() if not k.startswith("_")}, "action_log", prov)
     ul = _upload_log_lookup(aid)
     if ul:
         _gapfill(order, ul, "upload_log", prov)
@@ -1440,17 +1510,43 @@ _PERSIST_FIELDS = (
 _ALWAYS_WRITE = {"amazon_order_id", "order_label", "last_enrichment_run"}
 
 
+def _cmp(v):
+    """Normalise a value for the changed-row test (None ≡ '', 35.9 ≡ '35.90')."""
+    if v is None:
+        return ""
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, (int, float)):
+        return f"{float(v):.4f}".rstrip("0").rstrip(".")
+    s = str(v).strip()
+    try:
+        return f"{float(s):.4f}".rstrip("0").rstrip(".")
+    except ValueError:
+        return s
+
+
+def _row_changed(data, existing):
+    for k, v in data.items():
+        if k in ("amazon_order_id", "last_enrichment_run"):
+            continue
+        if _cmp(v) != _cmp(existing.get(k)):
+            return True
+    return False
+
+
 def persist_batch(batch, run_id):
     """Write the whole batch in ONE short transaction — no Selenium/network inside.
     Non-destructive: an empty/None value is NOT written (so it can never clobber a
     richer value already in the row); only columns that exist in the live table are
-    sent; one bad row can't abort the batch."""
+    sent; one bad row can't abort the batch. A row whose values did not change is not
+    rewritten at all (26 Sep 2026 — every run used to rewrite the whole window).
+    Returns (written, unchanged)."""
     if DRY_RUN:
         print(f"[CLOSING]   [DRY] would persist {len(batch)} orders")
-        return
+        return 0, 0
     with get_conn() as conn:
         live = {r[1] for r in conn.execute("PRAGMA table_info(closing_orders)")}
-        ok = fail = 0
+        ok = fail = unchanged = 0
         for o in batch:
             o["last_enrichment_run"] = run_id
             data = {}
@@ -1461,6 +1557,10 @@ def persist_batch(batch, run_id):
                     continue        # never overwrite an existing good value with empty
                 data[k] = o[k]
             if "amazon_order_id" not in data:
+                continue
+            ex = o.get("_existing")
+            if ex and not _row_changed(data, ex):
+                unchanged += 1
                 continue
             # Retry on "database is locked" so a concurrent writer (e.g. the
             # other account's closing run) can't cause a silent dropped save.
@@ -1476,21 +1576,31 @@ def persist_batch(batch, run_id):
                     fail += 1
                     print(f"[CLOSING]   ⚠️ persist {o.get('amazon_order_id')} failed: {e}")
                     break
-        if fail:
-            print(f"[CLOSING]   persisted {ok}, {fail} failed")
+        if fail or unchanged:
+            print(f"[CLOSING]   persisted {ok}, {unchanged} unchanged" + (f", {fail} failed" if fail else ""))
+        return ok, unchanged
 
 
 def send_batch_messages(driver, batch, pd_cfg, gmail_services):
     """Delivery check-in (incl. tracking IDs) + review requests for delivered orders.
     Rows already exist in closing_orders (persisted just before), so post_delivery's
-    UPDATE lands. All guards (already-sent, return/refund, 6/12-day) live inside."""
+    UPDATE lands. All guards (already-sent, return/refund, 6/12-day) live inside; the
+    Gmail side of those guards is prefetched for the batch in a few OR-queries instead of
+    ~25 searches per order. Returns (sent, reviewed)."""
     sent = reviewed = 0
-    for o in batch:
-        if o.get("delivery_status") not in ("Delivered", "AllDelivered"):
-            continue
+    delivered = [o for o in batch if o.get("delivery_status") in ("Delivered", "AllDelivered")]
+    guards = None
+    if delivered and gmail_services:
+        try:
+            from engine.post_delivery import prefetch_guards
+            guards = prefetch_guards(gmail_services, [o["amazon_order_id"] for o in delivered])
+        except Exception as e:
+            print(f"[CLOSING]   guard prefetch failed ({e}) — per-order Gmail checks will run")
+            guards = None
+    for o in delivered:
         try:
             res = pd_process_order(driver, o, pd_cfg, gmail_services,
-                                   closing_table=True, dry_run=DRY_RUN or MSG_DRY)
+                                   closing_table=True, dry_run=DRY_RUN or MSG_DRY, guards=guards)
             if res.get("delivered_msg_sent") == "Yes":
                 sent += 1
             if res.get("review_requested") == "Yes":
@@ -1499,6 +1609,7 @@ def send_batch_messages(driver, batch, pd_cfg, gmail_services):
             print(f"[CLOSING]   {o['amazon_order_id']}: message step failed — {e}")
     if sent or reviewed:
         print(f"[CLOSING]   Messages: {sent} sent, {reviewed} reviews requested")
+    return sent, reviewed
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1754,6 +1865,145 @@ def _ensure_view():
         conn.execute(sql)
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  Report-diff: which orders need a pass this run (26 Sep 2026)
+# ═══════════════════════════════════════════════════════════════════════════
+def _run_time(run_id):
+    """'HOANK-20260926-180618' → local datetime, else None."""
+    m = re.search(r"(\d{8})-(\d{6})$", str(run_id or ""))
+    if not m:
+        return None
+    try:
+        return datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+    except ValueError:
+        return None
+
+
+def _evidence_maps(conn, since):
+    """Archive evidence: latest fetched_at per key for rows fetched since `since` (the
+    gmail_fetch tool stamps local ISO time), plus the full key sets for gap detection.
+    fetched_at is compared with 'T' folded to ' ' so both timestamp spellings sort together."""
+    def _max(sql, args=()):
+        return {r[0]: (r[1] or "") for r in conn.execute(sql, args) if r[0]}
+
+    def _set(sql, args=()):
+        return {r[0] for r in conn.execute(sql, args) if r[0]}
+    s = (since,)
+    return {
+        "earn_recent": _max("SELECT amazon_order_id, MAX(REPLACE(fetched_at,'T',' ')) FROM archive_earnings "
+                            "WHERE REPLACE(fetched_at,'T',' ') >= ? GROUP BY 1", s),
+        "zoro_recent": _max("SELECT wb_order_id, MAX(REPLACE(fetched_at,'T',' ')) FROM archive_zoro "
+                            "WHERE REPLACE(fetched_at,'T',' ') >= ? GROUP BY 1", s),
+        "trk_recent":  _max("SELECT wb_order_id, MAX(REPLACE(fetched_at,'T',' ')) FROM archive_tracking "
+                            "WHERE REPLACE(fetched_at,'T',' ') >= ? GROUP BY 1", s),
+        "ret_recent":  _max("SELECT amazon_order_id, MAX(REPLACE(fetched_at,'T',' ')) FROM archive_returns "
+                            "WHERE REPLACE(fetched_at,'T',' ') >= ? GROUP BY 1", s),
+        "msg_recent":  _max("SELECT amazon_order_id, MAX(REPLACE(fetched_at,'T',' ')) FROM archive_messages "
+                            "WHERE REPLACE(fetched_at,'T',' ') >= ? GROUP BY 1", s),
+        "earn_all":   _set("SELECT amazon_order_id FROM archive_earnings"),
+        "zoro_all":   _set("SELECT wb_order_id FROM archive_zoro"),
+        "trk_all":    _set("SELECT DISTINCT wb_order_id FROM archive_tracking "
+                           "WHERE tracking_ids IS NOT NULL AND tracking_ids != ''"),
+        "ret_all":    _set("SELECT DISTINCT amazon_order_id FROM archive_returns"),
+        "msg_in_all": _set("SELECT DISTINCT amazon_order_id FROM archive_messages "
+                           "WHERE direction='inbound' OR message_type IN ('buyer_inquiry','buyer_reply')"),
+    }
+
+
+def _select_work(orders, existing, placer, uploads, conn, fedex_active=False):
+    """Split the report into the orders that need a closing pass and the ones nothing can
+    change. Returns (todo, stats). Reasons, in order:
+      new          — not in closing_orders yet
+      changed      — report status / WB label / quantity differ from the stored row
+      evidence     — an archive email for the order/WB was fetched after the row's last pass
+      gap_placer   — the placer or tracker holds a value the row lacks (dates, cost, upload…)
+      gap_archive  — an archive row exists that the closing row never absorbed
+      fedex        — tracking known, not delivered, and a delivery source is active this run
+      gap_retry    — a core field is still missing and live Gmail may retry (≥ GAP_RETRY_HOURS)
+    Everything else is skipped without a read, a write or an audit row."""
+    now = datetime.now()
+    thresholds, global_since = {}, None
+    for o in orders:
+        ex = existing.get(o["amazon_order_id"])
+        if not ex:
+            continue
+        t = _run_time(ex.get("last_enrichment_run"))
+        thresholds[o["amazon_order_id"]] = t
+        if t and (global_since is None or t < global_since):
+            global_since = t
+    if global_since is None:
+        global_since = now - _td(days=60)
+    global_since = max(global_since - _td(hours=EVIDENCE_MARGIN_H), now - _td(days=60))
+    ev = _evidence_maps(conn, global_since.strftime("%Y-%m-%d %H:%M:%S"))
+
+    def newer(ts, thr):
+        if not ts:
+            return False
+        if thr is None:
+            return True
+        return str(ts)[:19] > (thr - _td(hours=EVIDENCE_MARGIN_H)).strftime("%Y-%m-%d %H:%M:%S")
+
+    todo = []
+    stats = {"new": 0, "changed": 0, "evidence": 0, "gap_placer": 0, "gap_archive": 0,
+             "fedex": 0, "gap_retry": 0, "skipped": 0}
+    for o in orders:
+        aid = o["amazon_order_id"]
+        ex = existing.get(aid)
+        if not ex:
+            stats["new"] += 1; todo.append(o); continue
+        thr = thresholds.get(aid)
+        if thr is None:                       # never enriched by closing.py itself
+            stats["changed"] += 1; todo.append(o); continue
+        if _s(ex.get("order_status")) != _s(o.get("order_status")) \
+                or _s(ex.get("merchant_order_id")) != _s(o.get("merchant_order_id")) \
+                or int(o.get("quantity") or 0) != int(ex.get("quantity") or 0):
+            stats["changed"] += 1; todo.append(o); continue
+        wbs = _extract_wb_ids(o.get("merchant_order_id")) or ([o["wb_order_id"]] if o.get("wb_order_id") else [])
+        if newer(ev["earn_recent"].get(aid), thr) or newer(ev["ret_recent"].get(aid), thr) \
+                or newer(ev["msg_recent"].get(aid), thr) \
+                or any(newer(ev["zoro_recent"].get(w), thr) or newer(ev["trk_recent"].get(w), thr) for w in wbs):
+            stats["evidence"] += 1; todo.append(o); continue
+        pl = placer.get(aid) or {}
+        up = uploads.get(aid) or {}
+        if any(not _empty(pl.get(k)) and _empty(ex.get(k)) for k in _PLACER_TRUST) \
+                or (not _empty(up.get("tracking_id_uploaded")) and _empty(ex.get("tracking_id_uploaded"))):
+            stats["gap_placer"] += 1; todo.append(o); continue
+        if (_empty(ex.get("earnings")) and aid in ev["earn_all"]) \
+                or (not (_safe_float(ex.get("zoro_order_total")) or 0) and any(w in ev["zoro_all"] for w in wbs)) \
+                or (_empty(ex.get("tracking_ids")) and any(w in ev["trk_all"] for w in wbs)) \
+                or (ex.get("return_requested") != "Yes" and aid in ev["ret_all"]) \
+                or (ex.get("customer_messaged") != "Yes" and aid in ev["msg_in_all"]):
+            stats["gap_archive"] += 1; todo.append(o); continue
+        if fedex_active and _order_tids(ex) and ex.get("delivery_status") not in ("Delivered", "AllDelivered"):
+            stats["fedex"] += 1; todo.append(o); continue
+        if ENABLE_GMAIL and (now - thr) >= _td(hours=GAP_RETRY_HOURS) and (
+                _empty(ex.get("earnings")) or not (_safe_float(ex.get("zoro_order_total")) or 0)
+                or _empty(ex.get("tracking_ids"))):
+            stats["gap_retry"] += 1; todo.append(o); continue
+        stats["skipped"] += 1
+    return todo, stats
+
+
+def _record_run(run_id, **fields):
+    """closing_run_log row for this run — the table existed since June and was never
+    written, so no run had a duration or a count anyone could look at."""
+    try:
+        from utils.unified_db import start_closing_run, update_closing_run, finish_closing_run
+        with get_conn() as c:
+            exists = c.execute("SELECT 1 FROM closing_run_log WHERE run_id=?", (run_id,)).fetchone()
+        date_from = fields.pop("date_from", "") or ""
+        date_to = fields.pop("date_to", "") or ""
+        status = fields.pop("status", None)
+        if not exists:
+            start_closing_run(run_id, date_from, date_to, [ACCOUNT])
+        if fields:
+            update_closing_run(run_id, fields)
+        if status:
+            finish_closing_run(run_id, status)
+    except Exception as e:
+        print(f"[CLOSING]   run log: {e}")
+
+
 def main():
     if ACCOUNT not in ACCOUNTS:
         print(f"[CLOSING] ❌ Unknown account '{ACCOUNT}' (use {' or '.join(ACCOUNTS)})")
@@ -1786,15 +2036,23 @@ def _main_locked():
     print("=" * 60)
     init_db()
     _ensure_columns()
+    _t_run0 = time.time()
+    _today = datetime.now().date()
+    _record_run(run_id, date_from=START_DATE or (_today - _td(days=DAYS)).isoformat(),
+                date_to=END_DATE or _today.isoformat())
 
     # Refresh order_placer_orders from Worker A's placement log so closing can
     # reuse everything captured at placement (WB, earnings, Zoro cost, address)
     # → script-placed orders then only need delivery + messages + feedback.
+    # Incremental (blanks + new lines) by default; the full 60k-line reconciliation runs
+    # once a day inside sync_smart, or on CLOSING_SYNC_PLACER_FULL=1 — it used to run
+    # twice per account per bulk, rewriting every placer row each time.
     if _env_bool("CLOSING_SYNC_PLACER", True):
         try:
-            from scripts.sync_order_placer_logs import sync_all
-            s = sync_all(verbose=False)
-            print(f"[CLOSING] Placer log synced: {s['updated']} updated, {s['inserted']} new")
+            from scripts.sync_order_placer_logs import sync_smart
+            s = sync_smart(verbose=False, force_full=_env_bool("CLOSING_SYNC_PLACER_FULL", False))
+            print(f"[CLOSING] Placer log synced ({s.get('mode', '?')}): {s.get('inserted', 0)} new, "
+                  f"{s.get('updated', s.get('enriched', 0))} updated")
         except Exception as e:
             print(f"[CLOSING] ⚠️ placer sync skipped — {e}")
 
@@ -1878,7 +2136,27 @@ def _main_locked():
             orders = with_tr + no_tr
         if not orders:
             print("[CLOSING] ✅ Nothing left to process.")
+            _record_run(run_id, orders_processed=0, status="completed")
             return 0
+
+    # ── Preload the rows this run touches, then keep only the orders that can change ──
+    fedex_active = False
+    if ENABLE_FEDEX and not DRY_RUN:
+        _probe = FedExTracker(headless=True)
+        fedex_active = bool(_probe.has_official_api or _probe.has_ups_api or browser_tier_allowed())
+    diff_stats = None
+    with get_conn() as _pc:
+        _existing, _placer = _preload(_pc, [o["amazon_order_id"] for o in orders])
+        if DIFF and not FORCE and not ORDER_IDS:
+            orders, diff_stats = _select_work(orders, _existing, _placer, _UPLOAD_ROWS or {}, _pc,
+                                              fedex_active=fedex_active)
+            print("[CLOSING] Diff: " + ", ".join(f"{k}={v}" for k, v in diff_stats.items())
+                  + "  (CLOSING_DIFF=0 or CLOSING_FORCE=1 to process everything)")
+    if not orders:
+        print("[CLOSING] ✅ Nothing changed since the last run — no order needs a pass.")
+        _record_run(run_id, orders_processed=0, error_details=json.dumps({"diff": diff_stats}),
+                    status="completed")
+        return 0
     print(f"[CLOSING] Processing {len(orders)} order(s)\n")
 
     os.makedirs(RUN_LOG_DIR, exist_ok=True)
@@ -1891,6 +2169,14 @@ def _main_locked():
         fedex = FedExTracker(headless=FEDEX_HEADLESS)
         if fedex.has_official_api:
             print("[CLOSING] ⚡ Using Official FedEx Developer REST API (zero browser needed)")
+        elif not browser_tier_allowed():
+            # The page tiers have been refused by Akamai since 19 Sep 2026; launching a
+            # Chrome for them only deepens the block. UPS-only credentials still work.
+            print("[CLOSING] 🚫 FedEx: no Track API credentials (config/accounts.json → fedex_api) and the "
+                  "browser tiers are off — delivery_status is not checked this run "
+                  "(set FEDEX_BROWSER=1 to force the old path).")
+            if not fedex.has_ups_api:
+                fedex = None
         else:
             fdriver = ensure_chrome(cfg["fedex_port"], headless=FEDEX_HEADLESS)
             if fdriver:
@@ -1931,6 +2217,8 @@ def _main_locked():
 
     # ── Batch loop ──────────────────────────────────────────────────────────
     totals = {"Completed": 0, "Loss": 0, "Incomplete": 0, "Cancelled": 0, "Refunded": 0}
+    counters = {"written": 0, "unchanged": 0, "placer_hits": 0, "archive_hits": 0,
+                "live_gmail_hits": 0, "fedex_delivered": 0, "messages_sent": 0, "reviews": 0}
     n_batches = (len(orders) + BATCH_SIZE - 1) // BATCH_SIZE
     for bi, batch in enumerate(_chunks(orders, BATCH_SIZE), 1):
         print(f"\n[CLOSING] ── Batch {bi}/{n_batches} ({len(batch)} orders) ──")
@@ -1966,7 +2254,8 @@ def _main_locked():
         # 4: bulk FedEx (in-memory)
         if fedex is not None:
             try:
-                bulk_fedex_check(batch, fedex)
+                _fx = bulk_fedex_check(batch, fedex) or {}
+                counters["fedex_delivered"] += int(_fx.get("delivered") or 0)
             except Exception as e:
                 print(f"[CLOSING]   ⚠️ FedEx batch failed — {e}")
 
@@ -1983,6 +2272,12 @@ def _main_locked():
                 print(f"[CLOSING]   ⚠️ label/derive {o.get('amazon_order_id')} failed — {e}")
                 o.setdefault("order_label", "Incomplete")
             totals[o["order_label"]] = totals.get(o["order_label"], 0) + 1
+            if o.get("enriched_from_placer_db"):
+                counters["placer_hits"] += 1
+            if o.get("enriched_from_archive"):
+                counters["archive_hits"] += 1
+            if o.get("enriched_from_live_gmail"):
+                counters["live_gmail_hits"] += 1
 
         # 5b: verbose per-field provenance log
         if VERBOSE:
@@ -1990,7 +2285,9 @@ def _main_locked():
                 print_order_verbose(o)
 
         # 6: persist the 30 in one short txn (rows now exist for messaging)
-        persist_batch(batch, run_id)
+        _w, _u = persist_batch(batch, run_id)
+        counters["written"] += _w
+        counters["unchanged"] += _u
 
         # 6a: append each order's full record to the run JSONL — scalable raw
         # debug trail (every field + provenance, ~1-2 KB/order) without saving
@@ -1998,7 +2295,7 @@ def _main_locked():
         try:
             with open(run_log_path, "a", encoding="utf-8") as rl:
                 for o in batch:
-                    rec = {k: v for k, v in o.items() if not k.startswith("_page")}
+                    rec = {k: v for k, v in o.items() if not k.startswith("_page") and k != "_existing"}
                     rl.write(json.dumps(rec, default=str) + "\n")
         except Exception as e:
             print(f"[CLOSING]   ⚠️ run-log write failed: {e}")
@@ -2010,7 +2307,9 @@ def _main_locked():
 
         # 7: messages + reviews for delivered orders in this batch
         if ENABLE_MSGS and msg_driver is not None and not DRY_RUN:
-            send_batch_messages(msg_driver, batch, pd_cfg, gmail_services)
+            _ms, _rv = send_batch_messages(msg_driver, batch, pd_cfg, gmail_services)
+            counters["messages_sent"] += _ms
+            counters["reviews"] += _rv
 
         done = min(bi * BATCH_SIZE, len(orders))
         print(f"[CLOSING] Progress: {done}/{len(orders)} | "
@@ -2020,8 +2319,17 @@ def _main_locked():
     for d in (fdriver, sc_driver):   # scraper shares sc_driver; don't double-quit
         release_chrome(d)            # quits only Chromes WE launched; detaches from yours
 
+    _secs = round(time.time() - _t_run0, 1)
+    _record_run(run_id, orders_processed=len(orders), orders_enriched=counters["written"],
+                archive_hits=counters["archive_hits"], live_gmail_hits=counters["live_gmail_hits"],
+                placer_db_hits=counters["placer_hits"], fedex_hits=counters["fedex_delivered"],
+                messages_sent=counters["messages_sent"], reviews_requested=counters["reviews"],
+                error_details=json.dumps({"diff": diff_stats, "totals": totals,
+                                          "unchanged": counters["unchanged"], "seconds": _secs}),
+                status="completed")
     print("\n" + "=" * 60)
-    print(f"[CLOSING] ✅ DONE — {len(orders)} orders | "
+    print(f"[CLOSING] ✅ DONE — {len(orders)} orders in {_secs}s | written={counters['written']} "
+          f"unchanged={counters['unchanged']} | "
           f"Completed={totals['Completed']} Loss={totals['Loss']} "
           f"Incomplete={totals['Incomplete']} Cancelled={totals['Cancelled']}")
     print("=" * 60)

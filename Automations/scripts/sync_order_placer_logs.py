@@ -216,6 +216,46 @@ def sync_all(log_path: str = ORDER_LOG_PATH, verbose: bool = True) -> dict:
     return stats
 
 
+_INCR_STATE = os.path.join(_SCRIPT_DIR, "data", "placer_log_sync_state.json")
+_FULL_STATE = os.path.join(_SCRIPT_DIR, "data", "placer_full_sync_state.json")
+
+
+def _log_signature(log_path):
+    try:
+        st = os.stat(log_path)
+        return {"size": st.st_size, "mtime": round(st.st_mtime, 3)}
+    except OSError:
+        return None
+
+
+def sync_smart(log_path: str = ORDER_LOG_PATH, verbose: bool = True, force_full: bool = False,
+               full_every_hours: float = 24.0) -> dict:
+    """The sync the closing chain should call. Incremental normally; the full 60k-line
+    reconciliation (sync_all — log values win over stored ones) once every
+    `full_every_hours`, or on demand. Before 26 Sep 2026 every closing run and every
+    daily_bulk step ran sync_all, per account — four full rewrites of the placer table per
+    bulk, ~240k row updates for a handful of new lines."""
+    import json, datetime as _dt
+    last = None
+    try:
+        last = _dt.datetime.fromisoformat(json.load(open(_FULL_STATE))["last_full"])
+    except Exception:
+        pass
+    due = force_full or last is None or (_dt.datetime.now() - last) >= _dt.timedelta(hours=full_every_hours)
+    if due:
+        stats = sync_all(log_path, verbose=verbose)
+        stats["mode"] = "full"
+        try:
+            with open(_FULL_STATE, "w") as f:
+                json.dump({"last_full": _dt.datetime.now().isoformat(timespec="seconds")}, f)
+        except Exception:
+            pass
+        return stats
+    stats = sync_incremental(log_path, verbose=verbose)
+    stats["mode"] = "incremental"
+    return stats
+
+
 def sync_incremental(log_path: str = ORDER_LOG_PATH, verbose: bool = True) -> dict:
     """Insert orders the DB does not have, and fill blanks on the ones it does.
 
@@ -233,6 +273,20 @@ def sync_incremental(log_path: str = ORDER_LOG_PATH, verbose: bool = True) -> di
         if verbose:
             print(f"⚠️  order_log.txt not found: {log_path}")
         return {"total": 0, "inserted": 0, "enriched": 0, "errors": 0}
+
+    # The launcher calls this every 60 s. When the log has not changed since the last pass
+    # there is nothing to learn from it — skip the 56 MB parse and the 57k-row SELECT.
+    import json
+    sig = _log_signature(log_path)
+    if log_path == ORDER_LOG_PATH and sig:
+        try:
+            prev = json.load(open(_INCR_STATE))
+            if prev.get("sig") == sig:
+                if verbose:
+                    print("✅ Incremental sync: order_log.txt unchanged — nothing to do")
+                return {"total": 0, "inserted": 0, "enriched": 0, "errors": 0, "skipped_unchanged": True}
+        except Exception:
+            pass
 
     _ensure_columns()
     # Everything already stored, read once: an untouched row then costs a dict lookup, no query.
@@ -288,6 +342,12 @@ def sync_incremental(log_path: str = ORDER_LOG_PATH, verbose: bool = True) -> di
 
     stats = {"total": inserted + enriched, "inserted": inserted,
              "enriched": enriched, "errors": errors, "skipped_non_amazon": skipped}
+    if log_path == ORDER_LOG_PATH and sig and not errors:
+        try:
+            with open(_INCR_STATE, "w") as f:
+                json.dump({"sig": sig}, f)
+        except Exception:
+            pass
     if verbose:
         print(f"✅ Incremental sync: {inserted} new, {enriched} enriched, {errors} errors"
               + (f", {skipped} Walmart rows skipped" if skipped else ""))

@@ -495,6 +495,12 @@ def get_conn(db_path=None):
     # This is what lets both placers + both closing accounts + the dashboard all
     # write to the one DB concurrently without failing under contention.
     conn.execute("PRAGMA busy_timeout=60000")
+    # Cap the WAL at 256 MB once a checkpoint completes. Nothing ever truncated it and the
+    # file reached 4 GB on 26 Sep 2026; harmless on a connection that only reads.
+    try:
+        conn.execute("PRAGMA journal_size_limit=268435456")
+    except Exception:
+        pass
     conn.row_factory = sqlite3.Row
     try:
         yield conn
@@ -873,6 +879,10 @@ def get_stats(db_path=None) -> dict:
 # same $43.80 order — that gives $43.80/unit one day and $1.75/unit the next. Recording the
 # list price Zoro itself states lets the alert compare like with like.
 PLACER_PRICE_COLUMNS = {"zoro_list_price": "REAL", "zoro_subtotal": "REAL", "zoro_shipping": "REAL"}
+# What the tracker confirmed on Amazon (26 Sep 2026): written by engine/tracking.py at upload
+# time so closing never has to load the Seller Central order page to learn it.
+PLACER_UPLOAD_COLUMNS = {"tracking_id_uploaded": "TEXT", "tracking_upload_date": "TEXT",
+                         "tracking_carrier_uploaded": "TEXT"}
 _placer_cols_ensured_for: set = set()
 
 
@@ -886,7 +896,7 @@ def ensure_placer_price_columns(db_path=None, conn=None) -> list:
 
     def _do(c):
         have = {r[1] for r in c.execute("PRAGMA table_info(order_placer_orders)")}
-        for col, typ in PLACER_PRICE_COLUMNS.items():
+        for col, typ in {**PLACER_PRICE_COLUMNS, **PLACER_UPLOAD_COLUMNS}.items():
             if col not in have:
                 c.execute(f"ALTER TABLE order_placer_orders ADD COLUMN {col} {typ}")
                 added.append(col)
@@ -927,7 +937,7 @@ def last_list_price(sku: str, exclude_amazon_id: str = "", db_path=None, conn=No
 def upsert_placer_order(data: dict, db_path=None) -> bool:
     # The table predates these columns; make sure they exist before a row that carries them.
     try:
-        if any(k in data for k in PLACER_PRICE_COLUMNS):
+        if any(k in data for k in PLACER_PRICE_COLUMNS) or any(k in data for k in PLACER_UPLOAD_COLUMNS):
             ensure_placer_price_columns(db_path)
     except Exception:
         pass
@@ -967,6 +977,134 @@ def get_placer_order_by_wb(wb_order_id: str, db_path=None) -> dict | None:
             (wb_order_id,)
         ).fetchone()
         return dict(row) if row else None
+
+
+_EMPTY_TEXT_SQL = "({c} IS NULL OR TRIM(CAST({c} AS TEXT)) IN ('','None'))"
+
+
+def record_tracking_upload(amazon_order_id: str, wb_ids, tracking_ids, status: str,
+                           carrier: str = "", upload_date: str = "", note: str = "",
+                           db_path=None) -> bool:
+    """The tracker's durable record of what it confirmed on Amazon (26 Sep 2026).
+
+    Before this, the only trace of an upload was data/tracking_upload_log.json — capped at
+    5,000 entries and flooded by ~4,900 'no_tracking' rows a day — so closing could not see
+    the uploads and re-read tracking_id_uploaded from ~3,000 Seller Central pages per run.
+    Now a 'success' overwrites order_placer_orders.tracking_id_uploaded (the upload is the
+    truth), an 'already_shipped' read off the order page only fills a blank, closing_orders
+    is gap-filled the same way, and every event lands in action_log. Best-effort: never
+    raises into the upload flow."""
+    import json
+    aid = str(amazon_order_id or "").strip()
+    if not aid:
+        return False
+    raw = tracking_ids if isinstance(tracking_ids, (list, tuple)) else str(tracking_ids or "").split(",")
+    tids, seen = [], set()
+    for t in raw:
+        t = str(t or "").strip()
+        if t and t not in seen:
+            seen.add(t)
+            tids.append(t)
+    joined = ", ".join(tids)
+    if not carrier and tids:
+        carrier = "UPS" if tids[0].upper().startswith("1Z") else ("USPS" if len(tids[0]) >= 20 else "FedEx")
+    when = upload_date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ok = True
+    if status in ("success", "already_shipped") and joined:
+        try:
+            ensure_placer_price_columns(db_path)
+        except Exception:
+            pass
+        overwrite = status == "success"
+        try:
+            with get_conn(db_path) as conn:
+                for table in ("order_placer_orders", "closing_orders"):
+                    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+                    if not PLACER_UPLOAD_COLUMNS.keys() <= cols:
+                        continue
+                    if overwrite:
+                        conn.execute(
+                            f"UPDATE {table} SET tracking_id_uploaded=?, tracking_upload_date=?, "
+                            f"tracking_carrier_uploaded=? WHERE amazon_order_id=?",
+                            (joined, when, carrier, aid))
+                    else:
+                        conn.execute(
+                            f"UPDATE {table} SET "
+                            f"tracking_id_uploaded=CASE WHEN {_EMPTY_TEXT_SQL.format(c='tracking_id_uploaded')} THEN ? ELSE tracking_id_uploaded END, "
+                            f"tracking_upload_date=CASE WHEN {_EMPTY_TEXT_SQL.format(c='tracking_upload_date')} THEN ? ELSE tracking_upload_date END, "
+                            f"tracking_carrier_uploaded=CASE WHEN {_EMPTY_TEXT_SQL.format(c='tracking_carrier_uploaded')} THEN ? ELSE tracking_carrier_uploaded END "
+                            f"WHERE amazon_order_id=?",
+                            (joined, when, carrier, aid))
+        except Exception as e:
+            ok = False
+            logger.warning("record_tracking_upload %s: %s", aid, e)
+    try:
+        detail = json.dumps({"wb": list(wb_ids) if isinstance(wb_ids, (list, tuple)) else [wb_ids],
+                             "tracking_ids": tids, "carrier": carrier, "note": note})[:2000]
+        with get_conn(db_path) as conn:
+            conn.execute(
+                "INSERT INTO action_log (amazon_order_id, action_type, status, detail) VALUES (?, ?, ?, ?)",
+                (aid, "tracking_upload", status, detail))
+    except Exception as e:
+        logger.warning("record_tracking_upload action_log %s: %s", aid, e)
+    return ok
+
+
+def tracking_uploads_from_action_log(amazon_order_ids=None, db_path=None) -> dict:
+    """{amazon_order_id: {tracking_id_uploaded, tracking_upload_date, tracking_carrier_uploaded}}
+    from action_log rows the tracker wrote (latest success wins, then already_shipped)."""
+    import json
+    out = {}
+    try:
+        with get_conn(db_path) as conn:
+            sql = ("SELECT amazon_order_id, status, detail, performed_at FROM action_log "
+                   "WHERE action_type='tracking_upload' AND status IN ('success','already_shipped')")
+            args = []
+            ids = list(amazon_order_ids or [])
+            rows = []
+            if ids:
+                for i in range(0, len(ids), 800):
+                    chunk = ids[i:i + 800]
+                    rows.extend(conn.execute(sql + f" AND amazon_order_id IN ({','.join('?' * len(chunk))}) "
+                                             "ORDER BY performed_at", chunk).fetchall())
+            else:
+                rows = conn.execute(sql + " ORDER BY performed_at", args).fetchall()
+        for r in rows:
+            try:
+                d = json.loads(r["detail"] or "{}")
+            except Exception:
+                d = {}
+            tids = [t for t in (d.get("tracking_ids") or []) if t]
+            if not tids:
+                continue
+            prev = out.get(r["amazon_order_id"])
+            if prev and prev.get("_status") == "success" and r["status"] != "success":
+                continue
+            out[r["amazon_order_id"]] = {"tracking_id_uploaded": ", ".join(tids),
+                                         "tracking_upload_date": r["performed_at"],
+                                         "tracking_carrier_uploaded": d.get("carrier") or "",
+                                         "_status": r["status"]}
+    except Exception as e:
+        logger.warning("tracking_uploads_from_action_log: %s", e)
+    return out
+
+
+def wal_checkpoint(mode: str = "TRUNCATE", db_path=None, busy_ms: int = 30000) -> dict:
+    """PRAGMA wal_checkpoint(mode) → {'busy', 'wal_pages', 'checkpointed'}. TRUNCATE also
+    resets the -wal file to zero bytes when no reader is still using it."""
+    path = str(db_path or DB_PATH)
+    conn = sqlite3.connect(path, timeout=busy_ms / 1000.0)
+    try:
+        conn.execute(f"PRAGMA busy_timeout={int(busy_ms)}")
+        row = conn.execute(f"PRAGMA wal_checkpoint({mode})").fetchone()
+        return {"busy": int(row[0]), "wal_pages": int(row[1]), "checkpointed": int(row[2])}
+    finally:
+        conn.close()
+
+
+def wal_size_mb(db_path=None) -> float:
+    p = str(db_path or DB_PATH) + "-wal"
+    return round(os.path.getsize(p) / 1048576, 1) if os.path.exists(p) else 0.0
 
 
 # ── closing_orders ────────────────────────────────────────────────────────────

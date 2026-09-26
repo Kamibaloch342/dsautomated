@@ -26,7 +26,7 @@ from typing import Dict, List, Optional
 import requests
 
 try:
-    from utils.accounts_config import fedex_api_credentials
+    from utils.accounts_config import fedex_api_credentials, ups_api_credentials
 except Exception:
     def fedex_api_credentials():
         return {
@@ -34,7 +34,28 @@ except Exception:
             "client_secret": os.environ.get("FEDEX_SECRET_KEY", "").strip(),
         }
 
+    def ups_api_credentials():
+        return {
+            "client_id": os.environ.get("UPS_CLIENT_ID", "").strip(),
+            "client_secret": os.environ.get("UPS_CLIENT_SECRET", "").strip(),
+        }
+
 logger = logging.getLogger("fedex_api")
+
+
+def browser_tier_allowed() -> bool:
+    """FedEx's public tracking (wtrk/track and its in-page API) sits behind Akamai Bot Manager
+    since 19 Sep 2026: every automated session gets a decoy "can't find that tracking number"
+    page. Running the browser tiers only deepens the block and costs three headless Chromes per
+    account, so they stay OFF unless FEDEX_BROWSER=1 is set for a deliberate retry. The official
+    Track API (config/accounts.json → fedex_api) and UPS (→ ups_api) need no browser at all."""
+    return str(os.environ.get("FEDEX_BROWSER", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+_UPS_TOKEN_URL = "https://onlinetools.ups.com/security/v1/oauth/token"
+_UPS_TRACK_URL = "https://onlinetools.ups.com/api/track/v1/details/{tid}"
+_UPS_STATUS_TYPES = {"D": "Delivered", "I": "InTransit", "P": "InTransit", "M": "LabelCreated",
+                     "X": "DeliveryException", "RS": "DeliveryException"}
 
 # FedEx public client ID (used by fedex.com frontend)
 _FEDEX_WEB_CLIENT_ID = "l7b8ada987a4544ff7a839c8e1f6548eea"
@@ -145,6 +166,14 @@ class FedExTracker:
         self._official_token: str = ""
         self._official_token_expiry: float = 0.0
 
+        # UPS Track API (1Z… numbers). Optional; dormant until credentials exist.
+        ups = ups_api_credentials()
+        self.ups_id = (ups.get("client_id") or "").strip()
+        self.ups_secret = (ups.get("client_secret") or "").strip()
+        self._ups_token: str = ""
+        self._ups_token_expiry: float = 0.0
+        self._browser_refused_said = False
+
         self._session: Optional[requests.Session] = None
         self._primed_at: float = 0.0
 
@@ -152,6 +181,103 @@ class FedExTracker:
     def has_official_api(self) -> bool:
         """True if official FedEx Developer API credentials are configured."""
         return bool(self.api_key and self.secret_key)
+
+    @property
+    def has_ups_api(self) -> bool:
+        return bool(self.ups_id and self.ups_secret)
+
+    # ── Tier 1b: UPS Track API (official, no browser) ───────────────────────
+    def _get_ups_token(self) -> str:
+        now = time.time()
+        if self._ups_token and now < (self._ups_token_expiry - 60):
+            return self._ups_token
+        resp = requests.post(_UPS_TOKEN_URL, data={"grant_type": "client_credentials"},
+                             auth=(self.ups_id, self.ups_secret),
+                             headers={"x-merchant-id": self.ups_id}, timeout=15)
+        resp.raise_for_status()
+        payload = resp.json()
+        token = payload.get("access_token")
+        if not token:
+            raise RuntimeError(f"UPS OAuth missing token: {payload}")
+        self._ups_token = token
+        self._ups_token_expiry = now + int(payload.get("expires_in", 3600))
+        logger.info("[UPS] OAuth token refreshed")
+        return token
+
+    @staticmethod
+    def _ups_dt(date_s: str, time_s: str = "") -> str:
+        """UPS gives '20260921' + '143000' → '2026-09-21 14:30'."""
+        d = str(date_s or "").strip()
+        t = str(time_s or "").strip()
+        if len(d) != 8 or not d.isdigit():
+            return ""
+        out = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+        if len(t) >= 4 and t[:4].isdigit():
+            out += f" {t[:2]}:{t[2:4]}"
+        return out
+
+    def _parse_ups_package(self, pkg: dict) -> dict:
+        detail = dict(self._empty_detail())
+        cur = pkg.get("currentStatus") or {}
+        acts = pkg.get("activity") or []
+        latest = acts[0] if acts else {}
+        st = latest.get("status") or {}
+        stype = str(st.get("type") or "").strip().upper()
+        desc = cur.get("description") or st.get("description") or ""
+        detail["status"] = _UPS_STATUS_TYPES.get(stype) or normalize_status(desc)
+        if detail["status"] == "Delivered":
+            detail["delivery_date"] = self._ups_dt(latest.get("date"), latest.get("time"))
+        for dd in pkg.get("deliveryDate") or []:
+            if (dd.get("type") or "").upper() in ("SDD", "RDD", "DEL"):
+                detail["estimated_window"] = self._ups_dt(dd.get("date"), (pkg.get("deliveryTime") or {}).get("endTime"))
+                break
+        info = pkg.get("deliveryInformation") or {}
+        detail["signed_by"] = info.get("receivedBy") or ""
+        detail["left_at"] = info.get("location") or ""
+        loc = (latest.get("location") or {}).get("address") or {}
+        detail["last_scan_location"] = f"{loc.get('city', '')}, {loc.get('stateProvince', '')}".strip(", ")
+        detail["last_scan_time"] = self._ups_dt(latest.get("date"), latest.get("time"))
+        detail["delivery_note"] = desc
+        for a in pkg.get("packageAddress") or []:
+            ad = a.get("address") or {}
+            s = f"{ad.get('city', '')}, {ad.get('stateProvince', '')}".strip(", ")
+            if (a.get("type") or "").upper() == "ORIGIN":
+                detail["from_loc"] = s
+            elif (a.get("type") or "").upper() == "DESTINATION":
+                detail["to_loc"] = s
+        return detail
+
+    def track_batch_via_ups(self, tracking_ids: List[str]) -> List[dict]:
+        """One GET per 1Z number against the official UPS Track API."""
+        import uuid
+        out: Dict[str, dict] = {}
+        empty = self._empty_detail()
+        if not tracking_ids:
+            return []
+        try:
+            token = self._get_ups_token()
+        except Exception as e:
+            logger.warning("[UPS] OAuth failed: %s", e)
+            return [dict(empty) for _ in tracking_ids]
+        for tid in tracking_ids:
+            try:
+                resp = requests.get(_UPS_TRACK_URL.format(tid=tid), params={"locale": "en_US"},
+                                    headers={"Authorization": f"Bearer {token}",
+                                             "transId": uuid.uuid4().hex[:32], "transactionSrc": "zuhra"},
+                                    timeout=20)
+                if resp.status_code == 404:
+                    out[tid] = dict(empty)
+                    continue
+                resp.raise_for_status()
+                shipments = ((resp.json().get("trackResponse") or {}).get("shipment") or [])
+                pkgs = (shipments[0].get("package") or []) if shipments else []
+                pkg = next((p for p in pkgs if str(p.get("trackingNumber") or "").upper() == tid.upper()), pkgs[0] if pkgs else None)
+                out[tid] = self._parse_ups_package(pkg) if pkg else dict(empty)
+            except Exception as e:
+                logger.warning("[UPS] track %s failed: %s", tid, e)
+                out[tid] = dict(empty)
+            time.sleep(0.2)
+        return [out.get(t, dict(empty)) for t in tracking_ids]
 
     # ── Driver lifecycle ─────────────────────────────────────────────────────
     def _get_or_create_driver(self):
@@ -294,22 +420,9 @@ class FedExTracker:
         latest_status = res.get("latestStatusDetail", {}) or {}
         code = latest_status.get("code", "").upper()
         desc = latest_status.get("description", "") or latest_status.get("statusByLocale", "")
-
-        if code == "DL" or "delivered" in desc.lower():
-            status = "Delivered"
-        elif code == "IT" or "in transit" in desc.lower():
-            status = "InTransit"
-        elif code == "OD" or "out for delivery" in desc.lower():
-            status = "OutForDelivery"
-        elif code in ("OC", "PX", "LP") or "label created" in desc.lower():
-            status = "LabelCreated"
-        elif code == "PU" or "picked up" in desc.lower():
-            status = "PickedUp"
-        elif desc:
-            status = desc
-        else:
-            status = "Unknown"
-        detail["status"] = status
+        # Same canonical vocabulary as every other tier (the old branch stored "PickedUp" and
+        # raw descriptions that nothing downstream understood).
+        detail["status"] = normalize_status(desc, code)
 
         # Dates & times
         date_and_times = res.get("dateAndTimes", []) or []
@@ -658,16 +771,50 @@ class FedExTracker:
         if not clean_ids:
             return []
 
+        # UPS numbers (1Z…) go to the UPS Track API; FedEx never answers for them.
+        ups_ids = [t for t in clean_ids if t.upper().startswith("1Z")]
+        fedex_ids = [t for t in clean_ids if not t.upper().startswith("1Z")]
+        by_id: Dict[str, dict] = {}
+        if ups_ids:
+            if self.has_ups_api:
+                logger.info("[UPS] Tracking %d IDs via UPS Track API", len(ups_ids))
+                by_id.update(zip(ups_ids, self.track_batch_via_ups(ups_ids)))
+            else:
+                for t in ups_ids:
+                    by_id[t] = self._empty_detail()
+        if not fedex_ids:
+            return [by_id.get(t, self._empty_detail()) for t in clean_ids]
+
         # Tier 1: Official FedEx REST API
         if self.has_official_api:
-            logger.info("[FedEx] Tracking %d IDs via Official REST API", len(clean_ids))
+            logger.info("[FedEx] Tracking %d IDs via Official REST API", len(fedex_ids))
             try:
-                return self.track_batch_via_official_api(clean_ids)
+                by_id.update(zip(fedex_ids, self.track_batch_via_official_api(fedex_ids)))
+                return [by_id.get(t, self._empty_detail()) for t in clean_ids]
             except Exception as e:
-                logger.warning("[FedEx] Official REST API failed (%s) — falling back to headless CDP", e)
+                logger.warning("[FedEx] Official REST API failed (%s)", e)
+                if not browser_tier_allowed():
+                    for t in fedex_ids:
+                        by_id[t] = self._empty_detail()
+                    return [by_id.get(t, self._empty_detail()) for t in clean_ids]
+                logger.warning("[FedEx] falling back to headless CDP (FEDEX_BROWSER=1)")
+
+        if not browser_tier_allowed():
+            # No API and the browser tiers are off (Akamai): answer Unknown for everything so
+            # nothing is persisted, and say so once per tracker instead of per batch.
+            self.blocked = True
+            if not self._browser_refused_said:
+                self._browser_refused_said = True
+                print("     🚫 FedEx: no Track API credentials (config/accounts.json → fedex_api) and the "
+                      "browser tiers are off since Akamai started refusing them — lookups left unresolved. "
+                      "Set FEDEX_BROWSER=1 to force the old path.", flush=True)
+            for t in fedex_ids:
+                by_id[t] = self._empty_detail()
+            return [by_id.get(t, self._empty_detail()) for t in clean_ids]
 
         # Tier 3: In-Browser Stealth CDP Batch
-        logger.info("[FedEx] Tracking %d IDs via Headless CDP Batch", len(clean_ids))
+        logger.info("[FedEx] Tracking %d IDs via Headless CDP Batch", len(fedex_ids))
+        clean_ids = fedex_ids
         results = []
         try:
             results = self.track_batch_via_cdp(clean_ids)
@@ -697,7 +844,8 @@ class FedExTracker:
             except Exception as e:
                 logger.warning("[FedEx] DOM scrape fallback error: %s", e)
 
-        return results
+        by_id.update(zip(clean_ids, results))
+        return [by_id.get(t, self._empty_detail()) for t in [str(x).strip() for x in tracking_ids if str(x).strip()]]
 
     def track_single(self, tracking_id: str) -> dict:
         """Track a single tracking ID."""

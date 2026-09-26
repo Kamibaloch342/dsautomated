@@ -230,8 +230,16 @@ are enforced in code, not by convention:
   `every_hours`) — the launcher starts the same chain as ▶ Run Closing.
 * **Headless placers**: `chrome.headless: true` (or the Ops toggle) launches placer
   Chromes with `--headless=new`; an already-running Chrome on the port is reused as is.
-* **DB slimming**: `python scripts/slim_database.py` (dry run) / `--apply` — backup first,
-  drops raw email bodies (originals stay in `gmail_archive.db`), purges old logs, VACUUM.
+* **DB slimming**: `python scripts/slim_database.py` (dry run) / `--apply` — backup first
+  (to `~/.zuhra/backups`, outside the Drive mirror), offloads raw email bodies, purges old
+  logs, VACUUM, WAL checkpoint.
+* **WAL hygiene (26 Sep 2026)**: the agent runs `PRAGMA wal_checkpoint(TRUNCATE)` every 30 min
+  (`agent_config.json → wal_checkpoint_s`) when no closing / bulk / messaging lock is held, and
+  reports `db.wal_mb` / `db.last_checkpoint` in its heartbeat. Every connection sets
+  `journal_size_limit` = 256 MB.
+* **Run telemetry (26 Sep 2026)**: `closing.py` and `daily_bulk.py` write `closing_run_log`
+  (counts, diff reasons, per-step seconds) — `GET /api/runs` on the dashboard.
+* **Log rotation (26 Sep 2026)**: `scripts/rotate_logs.py`, run hourly by `auto_sync_10min.py`.
 
 ## 6b. Two computers: master + secondary (DB sync, 14 Sep 2026)
 

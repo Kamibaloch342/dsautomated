@@ -603,9 +603,14 @@ class App(tk.Tk):
                     self._stop(n)
             return True, f"stopping {', '.join(names) or 'nothing'}"
         if a == "run_closing":
+            if str(acct).strip().upper() in ("ALL", "BOTH"):
+                if any(p.startswith("bulk_") for p in self._procs):
+                    return True, "a closing run is already active"
+                self._start_bulk("ALL")
+                return True, "closing started (HOANK + Hathoro, sequential)"
             if acct_title not in ("HOANK", "Hathoro"):
-                return False, "account must be HOANK or Hathoro"
-            if f"bulk_{acct_title.lower()}" in self._procs:
+                return False, "account must be HOANK, Hathoro or ALL"
+            if f"bulk_{acct_title.lower()}" in self._procs or "bulk_all" in self._procs:
                 return True, f"{acct_title} closing already running"
             self._start_bulk(acct_title)
             return True, f"closing started ({acct_title})"
@@ -672,13 +677,19 @@ class App(tk.Tk):
                     if time.time() - float(getattr(self, "_auto_closing_epoch", 0) or 0) >= every * 3600:
                         slot = now.strftime("%Y-%m-%d %H:%M")
                         self._auto_closing_epoch = time.time()
-                if slot:
-                    for acct in accounts:
-                        if self._auto_closing_last.get(acct) == slot or f"bulk_{acct.lower()}" in self._procs:
-                            continue
+                if slot and "bulk_all" not in self._procs:
+                    due = [acct for acct in accounts
+                           if self._auto_closing_last.get(acct) != slot and f"bulk_{acct.lower()}" not in self._procs]
+                    for acct in due:
                         self._auto_closing_last[acct] = slot
-                        self._log_line(f"⏰ auto-closing: starting {acct} ({slot})", source="scheduler")
-                        self._start_bulk(acct)
+                    if len(due) >= 2:
+                        # One chain for both stores, sequential: the Gmail fetch/sync runs once and
+                        # the two accounts no longer contend for the DB (26 Sep 2026).
+                        self._log_line(f"⏰ auto-closing: starting HOANK + Hathoro sequentially ({slot})", source="scheduler")
+                        self._start_bulk("ALL")
+                    elif due:
+                        self._log_line(f"⏰ auto-closing: starting {due[0]} ({slot})", source="scheduler")
+                        self._start_bulk(due[0])
         except Exception:
             pass
         finally:
@@ -1681,6 +1692,17 @@ class App(tk.Tk):
                   "You still need to be LOGGED IN on that profile — do that headed once,\n"
                   "the session persists in the profile, then switch this on.")
 
+        # Both stores in ONE sequential chain: Gmail fetch/sync once, no DB contention between
+        # two parallel runs, one set of Chromes at a time. This is what the scheduler uses.
+        both_btn = self._btn(ctrl, "▶ Run Closing (both)", self.GREEN,
+                             lambda: self._start_bulk("ALL"), small=True)
+        both_btn.pack(side="left", padx=(16, 0))
+        self._tip(both_btn,
+                  "RUN BOTH STORES IN ONE CHAIN — HOANK then Hathoro, sequentially.\n"
+                  "The Gmail archive fetch/sync runs once instead of twice and the two\n"
+                  "accounts never contend for the database. Same steps as the per-store\n"
+                  "buttons; the per-store Stop buttons stop the whole chain.")
+
         self.lbl_cls = tk.Label(ctrl, text="Idle", font=(self.MONO, 9),
                                 bg=self.CARD, fg=self.MUTED)
         self.lbl_cls.pack(side="right")
@@ -1768,29 +1790,31 @@ class App(tk.Tk):
             self._flash_msg(f"Failed to launch Chrome: {e}", self.RED)
 
     def _start_bulk(self, account):
-        """▶ Run Closing = the WHOLE completion chain for the selected account via
-        scripts/daily_bulk.py (Gmail fetch → closing ingest → reconcile → SC scrape
-        → FedEx → reconcile → coverage). Messaging is NOT part of this — run it
-        separately with ✉ Run Messaging when you're free."""
-        name = f"bulk_{account.lower()}"
-        if name in self._procs:
-            messagebox.showinfo("Info", f"{account} closing is already running.")
+        """▶ Run Closing = the WHOLE completion chain via scripts/daily_bulk.py (Gmail fetch →
+        closing ingest → reconcile → SC scrape → delivery → gap-fill → reconcile → messaging
+        when chained → coverage). account = "HOANK" | "Hathoro" | "ALL" (both, sequential,
+        in ONE process — the Gmail fetch runs once and the stores never contend for the DB)."""
+        both = str(account).strip().upper() in ("ALL", "BOTH")
+        name = "bulk_all" if both else f"bulk_{account.lower()}"
+        if name in self._procs or "bulk_all" in self._procs or (both and any(p.startswith("bulk_") for p in self._procs)):
+            messagebox.showinfo("Info", "A closing run is already active.")
             return
         cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "scripts", "daily_bulk.py")]
         chain = bool(self._cls_chain_var.get())
-        extra_env = {"ACCOUNTS": str(account), "SKIP_MESSAGES": "0" if chain else "1"}
+        extra_env = {"ACCOUNTS": "HOANK,Hathoro" if both else str(account), "SKIP_MESSAGES": "0" if chain else "1"}
         if chain:
             # daily_bulk's step 7 reads these; same knobs the ✉ button uses.
             extra_env["MSG_LIMIT"] = (self.cls_msg_limit.get() or "300").strip()
             if self.cls_msg_dry.get():
                 extra_env["MSG_DRY"] = "1"
         self._filter.set("All")
-        self._launch(name, cmd, account, extra_env=extra_env)
+        self._launch(name, cmd, "both" if both else account, extra_env=extra_env)
         # Start stays enabled so the OTHER account can also be launched. Stop targets
         # whichever account is selected in the dropdown.
-        self._set_cls_state(account, running=True)
+        for a in (("HOANK", "Hathoro") if both else (account,)):
+            self._set_cls_state(a, running=True)
         self._refresh_cls_lbl()
-        self._feed_line(f"Closing bulk started ({account})"
+        self._feed_line(f"Closing bulk started ({'HOANK + Hathoro, sequential' if both else account})"
                         + (f" → then messaging, limit {extra_env['MSG_LIMIT']}"
                            + (" DRY" if self.cls_msg_dry.get() else "") if chain else ""), "ok")
         self._update_hdr()
@@ -1817,9 +1841,9 @@ class App(tk.Tk):
         self._update_hdr()
 
     def _stop_closing_procs(self, account):
-        """Stop this account's bulk and/or messaging runs."""
+        """Stop this account's bulk and/or messaging runs (a combined both-store chain too)."""
         acct = account.lower()
-        for name in (f"bulk_{acct}", f"messages_{acct}"):
+        for name in (f"bulk_{acct}", f"messages_{acct}", "bulk_all"):
             if name in self._procs:
                 self._stop(name)
 
@@ -4020,9 +4044,9 @@ class App(tk.Tk):
         if filt == "Tracking Hathoro":
             return source == "tracking_hathoro"
         if filt == "Closing HOANK":
-            return source.endswith("_hoank") and source.startswith(("bulk_", "messages_", "closing_"))
+            return source == "bulk_all" or (source.endswith("_hoank") and source.startswith(("bulk_", "messages_", "closing_")))
         if filt == "Closing Hathoro":
-            return source.endswith("_hathoro") and source.startswith(("bulk_", "messages_", "closing_"))
+            return source == "bulk_all" or (source.endswith("_hathoro") and source.startswith(("bulk_", "messages_", "closing_")))
         if filt == "Coupons":
             return source == "coupon"
         if filt == "Listings":
@@ -4769,8 +4793,11 @@ class App(tk.Tk):
             self.btn_lst_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
             self.lbl_lst.config(text=status, fg=color)
         elif name.startswith(("bulk_", "messages_", "closing_")):
-            acct = "HOANK" if name.endswith("hoank") else ("Hathoro" if name.endswith("hathoro") else "")
-            if acct:
+            if name == "bulk_all":
+                accts = ("HOANK", "Hathoro")
+            else:
+                accts = ("HOANK",) if name.endswith("hoank") else (("Hathoro",) if name.endswith("hathoro") else ())
+            for acct in accts:
                 self._set_cls_state(acct, running=False, status_text=status, color=color)
             remaining = sorted(p.upper() for p in self._procs
                                if p.startswith(("bulk_", "messages_", "closing_")) and p != name)

@@ -259,6 +259,86 @@ def check_msg_already_sent(gmail_services: Dict[str, object], order_id: str) -> 
     return False
 
 
+# ── Batched guard prefetch (26 Sep 2026) ─────────────────────────────────────
+_GUARD_QUERIES = (
+    ("inquiry", INQUIRY_QUERY),
+    ("returns", f'subject:"{RETURN_SUBJECT_PATTERN}"'),
+    ("refunds", f'subject:"{REFUND_SUBJECT_PATTERN}"'),
+    ("cancel", 'subject:"Cancellation"'),
+    ("sent", 'subject:"Your e-mail to"'),
+)
+
+
+def _ids_in_message(svc, msg_id: str, candidates: List[str]):
+    """Which of `candidates` a Gmail message is about: the subject first (cheap metadata
+    call), then the body. None when the fetch failed. If Gmail matched the message but the
+    id is nowhere we can see, every candidate counts — the safe side."""
+    try:
+        meta = svc.users().messages().get(userId="me", id=msg_id, format="metadata",
+                                          metadataHeaders=["Subject"]).execute()
+        subj = " ".join(h.get("value", "") for h in (meta.get("payload", {}).get("headers") or [])
+                        if h.get("name") == "Subject")
+        hit = {c for c in candidates if c in subj}
+        if hit:
+            return hit
+        full = svc.users().messages().get(userId="me", id=msg_id, format="full").execute()
+        text = clean_html(get_email_body(full) or "")
+        hit = {c for c in candidates if c in text}
+        return hit or set(candidates)
+    except Exception:
+        return None
+
+
+def prefetch_guards(gmail_services: Dict[str, object], order_ids: List[str], chunk: int = 20) -> dict:
+    """One batched Gmail pass for the guard questions of many orders — buyer inquiry,
+    return, refund, cancellation, and a prior 'Your e-mail to' copy — instead of five
+    searches per order per inbox (≈ 25–50 calls and 30–40 s per order before this).
+
+    Returns {"complete": bool, "inquiry": set, "returns": set, "refunds": set, "cancel": set,
+    "sent": set}. A set names the orders that HAVE such mail, so a per-order check is only
+    needed for those. complete=False means a query failed or paginated for some chunk; the
+    affected chunk is then marked as hits across the board, and process_single_order falls
+    back to the full per-order checks for it — never to "no mail found"."""
+    ids = [str(i).strip() for i in dict.fromkeys(order_ids or []) if str(i).strip()]
+    out = {"complete": True, "inquiry": set(), "returns": set(), "refunds": set(), "cancel": set(), "sent": set()}
+    if not ids or not gmail_services:
+        out["complete"] = False
+        return out
+    n_calls = 0
+    for svc in gmail_services.values():
+        if not svc:
+            continue
+        for i in range(0, len(ids), chunk):
+            part = ids[i:i + chunk]
+            or_block = " OR ".join(f'"{x}"' for x in part)
+            for key, q in _GUARD_QUERIES:
+                try:
+                    resp = svc.users().messages().list(userId="me", q=f"{q} ({or_block})",
+                                                       maxResults=100).execute()
+                    n_calls += 1
+                except Exception as e:
+                    logger.warning("guard prefetch (%s) failed: %s", key, str(e)[:80])
+                    out["complete"] = False
+                    out[key].update(part)
+                    continue
+                if resp.get("nextPageToken"):
+                    out[key].update(part)          # too many to attribute — check each order
+                    continue
+                for m in resp.get("messages", []) or []:
+                    hit = _ids_in_message(svc, m["id"], part)
+                    n_calls += 1
+                    if hit is None:
+                        out["complete"] = False
+                        out[key].update(part)
+                        break
+                    out[key].update(hit)
+    logger.info("  [guards] %d orders prefetched in %d Gmail calls — inquiry %d, return %d, refund %d, "
+                "cancel %d, prior mail %d%s", len(ids), n_calls, len(out["inquiry"]), len(out["returns"]),
+                len(out["refunds"]), len(out["cancel"]), len(out["sent"]),
+                "" if out["complete"] else " (incomplete → per-order checks)")
+    return out
+
+
 # ── Date helpers ─────────────────────────────────────────────────────────────
 
 def _delivery_days_ago(delivery_date_str: str) -> int:
@@ -737,11 +817,18 @@ def process_single_order(
     gmail_services: Dict[str, object],
     closing_table: bool = False,
     dry_run: bool = False,
+    guards: Optional[dict] = None,
 ) -> dict:
     """
     Run post-delivery logic for a single order.
     Modifies order dict in-place with results.
     Returns updated order dict.
+
+    guards: the result of prefetch_guards() for a batch that includes this order. When
+    present and complete, an order with no mail of a kind skips that per-order search;
+    an order WITH such mail still runs the exact same per-order check as before (so the
+    already-sent fingerprint, the return/refund confirmation and the inquiry classification
+    are unchanged — only the "nothing there" answers are batched).
     """
     store_name = account_config.get("name", "HOANK")
     can_message = account_config.get("send_messages", True)
@@ -767,7 +854,11 @@ def process_single_order(
         return order
 
     # ── Gmail checks ──
-    inquiry = customer_inquiry_status(gmail_services, oid) if gmail_services else ""
+    g = guards if (guards and guards.get("complete")) else None
+    if g is not None and oid not in g["inquiry"]:
+        inquiry = ""
+    else:
+        inquiry = customer_inquiry_status(gmail_services, oid) if gmail_services else ""
     cust_messaged = bool(inquiry)
     order["customer_messaged"] = "Yes" if cust_messaged else "No"
     order["customer_inquiry"] = inquiry          # "" | received | received with Pictures
@@ -777,7 +868,10 @@ def process_single_order(
                  closing_table, dry_run, existing=original)
         return order
 
-    return_found, refund_found = check_returns_refunds(gmail_services, oid) if gmail_services else (False, False)
+    if g is not None and oid not in g["returns"] and oid not in g["refunds"]:
+        return_found, refund_found = False, False
+    else:
+        return_found, refund_found = check_returns_refunds(gmail_services, oid) if gmail_services else (False, False)
     if return_found or refund_found:
         logger.info("  [%s] %s — return/refund found (return=%s refund=%s), skipping",
                     store_name, oid, return_found, refund_found)
@@ -799,14 +893,15 @@ def process_single_order(
         if ship_zip and zoro_zip and ship_zip != zoro_zip:
             logger.info("  [%s] %s — zip mismatch (%s vs %s), skipping msg", store_name, oid, ship_zip, zoro_zip)
             order["delivered_msg_sent"] = "No"
-        elif check_msg_already_sent(gmail_services, oid):
+        elif (g is None or oid in g["sent"]) and check_msg_already_sent(gmail_services, oid):
             order["delivered_msg_sent"] = "Yes"
             logger.info("  [%s] %s — delivery msg already sent (Gmail confirm)", store_name, oid)
         elif dry_run:
             logger.info("  [DRY] [%s] %s — would send delivery check-in message", store_name, oid)
         else:
             # Build cancellation flag for message template
-            had_cancellation = check_cancellation_requested(gmail_services, oid) if gmail_services else False
+            had_cancellation = (check_cancellation_requested(gmail_services, oid)
+                                if (gmail_services and (g is None or oid in g["cancel"])) else False)
             order["had_cancellation"] = had_cancellation
             message_text = build_delivery_message(order, store_name)
             _fallback_name = (order.get("ship_name") or order.get("buyer_name") or "").strip()
