@@ -102,6 +102,44 @@ def main():
                   f"{r['deleted']} deleted, {r['freed_mb']:.0f} MB freed", flush=True)
     step("rotate_logs", rot)
 
+    # 4) Delivery through Zoro's own order tracking, once a day (27 Sep 2026). The closing
+    #    chain runs the same sweep as its step 5, but auto-closing is off, so this is what keeps
+    #    every shipped order tracked daily regardless: skipped while a closing / bulk / delivery
+    #    run holds a lock, and until the last completed sweep is older than the recheck window
+    #    (config zoro_tracking.recheck_hours, 20 h). Steady state is a few hundred orders,
+    #    a few minutes; exit 2 = Zoro refused the transport (nothing was marked).
+    def zd():
+        import re as _re
+        import sqlite3 as _sq
+        from utils.accounts_config import active_locks, zoro_tracking_cfg
+        busy = active_locks(("daily_bulk", "bulk_", "closing", "zoro_delivery"))
+        if busy:
+            raise SystemExit("busy: " + ", ".join(n for n, _ in busy))
+        hours = float(zoro_tracking_cfg().get("recheck_hours", 20))
+        last = None
+        try:
+            c = _sq.connect(f"file:{os.path.join(AUTO, 'data', 'automations_unified.db')}?mode=ro", uri=True)
+            row = c.execute("SELECT MAX(run_id) FROM closing_run_log WHERE run_id LIKE 'zoro-ALL-%' "
+                            "AND status='completed'").fetchone()
+            c.close()
+            m = _re.search(r"(\d{8})-(\d{6})$", (row[0] if row else "") or "")
+            if m:
+                last = datetime.datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+        except Exception:
+            last = None
+        if last and (datetime.datetime.now() - last).total_seconds() < hours * 3600:
+            raise SystemExit(f"last sweep {last:%d %b %H:%M}, next after {hours:g} h")
+        py = PYBIN if os.path.exists(PYBIN) else sys.executable
+        r = subprocess.run([py, os.path.join(AUTO, "scripts", "zoro_delivery_check.py")], cwd=AUTO,
+                           env={**os.environ, "ZORO_TRACK_ACCOUNT": "ALL"},
+                           capture_output=True, text=True, timeout=5400)
+        lines = [ln for ln in (r.stdout or "").splitlines() if ln.startswith("[ZORO-TRACK]")]
+        if lines:
+            print(f"[auto-sync] zoro_delivery: {lines[-1]}", flush=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"exit {r.returncode}: {(r.stderr or r.stdout or '')[-200:]}")
+    step("zoro_delivery", zd)
+
 
 if __name__ == "__main__":
     main()

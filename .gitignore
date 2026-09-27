@@ -77,3 +77,10 @@ Amazon_DS_Hunting/.keepa_cache/
 
 # the virtualenv may be a symlink (real venv lives in ~/.zuhra/venv, outside Google Drive)
 .venv
+Amazon_DS_Hunting/keepa_inbox/
+Amazon_DS_Hunting/store_listings/
+Amazon_DS_Hunting/Hunter_Winners.xlsx
+Amazon_DS_Hunting/RUN_NOW
+Amazon_DS_Hunting/hunter.pid
+Amazon_DS_Hunting/catalog_refresh.log*
+Amazon_DS_Hunting/portal/*.db.bak-*
