@@ -391,44 +391,33 @@ def extract_single_offer(offer_soup: BeautifulSoup, is_pinned: bool = False) -> 
 
 
 def parse_all_offers_from_page(html_content: str) -> List[Dict[str, Any]]:
-    """Extract all offers from the All Offers Display (AOD) panel or main page."""
+    """Extract all offers from the All Offers Display (AOD) panel and main page Buy Box."""
     soup = BeautifulSoup(html_content, "html.parser")
     offers: List[Dict[str, Any]] = []
     seen_sellers = set()
 
-    # 1. Pinned Offer (Buy Box)
-    pinned = soup.find("div", id="aod-pinned-offer")
-    if pinned:
-        offer = extract_single_offer(pinned, is_pinned=True)
-        if offer and offer["seller_name"]:
-            offers.append(offer)
-            seen_sellers.add(offer["seller_name"])
-
-    # 2. Offers in list
-    offer_list = soup.find("div", id="aod-offer-list")
-    if offer_list:
-        offer_divs = offer_list.find_all("div", id="aod-offer")
-        for div in offer_divs:
-            offer = extract_single_offer(div, is_pinned=False)
-            if offer and offer["seller_name"]:
-                # Avoid exact duplicates if pinned was duplicated
-                key = (offer["seller_name"], offer["item_price"])
-                if key not in seen_sellers:
-                    offers.append(offer)
-                    seen_sellers.add(key)
-
-    # 3. Fallback to main Buy Box if no AOD offers found
-    if not offers:
-        bb_seller_elem = soup.find(id="sellerProfileTriggerId") or soup.find(id="merchant-info")
-        bb_price_elem = soup.find("span", class_="a-price")
-        if bb_seller_elem and bb_price_elem:
-            price_val = clean_text(bb_price_elem.text)
-            m = re.search(r"\$[0-9]+(?:\.[0-9]{2})?", price_val)
-            price_str = m.group(0) if m else price_val
+    # 1. Main Page Buy Box - always capture so Amazon Retail or lowest Buy Box is never missed
+    bb_seller_elem = soup.find(id="sellerProfileTriggerId") or soup.find(id="merchant-info")
+    bb_price_elem = (
+        soup.find("div", id="corePriceDisplay_desktop_feature_div")
+        or soup.find("div", id="corePrice_feature_div")
+        or soup.find("span", class_="a-price")
+    )
+    if bb_seller_elem and bb_price_elem:
+        price_val = clean_text(bb_price_elem.text)
+        m = re.search(r"\$[0-9]+(?:\.[0-9]{2})?", price_val)
+        price_str = m.group(0) if m else price_val
+        seller_raw = clean_text(bb_seller_elem.text)
+        seller_name = seller_raw
+        if "sold by" in seller_raw.lower():
+            parts = re.split(r"sold by:?\s*", seller_raw, flags=re.I)
+            if len(parts) > 1 and parts[1].strip():
+                seller_name = parts[1].strip()
+        if seller_name and price_str:
             offers.append(
                 {
                     "is_pinned": True,
-                    "seller_name": clean_text(bb_seller_elem.text),
+                    "seller_name": seller_name,
                     "item_price": price_str,
                     "shipping_cost": "FREE",
                     "shipping_time": "Buy Box Delivery",
@@ -440,6 +429,29 @@ def parse_all_offers_from_page(html_content: str) -> List[Dict[str, Any]]:
                     "seller_link": "",
                 }
             )
+            seen_sellers.add((seller_name.lower(), price_str))
+
+    # 2. Pinned Offer (Buy Box in AOD drawer)
+    pinned = soup.find("div", id="aod-pinned-offer")
+    if pinned:
+        offer = extract_single_offer(pinned, is_pinned=True)
+        if offer and offer["seller_name"]:
+            key = (offer["seller_name"].lower(), offer["item_price"])
+            if key not in seen_sellers:
+                offers.append(offer)
+                seen_sellers.add(key)
+
+    # 3. Offers in list (AOD side drawer)
+    offer_list = soup.find("div", id="aod-offer-list")
+    if offer_list:
+        offer_divs = offer_list.find_all("div", id="aod-offer")
+        for div in offer_divs:
+            offer = extract_single_offer(div, is_pinned=False)
+            if offer and offer["seller_name"]:
+                key = (offer["seller_name"].lower(), offer["item_price"])
+                if key not in seen_sellers:
+                    offers.append(offer)
+                    seen_sellers.add(key)
 
     return offers
 

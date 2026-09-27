@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.zuhra.hunter</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-s</string>
+        <string>/Library/Frameworks/Python.framework/Versions/3.12/bin/python3</string>
+        <string>/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/Amazon_DS_Hunting/hunter.py</string>
+    </array>
+    <key>WorkingDirectory</key><string>/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/Amazon_DS_Hunting</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ThrottleInterval</key><integer>60</integer>
+    <key>StandardOutPath</key><string>/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/Amazon_DS_Hunting/hunter.stdout.log</string>
+    <key>StandardErrorPath</key><string>/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/Amazon_DS_Hunting/hunter.stdout.log</string>
+</dict>
+</plist>

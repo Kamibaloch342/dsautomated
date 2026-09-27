@@ -265,8 +265,19 @@ def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, acc
 
     is_low_margin = (margin_decimal < 0.08) or (margin_no_tax is not None and margin_no_tax < 0.08)
 
+    state = str(
+        order_data.get("state")
+        or order_data.get("ship_state")
+        or (order_data.get("address", {}).get("state") if isinstance(order_data.get("address"), dict) else "")
+        or ""
+    ).strip().upper()
+    state_str = f"({state})" if state else ""
+
     if is_low_margin:
-        wa_header = f"🔴 *LOW MARGIN ORDER (< 8%): {pp_display}*"
+        if tax_val > 0:
+            wa_header = f"🔴 *Taxed{state_str} Low Margin Order (< 8%): {pp_display}*"
+        else:
+            wa_header = f"🔴 *LOW MARGIN ORDER (< 8%): {pp_display}*"
     elif margin_decimal <= 0.20:
         wa_header = f"🟡 *ORDER PLACED ({pfx}{pp_display})*"
     else:

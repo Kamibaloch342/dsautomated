@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZUHRA Hunter — Review Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f6fb; --bg-2: #ffffff; --surface: #ffffff; --surface-2: #f1f4f9; --border: #e3e8f0; --border-2: #cfd7e3;
+    --text: #0f172a; --text-2: #475569; --text-3: #94a3b8;
+    --accent: #2563eb; --accent-2: #dbeafe;
+    --green: #059669; --green-bg: #d1fae5; --green-2: #065f46;
+    --red: #dc2626; --red-bg: #fee2e2;
+    --amber: #d97706; --amber-bg: #fef3c7;
+    --sky: #0284c7;
+    --shadow: 0 1px 2px rgba(15,23,42,.06), 0 8px 24px -12px rgba(15,23,42,.18);
+    --shadow-lg: 0 12px 40px -12px rgba(15,23,42,.35);
+    --radius: 16px;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0f1e; --bg-2: #0e1528; --surface: #121a30; --surface-2: #182241; --border: #1f2a48; --border-2: #2b3a63;
+    --text: #e8edf7; --text-2: #a3b0c9; --text-3: #6b7a99;
+    --accent: #60a5fa; --accent-2: #1e3a8a;
+    --green: #34d399; --green-bg: #064e3b; --green-2: #a7f3d0;
+    --red: #f87171; --red-bg: #7f1d1d;
+    --amber: #fbbf24; --amber-bg: #78350f;
+    --sky: #38bdf8;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+    --shadow-lg: 0 20px 50px -16px rgba(0,0,0,.8);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 10% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%),
+                radial-gradient(900px 500px at 100% 0%, color-mix(in srgb, var(--green) 9%, transparent), transparent 60%),
+                var(--bg);
+    color: var(--text); font-size: 14px; line-height: 1.45; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--sky); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button { font-family: inherit; cursor: pointer; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    position: sticky; top: 0; z-index: 30; backdrop-filter: blur(14px) saturate(1.4);
+    background: color-mix(in srgb, var(--bg-2) 82%, transparent); border-bottom: 1px solid var(--border);
+  }
+  .topbar-inner { max-width: 1480px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.02em; font-size: 17px; }
+  .logo .mark { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), var(--green)); color: #fff; font-size: 15px; box-shadow: var(--shadow); }
+  .logo small { font-weight: 500; color: var(--text-3); font-size: 12px; margin-left: 4px; }
+  .spacer { flex: 1; }
+  .hunter-pill {
+    display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 8px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface); font-size: 12.5px; color: var(--text-2); box-shadow: var(--shadow);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); position: relative; }
+  .dot.on { background: var(--green); }
+  .dot.on::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--green); opacity: .5; animation: ping 1.6s ease-out infinite; }
+  .dot.busy { background: var(--amber); }
+  .dot.busy::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--amber); opacity: .5; animation: ping 1s ease-out infinite; }
+  @keyframes ping { 0% { transform: scale(.6); opacity: .8; } 100% { transform: scale(1.6); opacity: 0; } }
+  .hunter-pill b { color: var(--text); font-weight: 600; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--border-2);
+    background: var(--surface); color: var(--text); font-weight: 600; font-size: 13px; transition: .15s; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow); }
+  .btn:disabled { opacity: .5; cursor: default; transform: none; }
+  .btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+  .btn.icon { padding: 8px 10px; }
+  .btn.approve { background: var(--green); border-color: transparent; color: #04241a; }
+  .btn.reject { background: transparent; border-color: color-mix(in srgb, var(--red) 55%, transparent); color: var(--red); }
+  .btn.reject:hover { background: var(--red-bg); }
+  .btn.undo { background: transparent; color: var(--text-2); }
+
+  /* ---------- stats ---------- */
+  .wrap { max-width: 1480px; margin: 0 auto; padding: 20px 24px 120px; }
+  .stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .stat::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--c, var(--accent)); opacity: .9; }
+  .stat label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); font-weight: 600; }
+  .stat .v { font-size: 26px; font-weight: 800; letter-spacing: -.03em; margin-top: 4px; line-height: 1.1; }
+  .stat .s { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+
+  /* ---------- toolbar ---------- */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; position: sticky; top: 61px; z-index: 20;
+    padding: 10px 0; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); }
+  .tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 4px; gap: 2px; box-shadow: var(--shadow); }
+  .tab { border: 0; background: transparent; padding: 7px 12px; border-radius: 9px; font-weight: 600; color: var(--text-2); display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  .tab .n { font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); font-weight: 700; }
+  .tab.active { background: var(--accent); color: #fff; }
+  .tab.active .n { background: rgba(255,255,255,.22); color: #fff; }
+  .field { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0 10px; height: 38px; box-shadow: var(--shadow); }
+  .field input, .field select { border: 0; background: transparent; color: var(--text); font: inherit; outline: none; height: 100%; }
+  .field input[type="search"] { width: 240px; }
+  .field input[type="range"] { width: 110px; accent-color: var(--accent); }
+  .field .lbl { font-size: 12px; color: var(--text-3); font-weight: 600; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); }
+  .seg button { border: 0; background: transparent; padding: 8px 10px; color: var(--text-2); }
+  .seg button.active { background: var(--surface-2); color: var(--text); }
+
+  /* ---------- grid / cards ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; }
+  .grid.compact { grid-template-columns: 1fr; gap: 8px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+    display: flex; flex-direction: column; overflow: hidden; transition: transform .15s, box-shadow .15s, border-color .15s, opacity .25s;
+    position: relative; outline: 0;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+  .card.focused { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), var(--shadow-lg); }
+  .card.selected { border-color: var(--green); }
+  .card.leaving { opacity: 0; transform: scale(.96) translateY(6px); pointer-events: none; }
+  .media { position: relative; height: 190px; background: #fff; display: grid; place-items: center; overflow: hidden; border-bottom: 1px solid var(--border); }
+  .media img { max-width: 92%; max-height: 92%; object-fit: contain; mix-blend-mode: multiply; }
+  .media .ph { color: #94a3b8; font-size: 12px; text-align: center; }
+  .badge-margin { position: absolute; right: 10px; top: 10px; font-weight: 800; font-size: 13px; padding: 5px 10px; border-radius: 999px; color: #04241a; background: var(--green); box-shadow: var(--shadow); }
+  .badge-margin.mid { background: #fbbf24; color: #3b2603; }
+  .badge-margin.low { background: #fca5a5; color: #450a0a; }
+  .badge-pack { position: absolute; left: 10px; top: 10px; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px; background: rgba(15,23,42,.75); color: #fff; }
+  .chk { position: absolute; left: 10px; bottom: 10px; width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--border-2); background: var(--surface); display: grid; place-items: center; cursor: pointer; color: transparent; font-weight: 800; font-size: 13px; }
+  .card.selected .chk { background: var(--green); border-color: var(--green); color: #04241a; }
+  .body { padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .rowb { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chip { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--accent-2); color: var(--accent); letter-spacing: .01em; }
+  :root[data-theme="dark"] .chip { color: #bfdbfe; }
+  .cat { font-size: 11.5px; color: var(--text-3); }
+  .status-chip { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .06em; }
+  .status-chip.APPROVED { background: var(--green-bg); color: var(--green-2); }
+  .status-chip.REJECTED { background: var(--red-bg); color: var(--red); }
+  .status-chip.PENDING { background: var(--amber-bg); color: var(--amber); }
+  .title { font-weight: 600; font-size: 14px; margin: 0; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 38px; }
+  .title a { color: inherit; }
+  .prices { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 12px; background: var(--surface-2); border-radius: 12px; }
+  .prices label { display: block; font-size: 10.5px; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; font-weight: 700; }
+  .prices .p { font-size: 18px; font-weight: 800; letter-spacing: -.02em; }
+  .prices .sub { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+  .prices .arrow { color: var(--text-3); font-size: 18px; }
+  .profit { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .profit .big { font-size: 22px; font-weight: 800; color: var(--green); letter-spacing: -.02em; }
+  .profit .big.neg { color: var(--red); }
+  .profit .meta { font-size: 11.5px; color: var(--text-2); text-align: right; }
+  .kv { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; }
+  .kv b { color: var(--text); font-weight: 600; }
+  details.comp { font-size: 12px; color: var(--text-2); }
+  details.comp summary { cursor: pointer; color: var(--text-3); font-weight: 600; list-style: none; }
+  details.comp summary::before { content: "▸ "; }
+  details.comp[open] summary::before { content: "▾ "; }
+  details.comp div { margin-top: 6px; padding: 8px 10px; background: var(--surface-2); border-radius: 8px; line-height: 1.6; }
+  .links { display: flex; gap: 10px; align-items: center; font-size: 12px; margin-top: auto; }
+  .links .asin { margin-left: auto; color: var(--text-3); font-size: 11.5px; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px 14px 14px; border-top: 1px dashed var(--border); }
+  .actions .btn { justify-content: center; padding: 10px; }
+  .actions.single { grid-template-columns: 1fr; }
+
+  /* compact mode */
+  .grid.compact .card { flex-direction: row; align-items: stretch; }
+  .grid.compact .media { width: 110px; height: auto; min-height: 96px; border-bottom: 0; border-right: 1px solid var(--border); }
+  .grid.compact .badge-margin { font-size: 11px; padding: 3px 7px; right: 6px; top: 6px; }
+  .grid.compact .badge-pack { left: 6px; top: 6px; }
+  .grid.compact .chk { left: 6px; bottom: 6px; width: 18px; height: 18px; }
+  .grid.compact .body { display: grid; grid-template-columns: 1.4fr 1.2fr .8fr; gap: 10px 16px; align-items: center; padding: 10px 14px; }
+  .grid.compact .title { min-height: 0; -webkit-line-clamp: 2; }
+  .grid.compact .prices { padding: 6px 10px; }
+  .grid.compact .prices .p { font-size: 15px; }
+  .grid.compact details.comp, .grid.compact .kv { grid-column: 1 / -1; }
+  .grid.compact .links { margin-top: 0; }
+  .grid.compact .actions { border-top: 0; border-left: 1px dashed var(--border); grid-template-columns: 1fr; align-content: center; width: 140px; padding: 10px; }
+
+  .empty { text-align: center; padding: 70px 20px; color: var(--text-2); }
+  .empty .ico { font-size: 42px; margin-bottom: 8px; }
+  .empty h3 { margin: 0 0 6px; color: var(--text); }
+
+  /* ---------- bulk bar ---------- */
+  .bulk { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(120px); z-index: 40; display: flex; gap: 10px; align-items: center;
+    background: var(--surface); border: 1px solid var(--border-2); border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow-lg); transition: .25s; }
+  .bulk.show { transform: translateX(-50%) translateY(0); }
+  .bulk b { font-weight: 700; }
+
+  /* ---------- drawer ---------- */
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 440px; max-width: 100vw; background: var(--bg-2); border-left: 1px solid var(--border); z-index: 50;
+    transform: translateX(100%); transition: transform .25s ease; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
+  .drawer.open { transform: translateX(0); }
+  .drawer header { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  .drawer .scroll { overflow: auto; padding: 14px 16px 30px; display: flex; flex-direction: column; gap: 16px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+  .panel h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); display: flex; justify-content: space-between; align-items: center; }
+  .funnel { display: flex; flex-direction: column; gap: 5px; }
+  .funnel .row { display: grid; grid-template-columns: 150px 1fr 44px; align-items: center; gap: 8px; font-size: 12px; }
+  .funnel .bar { height: 8px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+  .funnel .bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+  .funnel .row.WINNER .bar i { background: var(--green); }
+  .funnel .row.AMAZON_ON_LISTING .bar i, .funnel .row.ALREADY_LISTED .bar i { background: var(--red); }
+  .funnel .row.READY .bar i { background: var(--amber); }
+  .funnel .n { text-align: right; font-weight: 700; }
+  .brands { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow: auto; }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); font-size: 12px; }
+  .brand b { flex: 1; font-weight: 600; }
+  .brand .t { font-size: 10px; font-weight: 800; padding: 1px 6px; border-radius: 999px; background: var(--accent-2); color: var(--accent); }
+  .brand small { color: var(--text-3); }
+  .brand button { border: 0; background: transparent; color: var(--text-3); padding: 2px 4px; border-radius: 6px; }
+  .brand button:hover { background: var(--border); color: var(--text); }
+  .logbox { font-family: "JetBrains Mono", monospace; font-size: 11px; line-height: 1.55; background: #0b1020; color: #cbd5e1; border-radius: 10px; padding: 10px; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+  .logbox .w { color: #86efac; }
+  .recent { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+  .recent .r { display: grid; grid-template-columns: 92px 1fr; gap: 8px; padding: 5px 8px; border-radius: 8px; background: var(--surface-2); }
+  .recent .r .v { font-weight: 700; font-size: 10.5px; }
+  .recent .r .v.WINNER { color: var(--green); } .recent .r .v.AMAZON_ON_LISTING, .recent .r .v.ALREADY_LISTED { color: var(--red); }
+  .recent .r span { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .drawer code { word-break: break-all; }
+  .kbd { font-family: "JetBrains Mono", monospace; font-size: 10.5px; padding: 1px 6px; border-radius: 6px; border: 1px solid var(--border-2); background: var(--surface-2); color: var(--text-2); }
+  .hint { font-size: 12px; color: var(--text-3); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-left: auto; }
+
+  .toast { position: fixed; right: 20px; bottom: 20px; z-index: 60; display: flex; flex-direction: column; gap: 8px; }
+  .toast div { background: var(--surface); border: 1px solid var(--border-2); border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 10px; box-shadow: var(--shadow-lg); font-size: 13px; animation: in .2s ease; }
+  .toast div.ok { border-left-color: var(--green); } .toast div.bad { border-left-color: var(--red); }
+  @keyframes in { from { opacity: 0; transform: translateY(6px); } }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 45; display: none; }
+  .overlay.show { display: block; }
+  @media (max-width: 1100px) { .stats { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 720px) { .topbar-inner { padding: 10px 14px; gap: 8px; flex-wrap: wrap; } .logo small { display: none; } .hunter-pill { order: 10; width: 100%; justify-content: center; } .wrap { padding: 14px 14px 120px; } .stats { grid-template-columns: repeat(2, 1fr); } .toolbar { top: 57px; } .field input[type="search"] { width: 150px; } .hint { display: none; } .grid.compact .body { grid-template-columns: 1fr; } .grid.compact .card { flex-direction: column; } .grid.compact .actions { width: auto; grid-template-columns: 1fr 1fr; border-left: 0; border-top: 1px dashed var(--border); } .grid.compact .media { width: auto; height: 160px; } }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="logo"><span class="mark">Z</span> ZUHRA Hunter <small>review portal</small></div>
+    <div class="spacer"></div>
+    <div class="hunter-pill" id="hunterPill" title="hunter.py status">
+      <span class="dot" id="hunterDot"></span>
+      <span id="hunterText">Hunter: checking…</span>
+    </div>
+    <button class="btn" id="btnRunNow" onclick="runNow()" title="Ask hunter.py to start a cycle right away">⚡ Run now</button>
+    <button class="btn" onclick="openDrawer()" title="Pipeline, Keepa usage, brands to export, log">📡 Hunter</button>
+    <a class="btn" href="/api/export_approved?format=excel" title="Download approved listings as Excel">⬇ Export approved</a>
+    <button class="btn icon" onclick="toggleTheme()" title="Toggle light / dark" id="themeBtn">🌙</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <section class="stats">
+    <div class="stat" style="--c: var(--amber)"><label>Pending review</label><div class="v" id="stPending">–</div><div class="s">waiting for your call</div></div>
+    <div class="stat" style="--c: var(--green)"><label>Approved</label><div class="v" id="stApproved">–</div><div class="s" id="stApprovedProfit">–</div></div>
+    <div class="stat" style="--c: var(--red)"><label>Rejected</label><div class="v" id="stRejected">–</div><div class="s">hidden from pending</div></div>
+    <div class="stat" style="--c: var(--accent)"><label>Winners today</label><div class="v" id="stWinToday">–</div><div class="s" id="stWinTotal">–</div></div>
+    <div class="stat" style="--c: var(--sky)"><label>Ready to verify</label><div class="v" id="stReady">–</div><div class="s" id="stCandidates">–</div></div>
+    <div class="stat" style="--c: #a78bfa"><label>Keepa tokens (24h)</label><div class="v" id="stTokens">–</div><div class="s" id="stTokensLeft">–</div></div>
+  </section>
+
+  <div class="toolbar">
+    <div class="tabs">
+      <button class="tab active" data-status="PENDING" onclick="setTab('PENDING')">Pending <span class="n" id="tabP">0</span></button>
+      <button class="tab" data-status="APPROVED" onclick="setTab('APPROVED')">Approved <span class="n" id="tabA">0</span></button>
+      <button class="tab" data-status="REJECTED" onclick="setTab('REJECTED')">Rejected <span class="n" id="tabR">0</span></button>
+      <button class="tab" data-status="ALL" onclick="setTab('ALL')">All</button>
+    </div>
+    <label class="field"><span>🔍</span><input type="search" id="search" placeholder="ASIN, title, Zoro #…" oninput="debounced()"></label>
+    <label class="field"><span class="lbl">Brand</span><select id="brand" onchange="fetchListings()"><option value="">All</option></select></label>
+    <label class="field"><span class="lbl">Margin ≥</span><input type="range" id="margin" min="0" max="40" step="1" value="0" oninput="document.getElementById('marginV').textContent=this.value+'%'; debounced()"><b id="marginV" class="mono" style="width:38px">0%</b></label>
+    <label class="field"><span class="lbl">Sort</span>
+      <select id="sort" onchange="fetchListings()">
+        <option value="net_margin">Margin</option><option value="net_profit">Profit $</option><option value="monthly_sales">Monthly sold</option>
+        <option value="lowest_price">Amazon price</option><option value="zoro_price">Zoro price</option><option value="created_at">Newest</option>
+      </select></label>
+    <div class="seg"><button id="vCards" class="active" onclick="setView('cards')" title="Cards">▦</button><button id="vList" onclick="setView('compact')" title="Compact list">☰</button></div>
+    <div class="hint"><span class="kbd">↑↓</span> move <span class="kbd">A</span> approve <span class="kbd">R</span> reject <span class="kbd">U</span> undo <span class="kbd">O</span> Amazon <span class="kbd">Z</span> Zoro <span class="kbd">Space</span> select</div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+</div>
+
+<div class="bulk" id="bulk">
+  <b id="bulkN">0</b> selected
+  <button class="btn ghost" onclick="clearSel()">Clear</button>
+  <button class="btn reject" onclick="bulk('REJECT')">Reject all</button>
+  <button class="btn approve" onclick="bulk('APPROVE')">Approve all</button>
+</div>
+
+<div class="overlay" id="overlay" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer">
+  <header>📡 Hunter <span class="spacer"></span><span id="drawerSub" style="font-weight:500;color:var(--text-3);font-size:12px"></span><button class="btn icon ghost" onclick="closeDrawer()">✕</button></header>
+  <div class="scroll">
+    <div class="panel">
+      <h4>Cycle <span id="cycleInfo" style="text-transform:none;letter-spacing:0;font-weight:500"></span></h4>
+      <div id="cycleSummary" style="font-size:12.5px;color:var(--text-2)"></div>
+    </div>
+    <div class="panel"><h4>Pipeline <span id="pipeTotal" style="text-transform:none;letter-spacing:0"></span></h4><div class="funnel" id="funnel"></div></div>
+    <div class="panel">
+      <h4>Brands to pull from Keepa next <span id="brandsN" style="text-transform:none;letter-spacing:0"></span></h4>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:8px">Ranked from Zoro: in-stock items ≥ $50 in niche categories. The hunter queries these through the API when tokens allow. Keepa exports cost no tokens, so bulk exports are the fastest way to feed it. Click ⧉ to copy a brand name.</div>
+      <details style="font-size:12px;color:var(--text-2);margin-bottom:10px">
+        <summary style="cursor:pointer;font-weight:600;color:var(--text)">Keepa Product Finder settings to match the hunter</summary>
+        <ol style="margin:8px 0 0;padding-left:18px;line-height:1.75">
+          <li><b>Brand</b> — paste the names above</li>
+          <li><b>Monthly Sold</b> — minimum <b id="kpMinSold">500</b></li>
+          <li><b>Amazon: Availability</b> — <b>no offer / out of stock</b></li>
+          <li><b>Buy Box: Is Amazon</b> — <b>No</b></li>
+          <li><b>Root Category</b> — Industrial &amp; Scientific, Tools &amp; Home Improvement (Automotive for vehicle brands)</li>
+          <li>Export as CSV or XLSX, keeping the <b>Product Codes</b>, <b>Bought in past month</b> and <b>Referral Fee %</b> columns</li>
+          <li>Drop the file into <code id="inboxPath" class="mono" style="font-size:11px"></code></li>
+        </ol>
+        <div style="margin-top:8px;color:var(--text-3)">The hunter picks new files up within 20 seconds and starts a cycle early.</div>
+      </details>
+      <div class="brands" id="brands"></div>
+    </div>
+    <div class="panel"><h4>Brands queried <span id="brandsDoneN" style="text-transform:none;letter-spacing:0"></span></h4><div class="brands" id="brandsDone"></div></div>
+    <div class="panel"><h4>Keepa files ingested</h4><div class="brands" id="files"></div></div>
+    <div class="panel"><h4>Recent decisions by the hunter</h4><div class="recent" id="recent"></div></div>
+    <div class="panel"><h4>Log</h4><div class="logbox" id="log"></div></div>
+  </div>
+</aside>
+<div class="toast" id="toast"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let state = { status: 'PENDING', view: localStorage.getItem('view') || 'cards', focus: 0, sel: new Set(), items: [] };
+  let timer = null;
+  const fmt = (n) => (n == null || isNaN(n)) ? '–' : '$' + Number(n).toFixed(2);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  // ---------- theme ----------
+  function applyTheme(t) { document.documentElement.dataset.theme = t; $('themeBtn').textContent = t === 'dark' ? '🌙' : '☀️'; localStorage.setItem('theme', t); }
+  function toggleTheme() { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'); }
+  applyTheme(localStorage.getItem('theme') || 'dark');
+
+  // ---------- data ----------
+  async function fetchStats() {
+    try {
+      const d = await (await fetch('/api/stats')).json();
+      $('stPending').textContent = d.pending; $('stApproved').textContent = d.approved; $('stRejected').textContent = d.rejected;
+      $('stApprovedProfit').textContent = 'est. profit ' + fmt(d.approved_profit) + ' / unit each';
+      $('tabP').textContent = d.pending; $('tabA').textContent = d.approved; $('tabR').textContent = d.rejected;
+      const sel = $('brand'); const cur = sel.value;
+      if (d.brands) {
+        const have = new Set([...sel.options].map(o => o.value));
+        d.brands.forEach(b => { if (!have.has(b)) { const o = document.createElement('option'); o.value = b; o.textContent = b; sel.appendChild(o); } });
+        sel.value = cur;
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  async function fetchHunter() {
+    try {
+      const h = await (await fetch('/api/hunter')).json();
+      const dot = $('hunterDot'), txt = $('hunterText');
+      if (!h.available) { dot.className = 'dot'; txt.textContent = 'Hunter not started yet'; return; }
+      const next = h.next_run_at ? new Date(h.next_run_at) : null;
+      const mins = next ? Math.max(0, Math.round((next - Date.now()) / 60000)) : null;
+      if (h.alive && h.state === 'running') { dot.className = 'dot busy'; txt.innerHTML = 'Hunter <b>running a cycle</b>' + (h.ready_to_verify ? ` · ${h.ready_to_verify} to verify` : ''); }
+      else if (h.alive) { dot.className = 'dot on'; txt.innerHTML = `Hunter <b>on</b> · next cycle ${mins != null ? (mins === 0 ? 'now' : 'in ' + mins + ' min') : 'soon'}`; }
+      else { dot.className = 'dot'; txt.innerHTML = 'Hunter <b>offline</b>' + (h.last_cycle_at ? ' · last ' + h.last_cycle_at.slice(5, 16).replace('T', ' ') : ''); }
+      $('btnRunNow').disabled = !h.alive || h.run_now_requested || h.state === 'running';
+      $('stWinToday').textContent = h.winners_today; $('stWinTotal').textContent = h.winners_total + ' winners total';
+      $('stReady').textContent = h.ready_to_verify; $('stCandidates').textContent = h.candidates_total + ' candidates seen';
+      $('stTokens').textContent = h.keepa.tokens_24h; $('stTokensLeft').textContent = (h.keepa.tokens_left != null ? h.keepa.tokens_left + ' left at last call' : 'no calls yet') + ` · ${h.brand_asins_pending} brand ASINs queued`;
+      renderDrawer(h);
+    } catch (e) { console.error(e); }
+  }
+
+  async function fetchListings() {
+    const q = new URLSearchParams({ status: state.status, brand: $('brand').value, min_margin: $('margin').value, search: $('search').value, sort_by: $('sort').value, order: 'desc' });
+    try {
+      const d = await (await fetch('/api/listings?' + q)).json();
+      state.items = d.listings || []; state.focus = Math.min(state.focus, Math.max(0, state.items.length - 1));
+      render();
+    } catch (e) { console.error(e); }
+  }
+  function debounced() { clearTimeout(timer); timer = setTimeout(fetchListings, 220); }
+  function setTab(s) { state.status = s; document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.status === s)); state.sel.clear(); updateBulk(); fetchListings(); }
+  function setView(v) { state.view = v; localStorage.setItem('view', v); $('vCards').classList.toggle('active', v === 'cards'); $('vList').classList.toggle('active', v === 'compact'); $('grid').classList.toggle('compact', v === 'compact'); }
+
+  // ---------- render ----------
+  function marginClass(m) { return m >= 10 ? '' : (m >= 4 ? 'mid' : 'low'); }
+  function card(it, i) {
+    const m = Number(it.net_margin || 0), p = Number(it.net_profit || 0);
+    const img = it.image_url ? `<img loading="lazy" src="${esc(it.image_url)}" alt="" onerror="this.parentNode.innerHTML='<div class=ph>no image</div>'">` : `<div class="ph">no image</div>`;
+    const status = it.status || 'PENDING';
+    const actions = status === 'PENDING'
+      ? `<div class="actions"><button class="btn reject" onclick="act('${it.asin}','REJECT')">✕ Reject</button><button class="btn approve" onclick="act('${it.asin}','APPROVE')">✓ Approve</button></div>`
+      : `<div class="actions single"><button class="btn undo" onclick="act('${it.asin}','PENDING')">↺ Back to pending</button></div>`;
+    const comp = it.competitors ? `<details class="comp"><summary>Top offers</summary><div>${esc(it.competitors).split(' | ').join('<br>')}</div></details>` : '';
+    return `
+    <article class="card ${i === state.focus ? 'focused' : ''} ${state.sel.has(it.asin) ? 'selected' : ''}" data-asin="${it.asin}" tabindex="-1" onclick="focusCard(${i})">
+      <div class="media">${img}
+        <span class="badge-margin ${marginClass(m)}">${m.toFixed(1)}%</span>
+        ${(it.pack_count || 1) > 1 ? `<span class="badge-pack">PK ${it.pack_count}</span>` : ''}
+        <span class="chk" onclick="event.stopPropagation(); toggleSel('${it.asin}')">✓</span>
+      </div>
+      <div class="body">
+        <div class="rowb"><span class="chip">${esc(it.brand || '—')}</span><span class="cat">${esc(it.category || '')}</span><span class="spacer"></span>${status !== 'PENDING' ? `<span class="status-chip ${status}">${status}</span>` : ''}</div>
+        <h3 class="title"><a href="https://www.amazon.com/dp/${it.asin}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(it.title || it.zoro_title || it.asin)}</a></h3>
+        <div class="prices">
+          <div><label>Zoro cost</label><div class="p">${fmt(it.zoro_price)}</div><div class="sub">${Number(it.zoro_shipping) > 0 ? '+ ' + fmt(it.zoro_shipping) + ' ship' : 'free shipping'} · ${esc(it.zoro_no || '')}</div></div>
+          <div class="arrow">→</div>
+          <div><label>Amazon lowest</label><div class="p">${fmt(it.lowest_price)}</div><div class="sub" title="${esc(it.lowest_seller || '')}">${esc(it.lowest_seller || 'competitor')}</div></div>
+        </div>
+        <div class="profit"><div class="big ${p < 0 ? 'neg' : ''}">${p >= 0 ? '+' : ''}${fmt(p)}</div><div class="meta">${it.lowest_price && it.referral_fee ? Math.round(it.referral_fee / it.lowest_price * 100) + '% ' : ''}fee ${fmt(it.referral_fee)} · cost ${fmt(it.total_cost)}</div></div>
+        <div class="kv"><span>Sold/mo <b>${it.monthly_sales ? it.monthly_sales : 'n/a'}</b></span><span>MPN <b>${esc(it.zoro_mpn || '–')}</b></span>${it.match_method ? `<span title="How this Zoro item was matched to the Amazon listing">Matched <b>${esc(it.match_method === 'BRAND+SIZE' ? 'brand + size' : it.match_method.toLowerCase())}</b></span>` : ''}${it.verified_at ? `<span>Verified <b>${esc(String(it.verified_at).slice(5, 16).replace('T', ' '))}</b></span>` : ''}</div>
+        ${comp}
+        <div class="links">
+          <a href="https://www.amazon.com/dp/${it.asin}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Amazon ↗</a>
+          <a href="https://www.amazon.com/gp/offer-listing/${it.asin}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Offers ↗</a>
+          <a href="https://www.zoro.com/search?q=${encodeURIComponent(it.zoro_no || '')}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Zoro ↗</a>
+          <span class="asin mono" title="${esc(it.source || '')}">${it.asin}</span>
+        </div>
+      </div>
+      ${actions}
+    </article>`;
+  }
+  function render() {
+    const g = $('grid');
+    g.classList.toggle('compact', state.view === 'compact');
+    if (!state.items.length) {
+      g.innerHTML = `<div class="empty" style="grid-column:1/-1"><div class="ico">${state.status === 'PENDING' ? '🎯' : '📭'}</div><h3>${state.status === 'PENDING' ? 'Nothing waiting for review' : 'No listings here'}</h3><div>${state.status === 'PENDING' ? 'The hunter adds new winners every cycle. Drop Keepa exports into keepa_inbox/ or press <b>Run now</b> to speed it up.' : 'Change the filters or the tab.'}</div></div>`;
+      return;
+    }
+    g.innerHTML = state.items.map(card).join('');
+  }
+  function focusCard(i, scroll = false) {
+    state.focus = i;
+    document.querySelectorAll('.card').forEach((c, j) => c.classList.toggle('focused', j === i));
+    if (scroll) { const c = document.querySelectorAll('.card')[i]; if (c) c.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+  }
+  function toggleSel(asin) { state.sel.has(asin) ? state.sel.delete(asin) : state.sel.add(asin); document.querySelector(`.card[data-asin="${asin}"]`)?.classList.toggle('selected', state.sel.has(asin)); updateBulk(); }
+  function clearSel() { state.sel.clear(); document.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected')); updateBulk(); }
+  function updateBulk() { $('bulkN').textContent = state.sel.size; $('bulk').classList.toggle('show', state.sel.size > 0); }
+
+  // ---------- actions ----------
+  function toast(msg, cls = '') { const t = document.createElement('div'); t.className = cls; t.innerHTML = msg; $('toast').appendChild(t); setTimeout(() => t.remove(), 2600); }
+  async function act(asin, action) {
+    const el = document.querySelector(`.card[data-asin="${asin}"]`);
+    try {
+      const r = await (await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asin, action }) })).json();
+      if (!r.success) throw new Error(r.error || 'failed');
+      const leaves = state.status !== 'ALL';
+      if (el && leaves) { el.classList.add('leaving'); setTimeout(() => { state.items = state.items.filter(x => x.asin !== asin); state.sel.delete(asin); render(); updateBulk(); }, 240); }
+      else fetchListings();
+      toast(`${action === 'APPROVE' ? '✅ Approved' : action === 'REJECT' ? '🗑 Rejected' : '↺ Back to pending'} <span class="mono">${asin}</span>`, action === 'APPROVE' ? 'ok' : action === 'REJECT' ? 'bad' : '');
+      fetchStats();
+    } catch (e) { toast('Action failed: ' + e.message, 'bad'); }
+  }
+  async function bulk(action) {
+    const asins = [...state.sel]; if (!asins.length) return;
+    try {
+      const r = await (await fetch('/api/batch_action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asins, action }) })).json();
+      if (!r.success) throw new Error(r.error || 'failed');
+      toast(`${action === 'APPROVE' ? '✅ Approved' : '🗑 Rejected'} ${asins.length} listings`, action === 'APPROVE' ? 'ok' : 'bad');
+      state.sel.clear(); updateBulk(); fetchListings(); fetchStats();
+    } catch (e) { toast('Bulk action failed: ' + e.message, 'bad'); }
+  }
+  async function runNow() {
+    try { const r = await (await fetch('/api/run_now', { method: 'POST' })).json(); if (r.success) { toast('⚡ Hunter will start a cycle within 20 seconds'); $('btnRunNow').disabled = true; } } catch (e) { toast('Could not signal the hunter', 'bad'); }
+  }
+
+  // ---------- drawer ----------
+  function openDrawer() { $('drawer').classList.add('open'); $('overlay').classList.add('show'); fetchHunter(); }
+  function closeDrawer() { $('drawer').classList.remove('open'); $('overlay').classList.remove('show'); }
+  function copyText(t) { navigator.clipboard?.writeText(t); toast('Copied <b>' + esc(t) + '</b>'); }
+  function renderDrawer(h) {
+    $('inboxPath').textContent = h.inbox_dir || 'keepa_inbox/';
+    if (h.min_sold) $('kpMinSold').textContent = h.min_sold;
+    $('drawerSub').textContent = h.heartbeat ? 'heartbeat ' + h.heartbeat.slice(11, 19) : '';
+    const lc = h.last_cycle || {};
+    $('cycleInfo').textContent = (h.last_cycle_at ? 'last ' + h.last_cycle_at.slice(5, 16).replace('T', ' ') : 'no cycle yet') + (h.next_run_at ? ' · next ' + h.next_run_at.slice(11, 16) : '');
+    $('cycleSummary').innerHTML = (h.last_cycle_at ? `Winners <b>${lc.winners ?? 0}</b> · inbox +${lc.inbox_added ?? 0} · Keepa +${lc.mined_added ?? 0} candidates · brand query ${lc.brand_query ?? 0} ASINs · still to verify ${lc.ready_left ?? 0}` : 'Waiting for the first cycle.')
+      + `<div style="margin-top:6px;color:var(--text-3)">Demand floor <b style="color:var(--text)">${h.min_sold ? h.min_sold + '+/month' : 'none'}</b> · Zoro feed ${h.catalog_refresh_at ? 'refreshed ' + h.catalog_refresh_at.slice(5, 16).replace('T', ' ') : 'not refreshed by the hunter yet'} (daily)</div>`;
+    const total = h.pipeline.reduce((a, r) => a + r.n, 0) || 1;
+    $('pipeTotal').textContent = total + ' candidates';
+    $('funnel').innerHTML = h.pipeline.map(r => `<div class="row ${r.verdict}"><span>${esc(r.verdict.replace(/_/g, ' ').toLowerCase())}</span><div class="bar"><i style="width:${Math.max(2, r.n / total * 100)}%"></i></div><span class="n">${r.n}</span></div>`).join('');
+    $('brandsN').textContent = h.brands_pending.length + ' pending';
+    $('brands').innerHTML = h.brands_pending.map(b => `<div class="brand"><span class="t">T${b.tier}</span><b>${esc(b.brand)}</b><small>${b.zoro_items_50} items ≥$50 · ${esc(b.top_category || '')}</small><button onclick="copyText('${esc(b.brand).replace(/'/g, "\\'")}')" title="Copy brand name">⧉</button></div>`).join('') || '<small style="color:var(--text-3)">queue empty</small>';
+    $('brandsDoneN').textContent = h.brands_done.length ? h.brands_done.length + ' recent' : '';
+    $('brandsDone').innerHTML = h.brands_done.map(b => `<div class="brand"><b>${esc(b.brand)}</b><small>${b.status === 'QUERIED' ? b.asins_found + ' ASINs · ' + b.asins_fetched + ' fetched' : b.status.toLowerCase()}${b.winners ? ' · <span style="color:var(--green)">' + b.winners + ' winners</span>' : ''}</small></div>`).join('') || '<small style="color:var(--text-3)">none yet</small>';
+    $('files').innerHTML = h.files.map(f => `<div class="brand"><b>${esc(f.name)}</b><small>${f.rows} rows · ${f.added} new · ${String(f.ingested_at).slice(5, 16).replace('T', ' ')}</small></div>`).join('') || '<small style="color:var(--text-3)">no files yet — drop Keepa exports into keepa_inbox/</small>';
+    $('recent').innerHTML = h.recent.map(r => `<div class="r"><span class="v ${r.verdict}">${esc(r.verdict)}</span><span title="${esc(r.reason || '')}"><span class="mono">${r.asin}</span> ${esc(r.brand || '')} — ${esc(r.reason || '')}</span></div>`).join('');
+    $('log').innerHTML = (h.log || []).map(l => `<span class="${l.includes('[WINNER]') ? 'w' : ''}">${esc(l)}</span>`).join('\n');
+    $('log').scrollTop = $('log').scrollHeight;
+  }
+
+  // ---------- keyboard ----------
+  document.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, select, textarea')) { if (e.key === 'Escape') e.target.blur(); return; }
+    const it = state.items[state.focus];
+    switch (e.key) {
+      case 'ArrowDown': case 'j': e.preventDefault(); focusCard(Math.min(state.items.length - 1, state.focus + 1), true); break;
+      case 'ArrowUp': case 'k': e.preventDefault(); focusCard(Math.max(0, state.focus - 1), true); break;
+      case 'a': case 'A': if (it && it.status === 'PENDING') act(it.asin, 'APPROVE'); break;
+      case 'r': case 'R': if (it && it.status === 'PENDING') act(it.asin, 'REJECT'); break;
+      case 'u': case 'U': if (it && it.status !== 'PENDING') act(it.asin, 'PENDING'); break;
+      case 'o': case 'O': if (it) window.open('https://www.amazon.com/dp/' + it.asin, '_blank'); break;
+      case 'z': case 'Z': if (it) window.open('https://www.zoro.com/search?q=' + encodeURIComponent(it.zoro_no || ''), '_blank'); break;
+      case ' ': if (it) { e.preventDefault(); toggleSel(it.asin); } break;
+      case '/': e.preventDefault(); $('search').focus(); break;
+      case 'Escape': closeDrawer(); clearSel(); break;
+    }
+  });
+
+  // ---------- boot ----------
+  setView(state.view);
+  fetchStats(); fetchHunter(); fetchListings();
+  setInterval(fetchStats, 6000);
+  setInterval(fetchHunter, 10000);
+  setInterval(() => { if (state.status === 'PENDING' && !state.sel.size) fetchListings(); }, 45000);
+</script>
+</body>
+</html>
