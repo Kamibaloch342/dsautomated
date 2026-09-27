@@ -62,10 +62,15 @@ agent and the dashboard run as macOS LaunchAgents.
   Chrome; `docs/ZORO_TRACKING.md`) → live-Gmail gap-fill → reconcile →
   messaging (`scripts/send_delivery_messages.py`) → coverage. Telemetry: `closing_run_log`
   (`/api/runs` on the dashboard).
-* **Dashboard** `dashboard/server.py` (:8000, `v2.html`); **cloud agent** `scripts/cloud_agent.py`
-  (heartbeat, slim DB export to R2, remote commands, WAL checkpoint every 30 min); **hourly**
-  `scripts/auto_sync_10min.py` (Gmail fetch, incremental archive sync, placer sync, WhatsApp
-  insights, log rotation).
+* **Dashboard** `dashboard/server.py` (:8000, `v2.html`) — opens on the **Daily report**
+  (`dashboard/month_report.py`, 28 Sep 2026): one month, one row per Amazon (US/Pacific) day,
+  counted from Amazon's own all-orders report so the totals match Seller Central, with labels,
+  delivery states, the reason each open order is open, and a drill-down per day. Its counts come
+  from `amazon_report_orders`, which `scripts/sync_amazon_report.py` fills from every report the
+  tracker and closing download (closing itself keeps only WB orders). **Cloud agent**
+  `scripts/cloud_agent.py` (heartbeat, slim DB export to R2, remote commands, WAL checkpoint every
+  30 min); **hourly** `scripts/auto_sync_10min.py` (Gmail fetch, incremental archive sync, placer
+  sync, WhatsApp insights, log rotation, Amazon report capture, the daily Zoro delivery sweep).
 * **Data** — `data/automations_unified.db` (master, WAL), `data/gmail_archive.db` (email archive),
   the Google Sheet (SKU map / coupons / priority — team-edited, sacred), `config/accounts.json`
   (accounts, inboxes, carrier API keys), `bot_config.json` (runtime knobs).
@@ -109,4 +114,5 @@ scan for 3 days (all in `bot_config.json → messaging`). Late (2 d past deliver
 | Messaging guards | `engine/post_delivery.py` (`prefetch_guards`, `process_single_order`) |
 | DB size / WAL / backups | `scripts/slim_database.py`, agent `wal_checkpoint`, `~/.zuhra/backups` |
 | Run durations | `closing_run_log`, `/api/runs` |
+| How many orders Amazon took on a day, placed or not | `amazon_report_orders` (US/Pacific `purchase_day`), `/api/month_report` |
 | Alerts | `utils/insights_engine.py`, `utils/whatsapp.py`, `utils/telegram.py` |

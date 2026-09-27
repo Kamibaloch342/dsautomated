@@ -211,6 +211,9 @@ def main():
                      "CLOSING_FEDEX": "0", "CLOSING_LIVE_GMAIL": "0", "CLOSING_RESUME": "1",
                      "CLOSING_MESSAGES": "0"},
                 timeout=int(os.environ.get("CLOSING_TIMEOUT", "5400")))
+        # 1c) the same reports, whole: closing keeps only placed (WB) orders, the dashboard's
+        #     daily report counts every order Amazon took (cancelled / not placed included).
+        run("Amazon report → daily report", [PY, "scripts/sync_amazon_report.py"], timeout=600, critical=False)
     else:
         print("\n(RUN_CLOSING=0 → skipping report download/ingest; completing existing orders only)")
 

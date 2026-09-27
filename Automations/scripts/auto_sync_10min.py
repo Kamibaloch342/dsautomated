@@ -102,6 +102,16 @@ def main():
                   f"{r['deleted']} deleted, {r['freed_mb']:.0f} MB freed", flush=True)
     step("rotate_logs", rot)
 
+    # 3b) Amazon's all-orders reports → amazon_report_orders (28 Sep 2026): the tracking uploaders
+    #     download one every 30 min and closing one per run; this folds whatever is new into the
+    #     table the dashboard's daily report counts from. Cheap: a file already ingested is skipped.
+    def ar():
+        from scripts.sync_amazon_report import sync
+        r = sync(verbose=False)
+        if r["ingested"]:
+            print(f"[auto-sync] amazon_report: {r['ingested']} report(s), {r['orders']:,} orders", flush=True)
+    step("amazon_report", ar)
+
     # 4) Delivery through Zoro's own order tracking, once a day (27 Sep 2026). The closing
     #    chain runs the same sweep as its step 5, but auto-closing is off, so this is what keeps
     #    every shipped order tracked daily regardless: skipped while a closing / bulk / delivery

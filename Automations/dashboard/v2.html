@@ -580,13 +580,66 @@ html[data-theme="dark"] .dbk-pill .cnt{background:rgba(255,255,255,0.1)}
 .pnl-box .l{font-size:11.5px;color:var(--muted);font-weight:600}
 .pnl-split input{width:70px}
 @media(max-width:900px){.pnl-fields{grid-template-columns:1fr}.dbk-life{max-width:none}}
+
+/* ── daily report: the page the dashboard opens on (28 Sep 2026) ───────── */
+body[data-sec="report"] .daterange{display:none}
+.rpt-month{display:inline-flex;align-items:center;gap:2px}
+.rpt-month select.in{font-weight:700;font-size:13px;padding:5px 8px}
+.rpt-month .b{font-size:15px;padding:3px 9px}
+.rpt-src{font-size:12px;color:var(--muted);margin:-10px 0 14px;font-weight:500;line-height:1.7}
+.rpt-src b{color:var(--text2);font-weight:700}
+.rpt-note{padding:10px 14px;border-radius:9px;background:var(--amber-bg);color:var(--amber-text);font-size:12.5px;font-weight:600;border:1px solid color-mix(in srgb,var(--amber) 25%,transparent);margin-bottom:14px;line-height:1.5}
+.rpt-why{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-2px 0 16px}
+.rpt-why .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:4px}
+.rpt-why .chip b{font-weight:800}
+#sec-report .kpis{grid-template-columns:repeat(auto-fit,minmax(138px,1fr))}
+#sec-report .kpi .v{font-size:22px}
+#sec-report .sec-head h1{white-space:nowrap}
+@media(max-width:1250px){#sec-report .sec-head .sub{display:none}}
+table.rpt th,table.rpt td{padding:7px 6px}
+table.rpt th:first-child,table.rpt td:first-child{padding-left:12px}
+table.rpt td{font-size:12.5px}
+table.rpt thead tr.cols th{white-space:normal;line-height:1.25;vertical-align:bottom;min-width:36px;text-transform:none;letter-spacing:0;font-size:11px}
+table.rpt tr.day td.d small{width:27px}
+table.rpt th.num{text-align:right}
+table.rpt thead tr.grp th{position:static;background:var(--bg2);font-size:10px;color:var(--muted2);text-align:center;border-bottom:0;padding:9px 10px 3px;letter-spacing:.08em}
+table.rpt thead tr.grp th.g{box-shadow:inset 0 -2px 0 var(--line2)}
+table.rpt td.z{color:var(--muted2);font-weight:400}
+table.rpt td.warn{color:var(--amber);font-weight:700}
+table.rpt td.bad{color:var(--red);font-weight:700}
+table.rpt td.ok{color:var(--green)}
+table.rpt td.info{color:var(--blue)}
+table.rpt td.neg{color:var(--red)}
+table.rpt td.cell{cursor:pointer}
+table.rpt td.cell:hover{background:var(--accent-bg)}
+table.rpt tr.day.open>td{background:var(--bg3)}
+table.rpt tr.day td.d{font-weight:700;white-space:nowrap}
+table.rpt tr.day td.d small{display:inline-block;width:30px;color:var(--muted);font-weight:600}
+table.rpt tr.day td.d.today{color:var(--accent-text);box-shadow:inset 3px 0 0 var(--accent)}
+table.rpt tfoot td{background:var(--bg3);font-weight:800;border-top:2px solid var(--line2)}
+table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:default}
+.rpt-dayp{padding:12px 14px 16px;border-left:3px solid var(--accent);width:0;min-width:100%;box-sizing:border-box}
+.rpt-dayh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.rpt-dayh b{font-size:14px;font-weight:800}
+.rpt-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.rpt-chips .chip{cursor:pointer}
+.rpt-chips .chip.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent-text)}
+.rpt-orders{max-height:62vh}
+.rpt-orders table.t td{font-size:12px;padding:7px 10px}
+.rpt-orders td.why{white-space:normal;min-width:180px;max-width:300px}
+.rpt-chk{font-size:11px;font-weight:800;white-space:nowrap;display:inline-block;width:10px;text-align:center;margin-left:2px}
+.rpt-chk.ok{color:var(--green)}.rpt-chk.warn{color:var(--amber)}.rpt-chk.no{color:var(--muted2)}
+.lb-Notplaced{background:var(--grey-bg);color:var(--grey);border-color:color-mix(in srgb,var(--grey) 20%,transparent)}
+@media(max-width:900px){.rpt-month select.in{max-width:150px}.rpt-src{margin-top:-6px}
+  #sec-report .sec-head{flex-wrap:wrap;row-gap:8px}#sec-report .sec-head .upd{display:none}}
 </style>
 </head>
 <body>
 <div class="app">
   <aside class="side">
     <div class="brand"><div class="logo">Z</div><div>ZUHRA<small>OPS DASHBOARD</small></div></div>
-    <button class="nav on" data-nav="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg><span>Home</span></button>
+    <button class="nav on" data-nav="report"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h3M7 17h3M14 13h3"/></svg><span>Daily report</span></button>
+    <button class="nav" data-nav="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg><span>Home</span></button>
     <button class="nav" data-nav="orders"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Orders</span><em class="cnt" id="cnt-orders"></em></button>
     <button class="nav" data-nav="ops"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Ops</span><em class="cnt" id="cnt-ops"></em></button>
     <button class="nav" data-nav="attention"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Attention</span><em class="cnt" id="cnt-attention"></em></button>
@@ -596,7 +649,7 @@ html[data-theme="dark"] .dbk-pill .cnt{background:rgba(255,255,255,0.1)}
     <div class="foot">
       <div class="rolechip"><span class="dot on" id="conn-dot"></span><span class="txt" id="conn-txt">connected</span></div>
       <div class="txt"><span class="roletag" id="role-tag">…</span> <span id="host-tag" class="mono"></span></div>
-      <div class="txt"><a href="/legacy">Legacy dashboard</a></div>
+      <div class="txt"><a href="/legacy" title="Listings, repricer, P&amp;L, bank reconcile, Walmart, raw data">Old page (tools)</a></div>
     </div>
   </aside>
 
@@ -611,7 +664,14 @@ html[data-theme="dark"] .dbk-pill .cnt{background:rgba(255,255,255,0.1)}
   </header>
 
   <main class="main" id="main">
-    <section class="sec on" id="sec-home">
+    <section class="sec on" id="sec-report">
+      <div class="sec-head"><h1>Daily report</h1><span class="sub">every order by the day Amazon took it</span><span class="grow"></span><span class="upd" id="rpt-upd"></span>
+        <span class="rpt-month"><button class="b s ghost" id="rpt-prev" title="Previous month">‹</button><select class="in s" id="rpt-month" title="Month"></select><button class="b s ghost" id="rpt-next" title="Next month">›</button></span>
+        <a class="b s" id="rpt-csv" href="/api/month_report.csv" download title="Every order of the month, one row each">Export CSV</a><button class="b s" onclick="Report.load(true)">Refresh</button></div>
+      <div id="rpt-body"><div class="kpis"><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div></div><div class="card"><div class="bd"><span class="skel"></span><span class="skel"></span><span class="skel"></span></div></div></div>
+    </section>
+
+    <section class="sec" id="sec-home">
       <div class="sec-head"><h1>Home</h1><span class="sub">Business pulse, fleet, and reconciliation</span><span class="grow"></span><span class="upd" id="home-upd"></span><button class="b s" onclick="Home.load(true)">Refresh</button></div>
       <div class="kpis" id="home-kpis"><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div></div>
       <div class="kpis" id="home-today"></div>
@@ -663,7 +723,7 @@ html[data-theme="dark"] .dbk-pill .cnt{background:rgba(255,255,255,0.1)}
 
     <section class="sec" id="sec-insights">
       <div class="sec-head"><h1>Analytics</h1><span class="sub" id="ana-sub">orders by day, growth, coupons, ASINs, shipping, refunds, buyers, P&amp;L</span><span class="grow"></span><span class="upd" id="ins-upd"></span><button class="b s" onclick="Ins.load(true)">Refresh</button></div>
-      <div class="tabs" id="ana-tabs"><button data-tab="daybook" class="on">Orders Report</button><button data-tab="growth">Growth</button><button data-tab="coupons">Coupons</button><button data-tab="asins">ASINs</button><button data-tab="shipping">Shipping</button><button data-tab="refunds">Refunds &amp; cancels</button><button data-tab="buyers">Buyers &amp; places</button><button data-tab="changes">Changes<span class="cnt" id="ana-c-changes"></span></button><button data-tab="pnl">P&amp;L</button></div>
+      <div class="tabs" id="ana-tabs"><button data-tab="daybook" class="on">Day book</button><button data-tab="growth">Growth</button><button data-tab="coupons">Coupons</button><button data-tab="asins">ASINs</button><button data-tab="shipping">Shipping</button><button data-tab="refunds">Refunds &amp; cancels</button><button data-tab="buyers">Buyers &amp; places</button><button data-tab="changes">Changes<span class="cnt" id="ana-c-changes"></span></button><button data-tab="pnl">P&amp;L</button></div>
       <div id="ana-body"><div class="card"><div class="bd"><span class="skel"></span><span class="skel"></span><span class="skel"></span></div></div></div>
     </section>
 
@@ -685,7 +745,7 @@ html[data-theme="dark"] .dbk-pill .cnt{background:rgba(255,255,255,0.1)}
         <a href="/legacy#walmart"><b>Walmart</b><span>Walmart pipeline</span></a>
         <a href="/legacy#data"><b>Data</b><span>Raw closing_orders browser and cell editing</span></a>
         <a href="/legacy#health"><b>Health</b><span>Data health and refund issues</span></a>
-        <a href="/legacy"><b>Legacy dashboard</b><span>Everything else, exactly as before</span></a>
+        <a href="/legacy"><b>Old page</b><span>Everything else, exactly as before</span></a>
       </div>
     </section>
   </main>
@@ -768,7 +828,7 @@ const Conn = { ok: true, set(v){ if (v===this.ok) return; this.ok = v; $("#conn-
 
 /* ── state ───────────────────────────────────────────────────────────── */
 const S = {
-  role: "admin", name: "", section: "home", account: "All", from: "", to: "", q: "",
+  role: "admin", name: "", section: "report", account: "All", from: "", to: "", q: "",
   facets: {accounts:[], profiles:[], states:[], tags:[]},
   get gp(){ return {account: this.account==="All"?"":this.account, from: this.from, to: this.to}; },
   canOps(){ return this.role !== "restricted"; },
@@ -843,13 +903,13 @@ const Me = {
 $("#namechip").onclick = () => Me.ask();
 
 /* ── navigation ──────────────────────────────────────────────────────── */
-const SECTIONS = {home:null, orders:null, ops:null, attention:null, insights:null, reminders:null, more:null};
+const SECTIONS = {report:null, home:null, orders:null, ops:null, attention:null, insights:null, reminders:null, more:null};
 const Nav = {
-  current: "home",
+  current: "report",
   go(sec, sub){
-    if (!(sec in SECTIONS)) sec = "home";
-    if (sec === "reminders" && S.role !== "admin") sec = "home";
-    const prev = this.current; this.current = sec; S.section = sec;
+    if (!(sec in SECTIONS)) sec = "report";
+    if (sec === "reminders" && S.role !== "admin") sec = "report";
+    const prev = this.current; this.current = sec; S.section = sec; document.body.dataset.sec = sec;
     if (Drawer.isOpen()) Drawer.hide();
     $$(".nav").forEach(b => b.classList.toggle("on", b.dataset.nav === sec));
     $$("section.sec").forEach(s => s.classList.toggle("on", s.id === "sec-"+sec));
@@ -861,7 +921,7 @@ const Nav = {
   fromHash(){
     const h = location.hash.replace(/^#/, "");
     const m = h.match(/^order\/(.+)$/); if (m) { this.go(this.current); Drawer.open(decodeURIComponent(m[1])); return; }
-    const [sec, sub] = h.split("/"); this.go(sec || "home", sub);
+    const [sec, sub] = h.split("/"); this.go(sec || "report", sub);
   },
 };
 $$(".nav").forEach(b => b.onclick = () => Nav.go(b.dataset.nav));
@@ -1002,6 +1062,188 @@ const Home = {
   },
 };
 SECTIONS.home = Home;
+
+/* ═══════════════════════════ DAILY REPORT ═══════════════════════════ */
+// One month, one row per day, counted from Amazon's own order report so the day totals are
+// Seller Central's (dashboard/month_report.py). Click a day — or any number in it — for that
+// day's orders with their label, the reason an order is still open, and its delivery.
+const Report = {
+  month: "", data: null, sort: {k: "date", dir: "asc"}, open: null, filt: "all", q: "", dayCache: {}, _seq: 0,
+  // key, header, tone, group, day filter
+  COLS: [
+    ["orders","Orders","","amz","all"], ["units","Units","","amz","all"], ["sales","Sales","","amz","all"],
+    ["cancelled","Cancelled","","np","label:Cancelled"], ["notplaced","Not placed","","np","label:Not placed"],
+    ["completed","Completed","ok","lab","label:Completed"], ["incomplete","Incomplete","warn","lab","label:Incomplete"],
+    ["loss","Loss","bad","lab","label:Loss"], ["refunded","Refunded","bad","lab","label:Refunded"],
+    ["delivered","Delivered","ok","del","d:delivered"], ["transit","In transit","info","del","d:transit"],
+    ["stalled","No movement","bad","del","d:stalled"], ["late","Late","bad","del","late"],
+    ["exception","Exception","bad","del","d:exception"], ["freight","Freight","","del","d:freight"],
+    ["profit","Profit","","money","all"],
+  ],
+  GROUPS: [["amz","Amazon",3],["np","Not placed",2],["lab","Label",4],["del","Delivery",6],["money","",1]],
+  FILTERS: [["all","All"],["label:Incomplete","Incomplete"],["d:stalled","No movement"],["late","Late"],["d:exception","Exception"],
+    ["d:freight","Freight"],["d:zoro_cancelled","Zoro cancelled"],["d:not_shipped","Not shipped"],["d:transit","In transit"],
+    ["label:Not placed","Not placed"],["label:Cancelled","Cancelled"],["label:Loss","Loss"],["label:Refunded","Refunded"],
+    ["label:Completed","Completed"],["d:delivered","Delivered"]],
+  DSTATE: {delivered:["ok","Delivered"], transit:["info","In transit"], stalled:["bad","No movement"], exception:["bad","Exception"],
+    freight:["purple","Freight"], zoro_cancelled:["bad","Zoro cancelled"], not_shipped:["warn","Not shipped"]},
+
+  acct(){ return S.account && S.account !== "All" ? S.account : ""; },
+  start(sub){ if (sub && /^\d{4}-\d{2}$/.test(sub)) { if (sub !== this.month) { this.month = sub; this.open = null; } } this.load(); },
+  onFilter(){ this.dayCache = {}; this.open = null; this.load(); },
+  setMonth(m){ if (!m || m === this.month) return; this.month = m; this.open = null; this.filt = "all"; history.replaceState(null, "", "#report/"+m); this.load(); },
+  shift(n){ const [y, m] = (this.month || (this.data && this.data.month) || "").split("-").map(Number); if (!y) return; const d = new Date(y, m-1+n, 1); this.setMonth(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")); },
+  mname(m){ const [y, mm] = String(m).split("-").map(Number); return new Date(y, mm-1, 1).toLocaleDateString("en-GB", {month:"long", year:"numeric"}); },
+  dshort(d){ return new Date(d+"T00:00:00").toLocaleDateString("en-GB", {day:"numeric", month:"short"}); },
+  skel(){ return `<div class="kpis">${Array.from({length:6},()=>`<div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div>`).join("")}</div><div class="card"><div class="bd">${U.skel(8)}</div></div>`; },
+
+  async load(force){
+    const seq = ++this._seq; const body = $("#rpt-body"); if (!body) return;
+    const want = this.month; const acct = this.acct() || "All";
+    if (force || !this.data || (want && this.data.month !== want) || this.data.account !== acct) body.innerHTML = this.skel();
+    try {
+      const d = await GET("/api/month_report", {month: want, account: this.acct(), fresh: force ? 1 : ""});
+      if (seq !== this._seq) return;
+      this.data = d; this.month = d.month;
+      if (force) this.dayCache = {};
+      this.render();
+      $("#rpt-upd").textContent = "updated " + new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+    } catch (e) { if (seq === this._seq) body.innerHTML = U.err(e) + `<div style="margin-top:8px"><button class="b s" onclick="Report.load(true)">Retry</button></div>`; }
+  },
+
+  flat(x){
+    const L = x.label || {}, D = x.del || {};
+    return {date: x.date, dow: x.dow, covered: x.covered, orders: x.orders, units: x.units, sales: x.sales,
+      cancelled: L["Cancelled"]||0, notplaced: L["Not placed"]||0, completed: L["Completed"]||0, incomplete: L["Incomplete"]||0,
+      loss: L["Loss"]||0, refunded: L["Refunded"]||0, delivered: D.delivered||0, transit: D.transit||0, stalled: D.stalled||0,
+      late: x.late||0, exception: D.exception||0, freight: D.freight||0, profit: x.profit||0,
+      in_amazon: x.in_amazon||0, not_in_amazon: x.not_in_amazon||0, missing: x.missing_in_system||0};
+  },
+  fmt(k, v){ if (k === "sales" || k === "profit") return U.money(v, 0); return U.int(v); },
+  cell(r, c){
+    const [k, , tone, , f] = c; const v = r[k];
+    const mark = k === "orders" && r.date ? " " + this.check(r) : "";
+    if (!v) return `<td class="num z">·${mark}</td>`;
+    const cls = k === "profit" ? (v < 0 ? "neg" : "") : tone;
+    return `<td class="num cell ${cls}" data-f="${esc(f)}" title="Show these orders">${this.fmt(k, v)}${mark}</td>`;
+  },
+  check(r){
+    if (r.covered !== true && this.data && r.date === this.data.today) return `<span class="rpt-chk no" title="Today is still running — Amazon's report is downloaded through the day by closing and the tracker">…</span>`;
+    if (r.covered === false) return `<span class="rpt-chk no" title="No Amazon report captured for this day — the count is only the orders placed on Zoro">~</span>`;
+    if (r.covered === "partial") return `<span class="rpt-chk warn" title="Amazon's report is captured for one store only on this day">½</span>`;
+    if (r.missing) return `<span class="rpt-chk warn" title="${U.int(r.missing)} placed order(s) Amazon lists that the DB does not have yet">!</span>`;
+    if (r.not_in_amazon) return `<span class="rpt-chk ok" title="Matches Amazon's report, plus ${U.int(r.not_in_amazon)} order(s) placed after the report was downloaded">✓</span>`;
+    return `<span class="rpt-chk ok" title="Matches Amazon's report for this day">✓</span>`;
+  },
+  range(days){
+    // "1 Aug – 27 Aug" for a run of days; the span plus a count when there are gaps in it
+    if (!days.length) return "";
+    const a = days[0], b = days[days.length - 1];
+    if (days.length === 1) return this.dshort(a);
+    const span = Math.round((Date.parse(b) - Date.parse(a)) / 864e5) + 1;
+    return `${this.dshort(a)} – ${this.dshort(b)}${span === days.length ? "" : ` (${days.length} days)`}`;
+  },
+
+  render(){
+    const d = this.data; const body = $("#rpt-body"); if (!d || !body) return;
+    const sel = $("#rpt-month");
+    const months = Array.from(new Set([d.month].concat(d.months || []))).sort().reverse();
+    sel.innerHTML = months.map(m => `<option value="${m}" ${m === d.month ? "selected" : ""}>${esc(this.mname(m))}</option>`).join("");
+    $("#rpt-next").disabled = d.month >= String(d.today).slice(0, 7);
+    $("#rpt-csv").href = "/api/month_report.csv" + U.qs({month: d.month, account: this.acct()});
+    const T = d.totals || {}, L = T.label || {}, D = T.del || {};
+    const days = (d.days || []).filter(x => x.orders > 0 || x.date <= d.today);
+    const nd = days.filter(x => x.orders > 0).length || 1;
+    const why = Object.entries(T.why || {}).sort((a, b) => b[1] - a[1]);
+    const kpi = (l, v, s, cls = "") => `<div class="kpi ${cls}"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+    const pct = (a, b) => b ? Math.round(a / b * 100) + "%" : "—";
+    const cov = d.coverage || {};
+    const src = Object.entries(cov).map(([a, c]) => c ? `<b>${esc(a)}</b> to ${esc(this.dshort(c.to))}` : `<b>${esc(a)}</b>: no report yet`).join(" · ");
+    const unc = d.uncovered || [];
+    let html = `<div class="rpt-src">Day totals come from Amazon's own order report (${src || "none captured yet"}), so they match Seller Central (<span class="rpt-chk ok">✓</span> on a day = every order in Amazon's report is here) · labels from closing · delivery from Zoro tracking${d.delivery_checked ? `, checked ${esc(U.rel(d.delivery_checked))}` : ""}</div>`;
+    if (unc.length) html += `<div class="rpt-note">No Amazon report is captured for ${esc(this.range(unc))} — those days count only the orders placed on Zoro; cancelled and never-placed orders are missing there. Every report is captured automatically from now on.</div>`;
+    html += `<div class="kpis">`
+      + kpi("Orders", U.int(T.orders), `${U.int(Math.round(T.orders / nd))} a day · ${U.int(T.units)} units · ${U.money(T.sales, 0)}`)
+      + kpi("Delivered", U.int(D.delivered || 0), `${pct(D.delivered || 0, T.placed)} of ${U.int(T.placed)} placed`, "sev-ok")
+      + kpi("Incomplete", U.int(L.Incomplete || 0), why.length ? `${esc(d.why_labels[why[0][0]] || why[0][0])} ${U.int(why[0][1])}${why[1] ? ` · ${esc(d.why_labels[why[1][0]] || why[1][0])} ${U.int(why[1][1])}` : ""}` : "nothing open", (L.Incomplete ? "sev-med" : "sev-ok"))
+      + kpi("No movement", U.int(D.stalled || 0), `no carrier scan for ${d.stalled_days}+ days`, D.stalled ? "sev-high" : "sev-ok")
+      + kpi("Late", U.int(T.late || 0), `undelivered ${d.late_days}+ days past deliver-by`, T.late ? "sev-high" : "sev-ok")
+      + kpi("Never shipped", U.int((L.Cancelled || 0) + (L["Not placed"] || 0)), `${U.int(L.Cancelled || 0)} cancelled · ${U.int(L["Not placed"] || 0)} not placed (${pct((L.Cancelled || 0) + (L["Not placed"] || 0), T.orders)})`)
+      + kpi("Profit", U.money(T.profit, 0), `loss ${U.int(L.Loss || 0)} · refunded ${U.int(L.Refunded || 0)}`, T.profit < 0 ? "sev-high" : "")
+      + `</div>`;
+    if (why.length) html += `<div class="rpt-why"><span class="l">Why incomplete</span>${why.map(([k, n]) => `<span class="chip">${esc(d.why_labels[k] || k)} <b>${U.int(n)}</b></span>`).join("")}</div>`;
+    const rows = U.sortBy(days.map(x => this.flat(x)), this.sort.k, this.sort.dir);
+    const tot = this.flat(Object.assign({date: "", dow: "", covered: true}, T));
+    const arr = k => this.sort.k === k ? `<span class="arr">${this.sort.dir === "asc" ? "▲" : "▼"}</span>` : "";
+    const ncol = this.COLS.length + 1;
+    html += `<div class="tblwrap"><table class="t rpt"><thead>`
+      + `<tr class="grp"><th></th>${this.GROUPS.map(([g, t, n]) => `<th colspan="${n}" class="${t ? "g" : ""}">${esc(t.toUpperCase())}</th>`).join("")}</tr>`
+      + `<tr class="cols"><th class="sortable" data-k="date">Date ${arr("date")}</th>${this.COLS.map(c => `<th class="num sortable" data-k="${c[0]}">${esc(c[1])} ${arr(c[0])}</th>`).join("")}</tr></thead><tbody>`;
+    for (const r of rows) {
+      const open = this.open === r.date;
+      html += `<tr class="day click ${open ? "open" : ""}" data-day="${r.date}"><td class="d ${r.date === d.today ? "today" : ""}" title="${r.date === d.today ? "Today (Amazon's day, US Pacific) — still running" : esc(U.day(r.date))}"><small>${esc(r.dow)}</small>${esc(this.dshort(r.date))}</td>`
+        + this.COLS.map(c => this.cell(r, c)).join("") + `</tr>`;
+      if (open) html += `<tr class="exp"><td colspan="${ncol}"><div class="rpt-dayp" id="rpt-dayp">${U.skel(4)}</div></td></tr>`;
+    }
+    if (!rows.length) html += `<tr><td colspan="${ncol}">${U.empty("No orders in " + this.mname(d.month))}</td></tr>`;
+    html += `</tbody><tfoot><tr><td>${esc(this.mname(d.month))}</td>${this.COLS.map(c => { const v = tot[c[0]]; return `<td class="num ${c[0] === "profit" && v < 0 ? "neg" : ""}">${v ? this.fmt(c[0], v) : "·"}</td>`; }).join("")}</tr></tfoot></table></div>`;
+    body.innerHTML = html;
+    $$("#rpt-body th.sortable").forEach(th => th.onclick = () => { const k = th.dataset.k; this.sort = {k, dir: this.sort.k === k && this.sort.dir === "asc" ? "desc" : "asc"}; this.render(); });
+    $$("#rpt-body tr.day").forEach(tr => tr.onclick = e => { const td = e.target.closest("td.cell"); this.toggle(tr.dataset.day, td ? td.dataset.f : "all", !td); });
+    if (this.open) this.loadDay();
+  },
+
+  toggle(day, f, rowClick){
+    if (this.open === day && (rowClick || this.filt === f)) { this.open = null; this.render(); return; }
+    this.open = day; this.filt = f || "all"; this.q = ""; this.render();
+    const tr = $(`#rpt-body tr.day[data-day="${day}"]`); if (tr) tr.scrollIntoView({block: "nearest", behavior: "smooth"});
+  },
+  async loadDay(){
+    const day = this.open; if (!day) return; const key = day + "|" + this.acct();
+    if (!this.dayCache[key]) {
+      try { this.dayCache[key] = await GET("/api/month_day", {date: day, account: this.acct()}); }
+      catch (e) { const box = $("#rpt-dayp"); if (box && this.open === day) box.innerHTML = U.err(e); return; }
+    }
+    if (this.open === day) this.renderDay();
+  },
+  match(o, f){ if (f === "all") return true; if (f === "late") return o.late > 0; const i = f.indexOf(":"); const k = f.slice(0, i), v = f.slice(i + 1); return k === "label" ? o.label === v : k === "d" ? o.dstate === v : true; },
+  hay(o){ return o._h || (o._h = [o.id, o.wb, o.mid, o.sku, o.asin, o.title, o.city, o.state, o.tracking, o.why, o.label, o.acct].join(" ").toLowerCase()); },
+  dpill(o){
+    if (o.dstate === "na") return `<span class="muted">—</span>`;
+    const [c, t] = this.DSTATE[o.dstate] || ["", o.dstate];
+    let s = `<span class="pill ${c}">${esc(t)}${o.dstate === "stalled" && o.stalled != null ? " " + o.stalled + "d" : ""}</span>`;
+    if (o.late) s += ` <span class="pill bad">late ${o.late}d</span>`;
+    if (o.dstate === "delivered" && o.delivered) s += ` <span class="muted small">${esc(this.dshort(o.delivered))}</span>`;
+    return s;
+  },
+  apill(o){
+    if (!o.in_amazon) return `<span class="muted small" title="Placed after Amazon's report was downloaded">not in report yet</span>`;
+    const c = o.amz === "Cancelled" ? "bad" : o.amz === "Pending" ? "info" : "";
+    return `<span class="pill ${c}">${esc(o.amz || "—")}</span>`;
+  },
+  renderDay(){
+    const box = $("#rpt-dayp"); const dd = this.dayCache[this.open + "|" + this.acct()]; if (!box || !dd) return;
+    const os = dd.orders || []; const t = dd.totals || {}; const L = t.label || {};
+    const n = {}; for (const [f] of this.FILTERS) n[f] = os.filter(o => this.match(o, f)).length;
+    const q = this.q.trim().toLowerCase();
+    const rows = os.filter(o => this.match(o, this.filt) && (!q || this.hay(o).includes(q)));
+    const shown = rows.slice(0, 800);
+    box.innerHTML = `<div class="rpt-dayh"><b>${esc(U.day(this.open))}</b><span class="muted">${U.int(os.length)} orders · ${U.int(t.placed || 0)} placed on Zoro · ${U.int(L.Cancelled || 0)} cancelled · ${U.int(L["Not placed"] || 0)} not placed · ${U.money(t.sales || 0, 0)} sales</span><span class="grow"></span><input class="in s" id="rpt-q" placeholder="find order, WB, SKU, city…" value="${esc(this.q)}" style="min-width:220px"><button class="b s ghost" onclick="Report.toggle('${this.open}','all',true)">Close</button></div>`
+      + `<div class="rpt-chips">${this.FILTERS.filter(([f]) => n[f] || f === "all" || f === this.filt).map(([f, l]) => `<button class="chip ${f === this.filt ? "on" : ""}" data-f="${esc(f)}">${esc(l)} <b>${U.int(n[f])}</b></button>`).join("")}</div>`
+      + (rows.length ? `<div class="tblwrap rpt-orders"><table class="t"><thead><tr><th>Time (PT)</th><th>Order</th><th>Store</th><th>Item</th><th class="num">Qty</th><th class="num">Sales</th><th>Amazon</th><th>Label</th><th>Why</th><th>Delivery</th><th>Deliver by</th><th>Tracking</th><th class="num">Profit</th></tr></thead><tbody>`
+        + shown.map(o => `<tr class="click" data-oid="${esc(o.id)}" data-sys="${o.in_system ? 1 : 0}"><td class="mono small">${esc(o.t || "—")}</td><td class="mono">${esc(o.id)}<br><span class="muted small">${esc(o.wb || o.mid || "")}</span></td><td>${esc(o.acct)}</td><td class="ttl" title="${esc(o.title)}"><span class="mono small">${esc(o.sku)}</span><br><span class="muted small">${esc(o.title)}</span></td><td class="num">${U.int(o.units)}</td><td class="num">${U.money(o.sales)}</td><td>${this.apill(o)}</td><td>${U.lb(o.label)}</td><td class="why">${esc(o.why)}</td><td>${this.dpill(o)}</td><td class="mono small">${esc(o.deliver_by ? this.dshort(o.deliver_by) : "")}</td><td class="mono small">${esc(o.tracking)}</td><td class="num ${o.profit < 0 ? "neg" : ""}">${o.profit == null ? "" : U.money(o.profit)}</td></tr>`).join("")
+        + `</tbody></table></div>` + (rows.length > shown.length ? `<div class="smallnote">showing the first ${shown.length} of ${U.int(rows.length)} — narrow it with a filter or the search</div>` : "")
+        : U.empty("No orders match", "pick another filter"));
+    $$("#rpt-dayp .rpt-chips .chip").forEach(b => b.onclick = e => { e.stopPropagation(); this.filt = b.dataset.f; this.renderDay(); });
+    const qi = $("#rpt-q"); if (qi) { qi.onclick = e => e.stopPropagation(); qi.oninput = U.debounce(e => { this.q = e.target.value; this.renderDay(); const x = $("#rpt-q"); if (x) { x.focus(); x.setSelectionRange(x.value.length, x.value.length); } }, 200); }
+    $$("#rpt-dayp tr.click").forEach(tr => tr.onclick = e => { e.stopPropagation(); const id = tr.dataset.oid; if (tr.dataset.sys === "1") Drawer.open(id); else window.open(U.sc(id), "_blank", "noopener"); });
+    box.onclick = e => e.stopPropagation();
+  },
+};
+SECTIONS.report = Report;
+$("#rpt-prev").onclick = () => Report.shift(-1);
+$("#rpt-next").onclick = () => Report.shift(1);
+$("#rpt-month").onchange = e => Report.setMonth(e.target.value);
 
 /* ═══════════════════════════ ORDERS ═════════════════════════════════ */
 const Orders = {

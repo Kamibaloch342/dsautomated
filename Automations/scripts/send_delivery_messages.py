@@ -130,12 +130,23 @@ def load_pending():
         rev_due = (o.get("review_requested") or "") not in _REVIEW_TERMINAL \
             and days >= DAYS_AFTER_DELIVERY_TO_REVIEW
         if msg_due or rev_due:
-            o["_days"], o["_msg_due"] = days, msg_due
+            o["_days"], o["_msg_due"], o["_rev_due"] = days, msg_due, rev_due
             pending.append(o)
-    # delivery_date is a weekday-first string, so the SQL order is alphabetical — sort here:
-    # check-ins first (freshest delivery first), then the review requests, oldest first.
-    pending.sort(key=lambda o: (0 if o["_msg_due"] else 1, o["_days"] if o["_msg_due"] else -o["_days"]))
-    return pending
+    # delivery_date is a weekday-first string, so the SQL order is alphabetical — order here.
+    # Two queues, taken one-for-one: check-ins (freshest delivery first — "as soon as it is
+    # delivered") and review requests (oldest first, so the ones about to leave Amazon's 30-day
+    # window go before they are lost). A run that ends on MSG_LIMIT or its timeout used to spend
+    # everything on one kind: the 27 Sep chain sent 440 check-ins and not one review request
+    # while ~12,000 reviews were due. An order owed both is in the check-in queue (one visit).
+    checkins = sorted((o for o in pending if o["_msg_due"]), key=lambda o: o["_days"])
+    reviews = sorted((o for o in pending if not o["_msg_due"]), key=lambda o: -o["_days"])
+    mixed = []
+    for i in range(max(len(checkins), len(reviews))):
+        if i < len(reviews):
+            mixed.append(reviews[i])
+        if i < len(checkins):
+            mixed.append(checkins[i])
+    return mixed
 
 
 def load_delayed():

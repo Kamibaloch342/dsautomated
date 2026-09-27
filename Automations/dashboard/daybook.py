@@ -60,6 +60,8 @@ def _d10(v):
         return ""
     if len(s) >= 10 and s[4] == "-" and s[7] == "-":
         return s[:10]
+    # placer deliver-by: 'Thu, Sep 24, 2026| ZoroDeliverBy:2026-09-22' (Amazon's date first)
+    s = s.split("|", 1)[0].strip()
     for fmt in ("%a, %b %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%m/%d/%Y %I:%M %p",
                 "%A, %m/%d/%Y %I:%M %p", "%A, %m/%d/%Y", "%a, %m/%d/%Y %I:%M %p"):
         try:

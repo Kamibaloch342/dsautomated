@@ -1159,6 +1159,58 @@ def upsert_package_tracking(rows: list, conn=None, db_path=None) -> int:
     return len(vals)
 
 
+# ── Amazon's own order list (27 Sep 2026) ────────────────────────────────────
+# closing_orders holds only orders that were placed on Zoro (a WB id), so the orders Amazon
+# took that were never placed — cancelled, OOS, low profit, state-restricted, waiting — were
+# nowhere in the DB (6.5 % of Hathoro's last 30 days). scripts/sync_amazon_report.py folds
+# every downloaded all-orders report into these two tables; the dashboard's daily report
+# counts days from them so its numbers are Seller Central's numbers.
+AMAZON_REPORT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS amazon_report_orders (
+    amazon_order_id   TEXT PRIMARY KEY,
+    account           TEXT NOT NULL,
+    purchase_date     TEXT,      -- US/Pacific 'YYYY-MM-DD HH:MM:SS' (Seller Central's clock)
+    purchase_day      TEXT,      -- US/Pacific 'YYYY-MM-DD'
+    last_updated      TEXT,      -- report last-updated-date, US/Pacific; the newer report wins
+    order_status      TEXT,      -- Shipped | Pending | Cancelled | Unshipped | …
+    merchant_order_id TEXT,      -- WB… when placed; OOS / SR / Loss / Discontinued … when not
+    items             INTEGER,   -- order lines
+    units             INTEGER,
+    sales             REAL,      -- Σ item-price
+    shipping          REAL,      -- Σ shipping-price
+    item_status       TEXT,
+    skus              TEXT,
+    asins             TEXT,
+    title             TEXT,
+    ship_city         TEXT,
+    ship_state        TEXT,
+    ship_postal_code  TEXT,
+    is_business       TEXT,
+    fulfillment       TEXT,
+    sales_channel     TEXT,
+    report_file       TEXT,
+    captured_at       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_aro_day ON amazon_report_orders(purchase_day, account);
+CREATE TABLE IF NOT EXISTS amazon_report_files (
+    report_file  TEXT PRIMARY KEY,   -- Amazon's report id file name
+    account      TEXT,
+    path         TEXT,
+    mtime        REAL,
+    rows         INTEGER,
+    orders       INTEGER,
+    span_from    TEXT,               -- first / last US/Pacific purchase day in the file
+    span_to      TEXT,
+    ingested_at  TEXT
+);
+"""
+
+
+def ensure_amazon_report_schema(db_path=None) -> None:
+    with get_conn(db_path) as conn:
+        conn.executescript(AMAZON_REPORT_SCHEMA)
+
+
 def wal_checkpoint(mode: str = "TRUNCATE", db_path=None, busy_ms: int = 30000) -> dict:
     """PRAGMA wal_checkpoint(mode) → {'busy', 'wal_pages', 'checkpointed'}. TRUNCATE also
     resets the -wal file to zero bytes when no reader is still using it."""

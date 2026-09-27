@@ -2340,7 +2340,9 @@ def _pdate(s):
     """deliver_by_date / timestamps in the formats closing stores → date, or None."""
     if not s:
         return None
-    s = re.sub(r"\s+(?:PST|PDT|EST|EDT|CST|CDT|MST|MDT|UTC|GMT)\b.*$", "", str(s).strip())
+    # the placer stores deliver-by as 'Thu, Sep 24, 2026| ZoroDeliverBy:2026-09-22' — Amazon's date first
+    s = str(s).split("|", 1)[0]
+    s = re.sub(r"\s+(?:PST|PDT|EST|EDT|CST|CDT|MST|MDT|UTC|GMT)\b.*$", "", s.strip())
     for fmt in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%a, %b %d, %Y", "%b %d, %Y",
                 "%m/%d/%Y", "%A, %m/%d/%Y %I:%M %p", "%A, %m/%d/%Y", "%Y-%m-%dT%H:%M:%S"):
         try:
@@ -2698,6 +2700,17 @@ class H(BaseHTTPRequestHandler):
                 import daybook as _dbk
                 _dbk.DB = DB
                 return self._send(_dbk.daybook(q))
+            if p in ("/api/month_report", "/api/month_day", "/api/month_report.csv"):
+                # the daily report — the page the dashboard opens on (dashboard/month_report.py)
+                import month_report as _mr
+                _mr.DB = DB
+                if p == "/api/month_report":
+                    return self._send(_mr.month_report(q))
+                if p == "/api/month_day":
+                    return self._send(_mr.month_day(q))
+                _csv, _name = _mr.month_csv(q)
+                return self._send(_csv.encode("utf-8-sig"), ctype="text/csv; charset=utf-8",
+                                  hdrs=[("Content-Disposition", f'attachment; filename="{_name}"')])
             if p == "/api/daybook.csv":
                 import daybook as _dbk
                 _dbk.DB = DB

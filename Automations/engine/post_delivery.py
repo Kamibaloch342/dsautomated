@@ -417,8 +417,13 @@ def _parse_date_loose(date_str: str) -> Optional[datetime]:
     """Parse a date string loosely; return None on failure."""
     if not date_str:
         return None
-    s = date_str.strip()
+    # The placer stores deliver-by as 'Thu, Sep 24, 2026| ZoroDeliverBy:2026-09-22' (Amazon's date
+    # first); before 28 Sep 2026 nothing here parsed it, so no check-in ever used the late/early wording.
+    s = str(date_str).split("|", 1)[0].strip()
+    s = re.sub(r"\s+(?:PST|PDT|EST|EDT|CST|CDT|MST|MDT|UTC|GMT)\b.*$", "", s).strip()
     for fmt in (
+        "%a, %b %d, %Y",
+        "%b %d, %Y",
         "%d %B %Y, %I:%M %p",
         "%d %B %Y",
         "%A, %m/%d/%y at %I:%M %p",
