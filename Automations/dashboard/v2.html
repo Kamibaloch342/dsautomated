@@ -588,7 +588,7 @@ body[data-sec="report"] .daterange{display:none}
 .rpt-month .b{font-size:15px;padding:3px 9px}
 .rpt-src{font-size:12px;color:var(--muted);margin:-10px 0 14px;font-weight:500;line-height:1.7}
 .rpt-src b{color:var(--text2);font-weight:700}
-.rpt-note{padding:10px 14px;border-radius:9px;background:var(--amber-bg);color:var(--amber-text);font-size:12.5px;font-weight:600;border:1px solid color-mix(in srgb,var(--amber) 25%,transparent);margin-bottom:14px;line-height:1.5}
+.rpt-info{padding:9px 14px;border-radius:9px;background:var(--blue-bg);color:var(--blue-text);font-size:12.5px;font-weight:500;border:1px solid color-mix(in srgb,var(--blue) 20%,transparent);margin-bottom:14px;line-height:1.5}
 .rpt-why{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-2px 0 16px}
 .rpt-why .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-right:4px}
 .rpt-why .chip b{font-weight:800}
@@ -1089,11 +1089,19 @@ const Report = {
     freight:["purple","Freight"], zoro_cancelled:["bad","Zoro cancelled"], not_shipped:["warn","Not shipped"]},
 
   acct(){ return S.account && S.account !== "All" ? S.account : ""; },
-  start(sub){ if (sub && /^\d{4}-\d{2}$/.test(sub)) { if (sub !== this.month) { this.month = sub; this.open = null; } } this.load(); },
+  start(sub){ if (sub && (/^\d{4}-\d{2}$/.test(sub) || sub === "last30")) { if (sub !== this.month) { this.month = sub; this.open = null; } } this.load(); },
   onFilter(){ this.dayCache = {}; this.open = null; this.load(); },
   setMonth(m){ if (!m || m === this.month) return; this.month = m; this.open = null; this.filt = "all"; history.replaceState(null, "", "#report/"+m); this.load(); },
-  shift(n){ const [y, m] = (this.month || (this.data && this.data.month) || "").split("-").map(Number); if (!y) return; const d = new Date(y, m-1+n, 1); this.setMonth(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")); },
-  mname(m){ const [y, mm] = String(m).split("-").map(Number); return new Date(y, mm-1, 1).toLocaleDateString("en-GB", {month:"long", year:"numeric"}); },
+  shift(n){
+    // the rolling window sits "after" the newest month: ‹ from it goes to this month, › from this month back to it
+    const cur = this.data ? String(this.data.today).slice(0, 7) : new Date().toISOString().slice(0, 7);
+    const m = this.month || (this.data && this.data.month) || "last30";
+    if (m === "last30") { if (n < 0) this.setMonth(cur); return; }
+    if (n > 0 && m >= cur) { this.setMonth("last30"); return; }
+    const [y, mm] = m.split("-").map(Number); if (!y) return;
+    const d = new Date(y, mm-1+n, 1); this.setMonth(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0"));
+  },
+  mname(m){ if (m === "last30") return "Last 30 days"; const [y, mm] = String(m).split("-").map(Number); return new Date(y, mm-1, 1).toLocaleDateString("en-GB", {month:"long", year:"numeric"}); },
   dshort(d){ return new Date(d+"T00:00:00").toLocaleDateString("en-GB", {day:"numeric", month:"short"}); },
   skel(){ return `<div class="kpis">${Array.from({length:6},()=>`<div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div>`).join("")}</div><div class="card"><div class="bd">${U.skel(8)}</div></div>`; },
 
@@ -1147,9 +1155,9 @@ const Report = {
   render(){
     const d = this.data; const body = $("#rpt-body"); if (!d || !body) return;
     const sel = $("#rpt-month");
-    const months = Array.from(new Set([d.month].concat(d.months || []))).sort().reverse();
-    sel.innerHTML = months.map(m => `<option value="${m}" ${m === d.month ? "selected" : ""}>${esc(this.mname(m))}</option>`).join("");
-    $("#rpt-next").disabled = d.month >= String(d.today).slice(0, 7);
+    const months = ["last30"].concat(Array.from(new Set((d.month === "last30" ? [] : [d.month]).concat(d.months || []))).sort().reverse());
+    sel.innerHTML = months.map(m => `<option value="${m}" ${m === d.month ? "selected" : ""}>${esc(this.mname(m))}${m === "last30" ? ` (${esc(this.dshort(d.from))} – ${esc(this.dshort(d.to))})` : ""}</option>`).join("");
+    $("#rpt-next").disabled = d.month === "last30";
     $("#rpt-csv").href = "/api/month_report.csv" + U.qs({month: d.month, account: this.acct()});
     const T = d.totals || {}, L = T.label || {}, D = T.del || {};
     const days = (d.days || []).filter(x => x.orders > 0 || x.date <= d.today);
@@ -1161,7 +1169,7 @@ const Report = {
     const src = Object.entries(cov).map(([a, c]) => c ? `<b>${esc(a)}</b> to ${esc(this.dshort(c.to))}` : `<b>${esc(a)}</b>: no report yet`).join(" · ");
     const unc = d.uncovered || [];
     let html = `<div class="rpt-src">Day totals come from Amazon's own order report (${src || "none captured yet"}), so they match Seller Central (<span class="rpt-chk ok">✓</span> on a day = every order in Amazon's report is here) · labels from closing · delivery from Zoro tracking${d.delivery_checked ? `, checked ${esc(U.rel(d.delivery_checked))}` : ""}</div>`;
-    if (unc.length) html += `<div class="rpt-note">No Amazon report is captured for ${esc(this.range(unc))} — those days count only the orders placed on Zoro; cancelled and never-placed orders are missing there. Every report is captured automatically from now on.</div>`;
+    if (unc.length) html += `<div class="rpt-info">${esc(this.range(unc))}: Amazon's own order report for these days is not downloaded yet, so they show the orders placed on Zoro only (orders cancelled before placing are not counted). Days marked <b>~</b>.</div>`;
     html += `<div class="kpis">`
       + kpi("Orders", U.int(T.orders), `${U.int(Math.round(T.orders / nd))} a day · ${U.int(T.units)} units · ${U.money(T.sales, 0)}`)
       + kpi("Delivered", U.int(D.delivered || 0), `${pct(D.delivered || 0, T.placed)} of ${U.int(T.placed)} placed`, "sev-ok")

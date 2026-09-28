@@ -20,6 +20,9 @@ in any order; a file already ingested with the same mtime is skipped. Read-only 
 Usage:
   ../.venv/bin/python scripts/sync_amazon_report.py                        # every known report file
   ../.venv/bin/python scripts/sync_amazon_report.py --file X.txt --account HOANK
+  # backfill a past range through Seller Central (needs the account's SC Chrome port free —
+  # no closing / tracker / messaging run on it); one account per call, one month per request:
+  ../.venv/bin/python scripts/sync_amazon_report.py --download --account HOANK --from 2026-08-01 --to 2026-08-31
 Runs hourly from scripts/auto_sync_10min.py and after the closing ingest in scripts/daily_bulk.py.
 """
 import argparse
@@ -152,8 +155,10 @@ def known_files():
     return sorted(set(out), key=os.path.getmtime, reverse=True)
 
 
-def ingest_file(conn, path, account="", verbose=True):
-    """Fold one report into the tables. Returns (orders, account) or (0, reason) when skipped."""
+def ingest_file(conn, path, account="", verbose=True, record_span=True):
+    """Fold one report into the tables. Returns (orders, account) or (0, reason) when skipped.
+    record_span=False keeps the orders but claims no coverage (a backfill whose range Amazon did
+    not honour must not mark its days as matching Amazon)."""
     name = os.path.basename(path)
     try:
         mtime = os.path.getmtime(path)
@@ -184,8 +189,8 @@ def ingest_file(conn, path, account="", verbose=True):
     n_rows = sum(o["items"] for o in orders.values())
     conn.execute("INSERT OR REPLACE INTO amazon_report_files (report_file, account, path, mtime, rows, orders, "
                  "span_from, span_to, ingested_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                 (name, acct, path, mtime, n_rows, len(orders), days[0] if days else "",
-                  days[-1] if days else "", now))
+                 (name, acct, path, mtime, n_rows, len(orders), days[0] if days and record_span else "",
+                  days[-1] if days and record_span else "", now))
     if verbose:
         st = Counter(o["order_status"] for o in orders.values())
         print(f"[AMZ-REPORT] {acct}: {name} → {len(orders):,} orders ({n_rows:,} lines), "
@@ -194,7 +199,7 @@ def ingest_file(conn, path, account="", verbose=True):
     return len(orders), acct
 
 
-def sync(files=None, account="", verbose=True):
+def sync(files=None, account="", verbose=True, record_span=True):
     """Ingest the given files (default: every known report file). Returns a summary dict."""
     ensure_amazon_report_schema()
     conn = sqlite3.connect(DB, timeout=60)
@@ -202,7 +207,7 @@ def sync(files=None, account="", verbose=True):
     out = {"ingested": 0, "orders": 0, "skipped": 0}
     try:
         for path in (files or known_files()):
-            n, info = ingest_file(conn, path, account=account, verbose=verbose)
+            n, info = ingest_file(conn, path, account=account, verbose=verbose, record_span=record_span)
             if n:
                 out["ingested"] += 1
                 out["orders"] += n
@@ -220,12 +225,56 @@ def sync(files=None, account="", verbose=True):
     return out
 
 
+def download(account, start, end):
+    """Backfill: ask Seller Central for the all-orders report of an exact date range (closing's
+    own downloader, same Chrome profile, same auto-login) and ingest it. The file lands in
+    data/reports/backfill/<ACCOUNT>/ so closing's latest 30-day report is left alone. Returns the
+    sync summary plus the Pacific days the file really covers — Amazon's picker has ignored dates
+    before, so the span is checked, not assumed. One account per process (closing reads its
+    account at import)."""
+    from utils.accounts_config import accounts
+    from utils.proc import port_open, close_chrome
+    os.environ["CLOSING_ACCOUNT"] = account
+    import closing
+    port = int(accounts()[account]["report_port"])
+    dest = os.path.join(_AUTO, "data", "reports", "backfill", account)
+    os.makedirs(dest, exist_ok=True)
+    closing.REPORTS_DIR = dest
+    ours = not port_open(port)                  # nothing on the port → the Chrome will be ours
+    try:
+        path = closing.download_report(port, start_date=start, end_date=end)
+    finally:
+        if ours:   # only the Chrome this call launched (closing profile + this debugging port)
+            close_chrome(os.path.join(closing.CLOSING_PROFILE_ROOT, f"port_{port}"), port, timeout=10)
+    if not path:
+        print(f"[AMZ-REPORT] ❌ {account}: no report for {start} → {end}", flush=True)
+        return None
+    orders = parse_report(path) or {}
+    days = sorted(o["purchase_day"] for o in orders.values() if o["purchase_day"])
+    span = (days[0], days[-1]) if days else ("", "")
+    honored = bool(days) and span[0] <= start and span[1] >= min(end, (datetime.now(PT).date()).isoformat())
+    print(f"[AMZ-REPORT] {account}: asked {start} → {end}, file covers {span[0] or '?'} → {span[1] or '?'} "
+          f"({len(orders):,} orders){'' if honored else ' — ⚠️ NOT the requested range'}", flush=True)
+    out = sync(files=[path], account=account, record_span=honored)
+    out.update(span=span, honored=honored, path=path)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description="Fold Amazon all-orders reports into amazon_report_orders.")
     ap.add_argument("--file", action="append", help="a report file (repeatable); default: every known file")
-    ap.add_argument("--account", default="", help="account of --file (default: from its folder / its orders)")
+    ap.add_argument("--account", default="", help="account of --file / --download")
+    ap.add_argument("--download", action="store_true",
+                    help="backfill: request the report for --from/--to from Seller Central, then ingest it")
+    ap.add_argument("--from", dest="start", default="", help="YYYY-MM-DD (with --download)")
+    ap.add_argument("--to", dest="end", default="", help="YYYY-MM-DD (with --download)")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
+    if a.download:
+        if not (a.account and a.start and a.end):
+            ap.error("--download needs --account, --from and --to")
+        r = download(a.account, a.start, a.end)
+        return 0 if (r and r.get("honored")) else 2
     sync(files=a.file, account=a.account, verbose=not a.quiet)
     return 0
 

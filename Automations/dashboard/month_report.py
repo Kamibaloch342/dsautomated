@@ -462,7 +462,18 @@ def _cached(key, fn, force=False):
     return val
 
 
+LAST30 = "last30"   # the rolling window the daily all-orders report covers — the page's default
+
+
+def _month_key(q):
+    m = (_q1(q, "month") or LAST30).strip().lower()
+    return LAST30 if m in (LAST30, "30", "last30days") else m
+
+
 def _month_bounds(month):
+    if month == LAST30:
+        today = _today()
+        return today - timedelta(days=29), today
     try:
         y, m = (int(x) for x in str(month).split("-")[:2])
         first = date(y, m, 1)
@@ -487,7 +498,8 @@ def _months(c):
 def month_report(q):
     acct = _q1(q, "account")
     acct = "" if acct.lower() in ("", "all", "both") else acct
-    first, last = _month_bounds(_q1(q, "month"))
+    mkey = _month_key(q)
+    first, last = _month_bounds(mkey)
 
     def build():
         c = _ro()
@@ -521,7 +533,8 @@ def month_report(q):
                 last_check = (str(last_check).replace(" ", "T")[:19] + "Z") if last_check else ""
             except sqlite3.Error:
                 last_check = ""
-            return {"month": first.strftime("%Y-%m"), "account": acct or "All", "from": first.isoformat(),
+            return {"month": mkey if mkey == LAST30 else first.strftime("%Y-%m"),
+                    "account": acct or "All", "from": first.isoformat(),
                     "to": end.isoformat(), "today": today.isoformat(), "months": _months(c),
                     "totals": tot, "days": days, "coverage": covinfo,
                     # today is still being written; a report downloaded this morning covers it only in part
@@ -530,7 +543,7 @@ def month_report(q):
                     "delivery_checked": last_check, "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         finally:
             c.close()
-    return _cached(("m", DB, first.isoformat(), acct), build, force=_q1(q, "fresh") == "1")
+    return _cached(("m", DB, mkey, first.isoformat(), acct), build, force=_q1(q, "fresh") == "1")
 
 
 def month_day(q):
@@ -564,7 +577,8 @@ _DSTATE_TEXT = {"delivered": "Delivered", "transit": "In transit", "stalled": "N
 def month_csv(q):
     acct = _q1(q, "account")
     acct = "" if acct.lower() in ("", "all", "both") else acct
-    first, last = _month_bounds(_q1(q, "month"))
+    mkey = _month_key(q)
+    first, last = _month_bounds(mkey)
     end = min(last, _today())
     c = _ro()
     try:
@@ -585,4 +599,5 @@ def month_csv(q):
                 v = "yes" if v else ""
             row.append("" if v is None else v)
         w.writerow(row)
-    return buf.getvalue(), f"orders_{first.strftime('%Y-%m')}_{(acct or 'all').lower()}.csv"
+    tag = f"{first.isoformat()}_to_{end.isoformat()}" if mkey == LAST30 else first.strftime('%Y-%m')
+    return buf.getvalue(), f"orders_{tag}_{(acct or 'all').lower()}.csv"

@@ -644,9 +644,11 @@ def download_report(port, days=30, start_date=None, end_date=None):
             print("[CLOSING] ❌ No report .txt appeared — did the download finish?")
             return None
 
-        wait = WebDriverWait(driver, 15)
-        dropdown = wait.until(EC.element_to_be_clickable(
+        # 45 s, not 15: a freshly launched headless Chrome renders Report Central's Katal widgets
+        # slowly, and the backfill of 28 Sep 2026 timed out on a page that was merely loading.
+        dropdown = WebDriverWait(driver, 45).until(EC.element_to_be_clickable(
             (By.CSS_SELECTOR, "kat-dropdown.daily-time-picker-kat-dropdown-normal")))
+        wait = WebDriverWait(driver, 15)
         # kat-dropdown options live in shadow DOM — click via shadowRoot or the
         # open menu intercepts the Request Download click.
         if start_date and end_date:
@@ -655,34 +657,46 @@ def download_report(port, days=30, start_date=None, end_date=None):
             driver.execute_script(
                 "arguments[0].shadowRoot.querySelector('kat-option[value=\"-1\"]').click()", dropdown)
             time.sleep(2)
+            # Since 2026 the page has ONE <kat-date-range-picker> (dates as M/D/YYYY, en-US) whose
+            # two <kat-date-picker> boxes live in its shadow DOM. Each box's emitChangeEvent(value)
+            # is what typing a date calls; the range picker listens to it and updates its own
+            # startValue / endValue, which the page reads on Request Download. The old code set
+            # .value on any <input> whose label mentioned "date" — on this page those are the
+            # Order Date / Last Updated Date radios, so it silently requested "orders updated
+            # today" (28 Sep 2026: asked for August, got 69 orders). Wrong range = no request.
+            def _mdy(s):
+                s = str(s).strip()
+                try:
+                    d0 = datetime.strptime(s[:10], "%Y-%m-%d")
+                    return f"{d0.month}/{d0.day}/{d0.year}"
+                except ValueError:
+                    return s
+            want_s, want_e = _mdy(start_date), _mdy(end_date)
             verify = driver.execute_script("""
-                var start=arguments[0], end=arguments[1];
-                function setP(el,val){
-                  if(!el)return;
-                  try{el.value=val;}catch(e){}
-                  try{el.setAttribute('value',val);}catch(e){}
-                  try{var inp=el.shadowRoot&&el.shadowRoot.querySelector('input');
-                      if(inp){inp.value=val;inp.dispatchEvent(new Event('input',{bubbles:true}));
-                              inp.dispatchEvent(new Event('change',{bubbles:true}));}}catch(e){}
-                  el.dispatchEvent(new Event('input',{bubbles:true}));
-                  el.dispatchEvent(new Event('change',{bubbles:true}));
-                  el.dispatchEvent(new Event('blur',{bubbles:true}));
-                }
-                // Amazon changed the report date picker — try several element types.
-                var kat=[].slice.call(document.querySelectorAll('kat-date-picker'));
-                var native=[].slice.call(document.querySelectorAll('input[type=date]'));
-                var textd=[].slice.call(document.querySelectorAll('input')).filter(function(i){
-                  var s=((i.name||'')+' '+(i.id||'')+' '+(i.placeholder||'')+' '+(i.getAttribute('aria-label')||'')).toLowerCase();
-                  return /date|start|end|from|\\bto\\b/.test(s);});
-                var used='none';
-                if(kat.length>=2){setP(kat[0],start);setP(kat[1],end);used='kat';}
-                else if(native.length>=2){setP(native[0],start);setP(native[1],end);used='native';}
-                else if(textd.length>=2){setP(textd[0],start);setP(textd[1],end);used='text';}
-                return JSON.stringify({used:used,kat:kat.length,native:native.length,text:textd.length,
-                  fields:textd.slice(0,6).map(function(i){return {type:i.type,name:i.name,id:i.id,ph:i.placeholder,al:i.getAttribute('aria-label')};})});
-            """, start_date, end_date)
+                var s = arguments[0], e = arguments[1];
+                var od = document.querySelector('input[name="report-view-options-radio"][aria-label="Order Date"]');
+                if (od && !od.checked) od.click();
+                var rp = document.querySelector('kat-date-range-picker');
+                if (!rp) return JSON.stringify({ok: false, why: 'no kat-date-range-picker on the page'});
+                var sp = rp.startPicker || (rp.shadowRoot && rp.shadowRoot.querySelector('kat-date-picker.start'));
+                var ep = rp.endPicker || (rp.shadowRoot && rp.shadowRoot.querySelector('kat-date-picker.end'));
+                if (!sp || !ep || !sp.emitChangeEvent || !ep.emitChangeEvent)
+                    return JSON.stringify({ok: false, why: 'date boxes not found inside the range picker'});
+                sp.emitChangeEvent(s); ep.emitChangeEvent(e);
+                var dd = document.querySelector('kat-dropdown.daily-time-picker-kat-dropdown-normal');
+                return JSON.stringify({ok: rp.startValue === s && rp.endValue === e, start: rp.startValue,
+                    end: rp.endValue, dropdown: dd ? dd.value : null, order_date: od ? od.checked : null});
+            """, want_s, want_e)
             time.sleep(1)
             print(f"[CLOSING]   date-picker set → {verify}")
+            try:
+                _ok = bool(json.loads(verify).get("ok"))
+            except Exception:
+                _ok = False
+            if not _ok:
+                print("[CLOSING] ❌ Could not set the exact date range — not requesting a report "
+                      "for the wrong dates. (Set CLOSING_DEBUG_PICKER=1 to dump the picker.)")
+                return None
             if os.environ.get("CLOSING_DEBUG_PICKER"):
                 try:
                     dump = driver.execute_script("""
