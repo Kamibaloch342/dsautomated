@@ -189,6 +189,18 @@ def load_delayed():
     return [dict(r) for r in rows]
 
 
+def _turn(sc_port, driver):
+    """One buyer message = one turn on this store's Seller Central Chrome (utils/sc_chrome.py):
+    the tracking uploader drives the same Chrome all day, and per-order turns let its uploads run
+    between messages instead of waiting out a whole messaging run (late shipments). A dry run has
+    no Chrome and takes no turn."""
+    from contextlib import nullcontext
+    if driver is None:
+        return nullcontext()
+    from utils.sc_chrome import sc_turn
+    return sc_turn(sc_port, f"messaging {ACCOUNT}", max_wait=900)
+
+
 def main():
     cfgs = accounts()
     if ACCOUNT not in cfgs:
@@ -249,9 +261,11 @@ def _run(pd_cfg, sc_port):
         # every order then reports "no contact reason available" because the contact page is
         # really the login page. Clear login and the account switcher before touching order 1.
         from platforms.auth import ensure_sc_session
-        if not ensure_sc_session(driver, ACCOUNT,
-                                 target_url="https://sellercentral.amazon.com/home",
-                                 label="MSG"):
+        with _turn(sc_port, driver):
+            _signed_in = ensure_sc_session(driver, ACCOUNT,
+                                           target_url="https://sellercentral.amazon.com/home",
+                                           label="MSG")
+        if not _signed_in:
             print(f"[MSG] ⚠️ Could not get a signed-in Seller Central for {ACCOUNT} — "
                   f"messages stay pending, nothing was sent.")
             return 2
@@ -288,8 +302,9 @@ def _run(pd_cfg, sc_port):
                       "the rest stay pending.")
                 break
         try:
-            res = process_single_order(driver, o, pd_cfg, gmail_services,
-                                       closing_table=True, dry_run=DRY, guards=guards)
+            with _turn(sc_port, driver):
+                res = process_single_order(driver, o, pd_cfg, gmail_services,
+                                           closing_table=True, dry_run=DRY, guards=guards)
             if res.get("delivered_msg_sent") == "Yes":
                 sent += 1
             elif res.get("customer_messaged") == "Yes" or res.get("return_requested") == "Yes" \
@@ -308,8 +323,9 @@ def _run(pd_cfg, sc_port):
             print("[MSG] ⚠️ Chrome died before the delay notices — they stay pending.")
             break
         try:
-            res = process_delay_notice(driver, o, pd_cfg, gmail_services,
-                                       closing_table=True, dry_run=DRY, guards=guards)
+            with _turn(sc_port, driver):
+                res = process_delay_notice(driver, o, pd_cfg, gmail_services,
+                                           closing_table=True, dry_run=DRY, guards=guards)
             if res.get("delay_notice_sent") == "Yes":
                 delayed_sent += 1
             elif res.get("customer_messaged") == "Yes" or res.get("return_requested") == "Yes" \

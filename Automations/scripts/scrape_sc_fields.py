@@ -404,5 +404,13 @@ def main():
     banner(f"DONE {ACCOUNT}: {done}/{total} processed | {ok} got data | {skipped} skipped (retry next run).")
 
 
+def main_in_turn():
+    """main() while holding this store's Seller Central Chrome (utils/sc_chrome.py) — the
+    tracking uploader drives the same Chrome all day (28 Sep 2026)."""
+    from utils.sc_chrome import sc_turn
+    with sc_turn(PORT, f"SC scrape {ACCOUNT}", max_wait=1200):
+        main()
+
+
 if __name__ == "__main__":
-    main()
+    main_in_turn()

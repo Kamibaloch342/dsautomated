@@ -394,6 +394,24 @@ def cycle_sleep_seconds(base_seconds):
     return base_seconds
 
 
+def _sc_port(account_config):
+    return 9331 if account_config.get("key") == "hoank" else 9333
+
+
+def workflow_in_turn(account_config, passed_driver=None):
+    """main_workflow while holding this store's Seller Central Chrome (utils/sc_chrome.py), so a
+    closing report download, the SC scrape or a buyer message never drives the same tab mid-cycle.
+    If the Chrome stays busy for 10 min the cycle is skipped (the next one tries again)."""
+    from utils.sc_chrome import sc_turn, SCBusy
+    wait = float(os.environ.get("TRACKING_SC_TURN_WAIT") or 600)
+    try:
+        with sc_turn(_sc_port(account_config), f"tracker {account_config['name']}", max_wait=wait, on_timeout="skip"):
+            return main_workflow(account_config, passed_driver=passed_driver)
+    except SCBusy as e:
+        print(f"  ⏭️  {account_config['name']}: {e} — skipping this cycle")
+        return passed_driver
+
+
 def run_account_loop(account_config, sleep_seconds):
     """Runs one account forever with its own cadence."""
     driver = None
@@ -401,7 +419,7 @@ def run_account_loop(account_config, sleep_seconds):
         print("\n" + "─" * 60)
         print(f"  🏪  ACCOUNT: {account_config['name'].upper()}  |  {time.strftime('%Y-%m-%d %H:%M:%S')}")
         print("─" * 60)
-        driver = main_workflow(account_config, passed_driver=driver)
+        driver = workflow_in_turn(account_config, passed_driver=driver)
         _s = cycle_sleep_seconds(sleep_seconds)
         print(f"\n  ⏸️   {account_config['name']} sleeping {_s}s before next run...")
         time.sleep(_s)
@@ -1678,6 +1696,16 @@ def download_amazon_order_report(driver, wait, account_config=None, download_dir
                       f"({os.path.basename(newest)}); a new one is requested every {_REPORT_MAX_AGE_MIN} min")
                 return newest
     print("\n📦 DOWNLOADING AMAZON ORDER REPORT 📦")
+    # Closing's report download points this browser's download folder at data/reports/<ACCT>
+    # (Browser.setDownloadBehavior is browser-wide), and our own folder was only set once, at
+    # attach — after a closing run every report of ours landed in closing's folder. Take it back
+    # right before each download (28 Sep 2026).
+    for _cmd in ("Browser.setDownloadBehavior", "Page.setDownloadBehavior"):
+        try:
+            driver.execute_cdp_cmd(_cmd, {"behavior": "allow", "downloadPath": dl_dir})
+            break
+        except Exception:
+            continue
     try:
         driver.get(REPORT_DOWNLOAD_URL)
         time.sleep(2)
@@ -2439,7 +2467,7 @@ if __name__ == "__main__":
             else:
                 print("\n  🧵  Parallel synchronized mode enabled. Running accounts side-by-side...")
                 with ThreadPoolExecutor(max_workers=len(selected_accounts)) as executor:
-                    future_map = {executor.submit(main_workflow, cfg): cfg for cfg in selected_accounts}
+                    future_map = {executor.submit(workflow_in_turn, cfg): cfg for cfg in selected_accounts}
                     for future in as_completed(future_map):
                         cfg = future_map[future]
                         try:
@@ -2453,7 +2481,7 @@ if __name__ == "__main__":
                 print("\n" + "─" * 60)
                 print(f"  🏪  ACCOUNT: {config['name'].upper()}")
                 print("─" * 60)
-                d = main_workflow(config, passed_driver=_cli_args.active_drivers.get(config['name']))
+                d = workflow_in_turn(config, passed_driver=_cli_args.active_drivers.get(config['name']))
                 _cli_args.active_drivers[config['name']] = d
 
         if args.single_cycle:

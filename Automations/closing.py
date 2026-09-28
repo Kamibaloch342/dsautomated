@@ -500,6 +500,16 @@ def release_chrome(d):
 
 
 def download_report(port, days=30, start_date=None, end_date=None):
+    """Download the FlatFileAllOrdersReport while holding this store's Seller Central Chrome
+    (utils/sc_chrome.py): the tracking uploader runs all day on the same Chrome, and a download
+    that shared the tab with one of its cycles halted both (28 Sep 2026 — auto-closing at 04:00
+    next to the trackers). Waits up to 20 min for the tracker's current cycle, then goes ahead."""
+    from utils.sc_chrome import sc_turn
+    with sc_turn(port, f"closing {ACCOUNT} report", max_wait=1200):
+        return _download_report_inner(port, days=days, start_date=start_date, end_date=end_date)
+
+
+def _download_report_inner(port, days=30, start_date=None, end_date=None):
     """Download the FlatFileAllOrdersReport. Last `days` (dropdown maxes at 30),
     or an exact start→end range (needed for backfills longer than 30 days)."""
     from selenium.webdriver.support.ui import WebDriverWait
