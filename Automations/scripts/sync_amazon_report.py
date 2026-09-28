@@ -237,7 +237,9 @@ def download(account, start, end):
     os.environ["CLOSING_ACCOUNT"] = account
     import closing
     port = int(accounts()[account]["report_port"])
-    dest = os.path.join(_AUTO, "data", "reports", "backfill", account)
+    # one folder per range: closing's downloader empties its folder before every download, and a
+    # shared backfill folder lost each month's file to the next month's request
+    dest = os.path.join(_AUTO, "data", "reports", "backfill", account, f"{start}_{end}")
     os.makedirs(dest, exist_ok=True)
     closing.REPORTS_DIR = dest
     ours = not port_open(port)                  # nothing on the port → the Chrome will be ours
