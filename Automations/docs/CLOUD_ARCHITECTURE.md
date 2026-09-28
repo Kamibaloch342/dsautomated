@@ -85,8 +85,16 @@ stop_closing / run_messages {account}`, `reload_config`, `set_headless {on}`,
 1. Product page says *"Zoro's best price: not eligible for any other offers or promotions"*
    → reseller, permanently (`platforms/zoro.py: check_pdp_promo`, cached per SKU in
    `data/dataset/pdp_promo.json`; read for free during the delivery-estimate page visit).
-2. A **priority coupon** (the weekly 15–20 % codes) applies on the live cart → coupon
-   profile — *also for Zoro Select*, because 15–20 % beats the reseller's 10 %.
+2. A **priority coupon** (the weekly codes) applies on the live cart → coupon profile. On a
+   **Zoro Select** item only when it saves **more** than the reseller's 10 % Select discount
+   (owner, 28 Sep 2026): a 10 % priority code such as ORGANIZE9T26 / FALL93A26 saves the same
+   money → reseller (rule 3); a 15–20 % code → coupon. Both the supervisor
+   (`_supervise_coupon_decision`) and the checker (`priority_check.check_one`) apply it through
+   `utils.config.coupon_beats_select`, trying the next code when one only matches the 10 %.
+   ASINs sorted under the old rule are re-tested with
+   `python engine/priority_check.py HS_COUPON|DM_COUPON --queue ASIN,…` (queue only, no Chrome;
+   the running coupon placer drains it between cycles — restart the placers first so they run
+   the current rule).
 3. No priority coupon and the item is **Zoro Select** → reseller (already 10 % off; a
    regular 10 % coupon would be wasted).
 4. No priority coupon, cart ≥ $50 → regular 10 % coupon, coupon profile.

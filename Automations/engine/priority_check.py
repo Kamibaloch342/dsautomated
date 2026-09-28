@@ -17,7 +17,10 @@ every week, so sorting it by hand does not scale. The bot now sorts it:
 The rules (owner's, September 2026):
   PDP says "Zoro's best price: not eligible for any other offers or promotions"
                                         → Reseller, permanent (no coupon test needed)
-  a PRIORITY coupon applies (15–20 %)   → Coupon — even for Zoro Select, it beats 10 %
+  a PRIORITY coupon applies (15–20 %)   → Coupon — for Zoro Select only when it saves MORE
+                                          than the reseller's 10 % Select discount (owner,
+                                          28 Sep 2026: a 10 % code such as ORGANIZE… saves
+                                          the same → Reseller; 15 % → Coupon)
   no priority coupon, Zoro Select       → Reseller (already 10 % off; a 10 % regular
                                           coupon would be wasted)
   no priority coupon, unit price ≥ $50  → Coupon  (regular 10 % coupon is always worth it)
@@ -471,9 +474,11 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
     cart_id = _get_cart_id(driver)
     tried = transient = item_rejects = 0
     worked = None
+    matched = None          # (code, discount): applies to a Zoro Select item but saves only the Select 10 %
     min_order = None
     known_min = (cache or {}).get("coupon_min_order") or {}
     if cart_id:
+        from utils.config import coupon_beats_select
         for c in priority_codes:
             km = known_min.get(c)
             if km and float(km) > cart + 0.005:      # known minimum above this cart: no API call needed
@@ -483,6 +488,11 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
             tried += 1
             okc, res = _apply_coupon_api(driver, cart_id, c)
             if okc and (res or 0) > 0:
+                if is_select and not coupon_beats_select(res, cart):
+                    # Owner, 28 Sep 2026: equal money (a 10 % code vs the reseller's 10 % Select
+                    # discount) → Reseller; keep looking for a code that saves more.
+                    matched = matched or (c, float(res))
+                    continue
                 worked = c
                 break
             kind, extra = classify_promo_error(res)
@@ -513,8 +523,19 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
     elif tried and transient == tried:
         row.update(Check_Status="TRANSIENT", Check_Suggest="Re-check later", Check_Note="coupon API busy / session")
     elif is_select:
-        row.update(Check_Status="SELECT", Check_Suggest="Reseller",
-                   Check_Note="Zoro Select, no priority coupon" + (f" (one applies from ${min_order:.0f})" if min_order else ""))
+        if matched:
+            row["Check_Coupon"] = f"{matched[0]} (= Select 10 %)"
+            row.update(Check_Status="SELECT", Check_Suggest="Reseller",
+                       Check_Note=f"Zoro Select; priority {matched[0]} saves ${matched[1]:.2f}, the same as the "
+                                  f"reseller's 10 % Select discount → Reseller")
+            if mod is not None:
+                try:
+                    mod._learn_promo_outcome(code, asin, True, cache=cache)   # coupons DO apply to it
+                except Exception:
+                    pass
+        else:
+            row.update(Check_Status="SELECT", Check_Suggest="Reseller",
+                       Check_Note="Zoro Select, no priority coupon" + (f" (one applies from ${min_order:.0f})" if min_order else ""))
     else:
         # No priority coupon: the RESELLER decides per order (Deciding) whatever the unit price —
         # a cart at/above $50 is handed to the coupon profile for a regular 10 % code at order time,
@@ -778,6 +799,35 @@ def enqueue_recheck(profile_name: str, reason: str, mod=None, include_ineligible
     return len(asins)
 
 
+def enqueue_asins(profile_name: str, asins, reason: str, mode: str = "recheck") -> int:
+    """Queue SPECIFIC ASINs for a re-test (no Chrome, no sheet read — the coupon placer drains
+    the queue with its own session between cycles, judging each ASIN's column as it is then).
+    Merged into a pending queue under its lock: nothing already queued is dropped and a pending
+    reset is not downgraded. Used after a rule change to re-sort only the ASINs it affects
+    (28 Sep 2026: Zoro Select ASINs promoted to Coupon by a 10 % priority code)."""
+    wanted = [str(a).strip().upper() for a in (asins or []) if str(a).strip()]
+    if not wanted:
+        return 0
+    p = _queue_path(profile_name)
+    os.makedirs(DATA, exist_ok=True)
+    with locked(p):
+        q = read_json(p, None)
+        if not isinstance(q, dict) or not q.get("asins"):
+            q = {"reason": reason, "queued_at": _now(), "profile": profile_name, "asins": [],
+                 "mode": mode, "columns": []}
+        else:
+            q["reason"] = f"{q.get('reason', '')} + {reason}"
+        have = {(x[0] if isinstance(x, list) else x) for x in q["asins"]}
+        added = 0
+        for a in wanted:
+            if a not in have:
+                q["asins"].append([a, ""])
+                have.add(a)
+                added += 1
+        write_json_atomic(p, q, indent=1)
+    return added
+
+
 def _queue_remove(p: str, asin: str) -> None:
     """Drop ONE finished ASIN from the queue file (atomic, under the lock) so a crash
     mid-batch loses at most the ASIN being tested, never the whole batch."""
@@ -838,8 +888,20 @@ def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
 def main():
     argv = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not argv or argv[0].upper() not in ("DM_COUPON", "HS_COUPON"):
-        print("usage: python engine/priority_check.py DM_COUPON|HS_COUPON [--all] [--max N] [--no-move]")
+        print("usage: python engine/priority_check.py DM_COUPON|HS_COUPON [--all] [--max N] [--no-move]\n"
+              "       python engine/priority_check.py DM_COUPON|HS_COUPON --queue ASIN[,ASIN…] [--reason TEXT]\n"
+              "         (queue only: no Chrome — the running coupon placer re-tests them between cycles)")
         sys.exit(2)
+    if "--queue" in sys.argv:
+        try:
+            raw = sys.argv[sys.argv.index("--queue") + 1]
+        except IndexError:
+            raw = ""
+        why = sys.argv[sys.argv.index("--reason") + 1] if "--reason" in sys.argv[:-1] else "targeted re-check"
+        n = enqueue_asins(argv[0].upper(), raw.replace(" ", ",").split(","), why)
+        print(f"queued {n} ASIN(s) for {argv[0].upper()} — {queue_size(argv[0].upper())} waiting in "
+              f"{_queue_path(argv[0].upper())}")
+        return
     only_new = "--all" not in sys.argv
     mx = 25
     if "--max" in sys.argv:

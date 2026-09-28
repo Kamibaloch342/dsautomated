@@ -109,6 +109,20 @@ ZORO_SELECT_MARGIN_LIMIT = -0.20
 
 # Zoro Select reseller discount — reseller accounts get 10% off Zoro Select branded products
 ZORO_SELECT_DISCOUNT_RATE = 0.10
+
+
+def coupon_beats_select(coupon_discount, cart_subtotal, rate=None):
+    """Owner's rule (28 Sep 2026): on a Zoro Select item the reseller already saves `rate`
+    (ZORO_SELECT_DISCOUNT_RATE, 10 %) of the cart, so a coupon is worth the coupon profile only
+    when it saves MORE than that — by more than a cent. A 10 % priority code (ORGANIZE…, FALL…)
+    saves the same → the reseller places it; a 15–20 % code saves more → the coupon profile.
+    Pure; used by the supervisor (engine/orders.py) and the checker (engine/priority_check.py).
+    Numbers that cannot be read keep the coupon, i.e. the behaviour before this rule."""
+    r = ZORO_SELECT_DISCOUNT_RATE if rate is None else float(rate)
+    try:
+        return float(coupon_discount or 0) > round(float(cart_subtotal or 0) * r, 2) + 0.01
+    except (TypeError, ValueError):
+        return True
 # Zoro small-order fee — $5.99 since June 2026 (was $5.00). Charged when the
 # PRE-coupon subtotal is under the $50 free-shipping threshold.
 ZORO_SMALL_ORDER_FEE = 5.99

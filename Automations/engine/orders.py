@@ -1093,8 +1093,9 @@ def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_w
     """Supervisor rule for an UNLABELLED order whose cart is already built.
 
       0. PDP badge "not eligible for any other offers or promotions" → reseller (permanent)
-      1. a PRIORITY coupon applies (always tried first — they are 15–20 %, better
-         than the reseller's 10 % even on Zoro Select)      → place here with it
+      1. a PRIORITY coupon applies (always tried first, highest % first) → place here with it —
+         on Zoro Select only when it saves MORE than the reseller's 10 % Select discount
+         (a 10 % priority code saves the same → rule 2; 15–20 % → here). Owner, 28 Sep 2026.
       2. else all items Zoro Select (reseller already gets 10 %) → reseller
       3. else cart ≥ SUPERVISE_MIN_CART and a REGULAR coupon applies → place here with it
       4. else cart < threshold BUT the reseller's estimated margin < DECIDING_MIN_MARGIN
@@ -1167,11 +1168,25 @@ def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_w
         d["min_orders"] = min_orders
         return d
 
+    from utils.config import ZORO_SELECT_DISCOUNT_RATE as _sel_rate, coupon_beats_select as _beats_select
+    sel_saving = round(raw_cart_cost * _sel_rate, 2)
+    matched = None      # (code, discount): a priority code that applies but saves only what Select saves
     print(f"  🧑‍⚖️ SUPERVISOR: testing {len(pri)} priority coupon(s) on the live cart (${raw_cart_cost:.2f})"
           + (" — Zoro Select item(s)" if all_zoro_select else ""))
     for code in pri:
         if _try(code, "priority"):
             _learn_promo_outcome(code0, asin0, True, cache=cache)
+            disc = float(attempts[-1].get("discount") or 0)
+            if all_zoro_select and not _beats_select(disc, raw_cart_cost):
+                # Owner, 28 Sep 2026: a 10 % priority code (ORGANIZE9T26, FALL93A26) on a Zoro Select
+                # item saves exactly what the reseller's Select discount saves → equal money, the
+                # reseller places it. Only a code that saves MORE (15–20 %) is worth the coupon
+                # profile. Codes run highest % first, so the next ones are tried for a bigger saving
+                # (applying a code replaces the one on the cart).
+                matched = matched or (code, disc)
+                print(f"     ↔️  [Supervisor] {code} saves ${disc:.2f} — no more than the reseller's "
+                      f"{_sel_rate:.0%} Zoro Select discount (${sel_saving:.2f}); not worth a coupon")
+                continue
             return _ret({"action": "place", "coupon": code, "tier": "priority",
                          "reason": f"priority coupon {code} applies (cart ${raw_cart_cost:.2f})",
                          "verdict": _v("COUPON_OK", "Coupon", f"priority {code} works")})
@@ -1189,6 +1204,12 @@ def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_w
         return _ret({"action": "call_zoro_20", "coupon": None, "tier": None, "reason": why,
                      "verdict": _v("NO_PRIORITY", "Deciding", why)})
     if all_zoro_select:
+        if matched:
+            why = (f"Zoro Select — priority coupon {matched[0]} saves ${matched[1]:.2f}, no more than the "
+                   f"reseller's {_sel_rate:.0%} Select discount (${sel_saving:.2f}) → reseller")
+            return _ret({"action": "reseller", "coupon": None, "tier": None, "reason": why,
+                         "verdict": _v("SELECT", "Reseller",
+                                       f"Zoro Select; priority {matched[0]} only matches the {_sel_rate:.0%} Select discount")})
         why = "Zoro Select — no priority coupon applies; reseller already gets the 10 % Select discount"
         return _ret({"action": "reseller", "coupon": None, "tier": None, "reason": why,
                      "verdict": _v("SELECT", "Reseller", "Zoro Select, no priority coupon")})
