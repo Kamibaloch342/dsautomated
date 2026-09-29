@@ -17,6 +17,25 @@ import functools
 
 import requests
 from datetime import datetime
+
+# ── TLS trust for every download this process makes ──────────────────────────────────────
+# This Python (python.org 3.12) ships an EMPTY trust store until someone runs
+# "Install Certificates.command", so urllib — which is what webdriver-manager and
+# undetected_chromedriver use to fetch a chromedriver — fails with
+# CERTIFICATE_VERIFY_FAILED. On 29 Sep 2026 Chrome auto-updated to 154, the cached
+# driver for 153 stopped working ("session not created"), neither fallback could
+# download the new one, and the 04:00 closing lost its Seller Central Chrome: the report
+# download, the SC scrape, the buyer messages and the review requests all exited 2.
+# requests already uses certifi; pointing urllib at the same bundle costs nothing and
+# keeps the next Chrome update from doing this again. setdefault, so a real
+# SSL_CERT_FILE in the environment still wins.
+try:
+    import certifi as _certifi
+    _ca = _certifi.where()
+    os.environ.setdefault("SSL_CERT_FILE", _ca)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", _ca)
+except Exception:
+    pass
 from urllib.parse import urlparse
 # pandas is imported lazily inside download_read_and_delete_csv (its only user) so
 # that importing this module never loads numpy/pandas — those compiled DLLs are
