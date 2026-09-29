@@ -302,14 +302,15 @@ def main():
     if SKIP_MESSAGES:
         print("\n(SKIP_MESSAGES=1 → skipping delivery messages/review requests; they stay pending)")
     else:
-        # MSG_LIMIT caps sends per account per run (default 300 ≈ one day's delivered
-        # volume): drains the backlog gradually instead of blasting thousands of buyer
-        # messages in one go — which Amazon reads as spam. Raise/lower via env.
+        # MSG_LIMIT caps sends per account per run (default 1000, set by the owner on
+        # 29 Sep 2026): enough to clear a day's delivered volume and a backlog behind it in
+        # one pass, while still bounding a single run — Amazon reads an unbounded burst of
+        # buyer messages as spam. Raise/lower via env, or the launcher's box; 0 = unlimited.
         for a in ACCTS:
             run(f"Messages {a} (delivery check-ins + review requests)",
                 [PY, "scripts/send_delivery_messages.py"],
                 env={"MSG_ACCOUNT": a, "MSG_DRY": os.environ.get("MSG_DRY", ""),
-                     "MSG_LIMIT": os.environ.get("MSG_LIMIT", "300")},
+                     "MSG_LIMIT": os.environ.get("MSG_LIMIT", "1000")},
                 timeout=int(os.environ.get("MSG_TIMEOUT", "10800")), critical=False)
 
     # 8) coverage report (Shipped) — counts per column + a missing-ids file per account

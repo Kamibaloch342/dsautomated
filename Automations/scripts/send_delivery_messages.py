@@ -21,7 +21,7 @@ pending for the next run) and NEVER launches a blank not-logged-in Chrome.
 Usage:
   MSG_ACCOUNT=HOANK ../.venv/bin/python scripts/send_delivery_messages.py
 Env: MSG_ACCOUNT (HOANK) | MSG_DRY=1 (preview only)
-     MSG_LIMIT (default 300 per run ≈ one day's delivered volume, so a backlog
+     MSG_LIMIT (default 1000 per run — the owner's setting, 29 Sep 2026; a backlog
      drains gradually instead of blasting thousands of buyer messages at once —
      Amazon reads that as spam; 0 = unlimited, use deliberately)
      MSG_MAX_DAYS (30 — don't message deliveries older than this; Amazon's
@@ -48,7 +48,7 @@ from engine.amazon_scraper import _connect_chrome
 
 ACCOUNT  = os.environ.get("MSG_ACCOUNT", "HOANK").strip()
 DRY      = os.environ.get("MSG_DRY", "").strip().lower() in ("1", "true", "yes")
-LIMIT    = int(os.environ.get("MSG_LIMIT", "300") or 0)   # 0 = unlimited (deliberate only)
+LIMIT    = int(os.environ.get("MSG_LIMIT", "1000") or 0)  # 0 = unlimited (deliberate only)
 MAX_DAYS = int(os.environ.get("MSG_MAX_DAYS") or REVIEW_MAX_DAYS)
 DELAY_LIMIT = int(os.environ.get("MSG_DELAY_LIMIT", "100") or 0)   # delay notices per run
 DB       = os.path.join(_AUTO, "data", "automations_unified.db")
