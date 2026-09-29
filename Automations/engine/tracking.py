@@ -1020,10 +1020,18 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
             const val = (el.getAttribute('value') || '').trim().toLowerCase();
             const ariaLabel = (el.getAttribute('aria-label') || '').trim().toLowerCase();
 
-            if (label === 'send' || label.startsWith('send ') ||
-                text === 'send' || text.startsWith('send ') ||
-                val === 'send' || val.startsWith('send ') ||
-                ariaLabel === 'send' || ariaLabel.startsWith('send ')) {
+            // 'Submit' as well as 'Send'. Amazon renders a different footer per contact
+            // reason: "Other" gives Add attachment / Send, "Notify of a problem with shipping
+            // your order" gives Cancel / Submit — and that Submit is a <kat-button>, so the
+            // two fallbacks below (kat-button[variant=primary], button[type=submit]) never
+            // matched it either. 62 buyer messages were typed in full and then abandoned on
+            // 29 Sep 2026 for want of this word. Submit is the same form's send action, not a
+            // different destination — the message still goes to the buyer.
+            const wants = w => label === w || label.startsWith(w + ' ') ||
+                               text === w || text.startsWith(w + ' ') ||
+                               val === w || val.startsWith(w + ' ') ||
+                               ariaLabel === w || ariaLabel.startsWith(w + ' ');
+            if (wants('send') || wants('submit')) {
 
                 if (el.shadowRoot) {
                     const inner = el.shadowRoot.querySelector('button');
@@ -1082,13 +1090,17 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
                     var a = t.shadowRoot.querySelector('textarea');
                     out.chars = a && a.value ? a.value.length : 0;
                 }
+                out.buttons = [];
                 document.querySelectorAll('kat-button, button').forEach(function(el){
                     var s = ((el.getAttribute('label') || '') + ' ' + (el.textContent || '')).trim().toLowerCase();
-                    if (s === 'send' || s.startsWith('send ')) {
+                    var inner = el.shadowRoot ? el.shadowRoot.querySelector('button') : null;
+                    var live = (inner && !inner.disabled) || (!inner && !el.disabled);
+                    if (s === 'send' || s.startsWith('send ') || s === 'submit' || s.startsWith('submit ')) {
                         out.found++;
-                        var inner = el.shadowRoot ? el.shadowRoot.querySelector('button') : null;
-                        if ((inner && !inner.disabled) || (!inner && !el.disabled)) out.enabled++;
+                        if (live) out.enabled++;
                     }
+                    // every button the footer actually offers, so a failure explains itself
+                    if (s && out.buttons.length < 8) out.buttons.push(s.slice(0, 24) + (live ? "" : " (disabled)"));
                 });
                 return out;
             """) or {}
@@ -1097,8 +1109,10 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
         # Name the contact reason: Amazon renders a different form for each one, and only
         # some of them have a Send button at all ('unexpectedProblem' offers Submit instead).
         # found=0 with no reason named cost a full run to diagnose on 19 Sep.
-        why = (f"Send button(s) found={diag.get('found', '?')} enabled={diag.get('enabled', '?')}, "
+        why = (f"Send/Submit button(s) found={diag.get('found', '?')} enabled={diag.get('enabled', '?')}, "
                f"box has {diag.get('chars', '?')} chars, reason=[{locals().get('chosen_reason', '?')}]")
+        if diag.get("buttons"):
+            why += " · page offered: " + ", ".join(diag["buttons"])
         if diag.get("found") and not diag.get("enabled"):
             why += " — Amazon is keeping Send DISABLED, so it never registered the text"
         print(f"     ❌  Send button error for {order_id}: {why} [{type(e).__name__}]")
