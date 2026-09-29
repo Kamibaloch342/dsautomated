@@ -190,9 +190,15 @@ are enforced in code, not by convention:
   default 250): a code was **added** → every Reseller and Deciding ASIN is tested with the codes,
   highest percentage first (20 % before 15 %), and promoted to Coupon where one applies; a code
   **expired or was removed** → every Coupon-column ASIN is re-tested: another priority code works →
-  stays; Zoro Select or the page badge → Reseller; otherwise → Deciding (whatever the unit price —
-  the reseller hands a cart at/above $50 to the coupon profile per order and gets it back if the
-  regular pool is dead, so nothing is left waiting). While the sweep runs, a store-level flag
+  stays; Zoro Select or the page badge → Reseller; otherwise the unit price decides, as everywhere
+  else — unit ≥ `supervise_min_cart_for_regular` ($50) → Coupon (a regular 10 % code is worth
+  spending on every order of it), below it → Deciding (quantity and the reseller's margin decide
+  per order). **Corrected 29 Sep 2026**: from 14 to 29 Sep this branch answered Deciding whatever
+  the unit price, which contradicted rule 4 and the labelling flow, and the sweep kept pulling
+  $50-plus ASINs back out of Coupon — 22 of them (all bot-placed, up to $224.99 a unit), each
+  order of those taking a needless trip through the reseller. A further 18 Deciding ASINs reach
+  $50 only through quantity and stay Deciding, which is what the column is for; the reseller
+  made 443 ≥$50 hand-offs in the week to 29 Sep between the two groups. While the sweep runs, a store-level flag
   (`data/dataset/priority_sweep_<STORE>.json`) makes the RESELLER hold its priority/deciding
   discovery, so no order is bought at reseller price minutes before its ASIN moves; labelled orders
   still run, and a flag older than `sweep_hold_max_min` (90) is ignored. A sweep that changed the

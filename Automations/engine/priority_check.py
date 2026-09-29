@@ -45,6 +45,23 @@ from datetime import datetime, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AUTO = os.path.dirname(HERE)
+
+_COUPON_COL_MIN_DEFAULT = 50.0
+
+
+def coupon_column_min() -> float:
+    """Unit price at which an ASIN belongs in _Coupon rather than _Deciding.
+
+    The same number the supervisor uses for the column (engine/orders.py: SUPERVISE_MIN_CART,
+    bot_config routing.supervise_min_cart_for_regular). Read on each call so a change in the
+    config does not need a restart of the checker."""
+    try:
+        with open(os.path.join(AUTO, "bot_config.json"), encoding="utf-8") as fh:
+            routing = (json.load(fh) or {}).get("routing") or {}
+        return float(routing.get("supervise_min_cart_for_regular", _COUPON_COL_MIN_DEFAULT)
+                     or _COUPON_COL_MIN_DEFAULT)
+    except Exception:
+        return _COUPON_COL_MIN_DEFAULT
 if AUTO not in sys.path:
     sys.path.insert(0, AUTO)
 
@@ -537,11 +554,25 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
             row.update(Check_Status="SELECT", Check_Suggest="Reseller",
                        Check_Note="Zoro Select, no priority coupon" + (f" (one applies from ${min_order:.0f})" if min_order else ""))
     else:
-        # No priority coupon: the RESELLER decides per order (Deciding) whatever the unit price —
-        # a cart at/above $50 is handed to the coupon profile for a regular 10 % code at order time,
-        # and falls back to the reseller when the regular pool is dead, so nothing is left in 'wait'.
-        row.update(Check_Status="NO_PRIORITY", Check_Suggest="Deciding",
-                   Check_Note=f"no priority coupon; unit ${unit:.2f} → per-order (qty / regular coupon / margin)"
+        # No priority coupon, not Zoro Select: the unit price decides the column, exactly as the
+        # supervisor decides it after a real order (orders.py: col_by_price) and as the labelling
+        # flow has said since 7 Sep 2026 — "_Coupon if unit is $50 or more, otherwise _Deciding".
+        #
+        # Between 14 and 29 Sep this branch answered Deciding whatever the price, on the argument
+        # that the reseller hands a ≥$50 cart over per order anyway. It does — but only after
+        # reserving the order, building the cart and writing MR, so every single order of a $316
+        # or $89 item took a pointless trip through the reseller first, and the sweep kept pulling
+        # those ASINs back out of _Coupon. 31 ASINs were sitting in _Deciding at a unit price
+        # above the threshold when this was found.
+        #
+        # Below the threshold the answer is still Deciding: whether such an order needs a coupon
+        # depends on the quantity and on the reseller's margin, and only the order knows those.
+        _min = coupon_column_min()
+        _big = unit >= _min
+        row.update(Check_Status="NO_PRIORITY", Check_Suggest="Coupon" if _big else "Deciding",
+                   Check_Note=(f"no priority coupon; unit ${unit:.2f} ≥ ${_min:.0f} → regular coupon every time"
+                               if _big else
+                               f"no priority coupon; unit ${unit:.2f} < ${_min:.0f} → per-order (qty / regular coupon / margin)")
                               + (f"; a priority coupon applies from ${min_order:.0f}" if min_order else ""))
     if not tried:
         row["Check_Note"] = "no priority coupons loaded; " + row["Check_Note"]
