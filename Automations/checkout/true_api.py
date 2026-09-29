@@ -631,11 +631,15 @@ def classify_promo_error(err):
             except ValueError:
                 return ("min_order", None)
         return ("item", None)                     # "…at least one eligible <Category> item"
-    if "not valid for the item" in e or "not applicable" in e or "not eligible" in e:
+    if "not valid for" in e or "not applicable" in e or "not eligible" in e:
         return ("item", None)
     if "expired" in e:
         return ("dead", None)
-    if "invalid" in e or "not valid" in e:
+    # A bare "invalid" used to land here as an item rejection — but `invalidItems` is a FIELD
+    # NAME in Zoro's cart response, present on replies that say nothing about this item. That
+    # misread is half of why 12 coupon-able items were called promo-ineligible on 28 Sep 2026.
+    # Anything we cannot actually read stays "unknown": no verdict, retried later.
+    if "not valid" in e:
         return ("item", None)
     return ("unknown", None)
 

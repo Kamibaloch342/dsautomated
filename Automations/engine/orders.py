@@ -960,6 +960,19 @@ def _learn_promo_outcome(zoro_code, asin, worked, cache=None, definitive=False, 
                 PROMO_INELIGIBLE_ASINS.discard(str(asin).upper())
             _save_coupon_intel(cache)
         return
+    # A coupon has worked on this code before, so the item is not promo-ineligible — whatever a
+    # single restricted code replies. On 28 Sep 2026 the day's universal EMZM codes ran out and
+    # only brand/category-restricted ones were left; each answered "not valid for this item",
+    # which read as "every live coupon rejected it" and flagged 12 coupon-able items for good —
+    # G4017277 (BlueDEF) among them, after 1,474 coupon orders. The flag never expires by
+    # itself, because a flagged item is never sent to a coupon profile again. Only Zoro's own
+    # product-page badge (source="pdp") may make that call.
+    if source != "pdp" and (cache.get("working_pairs") or {}).get(zoro_code):
+        print(f"  🧠 not flagging {zoro_code}: a coupon has worked on it before — "
+              f"only the product-page badge can call it promo-ineligible")
+        _DLOG.log("learn", profile=PROFILE_NAME, asin=asin, sku=zoro_code, action="strike_refused",
+                  reason="coupon history exists; only the PDP badge may flag it", source=source)
+        return
     last_ts = 0.0
     try:
         if rec.get("last"):
