@@ -641,6 +641,7 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
     <button class="nav on" data-nav="report"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M7 13h3M7 17h3M14 13h3"/></svg><span>Daily report</span></button>
     <button class="nav" data-nav="home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-6H9v6H5a2 2 0 0 1-2-2z"/></svg><span>Home</span></button>
     <button class="nav" data-nav="orders"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Orders</span><em class="cnt" id="cnt-orders"></em></button>
+    <button class="nav" data-nav="tracker"><svg viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg><span>Tracker</span><em class="cnt" id="cnt-tracker"></em></button>
     <button class="nav" data-nav="ops"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Ops</span><em class="cnt" id="cnt-ops"></em></button>
     <button class="nav" data-nav="attention"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Attention</span><em class="cnt" id="cnt-attention"></em></button>
     <button class="nav" data-nav="insights"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg><span>Analytics</span></button>
@@ -715,9 +716,14 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
       <div class="card settings"><div class="hd"><h2>Settings</h2><span class="sub">bot_config.json — saved live, launcher reloads on next cycle</span><span class="grow"></span><button class="b s ghost" onclick="Ops.loadConfig()">Reload</button></div><div class="bd" id="ops-settings"><span class="skel"></span><span class="skel"></span></div></div>
     </section>
 
+    <section class="sec" id="sec-tracker">
+      <div class="sec-head"><h1>Tracker</h1><span class="sub" id="trk-sub">orders you flagged, tagged, opened a case on or set a follow-up for</span><span class="grow"></span><span class="upd" id="trk-upd"></span><button class="b s" onclick="Trk.load(true)">Refresh</button></div>
+      <div id="trk-body"><span class="skel"></span><span class="skel"></span></div>
+    </section>
+
     <section class="sec" id="sec-attention">
-      <div class="sec-head"><h1>Attention</h1><span class="sub">severe money leaks, late and stalled deliveries, placer blockers, bot decisions, and the tracker</span><span class="grow"></span><span class="upd" id="att-upd"></span><button class="b s" onclick="Att.load(true)">Refresh</button></div>
-      <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="delivery">Delivery<span class="cnt" id="att-c-delivery"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="log">Supervisor log<span class="cnt" id="att-c-log"></span></button><button data-tab="tracker">Tracker<span class="cnt" id="att-c-tracker"></span></button></div>
+      <div class="sec-head"><h1>Attention</h1><span class="sub">severe money leaks, late and stalled deliveries, placer blockers and bot decisions</span><span class="grow"></span><span class="upd" id="att-upd"></span><button class="b s" onclick="Att.load(true)">Refresh</button></div>
+      <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="delivery">Delivery<span class="cnt" id="att-c-delivery"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="log">Supervisor log<span class="cnt" id="att-c-log"></span></button></div>
       <div id="att-body"><span class="skel"></span><span class="skel"></span></div>
     </section>
 
@@ -903,7 +909,7 @@ const Me = {
 $("#namechip").onclick = () => Me.ask();
 
 /* ── navigation ──────────────────────────────────────────────────────── */
-const SECTIONS = {report:null, home:null, orders:null, ops:null, attention:null, insights:null, reminders:null, more:null};
+const SECTIONS = {report:null, home:null, orders:null, tracker:null, ops:null, attention:null, insights:null, reminders:null, more:null};
 const Nav = {
   current: "report",
   go(sec, sub){
@@ -1627,9 +1633,10 @@ $("#con-pause").onclick = e => { Ops.log.paused = !Ops.log.paused; e.currentTarg
 /* ═══════════════════════════ ATTENTION ══════════════════════════════ */
 const Att = {
   tab: "severe", cache: {}, botStatuses: new Set(["SUPERVISED","SUPERVISOR_RETRY","ROUTED_TO_RESELLER","ROUTED_TO_COUPON","NEEDS_PRIORITY","UNMAPPED_ASIN","LOW_PROFIT","OOS","DUPLICATE","COUPON FAIL","DUP_CHECK_UNVERIFIED","SCRAPE_FAIL"]), botHours: 24, trackerQ: "",
-  start(sub){ if (sub) this.tab = sub; this.show(this.tab); },
+  start(sub){ if (sub === "tracker") return Nav.go("tracker"); if (sub) this.tab = sub; this.show(this.tab); },
   onFilter(){ this.cache = {}; this.load(true); },
-  show(tab){ this.tab = tab; $$("#att-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab)); history.replaceState(null, "", "#attention/"+tab); this.load(); },
+  show(tab){ if (tab === "tracker") return Nav.go("tracker");   // it has its own page now
+    this.tab = tab; $$("#att-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab)); history.replaceState(null, "", "#attention/"+tab); this.load(); },
   async load(force){
     const tab = this.tab; const body = $("#att-body");
     if (force) delete this.cache[tab];
@@ -1649,7 +1656,7 @@ const Att = {
     if (tab === "log") return GET("/api/decisions", Object.assign({limit: this.logLimit||400}, this.logKind?{kind:this.logKind}:{}, this.logQ?{order:this.logQ}:{}));
     if (tab === "tracker") return GET("/api/tracker");
   },
-  bind(){ $$("#att-body [data-open]").forEach(el => el.onclick = e => { e.stopPropagation(); Drawer.open(el.dataset.open); }); },
+  bind(){ $$("#att-body [data-open], #trk-body [data-open]").forEach(el => el.onclick = e => { e.stopPropagation(); Drawer.open(el.dataset.open); }); },
   r_severe(d){
     const acct = d.account || "Hathoro";
     const pnc = d.placed_not_captured||{}, rnr = d.refund_no_return||{}, rl = d.refund_loss||{};
@@ -1729,7 +1736,7 @@ const Att = {
       + (un.length ? `<details class="card grp"><summary style="cursor:pointer;padding:10px 14px"><b>Freight / untracked</b> <span class="cnt">${un.length}</span> <span class="muted small">— shipped via carriers Zoro cannot track (WARD, Dayton, US Cargo…) or not found under any account; confirm by hand</span></summary><div class="tblwrap" style="border:0;border-radius:0;box-shadow:none;max-height:360px"><table class="t"><thead><tr><th>Order</th><th>Store</th><th>Buyer</th><th>Deliver by</th><th>Carrier</th><th>Note</th><th>Tracking</th></tr></thead><tbody>${un.slice(0,300).map(r=>`<tr class="click" data-open="${esc(r.amazon_order_id)}"><td class="mono">${esc(r.amazon_order_id)}<br><span class="muted small">${esc(r.wb_order_id||"")}</span></td><td>${esc(r.account||"")}</td><td>${esc(r.ship_name||"")}</td><td class="mono small">${esc(r.deliver_by_date||"")}</td><td>${esc(r.carrier||"")}</td><td class="wrap">${esc(r.delivery_note||"")}</td><td class="mono small">${esc(r.tracking_ids||"")}</td></tr>`).join("")}</tbody></table></div></details>` : "");
   },
   r_tracker(d){
-    const items = d.items||[]; $("#att-c-tracker").textContent = items.length||"";
+    const items = d.items||[]; const _c = $("#att-c-tracker"); if (_c) _c.textContent = items.length||"";
     return `<div class="row trk-row"><input class="in s" id="trk-q" placeholder="filter: order, WB, ASIN, tag, note, account…" value="${esc(this.trk.q)}" oninput="Att.trk.q=this.value;Att.trkQ()" style="min-width:260px"><div id="trk-ctl" class="row grow" style="gap:6px">${this.trkControls(items)}</div></div>
       <div id="trk-chips" class="row trk-row">${this.trkChips(items)}</div><div id="trk-list">${this.trkList(items)}</div>`;
   },
@@ -1821,6 +1828,40 @@ const Att = {
   },
 };
 SECTIONS.attention = Att;
+
+/* ── Tracker ──────────────────────────────────────────────────────────────
+   Its own page since 29 Sep 2026; it used to be a tab under Attention, where
+   nobody found it. Everything it does — the filters, flag and tag chips, the
+   day grouping, follow-ups pinned to the top, inline flag / case / tag editing —
+   still lives in Att (r_tracker and friends), so this owns only the fetch, the
+   mount point, and the two numbers in the header and the nav. ── */
+const Trk = {
+  start(){ this.load(); },
+  onFilter(){ this.load(true); },
+  async load(force){
+    const body = $("#trk-body");
+    if (force || !Att.cache.tracker) {
+      body.innerHTML = U.skel(4);
+      try { Att.cache.tracker = await GET("/api/tracker"); }
+      catch (e) { body.innerHTML = U.err(e); return; }
+    }
+    const d = Att.cache.tracker || {}, items = d.items || [];
+    $("#trk-upd").textContent = "updated " + new Date().toLocaleTimeString();
+    body.innerHTML = Att.r_tracker(d);
+    Att.bind();
+    const today = localKey(new Date());
+    const due = items.filter(x => x.reminder_at && String(x.reminder_at).slice(0, 10) <= today).length;
+    const open = items.filter(x => x.case_status && !/resolved|closed/i.test(x.case_status)).length;
+    const c = $("#cnt-tracker"); if (c) c.textContent = due || "";
+    const sub = $("#trk-sub");
+    if (sub) sub.textContent = items.length
+      ? [`${U.int(items.length)} tracked`,
+         due ? `${U.int(due)} follow-up${due === 1 ? "" : "s"} due` : null,
+         open ? `${U.int(open)} open case${open === 1 ? "" : "s"}` : null].filter(Boolean).join(" · ")
+      : "orders you flagged, tagged, opened a case on or set a follow-up for";
+  },
+};
+SECTIONS.tracker = Trk;
 $$("#att-tabs button").forEach(b => b.onclick = () => Att.show(b.dataset.tab));
 document.addEventListener("keydown", e => { if (e.key==="Escape") Att.trkCloseMenu(); });
 
