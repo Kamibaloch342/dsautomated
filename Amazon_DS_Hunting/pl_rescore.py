@@ -32,7 +32,9 @@ import sqlite3
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 DB = os.path.join(HERE, "hunter.db")
+FEED = os.path.join(ROOT, "Automations", "TSV Files", "combined_reports.db")
 OUT = os.path.join(HERE, "pl_candidates.csv")
 
 # Zoro's small-order fee and the cart value that avoids it (utils/config.py in Automations).
@@ -42,6 +44,31 @@ DEFAULT_REFERRAL = 0.15          # Amazon referral, most industrial/consumable c
 
 # Zoro brands that belong to nobody, so a HOANK label on them is honest.
 GENERIC_BRANDS = {"", "ZORO SELECT", "ZORO"}
+
+
+def blind_ship_set(path=FEED):
+    """The only reliable answer to 'whose product is this really?'
+
+    Zoro leaves zoro_brand_name empty on 293,863 rows, and it is tempting to read that as
+    "unbranded". It is not: 175,939 of them are somebody else's goods with the field simply left
+    blank — the binders that look generic carry MPN AVE79199, i.e. Avery. The feed splits those
+    two cases perfectly on its own flags:
+
+        is_dropship=YES  <->  is_blind_ship=False   175,939   ships from the MANUFACTURER'S
+                                                              warehouse, in the manufacturer's
+                                                              box. A HOANK listing would arrive
+                                                              in an Avery carton.
+        is_dropship=NO   <->  is_blind_ship=True    117,924   sits in ZORO'S warehouse and goes
+                                                              out in a plain box.
+
+    Only the second set can carry our label. Every product HOANK already private-labels — the
+    bleach G7646065, the vinegar G3964829, the drum G5550632, the shipping box G6442406 — is in
+    it, which is what makes this the rule rather than a guess.
+    """
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    rows = conn.execute("SELECT zoro_no FROM zoro_data WHERE is_blind_ship='True'").fetchall()
+    conn.close()
+    return {r[0] for r in rows}
 
 
 def load_hunter():
@@ -86,8 +113,10 @@ def main():
     conn.row_factory = sqlite3.Row
 
     rows = conn.execute("SELECT * FROM candidates").fetchall()
+    blind = blind_ship_set()
     counts = {"total": len(rows), "already_listed": 0, "low_demand": 0, "no_zoro": 0,
-              "out_of_stock": 0, "branded": 0, "no_price": 0, "over_market": 0, "PL": 0}
+              "out_of_stock": 0, "not_blind": 0, "branded": 0, "no_price": 0, "over_market": 0,
+              "PL": 0}
     out = []
 
     for r in rows:
@@ -113,6 +142,11 @@ def main():
             continue
         if (z["status"] or "") in ("Out of Stock", "Backordered"):
             counts["out_of_stock"] += 1
+            continue
+
+        # Ships in somebody else's carton -> cannot carry our label, however generic it looks.
+        if z["zoro_no"] not in blind:
+            counts["not_blind"] += 1
             continue
 
         # Only goods nobody owns a brand on. Every product HOANK actually private-labels —
@@ -159,7 +193,7 @@ def main():
             "asin": r["asin"], "monthly_sold": sold, "brand": r["brand"] or "",
             "title": (r["title"] or "")[:90],
             "zoro_no": z["zoro_no"], "zoro_title": (z["title"] or "")[:70],
-            "zoro_brand": z["brand"] or "",
+            "zoro_brand": z["brand"] or "", "mpn": z["mpn"] or "",
             "zoro_pack": mod.parse_pack(z["title"]),
             "zoro_price": round(float(z["price"] or 0), 2),
             "landed_cost": cost, "price_for_margin": need,
@@ -179,6 +213,7 @@ def main():
     print(f"  under {a.min_sold}/month                   {counts['low_demand']:6d}")
     print(f"  no Zoro match                    {counts['no_zoro']:6d}")
     print(f"  Zoro out of stock                {counts['out_of_stock']:6d}")
+    print(f"  ships in the maker's own carton  {counts['not_blind']:6d}")
     print(f"  brand-owned (arbitrage only)     {counts['branded']:6d}")
     print(f"  no usable Zoro price             {counts['no_price']:6d}")
     print(f"  needs > {a.max_over_market}x the market price     {counts['over_market']:6d}")

@@ -52,6 +52,9 @@ KNOWN_KEYS = sorted([
     "Style", "Width", "Size", "Type", "Item",
 ], key=len, reverse=True)
 
+# Values the feed uses for "we did not fill this in".
+JUNK_VALUES = {"not applicable", "n/a", "na", "none", "no", "unspecified", "other", "-", "0"}
+
 # What a buyer decides on, in the order they decide it.
 SPEC_PRIORITY = [
     "Size", "Ring Size", "Capacity", "Sheet Capacity", "Overall Length", "Overall Width", "Length",
@@ -104,6 +107,8 @@ def specs_from(long_desc):
         if not key or not val:
             continue
         key, val = key.strip(" -"), val.strip(" .")
+        if val.lower() in JUNK_VALUES:        # 'Thickness: Not Applicable' helps nobody decide
+            continue
         if key and val and len(val) <= 60 and key not in out:
             out[key] = val
     return out
