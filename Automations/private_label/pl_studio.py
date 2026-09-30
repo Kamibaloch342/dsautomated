@@ -139,7 +139,7 @@ def specs_page(photo, data, dest):
         if y > 1620:
             break
     wordmark(d)
-    im.convert("RGB").save(dest, "JPEG", quality=92, optimize=True)
+    im.convert("RGB").save(dest, "JPEG", quality=92, optimize=True, dpi=(72, 72))
     return dest
 
 
@@ -163,7 +163,7 @@ def pack_page(photo, data, dest):
     im.paste(prod, (px, py), prod)
     d = ImageDraw.Draw(im)
     wordmark(d)
-    im.convert("RGB").save(dest, "JPEG", quality=92, optimize=True)
+    im.convert("RGB").save(dest, "JPEG", quality=92, optimize=True, dpi=(72, 72))
     return dest
 
 
@@ -195,7 +195,7 @@ def size_page(photo, data, dest):
         d.text((tx, y - 14), k.upper(), font=kf, fill=MUTED, anchor=anchor_k)
         d.text((tx, y + 40), str(v), font=vf, fill=INK, anchor=anchor_k)
     wordmark(d)
-    im.convert("RGB").save(dest, "JPEG", quality=92, optimize=True)
+    im.convert("RGB").save(dest, "JPEG", quality=92, optimize=True, dpi=(72, 72))
     return dest
 
 
@@ -250,7 +250,7 @@ def features_page(photo, data, dest):
         for j, line in enumerate(wrap(d, body, bf, tw - 80)[:3]):
             d.text((cx + 40, cy + 96 + j * 58), line, font=bf, fill=INK)
     wordmark(d, y=CANVAS - 120, size=62)
-    im.convert("RGB").save(dest, "JPEG", quality=92, optimize=True)
+    im.convert("RGB").save(dest, "JPEG", quality=92, optimize=True, dpi=(72, 72))
     return dest
 
 
@@ -264,8 +264,11 @@ def _unit_word(title):
     return "PIECES"
 
 
-PAGES = [("02_specs", specs_page), ("03_pack", pack_page),
-         ("04_size", size_page), ("05_features", features_page)]
+# Amazon identifies each image by a variant code (G1881 "Image variants"): PT01-PT99 for
+# additional angles, product detail and product in use; DTLS specifically for a multipack or a
+# large quantity of identical items — which is exactly what the pack page is.
+PAGES = [("PT01", specs_page), ("DTLS", pack_page),
+         ("PT02", size_page), ("PT03", features_page)]
 
 
 def render(folder, data, limit=4):
@@ -275,7 +278,7 @@ def render(folder, data, limit=4):
     photos = os.path.join(os.path.dirname(folder), "_photos")
     src = os.path.join(photos, f"{data.get('zoro_no', '')}.jpg")
     if not os.path.exists(src):
-        src = os.path.join(folder, "images", "01_main.jpg")
+        src = os.path.join(folder, "images", "MAIN.jpg")
     if not os.path.exists(src):
         return []
     photo = cutout(src)

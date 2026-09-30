@@ -14,7 +14,7 @@ product, in the shape the Drums work already uses:
     out_pl/<SKU>/
         data.json          every fact used, so a listing can be rebuilt or audited
         listing.txt        title, five bullets, description
-        images/01_main.jpg product on white, HOANK wordmark, pack badge
+        images/MAIN.jpg    the product on pure white at 85% of frame, nothing added
 
     python3 build_pl_listings.py --limit 5
     python3 build_pl_listings.py --codes G9625506,G5489644
@@ -28,7 +28,7 @@ import re
 import sqlite3
 import sys
 
-from PIL import Image, ImageDraw
+from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AUTO = os.path.dirname(HERE)
@@ -180,40 +180,28 @@ def build_copy(row, specs, pack):
     return title, bullets, description
 
 
-def brand_main_image(photo_path, dest, pack):
-    """Product on a pure-white square, HOANK wordmark and pack badge beneath it.
+def main_image(photo_path, dest):
+    """The MAIN image, to Amazon's rule (Seller Central G1881).
 
-    build_hoank_listings warps the wordmark onto a box face, which needs a box's geometry. A
-    binder, a folder or a bag has no such face, so the mark sits on the canvas — still the
-    HOANK lockup, still Amazon-legal on pure white, and it works for any shape.
+    Three things that rule requires and that an earlier version of this got wrong:
+
+      * the product must fill 85% of the frame — this was at 74%;
+      * the background must be pure white, RGB 255,255,255;
+      * nothing may be added that is not the product. The HOANK wordmark used to sit under the
+        product here. It is not printed on the item Zoro ships, so on the MAIN image it is
+        added text and grounds for suppression — and a suppressed MAIN pulls the whole listing
+        out of search until it is replaced. The wordmark still appears on every secondary
+        image, where text is allowed and where it does the branding job anyway.
+
+    Amazon also asks for one unit only, the whole product in frame, and no packaging unless the
+    packaging is the product. Zoro's own catalogue photograph already satisfies those.
     """
     photo = Image.open(photo_path)
-    canvas, _box = B.place_on_canvas(photo, 0.74, B.CANVAS, y_shift=-int(B.CANVAS * 0.05))
-    d = ImageDraw.Draw(canvas)
-
-    # wordmark: HOA in ink, NK in the brand orange
-    f = B.font(150, bold=True)
-    hoa, nk = "HOA", "NK"
-    w_hoa = d.textlength(hoa, font=f)
-    w_nk = d.textlength(nk, font=f)
-    x = (B.CANVAS - (w_hoa + w_nk)) / 2
-    y = int(B.CANVAS * 0.80)
-    d.text((x, y), hoa, font=f, fill=(17, 17, 17))
-    d.text((x + w_hoa, y), nk, font=f, fill=B.ORANGE)
-
-    # pack badge
-    if pack > 1:
-        bf = B.font(86, bold=True)
-        label = f"{pack} Pack"
-        tw = d.textlength(label, font=bf)
-        pad_x, pad_y, h = 52, 26, 124
-        bx = (B.CANVAS - (tw + pad_x * 2)) / 2
-        by = y + 190
-        d.rounded_rectangle([bx, by, bx + tw + pad_x * 2, by + h], radius=26, fill=(17, 17, 17))
-        d.text((bx + pad_x, by + pad_y), label, font=bf, fill=(255, 255, 255))
-
+    # 0.86, not 0.85: place_on_canvas resizes to whole pixels, and on a landscape product that
+    # rounding landed at 84.95% — under the rule by a rounding error. A hair over costs nothing.
+    canvas, _box = B.place_on_canvas(photo, 0.86, B.CANVAS)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    canvas.save(dest, "JPEG", quality=92, optimize=True)
+    canvas.convert("RGB").save(dest, "JPEG", quality=92, optimize=True, dpi=(72, 72))
     return dest
 
 
@@ -254,7 +242,7 @@ def main():
             src = os.path.join(PHOTOS, f"{code}.jpg")
             if B.download_photo(img_url, src):
                 try:
-                    main_img = brand_main_image(src, os.path.join(folder, "images", "01_main.jpg"), pack)
+                    main_img = main_image(src, os.path.join(folder, "images", "MAIN.jpg"))
                 except Exception as e:
                     print(f"  {code}: image failed — {type(e).__name__}: {e}")
 
@@ -276,6 +264,15 @@ def main():
             for b in bullets:
                 fh.write(f"  • {b}\n")
             fh.write(f"\nDESCRIPTION\n{desc}\n")
+            # Amazon takes the variant from the FILE NAME on bulk upload, as
+            # <product identifier>.<variant>.jpg — and it rejects dashes, so our SKU cannot be
+            # the identifier. Rename at upload time, once the ASIN or GTIN exists.
+            fh.write("\nIMAGES\n"
+                     "  MAIN.jpg   the product on pure white, 85% of frame, nothing added\n"
+                     "  PT01.jpg   specification      DTLS.jpg   pack count\n"
+                     "  PT02.jpg   dimensions         PT03.jpg   at a glance\n"
+                     "  Upload as <ASIN or GTIN>.<variant>.jpg — e.g. B0XXXXXXX.MAIN.jpg.\n"
+                     "  No dashes or spaces in the file name, or the upload is rejected.\n")
         try:
             pl_store.mark_built(code, sku, title, bool(main_img))
         except Exception as e:

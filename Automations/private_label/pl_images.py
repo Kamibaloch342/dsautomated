@@ -44,7 +44,8 @@ import pl_studio                                       # noqa: E402
 # A generated photo has to look like a photograph of OUR item, not like AI art. Everything below
 # pushes the model toward catalogue photography and away from the things that make a listing
 # image obviously synthetic — invented text above all, which Amazon also treats as a claim.
-NEGATIVE = ("text, words, letters, numbers, watermark, logo, brand name, signage, packaging copy, "
+NEGATIVE = ("people, person, hands, face, model, text, words, letters, numbers, watermark, "
+            "logo, brand name, signage, packaging copy, "
             "deformed product, duplicated product, extra objects, distorted proportions, "
             "blurry, low quality, oversaturated, cartoon, illustration, 3d render, cgi")
 
@@ -62,8 +63,12 @@ SETTINGS = {
 DEFAULT_SETTING = "a clean, well-lit professional workspace"
 
 SHOTS = [
+    # No people. G1881 requires any image containing a photorealistic AI-generated person to
+    # carry the IPTC keyword contains-synthetic-performer in its XMP dc:subject before upload,
+    # and nothing here writes that metadata. Hands in frame are not worth an undeclared
+    # synthetic performer, so the shot shows the product in the setting instead.
     ("02_in_use",
-     "the exact product from the reference image being used by a pair of hands in {setting}, "
+     "the exact product from the reference image resting in {setting}, no people, no hands, "
      "natural daylight from the side, shallow depth of field, the product in sharp focus"),
     ("03_detail",
      "extreme close-up of the exact product from the reference image, showing its material and "
@@ -72,8 +77,8 @@ SHOTS = [
      "the exact product from the reference image resting on a clean surface in {setting} beside "
      "ordinary everyday objects that show its size, soft even lighting, uncluttered composition"),
     ("05_in_place",
-     "wide shot of the exact product from the reference image in use in {setting}, bright natural "
-     "light, tidy and uncluttered, the product clearly the subject of the photograph"),
+     "wide shot of the exact product from the reference image in {setting}, no people, bright "
+     "natural light, tidy and uncluttered, the product clearly the subject of the photograph"),
 ]
 
 
