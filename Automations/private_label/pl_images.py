@@ -39,6 +39,7 @@ MODEL = "wan2.7-image-pro"          # keeps the subject from reference_images; 2
 
 sys.path.insert(0, HERE)
 import pl_store                                        # noqa: E402
+import pl_studio                                       # noqa: E402
 
 # A generated photo has to look like a photograph of OUR item, not like AI art. Everything below
 # pushes the model toward catalogue photography and away from the things that make a listing
@@ -149,14 +150,17 @@ def main():
     ap.add_argument("--all", action="store_true", help="every listing already built")
     ap.add_argument("--limit", type=int, default=len(SHOTS),
                     help=f"how many shots per product (1-{len(SHOTS)}; each one is billed)")
+    ap.add_argument("--provider", choices=("studio", "qwen"), default="studio",
+                    help="studio: rendered here from the real photo and the real specs, free and "
+                         "offline (default). qwen: AI scenes, needs DASHSCOPE_API_KEY.")
     ap.add_argument("--dry-run", action="store_true", help="print the prompts, call nothing")
     a = ap.parse_args()
 
-    if not os.path.exists(SKILL):
+    if a.provider == "qwen" and not os.path.exists(SKILL):
         sys.exit(f"qwencloud-image-generation skill not found at {SKILL}")
 
-    key = load_key()
-    if not key and not a.dry_run:
+    key = load_key() if a.provider == "qwen" else ""
+    if a.provider == "qwen" and not key and not a.dry_run:
         sys.exit("No DASHSCOPE_API_KEY / QWEN_API_KEY found.\n"
                  "  Put it in a .env at the repo root:  DASHSCOPE_API_KEY=sk-...\n"
                  "  Get one from https://home.qwencloud.com/api-keys\n"
@@ -180,7 +184,17 @@ def main():
             print(f"  {sku}: no data.json — not a built listing")
             continue
         data = json.load(open(dj, encoding="utf-8"))
-        n = generate(sku, folder, data, shots, a.dry_run, key)
+        if a.provider == "studio":
+            if a.dry_run:
+                print(f"  {sku}: would render {', '.join(n for n, _ in pl_studio.PAGES[:a.limit])}")
+                n = min(a.limit, len(pl_studio.PAGES))
+            else:
+                files = pl_studio.render(folder, data, a.limit)
+                for f in files:
+                    print(f"  ✓ {sku} {os.path.basename(f)}")
+                n = len(files)
+        else:
+            n = generate(sku, folder, data, shots, a.dry_run, key)
         total += n
         if n and not a.dry_run:
             data["ai_images"] = n

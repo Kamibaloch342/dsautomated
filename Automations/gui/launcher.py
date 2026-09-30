@@ -2021,17 +2021,18 @@ class App(tk.Tk):
                  bg=self.INP_BG, fg=self.TEXT, insertbackground=self.TEXT,
                  relief="flat", highlightthickness=1,
                  highlightbackground=self.BORDER).pack(side="left", padx=(0, 10))
-        self.btn_pl_images = self._btn(ctrl, "🎨 AI Images (Qwen)", self.PURPLE,
+        self.btn_pl_images = self._btn(ctrl, "🎨 Make Images", self.PURPLE,
                                        self._start_pl_images, small=True)
         self.btn_pl_images.pack(side="left", padx=(0, 6))
         self._tip(self.btn_pl_images,
-                  "Generate the SECONDARY listing photos with Qwen — in-use, close-up, scale and "
-                  "in-place — for every listing already built.\nThe main image is deliberately "
-                  "NOT generated: Amazon requires a real photograph of the real product there, "
-                  "and a generated one is the quickest way to get a new ASIN suppressed. These "
-                  "are made in edit mode from that real photo, so the item in them is the item "
-                  "you ship rather than something the model invented.\nUses the How many box as "
-                  "shots per product (1-4). Each image is billed to your QwenCloud key.")
+                  "Render the SECONDARY listing images for every listing already built: the "
+                  "specification, the pack count, the real dimensions and an at-a-glance card.\n"
+                  "Drawn here from the real Zoro photograph and the real feed specs — free, "
+                  "offline, no watermark, and it cannot state anything the feed does not say. A "
+                  "page with no data behind it is skipped rather than invented.\nThe main image "
+                  "is never touched: Amazon requires a real photograph of the real product "
+                  "there.\nAI scenes are available instead with a QwenCloud key — run "
+                  "pl_images.py --provider qwen.")
         self.btn_pl_stop = self._btn(ctrl, "■ Stop", self.RED,
                                      lambda: self._stop("private_label"), small=True)
         self.btn_pl_stop.pack(side="left", padx=(0, 6))
@@ -2100,7 +2101,7 @@ class App(tk.Tk):
         self._launch_pl(cmd, f"Building {limit} listing(s)")
 
     def _start_pl_images(self):
-        """Secondary photos only — see the tooltip for why the main image is never generated."""
+        """Secondary images only — the main one stays the real photograph Amazon requires."""
         if not self._pl_free():
             return
         try:
@@ -2114,13 +2115,12 @@ class App(tk.Tk):
             return
         if not messagebox.askyesno(
                 "Private Label",
-                f"Generate {shots} image(s) for each built listing?\n\n"
-                f"Every image is billed to your QwenCloud key."):
+                f"Render up to {shots} image(s) for each built listing?"):
             return
         cmd = [RUNNER_PYTHON, "-u",
                os.path.join(SCRIPT_DIR, "private_label", "pl_images.py"),
                "--all", "--limit", str(shots)]
-        self._launch_pl(cmd, f"Generating {shots} image(s) per listing")
+        self._launch_pl(cmd, f"Rendering up to {shots} image(s) per listing")
 
     def _pl_free(self):
         if "private_label" in self._procs:
