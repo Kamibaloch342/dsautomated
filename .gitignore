@@ -84,3 +84,7 @@ Amazon_DS_Hunting/RUN_NOW
 Amazon_DS_Hunting/hunter.pid
 Amazon_DS_Hunting/catalog_refresh.log*
 Amazon_DS_Hunting/portal/*.db.bak-*
+
+# ── Private-label build output (regenerate with pl_rescore.py / build_pl_listings.py) ──
+Amazon_DS_Hunting/pl_candidates.csv
+Automations/private_label/out_pl/

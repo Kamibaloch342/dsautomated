@@ -32,6 +32,18 @@ from fractions import Fraction
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
+# This Python ships an EMPTY TLS trust store until "Install Certificates.command" is run, so
+# urllib — which download_photo uses to pull product photos from Zoro's CDN — fails every time
+# with CERTIFICATE_VERIFY_FAILED. Same cause that stranded the chromedriver download and broke
+# the 04:00 closing on 29 Sep 2026. certifi is already installed; point urllib at it.
+try:
+    import certifi as _certifi
+    _ca = _certifi.where()
+    os.environ.setdefault("SSL_CERT_FILE", _ca)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", _ca)
+except Exception:
+    pass
+
 # ---------------------------------------------------------------- paths / config
 HERE = os.path.dirname(os.path.abspath(__file__))
 DB = os.path.join(HERE, "..", "TSV Files", "combined_reports.db")

@@ -40,7 +40,7 @@ Flags:
     --min-margin 1.0  minimum net margin % at the lowest competitor price
     --zoro-min-price 50 / --zoro-max-price 400   reverse-mining price band
     --scrape-batch 20 ASINs verified per cycle
-    --keepa-batch 20  UPCs sent to Keepa per API call
+    --keepa-batch 50  UPCs sent to Keepa per API call (the hourly token refill affords ~52)
     --offer-ttl-days 4  how long a live offer snapshot stays valid
 """
 
@@ -1877,7 +1877,12 @@ def main() -> None:
     ap.add_argument("--zoro-min-price", type=float, default=50.0)
     ap.add_argument("--zoro-max-price", type=float, default=400.0)
     ap.add_argument("--scrape-batch", type=int, default=20)
-    ap.add_argument("--keepa-batch", type=int, default=20)
+    # 50, not 20. Keepa refills 1 token/min = 60 an hour, the cycle runs hourly, and a batch
+    # of 20 costs ~21 — so 39 tokens of refill were thrown away every cycle, ~940 a day
+    # (measured 30 Sep 2026 over 24 cycles). A batch of 50 costs ~51 and still refills inside
+    # the hour. keepa_mine already takes min(batch, tokens_left - reserve), so a token-poor
+    # cycle simply does less instead of failing.
+    ap.add_argument("--keepa-batch", type=int, default=50)
     ap.add_argument("--offer-ttl-days", type=float, default=4.0)
     ap.add_argument("--every", type=int, default=60, help="minutes between cycles (default hourly)")
     ap.add_argument("--max-scrape-per-cycle", type=int, default=500, help="max ASINs verified live per cycle (0 = unlimited)")
