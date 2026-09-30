@@ -833,7 +833,7 @@ def clean_html(raw_html):
     clean = html.unescape(clean)
     return re.sub(r'\s+', ' ', clean).strip()
 
-def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=None):
+def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=None, _retry=False):
     """
     Shared helper: clicks the best available radio button and types the message.
     radio_priority: list of kat-radiobutton values to try in order.
@@ -1114,8 +1114,20 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
         if diag.get("buttons"):
             why += " · page offered: " + ", ".join(diag["buttons"])
         if diag.get("found") and not diag.get("enabled"):
-            why += " — Amazon is keeping Send DISABLED, so it never registered the text"
+            why += " — Amazon is keeping it DISABLED"
         print(f"     ❌  Send button error for {order_id}: {why} [{type(e).__name__}]")
+        # The button exists but Amazon will not enable it. Seen every day on the
+        # "Notify of a problem with shipping your order" form: the message is typed and
+        # verified (788 chars), the footer offers Cancel / Submit, and Submit stays greyed
+        # out — that form wants something this page cannot give it. "Other" renders a
+        # footer whose Send does enable, and is the form 483 messages a day already go
+        # through. So try the remaining reason once rather than abandoning a written
+        # message: on 30 Sep that was 71 buyers who heard nothing.
+        others = [r for r in (radio_priority or []) if r != locals().get("chosen_reason")]
+        if not _retry and others and diag.get("found"):
+            print(f"     ↻  Retrying {order_id} under {others} — the {chosen_reason} form will not enable its button")
+            return _click_radio_and_type(driver, wait, order_id, message_text,
+                                         radio_priority=others, _retry=True)
         return False
     return True
 
