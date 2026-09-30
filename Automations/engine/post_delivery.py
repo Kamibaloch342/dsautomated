@@ -637,7 +637,31 @@ def request_amazon_review(driver, order_id: str) -> str:
 
         time.sleep(random.uniform(2, 4))
 
-        body_after = driver.find_element(By.TAG_NAME, "body").text.lower()
+        # Read the page INCLUDING shadow roots. Seller Central confirms in a Katal component
+        # (kat-alert / kat-toast), whose text never appears in body.text — so this saw only the
+        # order-details header and called a request that HAD been sent "No". The cost was one
+        # wasted visit per order and a false record: on 30 Sep 2026 the table held 6,123
+        # "Already Requested" against 2,653 "Yes", which is the same orders coming back a
+        # second time to be recognised.
+        try:
+            body_after = (driver.execute_script("""
+                function grab(root, out, depth) {
+                    if (!root || depth > 6) return;
+                    (root.querySelectorAll ? root.querySelectorAll('*') : []).forEach(function (el) {
+                        if (el.shadowRoot) {
+                            var t = (el.shadowRoot.textContent || '').trim();
+                            if (t) out.push(t);
+                            grab(el.shadowRoot, out, depth + 1);
+                        }
+                    });
+                }
+                var out = [document.body ? document.body.innerText : ""];
+                grab(document, out, 0);
+                return out.join(" ");
+            """) or "").lower()
+        except Exception:
+            body_after = driver.find_element(By.TAG_NAME, "body").text.lower()
+
         if "already requested a review" in body_after:
             return "Already Requested"
         # A bare "thank you" is not evidence: it appears all over Seller Central chrome, so it
@@ -646,10 +670,27 @@ def request_amazon_review(driver, order_id: str) -> str:
         if any(x in body_after for x in ("review will be requested",
                                          "review request sent",
                                          "we'll send a review request",
-                                         "your review request has been sent")):
+                                         "your review request has been sent",
+                                         "review request has been submitted",
+                                         "requested a review for this order")):
             return "Yes"
+        # Still nothing: print what any alert/toast on the page says, so the wording Amazon
+        # actually uses can be added rather than guessed at.
+        try:
+            alerts = driver.execute_script(r"""
+                var out = [];
+                document.querySelectorAll('kat-alert, kat-toast, [role="alert"], [role="status"]').forEach(function (a) {
+                    var t = ((a.getAttribute('description') || '') + ' ' + (a.getAttribute('header') || '') + ' '
+                             + (a.shadowRoot ? a.shadowRoot.textContent : '') + ' ' + (a.textContent || '')).trim();
+                    if (t) out.push(t.replace(/\s+/g, ' ').slice(0, 90));
+                });
+                return out.slice(0, 3);
+            """) or []
+        except Exception:
+            alerts = []
         logger.warning("  [REVIEW] %s — clicked Yes but saw no confirmation "
-                       "(page says: %s)", order_id, " ".join(body_after.split())[:120])
+                       "(alerts: %s | page: %s)", order_id, alerts or "none",
+                       " ".join(body_after.split())[:110])
         return "No"
     except Exception as e:
         logger.warning("  [REVIEW] Failed for %s: %s: %s", order_id, type(e).__name__, str(e)[:120])
