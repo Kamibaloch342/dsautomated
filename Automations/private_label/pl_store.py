@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS pl_candidates (
     market_price    REAL,
     price_vs_market REAL,
     referral_pct    REAL,
+    ai_images       INTEGER,
     match_method    TEXT,
     hunter_verdict  TEXT,
     scored_at       TEXT,
@@ -63,7 +64,7 @@ def connect(path=DB, timeout=30):
     conn.executescript(SCHEMA)
     # columns added after the table first shipped
     have = {r[1] for r in conn.execute("PRAGMA table_info(pl_candidates)")}
-    for col, decl in (("referral_pct", "REAL"),):
+    for col, decl in (("referral_pct", "REAL"), ("ai_images", "INTEGER")):
         if col not in have:
             conn.execute(f"ALTER TABLE pl_candidates ADD COLUMN {col} {decl}")
     return conn
@@ -118,6 +119,17 @@ def mark_built(zoro_no, sku, title, image_ok, path=DB):
                          "built_at=?, status='built' WHERE zoro_no=?",
                          (sku, title, 1 if image_ok else 0,
                           datetime.now().isoformat(timespec="seconds"), zoro_no))
+    finally:
+        conn.close()
+
+
+def mark_images(zoro_no, n, path=DB):
+    """How many Qwen-generated secondary shots this listing has. The main image is never one of
+    them — Amazon requires a real photograph there — so this counts 02 onward only."""
+    conn = connect(path)
+    try:
+        with conn:
+            conn.execute("UPDATE pl_candidates SET ai_images=? WHERE zoro_no=?", (int(n), zoro_no))
     finally:
         conn.close()
 

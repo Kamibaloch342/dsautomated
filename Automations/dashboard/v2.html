@@ -2094,6 +2094,7 @@ const PL = {
       <div class="kpi"><b>${U.int(rows.reduce((a, r) => a + (r.monthly_sold || 0), 0))}</b><span>comparable units / month</span></div>
       <div class="kpi"><b>${U.money(pot, 0)}</b><span>margin / month at 1% capture</span></div>
       <div class="kpi"><b>${U.int(rows.filter(r => r.image_ok).length)}</b><span>with a main image</span></div>
+      <div class="kpi"><b>${U.int(rows.reduce((a, r) => a + (r.ai_images || 0), 0))}</b><span>generated shots</span></div>
     </div>`;
 
     const pill = st => st === "built" ? '<span class="pill ok">built</span>'
@@ -2102,7 +2103,7 @@ const PL = {
     const tbl = rows.length ? `<div class="tblwrap"><table class="t"><thead><tr>
       <th>Zoro</th><th>Product</th><th>MPN</th><th class="num">Pack</th><th class="num">Cost</th>
       <th class="num">List at</th><th class="num">Margin</th><th class="num">%</th>
-      <th class="num">Demand</th><th>Comparable</th><th>Status</th><th>SKU</th></tr></thead><tbody>
+      <th class="num">Demand</th><th>Comparable</th><th class="num">Images</th><th>Status</th><th>SKU</th></tr></thead><tbody>
       ${rows.map(r => `<tr>
         <td class="mono"><a class="small" href="https://www.zoro.com/product/?zoro=${encodeURIComponent(r.zoro_no)}" target="_blank" rel="noopener">${esc(r.zoro_no)}</a></td>
         <td class="ttl" title="${esc(r.zoro_title || "")}">${esc(r.zoro_title || "")}</td>
@@ -2114,12 +2115,13 @@ const PL = {
         <td class="num">${r.margin_pct == null ? "" : U.n(r.margin_pct).toFixed(1) + "%"}</td>
         <td class="num">${U.int(r.monthly_sold)}</td>
         <td class="mono"><a class="small" href="https://www.amazon.com/dp/${encodeURIComponent(r.asin || "")}" target="_blank" rel="noopener">${esc(r.asin || "")}</a></td>
+        <td class="num" title="real main photo + Qwen-generated secondary shots">${r.image_ok ? 1 : 0}+${U.int(r.ai_images || 0)}</td>
         <td>${pill(r.status || "candidate")}${r.image_ok ? ' <span class="pill ok" title="main image rendered">img</span>' : ""}</td>
         <td class="mono small">${esc(r.sku || "")}</td></tr>`).join("")}
       </tbody></table></div>` : U.empty("Nothing in this tab", "re-score from the launcher to refresh the list");
 
     body.innerHTML = kpis + tbl
-      + `<div class="card"><div class="bd smallnote">Only products Zoro ships from its own warehouse in a plain box appear here (<b>is_blind_ship</b>). Items that ship in the manufacturer's own carton are excluded however generic the title looks \u2014 the binders that read as unbranded carry MPN AVE79199, i.e. Avery. Listings are written to <span class="mono">Automations/private_label/out_pl/&lt;SKU&gt;/</span>; nothing here touches Amazon.</div></div>`;
+      + `<div class="card"><div class="bd smallnote">Only products Zoro ships from its own warehouse in a plain box appear here (<b>is_blind_ship</b>). Items that ship in the manufacturer's own carton are excluded however generic the title looks \u2014 the binders that read as unbranded carry MPN AVE79199, i.e. Avery. Listings are written to <span class="mono">Automations/private_label/out_pl/&lt;SKU&gt;/</span>; nothing here touches Amazon. <b>Images</b> is the real main photo plus the Qwen-generated secondary shots \u2014 the main image is never generated, because Amazon requires a real photograph of the real product there.</div></div>`;
   },
 };
 SECTIONS.pl = PL;

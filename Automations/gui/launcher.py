@@ -1977,14 +1977,14 @@ class App(tk.Tk):
     #  PAGE: Private label — our own ASINs, fulfilled from Zoro
     # ══════════════════════════════════════════════════════════════════════
     _PL_COLS = ("zoro_no", "zoro_title", "mpn", "pack", "landed_cost", "list_price",
-                "margin", "monthly_sold", "asin", "status", "sku")
+                "margin", "monthly_sold", "asin", "images", "status", "sku")
     _PL_HEADINGS = {"zoro_no": "Zoro", "zoro_title": "Product", "mpn": "MPN", "pack": "Pack",
                     "landed_cost": "Cost", "list_price": "List at", "margin": "Margin",
-                    "monthly_sold": "Demand/mo", "asin": "Comparable", "status": "Status",
-                    "sku": "SKU"}
+                    "monthly_sold": "Demand/mo", "asin": "Comparable", "images": "Images",
+                    "status": "Status", "sku": "SKU"}
     _PL_WIDTHS = {"zoro_no": 95, "zoro_title": 300, "mpn": 95, "pack": 50, "landed_cost": 70,
                   "list_price": 70, "margin": 70, "monthly_sold": 80, "asin": 100,
-                  "status": 80, "sku": 170}
+                  "images": 70, "status": 80, "sku": 170}
 
     def _build_page_private_label(self, container):
         page = tk.Frame(container, bg=self.BG)
@@ -2021,6 +2021,17 @@ class App(tk.Tk):
                  bg=self.INP_BG, fg=self.TEXT, insertbackground=self.TEXT,
                  relief="flat", highlightthickness=1,
                  highlightbackground=self.BORDER).pack(side="left", padx=(0, 10))
+        self.btn_pl_images = self._btn(ctrl, "🎨 AI Images (Qwen)", self.PURPLE,
+                                       self._start_pl_images, small=True)
+        self.btn_pl_images.pack(side="left", padx=(0, 6))
+        self._tip(self.btn_pl_images,
+                  "Generate the SECONDARY listing photos with Qwen — in-use, close-up, scale and "
+                  "in-place — for every listing already built.\nThe main image is deliberately "
+                  "NOT generated: Amazon requires a real photograph of the real product there, "
+                  "and a generated one is the quickest way to get a new ASIN suppressed. These "
+                  "are made in edit mode from that real photo, so the item in them is the item "
+                  "you ship rather than something the model invented.\nUses the How many box as "
+                  "shots per product (1-4). Each image is billed to your QwenCloud key.")
         self.btn_pl_stop = self._btn(ctrl, "■ Stop", self.RED,
                                      lambda: self._stop("private_label"), small=True)
         self.btn_pl_stop.pack(side="left", padx=(0, 6))
@@ -2088,6 +2099,29 @@ class App(tk.Tk):
                "--limit", str(limit)]
         self._launch_pl(cmd, f"Building {limit} listing(s)")
 
+    def _start_pl_images(self):
+        """Secondary photos only — see the tooltip for why the main image is never generated."""
+        if not self._pl_free():
+            return
+        try:
+            shots = max(1, min(int(self.v_pl_limit.get().strip() or "4"), 4))
+        except ValueError:
+            messagebox.showwarning("Private Label", "How many: enter a number.")
+            return
+        built = os.path.join(SCRIPT_DIR, "private_label", "out_pl")
+        if not os.path.isdir(built) or not [d for d in os.listdir(built) if not d.startswith("_")]:
+            messagebox.showinfo("Private Label", "Nothing built yet — run 🏗 Build Listings first.")
+            return
+        if not messagebox.askyesno(
+                "Private Label",
+                f"Generate {shots} image(s) for each built listing?\n\n"
+                f"Every image is billed to your QwenCloud key."):
+            return
+        cmd = [RUNNER_PYTHON, "-u",
+               os.path.join(SCRIPT_DIR, "private_label", "pl_images.py"),
+               "--all", "--limit", str(shots)]
+        self._launch_pl(cmd, f"Generating {shots} image(s) per listing")
+
     def _pl_free(self):
         if "private_label" in self._procs:
             messagebox.showinfo("Info", "A private-label run is already going.")
@@ -2098,6 +2132,7 @@ class App(tk.Tk):
         self._launch("private_label", cmd)
         self.btn_pl_score.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
         self.btn_pl_build.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+        self.btn_pl_images.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
         self.btn_pl_stop.config(state="normal", fg=self.RED, highlightbackground=self.RED)
         self.lbl_pl.config(text="Running", fg=self.GREEN)
         self._feed_line(f"Private label: {what}", "ok")
@@ -2152,7 +2187,8 @@ class App(tk.Tk):
             self._pl_tree.insert("", "end", values=(
                 r["zoro_no"], (r["zoro_title"] or "")[:70], r["mpn"] or "", r["pack"] or 1,
                 f"${cost:,.2f}", f"${price:,.2f}", f"${margin:,.2f}",
-                f"{r['monthly_sold'] or 0:,}", r["asin"] or "", st, r["sku"] or "",
+                f"{r['monthly_sold'] or 0:,}", r["asin"] or "",
+                f"{1 if r['image_ok'] else 0}+{r['ai_images'] or 0}", st, r["sku"] or "",
             ), tags=tags)
         self.lbl_pl.config(text=f"{len(rows)} scored · {built} built",
                            fg=self.GREEN if rows else self.MUTED)
@@ -5028,6 +5064,7 @@ class App(tk.Tk):
         elif name == "private_label":
             self.btn_pl_score.config(state="normal", fg=self.GREEN, highlightbackground=self.GREEN)
             self.btn_pl_build.config(state="normal", fg=self.CYAN, highlightbackground=self.CYAN)
+            self.btn_pl_images.config(state="normal", fg=self.PURPLE, highlightbackground=self.PURPLE)
             self.btn_pl_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
             self._refresh_pl()        # the run just rewrote pl_candidates — show it
         elif name.startswith(("bulk_", "messages_", "closing_")):

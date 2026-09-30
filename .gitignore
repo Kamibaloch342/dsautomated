@@ -11,6 +11,8 @@ gen-lang-client-*.json
 **/seller_central_creds.json
 .env
 .env.*
+# the key template: placeholders only, never a real key
+!.env.example
 
 # ── Databases & data artifacts ──────────────────────────────────────
 *.db
