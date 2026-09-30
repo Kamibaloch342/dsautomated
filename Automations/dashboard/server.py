@@ -2112,6 +2112,61 @@ def listing_label_set(body):
     return _retry_write(_w)
 
 
+def private_label(q):
+    """Private-label candidates and the listings built from them.
+
+    Read-only. pl_rescore.py fills this table from the hunter's finds, gated on is_blind_ship —
+    the feed's own answer to "does this ship in Zoro's plain box or the manufacturer's carton?",
+    which is what decides whether our label can go on it at all. build_pl_listings.py then stamps
+    the sku/built_at columns. Nothing here touches Amazon; it is a worklist.
+    """
+    status = (q.get("status", [""])[0] or "").strip()
+    search = (q.get("q", [""])[0] or "").strip()
+    limit = max(1, min(int(q.get("limit", ["500"])[0] or 500), 5000))
+
+    c = ro()
+    try:
+        if not c.execute("SELECT name FROM sqlite_master WHERE type='table' "
+                         "AND name='pl_candidates'").fetchone():
+            return {"ready": False,
+                    "error": "pl_candidates table missing — run Amazon_DS_Hunting/pl_rescore.py "
+                             "(Private Label ▶ Re-score in the launcher) first",
+                    "counts": {}, "rows": []}
+
+        counts = {s: n for s, n in c.execute(
+            "SELECT COALESCE(status,'candidate'), COUNT(*) FROM pl_candidates GROUP BY 1")}
+
+        where, args = [], []
+        if status:
+            where.append("COALESCE(status,'candidate') = ?"); args.append(status)
+        if search:
+            where.append("(zoro_no LIKE ? OR asin LIKE ? OR zoro_title LIKE ? OR sku LIKE ?)")
+            args += [f"%{search}%"] * 4
+        sql = "SELECT * FROM pl_candidates"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY monthly_sold DESC, zoro_no LIMIT ?"
+        args.append(limit)
+        rows = [dict(r) for r in c.execute(sql, args)]
+
+        # The number worth looking at: what a month of the comparable's demand would earn if we
+        # took even a slice of it. Margin is after Amazon's referral, which list_price already
+        # solves for, so the per-unit figure is the honest one to show.
+        for r in rows:
+            cost, price = r.get("landed_cost") or 0, r.get("list_price") or 0
+            ref = r.get("referral_pct")
+            ref = float(ref) if ref not in (None, "") else 0.15
+            net = price * (1 - ref) - cost if price and cost else None
+            r["margin_unit"] = round(net, 2) if net is not None else None
+            r["margin_pct"] = round(net / price * 100, 1) if net is not None and price else None
+        last = c.execute("SELECT MAX(scored_at), MAX(built_at) FROM pl_candidates").fetchone()
+        return {"ready": True, "counts": counts, "rows": rows,
+                "last_scored": last[0] if last else None,
+                "last_built": last[1] if last else None}
+    finally:
+        c.close()
+
+
 def listings(q):
     """Listing-health action lists, computed by engine/listings.py.
 
@@ -2721,6 +2776,8 @@ class H(BaseHTTPRequestHandler):
                 import daybook as _dbk
                 _dbk.DB = DB
                 return self._send(_dbk.growth(q))
+            if p == "/api/pl":
+                return self._send(private_label(q))
             if p == "/api/listings":
                 return self._send(listings(q))
             if p == "/api/walmart":

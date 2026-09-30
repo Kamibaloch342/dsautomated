@@ -90,7 +90,7 @@ _auto_install()
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 from tkcalendar import DateEntry
-import json, signal, platform, re, socket, random, webbrowser, csv, glob, time
+import json, signal, platform, re, socket, random, webbrowser, csv, glob, time, sqlite3
 from collections import deque
 from datetime import datetime, timedelta
 CFG_PATH = os.path.join(SCRIPT_DIR, "bot_config.json")
@@ -432,6 +432,7 @@ class App(tk.Tk):
         self._pages["post_delivery"] = self._build_page_post_delivery(self._page_container)
         self._pages["closing"]       = self._build_page_closing(self._page_container)
         self._pages["listings"]      = self._build_page_listings(self._page_container)
+        self._pages["private_label"] = self._build_page_private_label(self._page_container)
         self._pages["repricer"]      = self._build_page_repricer(self._page_container)
         self._pages["walmart"]       = self._build_page_walmart(self._page_container)
         self._pages["price_log"]     = self._build_page_price_log(self._page_container)
@@ -889,6 +890,7 @@ class App(tk.Tk):
             ("orders",         "📦", "Orders"),
             ("closing",        "💰", "Closing"),
             ("listings",       "🧾", "Listings"),
+            ("private_label",  "🏭", "Private Label"),
             ("repricer",       "🏷️", "Repricer"),
             ("walmart",        "🛒", "Walmart"),
             ("tracking",       "🚚", "Tracking"),
@@ -1970,6 +1972,199 @@ class App(tk.Tk):
         self._feed_line("Listings refresh started"
                         + (f" ({' '.join(extra_args)})" if extra_args else ""), "ok")
         self._update_hdr()
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  PAGE: Private label — our own ASINs, fulfilled from Zoro
+    # ══════════════════════════════════════════════════════════════════════
+    _PL_COLS = ("zoro_no", "zoro_title", "mpn", "pack", "landed_cost", "list_price",
+                "margin", "monthly_sold", "asin", "status", "sku")
+    _PL_HEADINGS = {"zoro_no": "Zoro", "zoro_title": "Product", "mpn": "MPN", "pack": "Pack",
+                    "landed_cost": "Cost", "list_price": "List at", "margin": "Margin",
+                    "monthly_sold": "Demand/mo", "asin": "Comparable", "status": "Status",
+                    "sku": "SKU"}
+    _PL_WIDTHS = {"zoro_no": 95, "zoro_title": 300, "mpn": 95, "pack": 50, "landed_cost": 70,
+                  "list_price": 70, "margin": 70, "monthly_sold": 80, "asin": 100,
+                  "status": 80, "sku": 170}
+
+    def _build_page_private_label(self, container):
+        page = tk.Frame(container, bg=self.BG)
+        po, pi = self._panel(page)
+        po.pack(fill="both", expand=True, padx=8, pady=8)
+        self._heading(pi, "PRIVATE LABEL", self.PURPLE,
+                      subtitle="our own ASIN, our own brand, fulfilled from Zoro (never edits Amazon)")
+
+        ctrl = tk.Frame(pi, bg=self.CARD)
+        ctrl.pack(fill="x", padx=14, pady=(8, 6))
+        self.btn_pl_score = self._btn(ctrl, "▶ Re-score Candidates", self.GREEN,
+                                      self._start_pl_rescore, small=True)
+        self.btn_pl_score.pack(side="left", padx=(0, 6))
+        self._tip(self.btn_pl_score,
+                  "Re-read everything the hunter has found and keep only what can carry OUR "
+                  "label: real demand, Zoro has it in stock, the price the market bears, and — "
+                  "the one that matters — Zoro ships it from its own warehouse in a plain box "
+                  "(is_blind_ship).\nAn item that ships in the maker's own carton is excluded "
+                  "however generic the title looks: the binders that read as unbranded carry "
+                  "MPN AVE79199, i.e. Avery.\nRead-only on hunter.db, spends no Keepa tokens, "
+                  "safe while the hunter and the placers are running.")
+        self.btn_pl_build = self._btn(ctrl, "🏗 Build Listings", self.CYAN,
+                                      self._start_pl_build, small=True)
+        self.btn_pl_build.pack(side="left", padx=(0, 6))
+        self._tip(self.btn_pl_build,
+                  "Write a ready-to-upload listing for the top N candidates: title, five "
+                  "bullets and description from Zoro's own specs, plus a main image on pure "
+                  "white with the HOANK wordmark.\nLands in private_label/out_pl/<SKU>/ — "
+                  "nothing is uploaded anywhere.")
+        tk.Label(ctrl, text="How many:", font=(self.MONO, 9),
+                 bg=self.CARD, fg=self.DIM).pack(side="left", padx=(8, 4))
+        self.v_pl_limit = tk.StringVar(value="5")
+        tk.Entry(ctrl, textvariable=self.v_pl_limit, width=5, font=(self.MONO, 10),
+                 bg=self.INP_BG, fg=self.TEXT, insertbackground=self.TEXT,
+                 relief="flat", highlightthickness=1,
+                 highlightbackground=self.BORDER).pack(side="left", padx=(0, 10))
+        self.btn_pl_stop = self._btn(ctrl, "■ Stop", self.RED,
+                                     lambda: self._stop("private_label"), small=True)
+        self.btn_pl_stop.pack(side="left", padx=(0, 6))
+        self.btn_pl_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+        self._btn(ctrl, "📂 Open Output", self.AMBER, self._open_pl_output, small=True
+                  ).pack(side="left", padx=(0, 6))
+        self._btn(ctrl, "↻ Refresh", self.CYAN, self._refresh_pl, small=True).pack(side="left")
+        self.lbl_pl = tk.Label(ctrl, text="Idle", font=(self.MONO, 9),
+                               bg=self.CARD, fg=self.MUTED)
+        self.lbl_pl.pack(side="right")
+
+        self._dim(pi, "Private label is the other half of the business: instead of competing on "
+                      "somebody else's listing, you create the ASIN, put your own brand and "
+                      "images on it, and fulfil from Zoro. Only goods that leave Zoro's own "
+                      "warehouse in a plain carton can carry the label — that is what the "
+                      "re-score gates on, and every product HOANK already private-labels passes "
+                      "it. Results also show on the dashboard under Private label.",
+                  wraplength=900, justify="left").pack(anchor="w", padx=14, pady=(2, 8))
+
+        tw = tk.Frame(pi, bg=self.CARD)
+        tw.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        tw.grid_rowconfigure(0, weight=1)
+        tw.grid_columnconfigure(0, weight=1)
+        self._pl_tree = ttk.Treeview(tw, columns=self._PL_COLS, show="headings",
+                                     selectmode="browse")
+        for c in self._PL_COLS:
+            self._pl_tree.heading(c, text=self._PL_HEADINGS.get(c, c),
+                                  command=lambda _c=c: self._treeview_sort_column(self._pl_tree, _c, False))
+            self._pl_tree.column(c, width=self._PL_WIDTHS.get(c, 80), anchor="w", minwidth=40)
+        vsb = ttk.Scrollbar(tw, orient="vertical", command=self._pl_tree.yview)
+        hsb = ttk.Scrollbar(tw, orient="horizontal", command=self._pl_tree.xview)
+        self._pl_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        self._pl_tree.grid(row=0, column=0, sticky="nsew", padx=1, pady=1)
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        self._pl_tree.tag_configure("even", background=self.INP_BG)
+        self._pl_tree.tag_configure("odd", background="#11131a")
+        self._pl_tree.tag_configure("built", foreground=self.GREEN)
+        self._pl_tree.tag_configure("dropped", foreground=self.MUTED)
+        self._pl_tree.bind("<Double-1>", self._on_pl_dblclick)
+        self.after(1200, self._refresh_pl)
+        return page
+
+    def _pl_script(self, *parts):
+        return os.path.join(os.path.dirname(SCRIPT_DIR), *parts)
+
+    def _start_pl_rescore(self):
+        """Re-score the hunter's finds as private-label opportunities. Read-only on hunter.db."""
+        if not self._pl_free():
+            return
+        cmd = [RUNNER_PYTHON, "-u", self._pl_script("Amazon_DS_Hunting", "pl_rescore.py")]
+        self._launch_pl(cmd, "Re-scoring candidates")
+
+    def _start_pl_build(self):
+        """Write listings for the top N candidates. Produces files only — nothing is uploaded."""
+        if not self._pl_free():
+            return
+        try:
+            limit = max(1, int(self.v_pl_limit.get().strip() or "5"))
+        except ValueError:
+            messagebox.showwarning("Private Label", "How many: enter a number.")
+            return
+        cmd = [RUNNER_PYTHON, "-u",
+               os.path.join(SCRIPT_DIR, "private_label", "build_pl_listings.py"),
+               "--limit", str(limit)]
+        self._launch_pl(cmd, f"Building {limit} listing(s)")
+
+    def _pl_free(self):
+        if "private_label" in self._procs:
+            messagebox.showinfo("Info", "A private-label run is already going.")
+            return False
+        return True
+
+    def _launch_pl(self, cmd, what):
+        self._launch("private_label", cmd)
+        self.btn_pl_score.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+        self.btn_pl_build.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+        self.btn_pl_stop.config(state="normal", fg=self.RED, highlightbackground=self.RED)
+        self.lbl_pl.config(text="Running", fg=self.GREEN)
+        self._feed_line(f"Private label: {what}", "ok")
+        self._update_hdr()
+
+    def _open_pl_output(self):
+        out = os.path.join(SCRIPT_DIR, "private_label", "out_pl")
+        if not os.path.isdir(out):
+            messagebox.showinfo("Private Label", "Nothing built yet — run ▶ Build Listings first.")
+            return
+        try:
+            if platform.system() == "Darwin":
+                subprocess.Popen(["open", out])
+            elif platform.system() == "Windows":
+                os.startfile(out)                                   # noqa: S606
+            else:
+                subprocess.Popen(["xdg-open", out])
+        except Exception as e:
+            messagebox.showerror("Private Label", str(e))
+
+    def _refresh_pl(self):
+        """Read the scored rows straight from the unified DB — the same table the dashboard uses,
+        so the two can never disagree."""
+        for i in self._pl_tree.get_children():
+            self._pl_tree.delete(i)
+        db = os.path.join(SCRIPT_DIR, "data", "automations_unified.db")
+        try:
+            c = sqlite3.connect(db, timeout=15)
+            c.execute("PRAGMA query_only=ON")
+            c.row_factory = sqlite3.Row
+            if not c.execute("SELECT name FROM sqlite_master WHERE type='table' "
+                             "AND name='pl_candidates'").fetchone():
+                self.lbl_pl.config(text="Never scored", fg=self.MUTED)
+                c.close()
+                return
+            rows = c.execute("SELECT * FROM pl_candidates ORDER BY monthly_sold DESC").fetchall()
+            c.close()
+        except Exception as e:
+            self.lbl_pl.config(text=f"DB error: {e}", fg=self.RED)
+            return
+        built = 0
+        for n, r in enumerate(rows):
+            st = r["status"] or "candidate"
+            built += st == "built"
+            cost, price = r["landed_cost"] or 0, r["list_price"] or 0
+            ref = r["referral_pct"] if "referral_pct" in r.keys() else None
+            ref = float(ref) if ref not in (None, "") else 0.15
+            margin = price * (1 - ref) - cost if price and cost else 0
+            tags = ["even" if n % 2 == 0 else "odd"]
+            if st in ("built", "dropped"):
+                tags.append(st)
+            self._pl_tree.insert("", "end", values=(
+                r["zoro_no"], (r["zoro_title"] or "")[:70], r["mpn"] or "", r["pack"] or 1,
+                f"${cost:,.2f}", f"${price:,.2f}", f"${margin:,.2f}",
+                f"{r['monthly_sold'] or 0:,}", r["asin"] or "", st, r["sku"] or "",
+            ), tags=tags)
+        self.lbl_pl.config(text=f"{len(rows)} scored · {built} built",
+                           fg=self.GREEN if rows else self.MUTED)
+
+    def _on_pl_dblclick(self, _e):
+        """Open the Zoro product page for the selected row — the fastest way to sanity-check
+        that the photo and the pack are what the listing claims."""
+        sel = self._pl_tree.selection()
+        if not sel:
+            return
+        code = self._pl_tree.item(sel[0], "values")[0]
+        webbrowser.open(f"https://www.zoro.com/product/?zoro={code}")
 
     # ══════════════════════════════════════════════════════════════════════
     #  PAGE: Walmart → Zoro manual orders
@@ -4830,6 +5025,11 @@ class App(tk.Tk):
             self.btn_lst_go.config(state="normal", fg=self.GREEN, highlightbackground=self.GREEN)
             self.btn_lst_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
             self.lbl_lst.config(text=status, fg=color)
+        elif name == "private_label":
+            self.btn_pl_score.config(state="normal", fg=self.GREEN, highlightbackground=self.GREEN)
+            self.btn_pl_build.config(state="normal", fg=self.CYAN, highlightbackground=self.CYAN)
+            self.btn_pl_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+            self._refresh_pl()        # the run just rewrote pl_candidates — show it
         elif name.startswith(("bulk_", "messages_", "closing_")):
             if name == "bulk_all":
                 accts = ("HOANK", "Hathoro")

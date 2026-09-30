@@ -100,6 +100,7 @@ SLIM_TABLES = [
     "insight_resolutions", "action_log", "zoro_watch", "monthly_pnl", "hoank_pnl",
     "amazon_order_details", "placer_claims", "closing_run_log", "bot_decisions",
     "amazon_report_orders", "amazon_report_files",     # the daily report's day counts (28 Sep 2026)
+    "pl_candidates",                                   # private-label pipeline (30 Sep 2026)
 ]
 SLIM_VIEWS = ("v_orders_all", "v_closing")
 

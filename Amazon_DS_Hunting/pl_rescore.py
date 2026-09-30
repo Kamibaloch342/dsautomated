@@ -37,6 +37,11 @@ DB = os.path.join(HERE, "hunter.db")
 FEED = os.path.join(ROOT, "Automations", "TSV Files", "combined_reports.db")
 OUT = os.path.join(HERE, "pl_candidates.csv")
 
+# The CSV is for reading at a terminal; the table is what the launcher and the dashboard read,
+# and it is the only copy that reaches Render (cloud_agent ships pl_candidates in the slim DB).
+sys.path.insert(0, os.path.join(ROOT, "Automations", "private_label"))
+import pl_store                                                  # noqa: E402
+
 # Zoro's small-order fee and the cart value that avoids it (utils/config.py in Automations).
 SMALL_ORDER_FEE = 5.99
 FREE_SHIP_OVER = 50.0
@@ -79,6 +84,22 @@ def load_hunter():
     return mod
 
 
+def _referral(value):
+    """Amazon's referral cut as a fraction.
+
+    hunter.db stores this as a fraction already (0.15, 0.08), and dividing it by 100 again priced
+    the item as though Amazon took nothing — a 25%-margin target then produced a list price that
+    actually earns 10%. Accept either convention: anything above 1 is a percentage.
+    """
+    try:
+        v = float(value or 0)
+    except (TypeError, ValueError):
+        return DEFAULT_REFERRAL
+    if v <= 0:
+        return DEFAULT_REFERRAL
+    return v / 100.0 if v > 1 else v
+
+
 def landed_cost(zoro_price, surcharge):
     """What one unit actually costs you delivered, including Zoro's small-order fee."""
     cost = float(zoro_price or 0) + float(surcharge or 0)
@@ -105,6 +126,8 @@ def main():
     ap.add_argument("--max-over-market", type=float, default=1.6,
                     help="flag when the needed price exceeds the known market price by more than this (default 1.6x)")
     ap.add_argument("--out", default=OUT)
+    ap.add_argument("--no-db", action="store_true",
+                    help="write only the CSV, leave the unified DB alone")
     a = ap.parse_args()
     target = a.target_margin / 100.0
 
@@ -176,7 +199,7 @@ def main():
             counts["no_price"] += 1
             continue
 
-        referral = float(r["referral_pct"] or 0) / 100.0 or DEFAULT_REFERRAL
+        referral = _referral(r["referral_pct"])
         need = price_for_margin(cost, referral, target)
         if need is None:
             counts["no_price"] += 1
@@ -198,6 +221,7 @@ def main():
             "zoro_price": round(float(z["price"] or 0), 2),
             "landed_cost": cost, "price_for_margin": need,
             "market_price": market or "", "price_vs_market": over or "",
+            "referral_pct": round(referral, 4),
             "match": how, "hunter_verdict": r["verdict"] or "",
         })
 
@@ -207,6 +231,13 @@ def main():
         w = csv.DictWriter(fh, fieldnames=list(out[0].keys()) if out else ["asin"])
         w.writeheader()
         w.writerows(out)
+
+    if not a.no_db:
+        try:
+            pl_store.save_candidates(out)
+            print(f"\n  saved {len(out)} row(s) to pl_candidates in the unified DB")
+        except Exception as e:
+            print(f"\n  ! could not write pl_candidates: {type(e).__name__}: {e}")
 
     print(f"\n  candidates examined              {counts['total']:6d}")
     print(f"  already on HOANK/Hathoro         {counts['already_listed']:6d}")

@@ -645,6 +645,7 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
     <button class="nav" data-nav="ops"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Ops</span><em class="cnt" id="cnt-ops"></em></button>
     <button class="nav" data-nav="attention"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Attention</span><em class="cnt" id="cnt-attention"></em></button>
     <button class="nav" data-nav="insights"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg><span>Analytics</span></button>
+    <button class="nav" data-nav="pl"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg><span>Private label</span><em class="cnt" id="cnt-pl"></em></button>
     <button class="nav" data-nav="reminders" id="nav-reminders"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M5 3L2 6M19 3l3 3"/></svg><span>Reminders</span><em class="cnt" id="cnt-reminders"></em></button>
     <button class="nav" data-nav="more"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>More</span></button>
     <div class="foot">
@@ -731,6 +732,12 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
       <div class="sec-head"><h1>Analytics</h1><span class="sub" id="ana-sub">orders by day, growth, coupons, ASINs, shipping, refunds, buyers, P&amp;L</span><span class="grow"></span><span class="upd" id="ins-upd"></span><button class="b s" onclick="Ins.load(true)">Refresh</button></div>
       <div class="tabs" id="ana-tabs"><button data-tab="daybook" class="on">Day book</button><button data-tab="growth">Growth</button><button data-tab="coupons">Coupons</button><button data-tab="asins">ASINs</button><button data-tab="shipping">Shipping</button><button data-tab="refunds">Refunds &amp; cancels</button><button data-tab="buyers">Buyers &amp; places</button><button data-tab="changes">Changes<span class="cnt" id="ana-c-changes"></span></button><button data-tab="pnl">P&amp;L</button></div>
       <div id="ana-body"><div class="card"><div class="bd"><span class="skel"></span><span class="skel"></span><span class="skel"></span></div></div></div>
+    </section>
+
+    <section class="sec" id="sec-pl">
+      <div class="sec-head"><h1>Private label</h1><span class="sub" id="pl-sub">products that can carry our own label, and the listings built from them</span><span class="grow"></span><span class="upd" id="pl-upd"></span><button class="b s" onclick="PL.load(true)">Refresh</button></div>
+      <div class="tabs" id="pl-tabs"><button data-tab="" class="on">All<span class="cnt" id="pl-c-all"></span></button><button data-tab="candidate">Ready to build<span class="cnt" id="pl-c-candidate"></span></button><button data-tab="built">Built<span class="cnt" id="pl-c-built"></span></button><button data-tab="dropped">No longer qualifying<span class="cnt" id="pl-c-dropped"></span></button></div>
+      <div id="pl-body"><span class="skel"></span><span class="skel"></span></div>
     </section>
 
     <section class="sec" id="sec-reminders">
@@ -2042,6 +2049,81 @@ const Ins = {
   skel(){ return `<div class="kpis">${Array.from({length:5},()=>`<div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div>`).join("")}</div><div class="card"><div class="bd">${U.skel(6)}</div></div>`; },
 };
 SECTIONS.insights = Ins;
+
+/* ── Private label ────────────────────────────────────────────────────────────
+   A worklist, not a report. Every row is a Zoro product whose carton goes out
+   plain (is_blind_ship), so our label can legally go on it, paired with the
+   Amazon ASIN whose demand proves the category sells. Filled by
+   Amazon_DS_Hunting/pl_rescore.py and stamped by build_pl_listings.py. ── */
+const PL = {
+  cache: null, tab: "",
+  start(){ this.load(); },
+  show(t){ this.tab = t; $$("#pl-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); this.render(); },
+  async load(force){
+    const body = $("#pl-body");
+    if (force || !this.cache) {
+      body.innerHTML = U.skel(4);
+      try { this.cache = await GET("/api/pl"); }
+      catch (e) { body.innerHTML = U.err(e); return; }
+    }
+    this.render();
+  },
+  render(){
+    const d = this.cache || {}, body = $("#pl-body");
+    if (!d.ready) {
+      body.innerHTML = U.empty("Nothing scored yet", d.error || "run the re-score from the launcher");
+      $("#pl-sub").textContent = "products that can carry our own label";
+      return;
+    }
+    const counts = d.counts || {}, all = d.rows || [];
+    const rows = this.tab ? all.filter(r => (r.status || "candidate") === this.tab) : all;
+    $("#pl-upd").textContent = d.last_scored ? "scored " + String(d.last_scored).replace("T", " ").slice(0, 16) : "";
+    $("#pl-c-all").textContent = all.length || "";
+    ["candidate", "built", "dropped"].forEach(k => { const e = $("#pl-c-" + k); if (e) e.textContent = counts[k] || ""; });
+    const ready = counts.candidate || 0;
+    const c = $("#cnt-pl"); if (c) c.textContent = ready || "";
+    $("#pl-sub").textContent = all.length
+      ? `${U.int(all.length)} scored · ${U.int(counts.built || 0)} built · ${U.int(ready)} ready to build`
+      : "products that can carry our own label";
+
+    // Headline: what one month of the comparable ASIN's demand is worth at 1% capture. It is a
+    // scale, not a forecast — the point is which rows are worth the listing effort at all.
+    const pot = rows.reduce((a, r) => a + (r.margin_unit || 0) * (r.monthly_sold || 0) * 0.01, 0);
+    const kpis = `<div class="kpis">
+      <div class="kpi"><b>${U.int(rows.length)}</b><span>products</span></div>
+      <div class="kpi"><b>${U.int(rows.reduce((a, r) => a + (r.monthly_sold || 0), 0))}</b><span>comparable units / month</span></div>
+      <div class="kpi"><b>${U.money(pot, 0)}</b><span>margin / month at 1% capture</span></div>
+      <div class="kpi"><b>${U.int(rows.filter(r => r.image_ok).length)}</b><span>with a main image</span></div>
+    </div>`;
+
+    const pill = st => st === "built" ? '<span class="pill ok">built</span>'
+      : st === "dropped" ? '<span class="pill warn">dropped</span>'
+      : '<span class="pill">ready</span>';
+    const tbl = rows.length ? `<div class="tblwrap"><table class="t"><thead><tr>
+      <th>Zoro</th><th>Product</th><th>MPN</th><th class="num">Pack</th><th class="num">Cost</th>
+      <th class="num">List at</th><th class="num">Margin</th><th class="num">%</th>
+      <th class="num">Demand</th><th>Comparable</th><th>Status</th><th>SKU</th></tr></thead><tbody>
+      ${rows.map(r => `<tr>
+        <td class="mono"><a class="small" href="https://www.zoro.com/product/?zoro=${encodeURIComponent(r.zoro_no)}" target="_blank" rel="noopener">${esc(r.zoro_no)}</a></td>
+        <td class="ttl" title="${esc(r.zoro_title || "")}">${esc(r.zoro_title || "")}</td>
+        <td class="mono small">${esc(r.mpn || "")}</td>
+        <td class="num">${U.int(r.pack || 1)}</td>
+        <td class="num">${U.money(r.landed_cost)}</td>
+        <td class="num">${U.money(r.list_price)}</td>
+        <td class="num ${U.n(r.margin_unit) < 0 ? "neg" : "pos"}">${r.margin_unit == null ? "" : U.money(r.margin_unit)}</td>
+        <td class="num">${r.margin_pct == null ? "" : U.n(r.margin_pct).toFixed(1) + "%"}</td>
+        <td class="num">${U.int(r.monthly_sold)}</td>
+        <td class="mono"><a class="small" href="https://www.amazon.com/dp/${encodeURIComponent(r.asin || "")}" target="_blank" rel="noopener">${esc(r.asin || "")}</a></td>
+        <td>${pill(r.status || "candidate")}${r.image_ok ? ' <span class="pill ok" title="main image rendered">img</span>' : ""}</td>
+        <td class="mono small">${esc(r.sku || "")}</td></tr>`).join("")}
+      </tbody></table></div>` : U.empty("Nothing in this tab", "re-score from the launcher to refresh the list");
+
+    body.innerHTML = kpis + tbl
+      + `<div class="card"><div class="bd smallnote">Only products Zoro ships from its own warehouse in a plain box appear here (<b>is_blind_ship</b>). Items that ship in the manufacturer's own carton are excluded however generic the title looks \u2014 the binders that read as unbranded carry MPN AVE79199, i.e. Avery. Listings are written to <span class="mono">Automations/private_label/out_pl/&lt;SKU&gt;/</span>; nothing here touches Amazon.</div></div>`;
+  },
+};
+SECTIONS.pl = PL;
+$$("#pl-tabs button").forEach(b => b.onclick = () => PL.show(b.dataset.tab));
 $$("#ana-tabs button").forEach(b => b.onclick = () => Ins.show(b.dataset.tab));
 
 /* ═══════════════════════════ ORDERS REPORT (DAY BOOK) ═══════════════════════════════ */

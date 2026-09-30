@@ -39,7 +39,8 @@ OUT = os.path.join(HERE, "out_pl")
 PHOTOS = os.path.join(OUT, "_photos")
 
 sys.path.insert(0, HERE)
-import build_hoank_listings as B          # noqa: E402  — photo fetch, framing, fonts, brand colours
+import build_hoank_listings as B       # noqa: E402  — photo fetch, framing, fonts, brand colours
+import pl_store                        # noqa: E402  — the row the launcher and dashboard read
 
 
 # Attribute names Zoro uses without a group suffix. Longest first, so 'Specific Material' is
@@ -275,6 +276,10 @@ def main():
             for b in bullets:
                 fh.write(f"  • {b}\n")
             fh.write(f"\nDESCRIPTION\n{desc}\n")
+        try:
+            pl_store.mark_built(code, sku, title, bool(main_img))
+        except Exception as e:
+            print(f"  {code}: built, but the DB row was not updated — {type(e).__name__}: {e}")
         made.append((sku, title, main_img))
         print(f"  ✓ {sku}\n      {title[:96]}\n      image: {'yes' if main_img else 'NO PHOTO'}")
 
