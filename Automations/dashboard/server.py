@@ -1268,12 +1268,12 @@ def add_note(body):
 
 
 ALLOWED = {"case_status", "case_type", "case_resolution", "resolved_at", "reminder_at",
-           "reminder_note", "flag_color", "manual_delivered", "comments", "tags"}
+           "reminder_note", "flag_color", "manual_delivered", "comments", "tags", "is_urgent", "urgent"}
 
 _CRM_DDL = ("CREATE TABLE IF NOT EXISTS order_crm("
             "amazon_order_id TEXT PRIMARY KEY, case_status TEXT, case_type TEXT, "
             "case_resolution TEXT, resolved_at TEXT, reminder_at TEXT, reminder_note TEXT, "
-            "flag_color TEXT, manual_delivered TEXT, comments TEXT, tags TEXT, "
+            "flag_color TEXT, manual_delivered TEXT, comments TEXT, tags TEXT, is_urgent TEXT, "
             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
 
 
@@ -1300,6 +1300,8 @@ def update_order(body):
     if not oid:
         return {"ok": False, "error": "order_id required"}
     fields = {k: v for k, v in body.items() if k in ALLOWED}
+    if "urgent" in fields and "is_urgent" not in fields:
+        fields["is_urgent"] = fields.pop("urgent")
     if not fields:
         return {"ok": False, "error": "no valid fields"}
     author = str(body.get("author") or "me")[:60]
@@ -1311,6 +1313,10 @@ def update_order(body):
             c.execute(_CRM_DDL)
             try:                                   # live table predates the tags column
                 c.execute("ALTER TABLE order_crm ADD COLUMN tags TEXT")
+            except Exception:
+                pass
+            try:                                   # live table predates the is_urgent column
+                c.execute("ALTER TABLE order_crm ADD COLUMN is_urgent TEXT")
             except Exception:
                 pass
             try:                                   # previous values → append-only history
@@ -2377,12 +2383,13 @@ def tracker(q):
         flag = cr.get("flag_color") or ""; cs = cr.get("case_status") or ""
         rem = cr.get("reminder_at") or ""; remn = cr.get("reminder_note") or ""
         tags = cr.get("tags") or ""
+        is_urg = cr.get("is_urgent") or cr.get("urgent") or ""
         nc = ncnt.get(k, 0)
-        if not (flag or cs or rem or nc or tags):
+        if not (flag or cs or rem or nc or tags or is_urg):
             continue
         co = c.execute("SELECT account, order_label, asin FROM closing_orders WHERE amazon_order_id=?", (k,)).fetchone()
         out.append({"id": k, "flag": flag, "case_status": cs, "reminder_at": rem, "reminder_note": remn,
-                    "tags": tags, "updated_at": cr.get("updated_at") or "",
+                    "tags": tags, "is_urgent": is_urg, "updated_at": cr.get("updated_at") or "",
                     "notes": nc, "last_note": lasttxt.get(k, ""), "last_note_at": lastn.get(k, ""),
                     "account": co[0] if co else "", "label": co[1] if co else "WB / uncaptured",
                     "asin": co[2] if co else ""})

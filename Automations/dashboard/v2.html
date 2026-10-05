@@ -690,12 +690,12 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
     <section class="sec" id="sec-orders">
       <div class="sec-head"><h1>Orders</h1><span class="sub" id="orders-sub"></span><span class="grow"></span><span class="upd" id="orders-upd"></span><button class="b s" onclick="Orders.load(true)">Refresh</button></div>
       <div class="filters" id="orders-filters">
-        <select id="f-quick" class="in"><option value="">All orders</option><option value="unresolved">Unresolved</option><option value="undelivered">Undelivered</option><option value="refunded">Refunded</option><option value="late">Late</option><option value="incomplete">Incomplete</option></select>
+        <select id="f-quick" class="in"><option value="">All orders</option><option value="unresolved">Unresolved</option><option value="urgent">🚨 Urgent</option><option value="undelivered">Undelivered</option><option value="refunded">Refunded</option><option value="late">Late</option><option value="incomplete">Incomplete</option></select>
         <select id="f-label" class="in"><option value="">Any label</option></select>
         <select id="f-profile" class="in"><option value="">Any profile</option></select>
         <select id="f-state" class="in"><option value="">Any state</option></select>
         <select id="f-tag" class="in"><option value="">Any tag</option></select>
-        <select id="f-flag" class="in"><option value="">Any flag</option><option value="any">Flagged</option><option value="#b42318">🔴 Urgent</option><option value="#eab308">🟡 Yellow</option><option value="#067647">🟢 Green</option><option value="#1d4ed8">🔵 Blue</option><option value="none">No flag</option></select>
+        <select id="f-flag" class="in"><option value="">Any flag</option><option value="any">Flagged</option><option value="#b42318">Red</option><option value="#eab308">Yellow</option><option value="#067647">Green</option><option value="#1d4ed8">Blue</option><option value="none">No flag</option></select>
         <select id="f-datecol" class="in" title="Which date the range applies to"><option value="purchase_date">by purchase date</option><option value="placed_at">by placed date</option><option value="shipped_email_time">by ship date</option></select>
         <button class="b s ghost" onclick="Orders.clearFilters()">Clear</button>
       </div>
@@ -850,7 +850,8 @@ const S = {
   canOps(){ return this.role !== "restricted"; },
 };
 const LABELS = ["Completed","Incomplete","Cancelled","Refunded","Loss","Pending","Manual","NotPlaced"];
-const FLAGS = [["#b42318","Urgent"],["#eab308","Yellow"],["#067647","Green"],["#1d4ed8","Blue"]];
+const FLAGS = [["#b42318","Red"],["#eab308","Yellow"],["#067647","Green"],["#1d4ed8","Blue"]];
+const isUrgentOrder = s => { if (!s) return false; const u = s.is_urgent ?? s.urgent; if (u === "Yes" || u === "1" || u === true || u === 1) return true; return Boolean(s.tags && /\burgent\b/i.test(s.tags)); };
 const CASE_STATUS = ["open","investigating","waiting_customer","waiting_zoro","ask_zoro_refund","resolved","closed"];
 const CASE_TYPE = ["refund","return","late_delivery","wrong_item","damaged","lost","inquiry","other"];
 const PROFILES = ["DM_COUPON","DM_RESELLER","HS_COUPON","HS_RESELLER"];
@@ -1306,6 +1307,7 @@ const Orders = {
   },
   filtered(){
     let rows = this.rows;
+    const qk = $("#f-quick").value; if (qk === "urgent") rows = rows.filter(o => isUrgentOrder(o));
     const st = $("#f-state").value; if (st) rows = rows.filter(o => String(o.ship_state||"").toUpperCase().replace(/\.$/,"") === st);
     const fl = $("#f-flag").value;
     if (fl === "any") rows = rows.filter(o => o.flag_color); else if (fl === "none") rows = rows.filter(o => !o.flag_color); else if (fl) rows = rows.filter(o => (o.flag_color||"").toLowerCase() === fl);
@@ -1375,7 +1377,7 @@ const Drawer = {
     if (!d.found) { $("#dw-head").innerHTML = `<h2>${esc(id)}<button class="b iconb ghost x" onclick="Drawer.close()">✕</button></h2><div class="meta"><a href="${U.sc(id)}" target="_blank" rel="noopener">Seller Central ↗</a></div>`; $("#dw-body").innerHTML = `<div class="card" style="grid-column:1/-1">${U.empty("Order not found in the database", "It may not have been closed or placed yet. Open it in Seller Central.")}</div>`; return; }
     const cp = (v, l) => v ? `<button class="b s ghost" onclick="U.copy('${esc(v)}')" title="copy">${l} <span class="mono">${esc(String(v).length>22?String(v).slice(0,22)+"…":v)}</span></button>` : "";
     const trk = String(s.tracking_ids||"").split(/[;,]/).map(x=>x.trim()).filter(Boolean);
-    const isUrgent = String(s.flag_color||"").toLowerCase() === "#b42318";
+    const isUrgent = isUrgentOrder(s);
     $("#dw-head").innerHTML = `<h2>${U.flagdot(s.flag_color)}${esc(id)}<button class="copy" onclick="U.copy('${esc(id)}')" title="copy order id"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>${U.lb(s.order_label)}${s.pending?`<span class="pill info">awaiting closing</span>`:""}${isUrgent?`<span class="pill bad" style="font-weight:700">🚨 URGENT</span>`:""}<button class="b iconb ghost x" onclick="Drawer.close()" title="Close (Esc)">✕</button></h2>
       <div class="meta"><span><b>Account</b>${esc(s.account||"—")}</span><span><b>Profile</b>${esc(s.profile_name||"—")}</span><span><b>Status</b>${esc(s.order_status||"—")}</span><span><b>Buyer</b>${esc(s.ship_name||"—")} · ${esc(s.ship_city||"")}${s.ship_state?", "+esc(s.ship_state):""} ${esc(s.ship_postal_code||"")}</span>${s.case_status?`<span><b>Case</b><span class="pill ${/resolved|closed/.test(s.case_status)?"ok":"warn"}">${esc(s.case_status)}${s.case_type?" · "+esc(s.case_type):""}</span></span>`:""}</div>
       <div class="actions"><button class="b s urgent ${isUrgent?'on':''}" onclick="Drawer.toggleUrgent()" title="${isUrgent?'Urgent order (click to clear)':'Mark order as Urgent'}">🚨 ${isUrgent?'Urgent (Active)':'Urgent'}</button><a class="b s" href="${U.sc(id)}" target="_blank" rel="noopener">Seller Central ↗</a>${s.asin?`<a class="b s" href="https://www.amazon.com/dp/${esc(s.asin)}" target="_blank" rel="noopener">Amazon ${esc(s.asin)} ↗</a>`:""}${cp(s.wb_order_id,"WB")}${trk.map(t=>cp(t,"Tracking")).join("")}${s.sku?cp(s.sku,"SKU"):""}<button class="b s ghost" onclick="Drawer.copySummary()">Copy summary</button></div>`;
@@ -1407,15 +1409,16 @@ const Drawer = {
   casePanel(s){
     const opt = (list, cur, labelize) => { const l = list.slice(); if (cur && !l.includes(cur)) l.push(cur); return `<option value="">—</option>`+l.map(v=>`<option value="${esc(v)}" ${v===cur?"selected":""}>${esc(labelize?v.replace(/_/g," "):v)}</option>`).join(""); };
     const tags = String(s.tags||"").split(",").map(x=>x.trim()).filter(Boolean);
-    const isUrgent = String(s.flag_color||"").toLowerCase() === "#b42318";
+    const isUrgent = isUrgentOrder(s);
     return `
       <div class="caserow"><span class="l">Status</span><select class="in s" id="c-status">${opt(CASE_STATUS, s.case_status||"", true)}</select></div>
       <div class="caserow"><span class="l">Type</span><select class="in s" id="c-type">${opt(CASE_TYPE, s.case_type||"", true)}</select></div>
-      <div class="caserow"><span class="l">Flag</span><div class="flags" style="align-items:center"><button class="b s urgent ${isUrgent?'on':''}" id="c-urgent-toggle" type="button" title="${isUrgent?'Order marked Urgent (click to clear)':'Click to mark Urgent'}">🚨 Urgent</button>${FLAGS.map(([c,n])=>`<button class="flag ${String(s.flag_color||"").toLowerCase()===c?"on":""}" style="--c:${c}" data-flag="${c}" title="${n}"></button>`).join("")}<button class="flag none ${!s.flag_color?"on":""}" data-flag="" title="No flag"></button></div></div>
+      <div class="caserow"><span class="l">Flag</span><div class="flags">${FLAGS.map(([c,n])=>`<button class="flag ${String(s.flag_color||"").toLowerCase()===c?"on":""}" style="--c:${c}" data-flag="${c}" title="${n}"></button>`).join("")}<button class="flag none ${!s.flag_color?"on":""}" data-flag="" title="No flag"></button></div></div>
+      <div class="caserow"><span class="l">Urgent</span><div class="row"><button class="b s urgent ${isUrgent?'on':''}" id="c-urg-toggle" type="button" title="${isUrgent?'Order is marked Urgent (click to clear)':'Click to mark this order as Urgent'}">🚨 ${isUrgent ? 'Marked Urgent' : 'Mark Urgent'}</button><span class="muted small">${isUrgent ? 'high-priority order' : 'mark this order as urgent'}</span></div></div>
       <div class="caserow"><span class="l">Tags</span><div class="tagbox" id="c-tags">${tags.map(t=>`<span class="tag">${esc(t)}<button data-rm="${esc(t)}" title="remove">×</button></span>`).join("")}<input id="c-tagin" list="taglist" placeholder="add tag…"><datalist id="taglist">${(S.facets.tags||[]).map(t=>`<option value="${esc(t)}">`).join("")}</datalist></div></div>
       <div class="caserow"><span class="l">Delivered</span><div class="row"><button class="toggle ${s.manual_delivered==="Yes"?"on":""}" id="c-deliv" title="manually mark delivered"></button><span class="muted small">manually mark as delivered</span></div></div>
       <div class="caserow"><span class="l">Resolution</span><div><textarea class="in" id="c-res" placeholder="How was it resolved? (e.g. Zoro reshipped, refund approved, buyer kept item)">${esc(s.case_resolution||"")}</textarea><div class="savebar"><button class="b s" id="c-res-save">Save resolution</button></div></div></div>
-      <div class="caserow"><span class="l">Comments</span><div><textarea class="in" id="c-com" placeholder="Working comments on this order">${esc(s.comments||"")}</textarea><div class="savebar" style="display:flex;gap:8px;align-items:center"><button class="b s" id="c-com-save">Save comments</button><button class="b s urgent" id="c-com-urgent" type="button" title="Save comments and mark order as Urgent">🚨 Urgent</button></div></div></div>`;
+      <div class="caserow"><span class="l">Comments</span><div><textarea class="in" id="c-com" placeholder="Working comments on this order">${esc(s.comments||"")}</textarea><div class="savebar" style="display:flex;gap:8px;align-items:center"><button class="b s" id="c-com-save">Save comments</button><button class="b s urgent ${isUrgent?'on':''}" id="c-com-urgent" type="button" title="${isUrgent?'Order is marked Urgent (click to toggle)':'Save comment and mark as Urgent'}">🚨 Urgent</button></div></div></div>`;
   },
   bindCase(s){
     $("#c-status").onchange = e => this.save({case_status: e.target.value});
@@ -1424,18 +1427,18 @@ const Drawer = {
     $("#c-deliv").onclick = e => { const on = !e.currentTarget.classList.contains("on"); this.save({manual_delivered: on?"Yes":""}); };
     $("#c-res-save").onclick = () => this.save({case_resolution: $("#c-res").value.trim()});
     $("#c-com-save").onclick = () => this.save({comments: $("#c-com").value.trim()});
-    const curUrg = String(s.flag_color||"").toLowerCase() === "#b42318";
-    const markUrgent = (forceOn = false) => {
-      const targetFlag = forceOn ? "#b42318" : (curUrg ? "" : "#b42318");
-      const payload = {flag_color: targetFlag};
+    const curUrg = isUrgentOrder(s);
+    const saveUrgent = (forceOn = false) => {
+      const targetVal = forceOn ? "Yes" : (curUrg ? "" : "Yes");
+      const payload = {is_urgent: targetVal};
       const com = $("#c-com") ? $("#c-com").value.trim() : "";
       if (com) payload.comments = com;
       this.save(payload);
     };
-    const urgBtn = $("#c-urgent-toggle");
-    if (urgBtn) urgBtn.onclick = () => markUrgent();
+    const urgBtn = $("#c-urg-toggle");
+    if (urgBtn) urgBtn.onclick = () => saveUrgent();
     const comUrg = $("#c-com-urgent");
-    if (comUrg) comUrg.onclick = () => markUrgent(true);
+    if (comUrg) comUrg.onclick = () => saveUrgent(true);
     const tagsNow = () => $$("#c-tags .tag").map(t => t.firstChild.textContent.trim());
     $$("#c-tags [data-rm]").forEach(b => b.onclick = () => this.save({tags: tagsNow().filter(t => t !== b.dataset.rm).join(", ")}));
     const inp = $("#c-tagin");
@@ -1445,8 +1448,8 @@ const Drawer = {
   },
   async toggleUrgent(){
     const s = (this.data && this.data.summary) || {};
-    const curUrg = String(s.flag_color||"").toLowerCase() === "#b42318";
-    const payload = {flag_color: curUrg ? "" : "#b42318"};
+    const curUrg = isUrgentOrder(s);
+    const payload = {is_urgent: curUrg ? "" : "Yes"};
     const com = $("#c-com") ? $("#c-com").value.trim() : "";
     if (com && com !== (s.comments||"").trim()) payload.comments = com;
     await this.save(payload);
@@ -1469,8 +1472,8 @@ const Drawer = {
       const r = await POST("/api/note", {order_id: this.id, note});
       if (r.ok === false) throw new Error(r.error||"failed");
       if (urgent) {
-        await POST("/api/order_update", {order_id: this.id, flag_color: "#b42318"});
-        Orders.patch(this.id, {flag_color: "#b42318"});
+        await POST("/api/order_update", {order_id: this.id, is_urgent: "Yes"});
+        Orders.patch(this.id, {is_urgent: "Yes"});
       }
       ta.value = "";
       Toast.ok(urgent ? "Note posted & marked Urgent" : "Note posted");
@@ -1763,7 +1766,7 @@ const Att = {
                     : U.empty("No decisions recorded yet", "the coupon profiles write here when they reach unlabelled orders; reseller profiles when they meet a Deciding ASIN")}`;
   },
   /* ── tracker: flagged / commented / follow-up orders, grouped by day of last activity ── */
-  trk: {group:true, follow:true, flags:new Set(), tags:new Set(), status:"", q:""},
+  trk: {group:true, follow:true, urgent:false, flags:new Set(), tags:new Set(), status:"", q:""},
   r_delivery(d){
     const late = d.late||[], st = d.stalled||[], un = d.untracked||[], zc = d.zoro_cancelled||[];
     $("#att-c-delivery").textContent = (late.length+st.length+zc.length)||"";
@@ -1782,12 +1785,13 @@ const Att = {
     return `<div class="row trk-row"><input class="in s" id="trk-q" placeholder="filter: order, WB, ASIN, tag, note, account…" value="${esc(this.trk.q)}" oninput="Att.trk.q=this.value;Att.trkQ()" style="min-width:260px"><div id="trk-ctl" class="row grow" style="gap:6px">${this.trkControls(items)}</div></div>
       <div id="trk-chips" class="row trk-row">${this.trkChips(items)}</div><div id="trk-list">${this.trkList(items)}</div>`;
   },
-  trkHay(x){ return x._h || (x._h = [x.id,x.account,x.label,x.asin,x.tags,x.case_status,x.reminder_note,x.last_note].join(" ").toLowerCase()); },
+  trkHay(x){ return x._h || (x._h = [x.id,x.account,x.label,x.asin,x.tags,x.case_status,x.reminder_note,x.last_note,isUrgentOrder(x)?"urgent":""].join(" ").toLowerCase()); },
   trkTags(x){ return String(x.tags||"").split(",").map(s=>s.trim()).filter(Boolean); },
   trkAct(x){ const ds = [x.updated_at, x.last_note_at].map(v=>U.parseDt(v)).filter(Boolean); return ds.length ? new Date(Math.max(...ds.map(d=>d.getTime()))) : null; },
   trkRows(items){
     const t = this.trk; const q = t.q.trim().toLowerCase();
     return items.filter(x => (!q || this.trkHay(x).includes(q))
+      && (!t.urgent || isUrgentOrder(x))
       && (!t.flags.size || t.flags.has(String(x.flag||"").toLowerCase()))
       && (!t.tags.size || this.trkTags(x).some(g => t.tags.has(g)))
       && (!t.status || (t.status==="open" ? (!!x.case_status && !/resolved|closed/i.test(x.case_status)) : t.status==="none" ? !x.case_status : x.case_status===t.status)));
@@ -1807,11 +1811,13 @@ const Att = {
     const t = this.trk; const q = t.q.trim().toLowerCase(); const base = items.filter(x => !q || this.trkHay(x).includes(q));
     const flagN = {}; base.forEach(x => { const k = String(x.flag||"").toLowerCase(); flagN[k] = (flagN[k]||0)+1; });
     const tagN = {}; base.forEach(x => this.trkTags(x).forEach(g => tagN[g] = (tagN[g]||0)+1));
+    const urgentN = base.filter(x => isUrgentOrder(x)).length;
     const chip = (c, n) => `<button class="chip btn ${t.flags.has(c)?"on":""}" onclick="Att.trkToggle('flags','${c}')"><span class="flagdot" style="background:${c||"var(--bg4)"};margin-right:0"></span>${n} <b>${U.int(flagN[c]||0)}</b></button>`;
     const tags = Object.entries(tagN).sort((a,b)=>b[1]-a[1]).slice(0,24);
     return FLAGS.map(([c,n]) => chip(c,n)).join("") + chip("","No flag")
+      + `<button class="chip btn urgent ${t.urgent?"on":""}" onclick="Att.trkToggleUrgent()" style="margin-left:6px" title="Filter by Urgent orders"><span style="margin-right:2px">🚨</span>Urgent <b>${U.int(urgentN)}</b></button>`
       + (tags.length ? `<span class="muted small" style="margin-left:6px">tags:</span>` + tags.map(([g,n]) => `<button class="chip btn ${t.tags.has(g)?"on":""}" onclick="Att.trkToggle('tags',${esc(JSON.stringify(g))})">${esc(g)} <b>${n}</b></button>`).join("") : "")
-      + ((t.flags.size||t.tags.size||t.status||t.q) ? `<button class="chip btn" onclick="Att.trkClear()">✕ clear filters</button>` : "");
+      + ((t.flags.size||t.tags.size||t.status||t.q||t.urgent) ? `<button class="chip btn" onclick="Att.trkClear()">✕ clear filters</button>` : "");
   },
   trkList(items){
     const rows = this.trkRows(items); const t = this.trk; const today = localKey(new Date());
@@ -1828,7 +1834,7 @@ const Att = {
       const dk = x.reminder_at ? String(x.reminder_at).slice(0,10) : ""; const over = dk && dk < today, todayDue = dk===today; const st = x.case_status||""; const opts = CASE_STATUS.concat(st&&!CASE_STATUS.includes(st)?[st]:[]); const a = this.trkAct(x); const note = String(x.last_note||""); const rn = String(x.reminder_note||"");
       return `<tr data-id="${esc(x.id)}">
         <td><button class="trk-flag ${x.flag?"set":""}" style="--c:${esc(x.flag||"transparent")}" title="${x.flag?"change flag":"set a flag"}" onclick="Att.trkFlagMenu(event, '${esc(x.id)}')">${x.flag?"":"+"}</button></td>
-        <td class="mono"><span class="olink" data-open="${esc(x.id)}">${esc(x.id)}</span></td>
+        <td class="mono"><span class="olink" data-open="${esc(x.id)}">${esc(x.id)}</span>${isUrgentOrder(x)?' <span class="pill bad" style="font-weight:700;font-size:10.5px;padding:1px 6px">🚨 URGENT</span>':''}</td>
         <td>${esc(x.account||"")}</td><td>${U.lb(x.label)}</td>
         <td class="mono">${x.asin?`<span class="olink" onclick="Ins.drill('${esc(x.asin)}')">${esc(x.asin)}</span>`:""}</td>
         <td>${U.tags(x.tags)}</td>
@@ -1846,16 +1852,21 @@ const Att = {
   },
   trkQ: U.debounce(() => Att.trkRefresh(), 220),
   trkSet(k, v){ this.trk[k] = v; this.trkRefresh(); },
+  trkToggleUrgent(){ this.trk.urgent = !this.trk.urgent; this.trkRefresh(); },
   trkToggle(set, v){ const s = this.trk[set]; if (s.has(v)) s.delete(v); else s.add(v); this.trkRefresh(); },
-  trkClear(){ this.trk.flags.clear(); this.trk.tags.clear(); this.trk.status = ""; this.trk.q = ""; const q = $("#trk-q"); if (q) q.value = ""; this.trkRefresh(); },
+  trkClear(){ this.trk.flags.clear(); this.trk.tags.clear(); this.trk.status = ""; this.trk.q = ""; this.trk.urgent = false; const q = $("#trk-q"); if (q) q.value = ""; this.trkRefresh(); },
   trkFlagMenu(ev, id){
     ev.stopPropagation(); this.trkCloseMenu();
+    const it = (this.cache.tracker && this.cache.tracker.items || []).find(x => x.id === id);
+    const isUrg = isUrgentOrder(it);
     const m = document.createElement("div"); m.className = "trk-menu"; m.id = "trk-menu";
-    m.innerHTML = `<button class="b s urgent" style="font-size:11px;padding:3px 8px;margin-right:4px;cursor:pointer" data-flag="#b42318" title="Mark Urgent">🚨 Urgent</button>`
-      + FLAGS.map(([c,n]) => `<button class="flag" style="--c:${c}" title="${n}" data-flag="${c}"></button>`).join("") + `<button class="flag none" title="No flag" data-flag=""></button>`;
+    m.innerHTML = FLAGS.map(([c,n]) => `<button class="flag" style="--c:${c}" title="${n}" data-flag="${c}"></button>`).join("") + `<button class="flag none" title="No flag" data-flag=""></button>`
+      + `<button class="b s urgent ${isUrg?'on':''}" style="font-size:11px;padding:3px 8px;margin-left:4px;cursor:pointer" data-urg="toggle" title="Toggle Urgent">🚨 ${isUrg?'Urgent':'Mark Urgent'}</button>`;
     document.body.appendChild(m);
     const r = ev.currentTarget.getBoundingClientRect(); m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8))+"px"; m.style.top = Math.min(r.bottom+4, innerHeight - m.offsetHeight - 8)+"px";
-    $$("button", m).forEach(b => b.onclick = e => { e.stopPropagation(); this.trkCloseMenu(); this.trkUpdate(id, {flag_color: b.dataset.flag}); });
+    $$("button[data-flag]", m).forEach(b => b.onclick = e => { e.stopPropagation(); this.trkCloseMenu(); this.trkUpdate(id, {flag_color: b.dataset.flag}); });
+    const uBtn = m.querySelector("[data-urg]");
+    if (uBtn) uBtn.onclick = e => { e.stopPropagation(); this.trkCloseMenu(); this.trkUpdate(id, {is_urgent: isUrg ? "" : "Yes"}); };
     this._trkDoc = () => this.trkCloseMenu(); setTimeout(() => document.addEventListener("click", this._trkDoc, {once:true}), 0);
   },
   trkCloseMenu(){ const m = $("#trk-menu"); if (m) m.remove(); if (this._trkDoc) { document.removeEventListener("click", this._trkDoc); this._trkDoc = null; } },

@@ -630,7 +630,7 @@ def order_timeline(db: str, order_id: str) -> dict:
                                      "ship_street", "ship_city", "ship_state", "ship_postal_code", "purchase_date",
                                      "ship_by_date", "deliver_by_date", "return_requested", "refund_done",
                                      "case_status", "case_type", "case_resolution", "flag_color", "tags", "comments",
-                                     "manual_review", "placed_via")}
+                                     "is_urgent", "manual_review", "placed_via")}
         summary.update({k: v for k, v in crm.items() if v not in (None, "") and k != "amazon_order_id"})
         summary["placed_at"] = p.get("placed_at")
         summary["pending"] = not bool(o) or o.get("order_label") == "Pending"
