@@ -131,7 +131,7 @@ ZORO_SELECT_SHIPPING_FLAT = ZORO_SMALL_ORDER_FEE  # legacy alias (still imported
 # Shipping filler — cheap SKU to add when cart is close to $50 free shipping threshold
 # Adding this item costs less than the small-order fee it saves
 SHIPPING_FILLER_SKU = "G500699916"       # e.g. $0.71 coupling
-SHIPPING_FILLER_PRICE = 0.71             # Expected unit price (for qty calc)
+SHIPPING_FILLER_PRICE = 0.78             # Expected unit price (for qty calc) — Zoro charged 0.78 on 6 Oct 2026
 FREE_SHIPPING_THRESHOLD = 50.0           # Zoro free shipping threshold
 FILLER_TRIGGER_MIN = 47.0                # Only add filler if cart is above this
 FILLER_MAX_QTY = 5                       # Safety cap

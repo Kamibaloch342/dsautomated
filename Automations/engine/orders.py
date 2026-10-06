@@ -1045,7 +1045,8 @@ def _deciding_verdict(raw_cart_cost, real_cost, earnings, promo_bad, all_zoro_se
                                      small-order fee) is below DECIDING_MIN_MARGIN;
                                      otherwise stay.
     Returns {"route": bool, "reason": str, "est_margin": float | None}."""
-    est_cost = real_cost + (small_fee if real_cost < free_threshold else 0.0)
+    # Shipping follows the LIST total (raw_cart_cost); the Select discount does not cost a fee.
+    est_cost = real_cost + (small_fee if raw_cart_cost < free_threshold else 0.0)
     est_margin = ((earnings - est_cost) / est_cost) if (earnings and est_cost > 0) else None
     if promo_bad:
         return {"route": False, "est_margin": est_margin,
@@ -3214,7 +3215,7 @@ def _estimate_best_coupon_pct(priority_coupons_with_pct, zoro_code, asin_coupon_
     return None
 
 
-def _evaluate_order_strategy(resolved_items, priority_coupons, unit_price):
+def _evaluate_order_strategy(resolved_items, priority_coupons, unit_price, list_total=None):
     """Estimate profit with the best percentage coupon.  
     
     Splitting is NO LONGER pre-computed here.  Splits are decided at 
@@ -3251,6 +3252,11 @@ def _evaluate_order_strategy(resolved_items, priority_coupons, unit_price):
         return strategy
 
     total = unit_price * final_qty
+    # Zoro decides the $50 free-shipping threshold on the LIST price, before the Zoro Select
+    # discount and before any coupon. Proven on 1,251 orders (list >= $50, under $50 after the
+    # discount): every one shipped free. `unit_price` here is already Select-discounted on
+    # reseller profiles, so the caller passes the list total separately.
+    ship_basis = list_total if list_total else total
 
     # ── Find best percentage coupon for profit estimation ───────
     best_pct = None
@@ -3259,14 +3265,13 @@ def _evaluate_order_strategy(resolved_items, priority_coupons, unit_price):
             if best_pct is None or c["pct"] > best_pct["pct"]:
                 best_pct = c
 
-    ship = ZORO_SMALL_ORDER_FEE if total < 50.0 else 0.0
+    ship = ZORO_SMALL_ORDER_FEE if ship_basis < 50.0 else 0.0
     strategy["orders"] = [{"qty": final_qty}]
     strategy["estimated_shipping"] = ship
 
     if best_pct:
         single_pct_cost = total * (1 - best_pct["pct"] / 100.0)
-        single_ship = ZORO_SMALL_ORDER_FEE if single_pct_cost < 50.0 else 0.0
-        single_pct_cost += single_ship
+        single_pct_cost += ship          # a coupon never makes Zoro charge shipping — list decides
         strategy["estimated_cost"] = single_pct_cost
         strategy["discount_description"] = f"Single order + {best_pct['code']} ({best_pct['pct']:.0f}%)"
         strategy["preferred_coupon"] = best_pct["code"]
@@ -3966,7 +3971,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 
     # ── Evaluate optimal coupon strategy ────────────────────────
     strategy = _evaluate_order_strategy(
-        resolved_items, priority_coupons_with_pct, primary_item.get("unit_price", 0))
+        resolved_items, priority_coupons_with_pct, primary_item.get("unit_price", 0),
+        list_total=raw_cart_cost)
     orders = strategy["orders"]
     is_split_order = len(orders) > 1
     split_count = len(orders)
@@ -4064,7 +4070,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             # Strategy found a cheaper cost (coupon applied)
             real_cost = estimated_total_cost - estimated_shipping
         else:
-            estimated_shipping = ZORO_SMALL_ORDER_FEE if real_cost < 50.0 else 0.0
+            # list price decides shipping, not the Select-discounted cost (WB1228729288)
+            estimated_shipping = ZORO_SMALL_ORDER_FEE if raw_cart_cost < 50.0 else 0.0
             estimated_total_cost = real_cost + estimated_shipping
 
     # ── Filler-aware shipping: if cart is close to $50, adding filler unlocks free shipping ──
@@ -4073,8 +4080,11 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             SHIPPING_FILLER_SKU, SHIPPING_FILLER_PRICE,
             FREE_SHIPPING_THRESHOLD, FILLER_TRIGGER_MIN
         )
-        if SHIPPING_FILLER_SKU and FILLER_TRIGGER_MIN <= real_cost < FREE_SHIPPING_THRESHOLD:
-            gap = FREE_SHIPPING_THRESHOLD - real_cost
+        # Zoro measures the $50 on the list total. A Zoro Select cart listed at $54.75 is $49.27
+        # after the reseller discount and already ships free — topping it up with filler was
+        # money spent for nothing (WB1228729288, 6 Oct 2026).
+        if SHIPPING_FILLER_SKU and FILLER_TRIGGER_MIN <= raw_cart_cost < FREE_SHIPPING_THRESHOLD:
+            gap = FREE_SHIPPING_THRESHOLD - raw_cart_cost
             import math
             filler_qty = math.ceil(gap / SHIPPING_FILLER_PRICE)
             filler_cost = filler_qty * SHIPPING_FILLER_PRICE

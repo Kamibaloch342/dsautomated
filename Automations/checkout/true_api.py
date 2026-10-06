@@ -1139,8 +1139,13 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
 
 
 def _maybe_add_shipping_filler(driver, cart_id):
-    """If cart subtotal is close to $50 but under, add cheap filler SKU to unlock free shipping.
-    Returns (added, filler_qty, filler_price) or (False, 0, 0)."""
+    """If the cart's LIST subtotal is close to $50 but under, add a cheap filler SKU to unlock
+    free shipping. Returns (added, filler_qty, filler_price) or (False, 0, 0).
+
+    Zoro measures the $50 on the price before discounts. The cart's priceTotal is after the
+    Zoro Select discount, so it is the wrong number: WB1228729288 listed at $54.75, showed
+    $49.27 after Select, and got 2 filler units it did not need. discountTotal is what the
+    Select discount took off, so priceTotal + discountTotal is the figure Zoro checks."""
     from utils.config import (
         SHIPPING_FILLER_SKU, SHIPPING_FILLER_PRICE,
         FREE_SHIPPING_THRESHOLD, FILLER_TRIGGER_MIN, FILLER_MAX_QTY
@@ -1152,12 +1157,20 @@ def _maybe_add_shipping_filler(driver, cart_id):
     if not cart:
         return False, 0, 0
 
-    # Use priceTotal (subtotal before tax/shipping)
+    # priceTotal is after the Select discount; add the discount back to get the list subtotal.
+    # The filler runs before any coupon is applied, so discountTotal is only the Select discount.
     subtotal = float(cart.get("priceTotal", 0) or cart.get("subtotal", 0) or 0)
-    if subtotal < FILLER_TRIGGER_MIN or subtotal >= FREE_SHIPPING_THRESHOLD:
+    discount = float(cart.get("discountTotal", 0) or 0)
+    list_subtotal = subtotal + discount
+    if list_subtotal >= FREE_SHIPPING_THRESHOLD:
+        if subtotal < FREE_SHIPPING_THRESHOLD:
+            print(f"   [FILLER] Not needed: ${subtotal:.2f} after discount, but ${list_subtotal:.2f} "
+                  f"list — Zoro ships free on the list price")
+        return False, 0, 0
+    if list_subtotal < FILLER_TRIGGER_MIN:
         return False, 0, 0
 
-    gap = FREE_SHIPPING_THRESHOLD - subtotal
+    gap = FREE_SHIPPING_THRESHOLD - list_subtotal
     filler_qty = min(math.ceil(gap / SHIPPING_FILLER_PRICE), FILLER_MAX_QTY)
     if filler_qty < 1:
         return False, 0, 0
@@ -1172,7 +1185,8 @@ def _maybe_add_shipping_filler(driver, cart_id):
     ok, actual_price = _add_item_api(driver, SHIPPING_FILLER_SKU, filler_qty)
     if ok:
         print(f"   [FILLER] Added {filler_qty}x {SHIPPING_FILLER_SKU} @ ${actual_price:.2f} "
-              f"(subtotal ${subtotal:.2f} → ${subtotal + actual_price * filler_qty:.2f}, shipping now FREE)")
+              f"(list subtotal ${list_subtotal:.2f} → ${list_subtotal + actual_price * filler_qty:.2f}, "
+              f"shipping now FREE)")
         return True, filler_qty, actual_price
     else:
         print(f"   [FILLER] Failed to add filler {SHIPPING_FILLER_SKU}")
