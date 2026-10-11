@@ -2797,6 +2797,11 @@ class H(BaseHTTPRequestHandler):
                 _csv, _name = _mr.month_csv(q)
                 return self._send(_csv.encode("utf-8-sig"), ctype="text/csv; charset=utf-8",
                                   hdrs=[("Content-Disposition", f'attachment; filename="{_name}"')])
+            if p == "/api/sales_drops":
+                # Attention → Sales drops: good sellers whose orders fell (dashboard/sales_drops.py)
+                import sales_drops as _sd
+                _sd.DB = DB
+                return self._send(_sd.sales_drops(q))
             if p in ("/api/auto_refunds", "/api/auto_refunds.csv"):
                 # Auto Refunds tab — Amazon's "Refund Initiated" e-mails, day by day (dashboard/auto_refunds.py)
                 import auto_refunds as _ar
