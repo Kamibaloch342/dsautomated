@@ -4,8 +4,19 @@
     {
       "name": "hunter-portal",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["Amazon_DS_Hunting/portal/server.py"],
+      "runtimeArgs": [
+        "Amazon_DS_Hunting/portal/server.py"
+      ],
       "port": 5055
+    },
+    {
+      "name": "dashboard-dev",
+      "runtimeExecutable": "/Users/kamibaloch342/.zuhra/venv/bin/python",
+      "runtimeArgs": [
+        "/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/Automations/dashboard/server.py",
+        "8891"
+      ],
+      "port": 8891
     }
   ]
 }

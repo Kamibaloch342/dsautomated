@@ -360,6 +360,15 @@ html[data-theme="light"] .console,html:not([data-theme]) .console{background:#09
 .more a span{color:var(--muted);font-size:12px;font-weight:500}
 .banner{padding:10px 14px;border-radius:9px;background:var(--amber-bg);color:var(--amber);font-size:12.5px;font-weight:600;margin-bottom:14px;border:1px solid color-mix(in srgb,var(--amber) 25%,transparent)}
 .filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+table.t tr.dayhd td{background:var(--bg3);border-top:1px solid var(--line2);padding:9px 12px;font-size:12.5px;color:var(--text2)}
+table.t tr.dayhd td b{color:var(--text);margin-right:10px}
+table.t tr.dayhd .dsum{font-variant-numeric:tabular-nums}
+table.t tr.dayhd .dsplit{color:var(--muted);margin-left:12px;font-size:12px;font-variant-numeric:tabular-nums}
+table.t tr.dayhd.none td{background:transparent;color:var(--muted2);padding:4px 12px;font-size:11.5px}
+.ref-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.ref-chips .pill{cursor:pointer;border:1px solid transparent}
+.ref-chips .pill.on{border-color:currentColor}
+.ref-tbl td.num{font-variant-numeric:tabular-nums}
 .filters select,.filters input{padding:7px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--bg2);color:var(--text);font-size:12.5px;font-weight:500}
 .sevdot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
 .sev-high .sevdot{background:var(--red)}.sev-med .sevdot{background:var(--amber)}.sev-low .sevdot{background:var(--muted2)}
@@ -647,6 +656,7 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
     <button class="nav" data-nav="tracker"><svg viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg><span>Tracker</span><em class="cnt" id="cnt-tracker"></em></button>
     <button class="nav" data-nav="ops"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>Ops</span><em class="cnt" id="cnt-ops"></em></button>
     <button class="nav" data-nav="attention"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9L2.5 17.5A2 2 0 0 0 4.2 20.5h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg><span>Attention</span><em class="cnt" id="cnt-attention"></em></button>
+    <button class="nav" data-nav="refunds"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg><span>Auto Refunds</span><em class="cnt" id="cnt-refunds"></em></button>
     <button class="nav" data-nav="insights"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg><span>Analytics</span></button>
     <button class="nav" data-nav="pl"><svg viewBox="0 0 24 24"><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></svg><span>Private label</span><em class="cnt" id="cnt-pl"></em></button>
     <button class="nav" data-nav="reminders" id="nav-reminders"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M5 3L2 6M19 3l3 3"/></svg><span>Reminders</span><em class="cnt" id="cnt-reminders"></em></button>
@@ -729,6 +739,16 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
       <div class="sec-head"><h1>Attention</h1><span class="sub">severe money leaks, late and stalled deliveries, placer blockers and bot decisions</span><span class="grow"></span><span class="upd" id="att-upd"></span><button class="b s" onclick="Att.load(true)">Refresh</button></div>
       <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="delivery">Delivery<span class="cnt" id="att-c-delivery"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="log">Supervisor log<span class="cnt" id="att-c-log"></span></button></div>
       <div id="att-body"><span class="skel"></span><span class="skel"></span></div>
+    </section>
+
+    <section class="sec" id="sec-refunds">
+      <div class="sec-head"><h1>Auto Refunds</h1><span class="sub" id="ref-sub">Amazon's “Refund Initiated” e-mails for both stores, day by day</span><span class="grow"></span><span class="upd" id="ref-upd"></span><button class="b s" onclick="Ref.csv()" title="Download every refund in this view">CSV</button><button class="b s" onclick="Ref.load(true)">Refresh</button></div>
+      <div class="filters" id="ref-filters">
+        <select id="ref-res" aria-label="Who refunded"><option value="">Anyone refunded</option></select>
+        <select id="ref-ret" aria-label="Return"><option value="">Returned or not</option><option value="yes">Return requested</option><option value="no">No return requested</option></select>
+        <input type="search" id="ref-q" placeholder="Order, ASIN, SKU, product, customer, WB…" style="min-width:240px" aria-label="Search refunds">
+      </div>
+      <div id="ref-body"><span class="skel"></span><span class="skel"></span></div>
     </section>
 
     <section class="sec" id="sec-insights">
@@ -2137,11 +2157,11 @@ const PL = {
     // scale, not a forecast — the point is which rows are worth the listing effort at all.
     const pot = rows.reduce((a, r) => a + (r.margin_unit || 0) * (r.monthly_sold || 0) * 0.01, 0);
     const kpis = `<div class="kpis">
-      <div class="kpi"><b>${U.int(rows.length)}</b><span>products</span></div>
-      <div class="kpi"><b>${U.int(rows.reduce((a, r) => a + (r.monthly_sold || 0), 0))}</b><span>comparable units / month</span></div>
-      <div class="kpi"><b>${U.money(pot, 0)}</b><span>margin / month at 1% capture</span></div>
-      <div class="kpi"><b>${U.int(rows.filter(r => r.image_ok).length)}</b><span>with a main image</span></div>
-      <div class="kpi"><b>${U.int(rows.reduce((a, r) => a + (r.ai_images || 0), 0))}</b><span>secondary images</span></div>
+      <div class="kpi"><div class="l">Products</div><div class="v">${U.int(rows.length)}</div></div>
+      <div class="kpi"><div class="l">Comparable units / month</div><div class="v">${U.int(rows.reduce((a, r) => a + (r.monthly_sold || 0), 0))}</div></div>
+      <div class="kpi"><div class="l">Margin / month at 1% capture</div><div class="v">${U.money(pot, 0)}</div></div>
+      <div class="kpi"><div class="l">With a main image</div><div class="v">${U.int(rows.filter(r => r.image_ok).length)}</div></div>
+      <div class="kpi"><div class="l">Secondary images</div><div class="v">${U.int(rows.reduce((a, r) => a + (r.ai_images || 0), 0))}</div></div>
     </div>`;
 
     const pill = st => st === "built" ? '<span class="pill ok">built</span>'
@@ -2172,6 +2192,124 @@ const PL = {
   },
 };
 SECTIONS.pl = PL;
+
+/* ── Auto Refunds ─────────────────────────────────────────────────────────────
+   Every "Refund Initiated for Order" e-mail Amazon sent — HOANK's to qurtdis,
+   Hathoro's to abecomllc26 — grouped by Seller Central day (US/Pacific), each
+   joined to the order it refunds. Live as the Gmail archive: the hourly sync
+   brings new ones in. A row opens the order drawer, where a case, flag or note
+   is how a refund gets worked. Server: dashboard/auto_refunds.py. ── */
+const Ref = {
+  cache: null, f: {resolution: "", returned: "", q: ""}, _bound: false, _t: null, _seq: 0,
+  RES: {"Customer Services": "info", "Seller Issued Refund": "purple", "Returnless Refund": "warn", "A-to-Z Guarantee Claim": "bad"},
+  start(){ this.bind(); this.load(); },
+  onFilter(){ this.load(true); },          // the top bar's store switch and date range
+  qs(){
+    // Store and dates come from the top bar, like every other tab; with no dates set the
+    // server shows the 1st of last month → today (Pacific).
+    const p = new URLSearchParams();
+    if (S.account && S.account !== "All") p.set("store", S.account);
+    if (S.from) p.set("from", S.from);
+    if (S.to) p.set("to", S.to);
+    Object.entries(this.f).forEach(([k, v]) => { if (v) p.set(k, v); });
+    return p.toString();
+  },
+  bind(){
+    if (this._bound) return; this._bound = true;
+    const on = (id, k, ev) => { const el = $("#" + id); if (el) el.addEventListener(ev || "change", () => this.set(k, el.value)); };
+    on("ref-res", "resolution"); on("ref-ret", "returned");
+    const q = $("#ref-q");
+    if (q) q.addEventListener("input", () => { clearTimeout(this._t); this._t = setTimeout(() => this.set("q", q.value.trim()), 300); });
+    $("#ref-body").addEventListener("click", e => {
+      const chip = e.target.closest("[data-res]");
+      if (chip) { const v = chip.dataset.res; $("#ref-res").value = (this.f.resolution === v ? "" : v); this.set("resolution", $("#ref-res").value); return; }
+      if (e.target.closest("a")) return;
+      const tr = e.target.closest("tr.click"); if (tr) Drawer.open(tr.dataset.open);
+    });
+  },
+  set(k, v){ this.f[k] = v || ""; this.load(true); },
+  csv(){ window.location.href = "/api/auto_refunds.csv" + (this.qs() ? "?" + this.qs() : ""); },
+  async load(force){
+    const body = $("#ref-body");
+    if (force || !this.cache) {
+      // Two filters changed in quick succession send two requests, and the older one can land
+      // last — it would then overwrite the newer view with stale numbers. Only the newest counts.
+      const seq = ++this._seq;
+      body.innerHTML = U.skel(6);
+      let data;
+      try { data = await GET("/api/auto_refunds" + (this.qs() ? "?" + this.qs() : "")); }
+      catch (e) { if (seq === this._seq) body.innerHTML = U.err(e); return; }
+      if (seq !== this._seq) return;
+      this.cache = data;
+    }
+    this.render();
+  },
+  dayLabel(iso){ const d = new Date(iso + "T12:00:00"); return d.toLocaleDateString("en-GB", {weekday: "short", day: "numeric", month: "short"}); },
+  render(){
+    const d = this.cache || {}, body = $("#ref-body");
+    if (!d.ready) { body.innerHTML = U.empty("Refunds are not in the database yet", d.error || ""); return; }
+    const T = d.totals || {}, rows = d.rows || [];
+    const sel = $("#ref-res");
+    if (sel && sel.options.length <= 1) (d.resolutions || []).forEach(r => sel.add(new Option(r, r)));
+    $("#ref-sub").textContent = `${U.int(T.count || 0)} refund${T.count === 1 ? "" : "s"} on ${U.int(T.orders || 0)} orders · `
+      + `${this.dayLabel(d.from)} – ${this.dayLabel(d.to)} (Seller Central days${S.from || S.to ? "" : "; set dates in the top bar"})`
+      + ` · ${S.account && S.account !== "All" ? S.account + " only" : "HOANK from qurtdis, Hathoro from abecomllc26"}`;
+    $("#ref-upd").textContent = d.last_sync ? `archive synced ${d.last_sync}` : "";
+    const today = (d.days || []).find(x => x.day === d.today);
+    const c = $("#cnt-refunds"); if (c) c.textContent = (today && today.count) || "";
+
+    const BS = T.by_store || {}, R = T.by_resolution || {};     // not "S": that is the dashboard's global state
+    const st = k => BS[k] || {count: 0, amount: 0};
+    const atz = (R["A-to-Z Guarantee Claim"] || {}).count || 0;
+    const kpis = `<div class="kpis">
+      <div class="kpi sev-high"><div class="l">Refunded</div><div class="v">${U.money(T.amount || 0, 0)}</div><div class="s">${U.int(T.count || 0)} refunds · ${U.int(T.orders || 0)} orders</div></div>
+      <div class="kpi"><div class="l">HOANK</div><div class="v">${U.money(st("HOANK").amount, 0)}</div><div class="s">${U.int(st("HOANK").count)} refunds · qurtdis</div></div>
+      <div class="kpi"><div class="l">Hathoro</div><div class="v">${U.money(st("Hathoro").amount, 0)}</div><div class="s">${U.int(st("Hathoro").count)} refunds · abecomllc26</div></div>
+      <div class="kpi sev-med"><div class="l">No return requested</div><div class="v">${U.int(T.no_return || 0)}</div><div class="s">${U.money(T.no_return_amount || 0, 0)} refunded with nothing coming back</div></div>
+      <div class="kpi ${U.n(T.net_after_refund) < 0 ? "sev-high" : "sev-ok"}"><div class="l">Net after refunds</div><div class="v ${U.n(T.net_after_refund) < 0 ? "neg" : "pos"}">${U.money(T.net_after_refund || 0, 0)}</div><div class="s" title="Per order: profit − every refund on it + what Zoro credited back (closing's formula)">profit − refunds + Zoro credit</div></div>
+      <div class="kpi ${atz ? "sev-high" : "sev-ok"}"><div class="l">A-to-Z claims</div><div class="v">${U.int(atz)}</div><div class="s">${U.money((R["A-to-Z Guarantee Claim"] || {}).amount || 0, 0)} · refunds the buyer claimed</div></div>
+    </div>`;
+
+    const chips = `<div class="ref-chips">${Object.entries(R).map(([k, v]) =>
+      `<span class="pill ${this.RES[k] || ""} ${this.f.resolution === k ? "on" : ""}" ${k !== "—" ? `data-res="${esc(k)}"` : ""} title="${k === "—" ? "The e-mail did not say who refunded" : "Show only these"}">${esc(k === "—" ? "Not stated" : k)} · ${U.int(v.count)} · ${U.money(v.amount, 0)}</span>`).join("")}</div>`;
+
+    const byDay = {};
+    rows.forEach(r => (byDay[r.day] = byDay[r.day] || []).push(r));
+    const quiet = !this.f.q && !this.f.resolution && !this.f.returned;
+    const money = v => v == null ? "" : U.money(v);
+    const row = r => `<tr class="click" data-open="${esc(r.order_id)}">
+        <td class="mono small">${esc(r.refunded_at.slice(11))}</td>
+        <td><span class="pill ${r.store === "HOANK" ? "teal" : "purple"}">${esc(r.store || "?")}</span></td>
+        <td class="mono">${esc(r.order_id)}<div class="small"><a href="${U.sc(r.order_id)}" target="_blank" rel="noopener">Seller Central ↗</a></div></td>
+        <td class="ttl" title="${esc(r.title || "")}">${esc(r.title || "—")}<div class="small muted mono">${esc([r.asin, r.sku, r.qty ? "qty " + r.qty : ""].filter(Boolean).join(" · "))}${r.customer ? ` · <span style="font-family:var(--font)">${esc(r.customer)}</span>` : ""}</div></td>
+        <td class="num neg">${money(r.amount)}${r.refunds_on_order > 1 ? `<div class="small muted">${r.refunds_on_order} refunds · ${money(r.refunded_on_order)}</div>` : ""}</td>
+        <td><span class="pill ${this.RES[r.resolution] || ""}">${esc(r.resolution || "Not stated")}</span>${r.reason ? `<div class="small">${esc(r.reason)}</div>` : ""}</td>
+        <td>${r.returned ? `<span class="pill info">Returned</span><div class="small muted" title="${esc(r.return_comment || "")}">${esc(r.return_reason || "")}</div>` : `<span class="pill warn">No return</span>`}</td>
+        <td class="small">${r.wb ? `<span class="mono">${esc(r.wb)}</span><div class="muted">${money(r.zoro_cost)}${r.delivery ? " · " + esc(r.delivery) : ""}</div>` : `<span class="muted">not placed</span>`}</td>
+        <td class="num ${U.n(r.net_after_refund) < 0 ? "neg" : "pos"}" title="profit ${money(r.profit)} − refunds ${money(r.refunded_on_order)}${r.zoro_recovered ? " + Zoro " + money(r.zoro_recovered) : ""}">${money(r.net_after_refund)}</td>
+        <td>${r.case_status ? `<span class="pill ${/resolved|closed|won/i.test(r.case_status) ? "ok" : "warn"}">${esc(r.case_status)}</span>` : ""}${r.flag ? " " + U.flagdot(r.flag) : ""}</td>
+      </tr>`;
+    const body_rows = (d.days || []).map(dd => {
+      const items = byDay[dd.day] || [];
+      if (!items.length) return quiet ? `<tr class="dayhd none"><td colspan="10">${this.dayLabel(dd.day)} — no refunds</td></tr>` : "";
+      const split = [["HOANK", dd.hoank, dd.hoank_amount], ["Hathoro", dd.hathoro, dd.hathoro_amount]]
+        .filter(x => x[1]).map(x => `${x[0]} ${x[1]} · ${U.money(x[2])}`).join("   ");
+      const head = this.f.q || this.f.resolution || this.f.returned
+        ? `${items.length} refund${items.length === 1 ? "" : "s"} · ${U.money(items.reduce((a, r) => a + (r.amount || 0), 0))}`
+        : `${dd.count} refund${dd.count === 1 ? "" : "s"} · ${U.money(dd.amount)}<span class="dsplit">${split}</span>`;
+      return `<tr class="dayhd"><td colspan="10"><b>${this.dayLabel(dd.day)}</b><span class="dsum">${head}</span></td></tr>` + items.map(row).join("");
+    }).join("");
+
+    const tbl = rows.length ? `<div class="tblwrap ref-tbl"><table class="t"><thead><tr>
+        <th>Time (PT)</th><th>Store</th><th>Order</th><th>Product</th><th class="num">Refund</th><th>Who refunded</th>
+        <th>Return</th><th>Zoro</th><th class="num">Net</th><th>Case</th></tr></thead><tbody>${body_rows}</tbody></table></div>`
+      : U.empty("No refunds match", "widen the dates or clear a filter");
+
+    body.innerHTML = kpis + chips + tbl
+      + `<div class="card"><div class="bd smallnote">Source: Amazon's “Refund Initiated for Order” e-mails. The hourly sync reads both inboxes into the Gmail archive and this page reads that, so a new refund appears within the hour. Checked against Gmail on 11 Oct 2026: every refund e-mail since 1 Sep is here. Days are Seller Central's (US/Pacific), like the Daily report. <b>Net</b> is the order's profit minus every refund on it plus anything Zoro credited back. Click a row to open the order and set a case, flag or note.</div></div>`;
+  },
+};
+SECTIONS.refunds = Ref;
 $$("#pl-tabs button").forEach(b => b.onclick = () => PL.show(b.dataset.tab));
 $$("#ana-tabs button").forEach(b => b.onclick = () => Ins.show(b.dataset.tab));
 
