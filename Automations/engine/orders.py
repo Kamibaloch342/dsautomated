@@ -25,6 +25,7 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _AUTOMATIONS_DIR = os.path.dirname(_SCRIPT_DIR)
 if _AUTOMATIONS_DIR not in sys.path:
     sys.path.insert(0, _AUTOMATIONS_DIR)
+import html          # _notify_big_order_20 escapes the title for Telegram
 import json
 import time
 import signal
