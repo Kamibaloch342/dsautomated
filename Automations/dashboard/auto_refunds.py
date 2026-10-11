@@ -136,8 +136,15 @@ def auto_refunds(q):
     c = _ro()
     try:
         if not c.execute("SELECT 1 FROM sqlite_master WHERE name='archive_returns'").fetchone():
-            return {"ready": False, "error": "archive_returns is missing — run scripts/sync_gmail_archive.py",
-                    "rows": [], "days": [], "totals": {}}
+            # On Render the table only exists once the cloud agent on the main Mac ships it in the
+            # slim DB (cloud_agent.SLIM_TABLES) — an agent started before 11 Oct 2026 does not.
+            # Locally it is missing only if the archive sync has never run.
+            if os.environ.get("CLOUD_MODE") == "1":
+                why = ("This online copy has no refunds yet. The cloud agent on the main Mac uploads them "
+                       "once it is restarted with the 11 Oct update — then they appear here within a few minutes.")
+            else:
+                why = "archive_returns is missing — run scripts/sync_gmail_archive.py"
+            return {"ready": False, "error": why, "rows": [], "days": [], "totals": {}}
 
         # A Pacific day spans 12–13 h of the next Karachi day, so read one day either side and
         # keep exactly the Pacific range below.
