@@ -95,6 +95,24 @@ def main():
     O._SUNDAY_CFG.update(at=time.time(), val=None, loaded=True)
     check("unticking Sunday mode releases it", O._sunday_parked("A5", pool) is False)
 
+    print("\n── coupon-blocked items are not held (no coupon can ever apply) ──")
+    O.PROMO_INELIGIBLE_ASINS.clear(); O.PROMO_INELIGIBLE_CODES.clear()
+    O.PROMO_INELIGIBLE_ASINS.add("B0LISTED"); O.PROMO_INELIGIBLE_CODES.add("G111")
+    badge = {"G222": True, "G333": False}
+    real_pdp = O.pdp_promo_ineligible
+    O.pdp_promo_ineligible = lambda sku: badge.get(sku)
+    check("an ASIN on the promo-ineligible list", O._all_coupon_blocked([{"asin": "B0LISTED", "sku": "G999"}]) is True)
+    check("a Zoro code on the learned list", O._all_coupon_blocked([{"asin": "B0X", "sku": "G111"}]) is True)
+    check("Zoro's 'not eligible for any promotions' page badge", O._all_coupon_blocked([{"asin": "B0Y", "sku": "G222"}]) is True)
+    check("an ordinary item is still held", O._all_coupon_blocked([{"asin": "B0Z", "sku": "G333"}]) is False)
+    check("an item never checked is still held", O._all_coupon_blocked([{"asin": "B0Q", "sku": "G444"}]) is False)
+    check("two items, only one blocked → still held (Monday could improve the other)",
+          O._all_coupon_blocked([{"asin": "B0LISTED", "sku": "G111"}, {"asin": "B0Z", "sku": "G333"}]) is False)
+    check("both items blocked → placed", O._all_coupon_blocked([{"sku": "G111"}, {"sku": "G222"}]) is True)
+    check("no items → not exempt", O._all_coupon_blocked([]) is False)
+    O.pdp_promo_ineligible = real_pdp
+    O.PROMO_INELIGIBLE_ASINS.clear(); O.PROMO_INELIGIBLE_CODES.clear()
+
     print("\n── stripping regular coupons can never brand an item promo-ineligible ──")
     lf = {"total": 2, "item": 2, "priority": 2, "regular_available": 0,
           "priority_item": 2, "priority_dead": 0, "regular_dead": 0}
@@ -125,6 +143,12 @@ def main():
           "_cf_action_20 = False" in seg)
     check("…and clears a reseller hand-over the Sunday rule refuses", "_cf_route = None" in seg)
     check("the failure row is logged SUNDAY_HOLD", '"SUNDAY_HOLD" if _sunday_status else' in body)
+    i_gate = body.index("_g = _sunday_gate(raw_cart_cost, margin if earnings else None, _sun_r)")
+    i_hold = body.index("return _sunday_hold(amazon_id, _g, coupon_codes, _sun_r,")
+    i_exempt = body.index("if _g and _all_coupon_blocked(resolved_items):")
+    check("the reseller checks 'coupon-blocked' between the rule and the hold", i_gate < i_exempt < i_hold)
+    check("both coupon-profile hand-overs exempt coupon-blocked items",
+          body.count("None if _all_coupon_blocked(resolved_items) else _sunday_gate(") == 2)
     check("a Manual-C/-R order skips Sunday mode on both profiles",
           "_sunday_mode() if (IS_COUPON_PROFILE and not manual_override)" in body
           and "_sunday_mode() if (IS_RESELLER_PROFILE and not manual_override)" in body)

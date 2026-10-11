@@ -1419,6 +1419,9 @@ def _coupon_pool_sig(coupon_codes):
 #   coupon profiles    use priority coupons only, never a regular one; they hand an order to the
 #                      reseller only when it would pass the reseller rule above, and never mark
 #                      one '20' on the strength of "no priority coupon today".
+#   coupon-blocked     an order whose every item Zoro marks "not eligible for any other offers or
+#                      promotions" is placed normally: no coupon can ever apply, so waiting gains
+#                      nothing.
 # Sunday mode never does anything a placer would not do on a normal day — it only holds back. It
 # writes no label, so unticking it releases every held order at once. A Manual-C/-R order is a
 # human decision and goes straight through. Held orders are not re-scraped or re-priced until the
@@ -1507,6 +1510,32 @@ def _sunday_reseller_margin(raw_cart_cost, earnings, all_zoro_select):
         return None
     cost = raw * ((1 - _sel) if all_zoro_select else 1.0) + (_fee if raw < _free else 0.0)
     return (earnings - cost) / cost
+
+
+def _all_coupon_blocked(resolved_items):
+    """True when NO item in the order can ever take a coupon — so holding it for Monday's
+    priority codes gains nothing and Sunday mode lets it through (owner, 11 Oct 2026).
+
+    An item counts as blocked when Zoro's product page says "Zoro's best price — not eligible
+    for any other offers or promotions" (cached per SKU; read here, no page visit), or it is on
+    the promo-ineligible list (bot_config, the sheet's Promo_Ineligible column, or what the
+    coupon placers learned). EVERY item must be blocked: if one could still take a coupon,
+    Monday's code could still improve the cart."""
+    items = list(resolved_items or [])
+    if not items:
+        return False
+    for it in items:
+        asin = str(it.get("asin") or "").strip().upper()
+        codes = {str(it.get("sku") or "").strip(), str(it.get("main_sku") or "").strip()} - {""}
+        if asin in PROMO_INELIGIBLE_ASINS or (codes & PROMO_INELIGIBLE_CODES):
+            continue
+        try:
+            if any(pdp_promo_ineligible(c) for c in codes):
+                continue
+        except Exception:
+            pass
+        return False
+    return True
 
 
 def _priority_pool_sig(coupon_codes):
@@ -4184,8 +4213,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             print("  🧑‍⚖️ SUPERVISOR: no priority coupons loaded — order handled, ASIN left unsorted until they are")
         if _sun_c and _dec["action"] in ("reseller", "call_zoro_20", "wait"):
             if _dec["action"] == "reseller":
-                _g = _sunday_gate(raw_cart_cost, _sunday_reseller_margin(
-                    raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items)), _sun_c)
+                _g = None if _all_coupon_blocked(resolved_items) else _sunday_gate(
+                    raw_cart_cost, _sunday_reseller_margin(
+                        raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items)), _sun_c)
                 _held = f"supervisor would hand it to the reseller, but {_g}" if _g else None
             elif _dec["action"] == "call_zoro_20":
                 _held = f"big order (${raw_cart_cost:.2f}) with no priority coupon today — not marked '20'"
@@ -4317,6 +4347,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # on Monday. Here a miss only means the order waits.
     _sun_r = _sunday_mode() if (IS_RESELLER_PROFILE and not manual_override) else None
     _g = _sunday_gate(raw_cart_cost, margin if earnings else None, _sun_r)
+    if _g and _all_coupon_blocked(resolved_items):
+        print(f"  🗓️  SUNDAY MODE: would wait ({_g}), but Zoro marks this item not eligible for any "
+              f"promotions — no coupon can ever apply, so it is placed now")
+        _g = None
     if _g:
         return _sunday_hold(amazon_id, _g, coupon_codes, _sun_r,
                             dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer, city=city,
@@ -5118,8 +5152,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 _cf_action_20 = False
                 _sunday_status = f"big order (${raw_cart_cost:.2f}) with no priority coupon today — not marked '20'"
             elif _cf_route:
-                _g = _sunday_gate(raw_cart_cost, _sunday_reseller_margin(
-                    raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items)), _sun_c)
+                _g = None if _all_coupon_blocked(resolved_items) else _sunday_gate(
+                    raw_cart_cost, _sunday_reseller_margin(
+                        raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items)), _sun_c)
                 if _g:
                     _cf_route = None
                     _sunday_status = f"would go to the reseller, but {_g}"

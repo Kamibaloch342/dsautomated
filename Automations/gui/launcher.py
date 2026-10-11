@@ -1235,6 +1235,8 @@ class App(tk.Tk):
                   "    an item bought with one today may take a priority code tomorrow. They hand\n"
                   "    an order to the reseller only if it would pass the rule above, and never\n"
                   "    mark an order '20' just because no priority coupon applied today.\n"
+                  "  • Items Zoro marks 'not eligible for any other offers or promotions' are\n"
+                  "    placed normally — no coupon can ever apply, so waiting gains nothing.\n"
                   "  • Everything else WAITS, unlabelled. Nothing is written to Amazon, so\n"
                   "    unticking this releases every held order at once.\n\n"
                   "Held orders are not re-checked every cycle (no re-scrape, no re-pricing) until\n"

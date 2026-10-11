@@ -225,6 +225,8 @@ are enforced in code, not by convention:
   regular codes before the supervisor or the checkout sees them (so no item can be called
   promo-ineligible either — that needs live regular codes), hands an order to the reseller only if
   it would pass the reseller rule, and never marks one '20' because no priority code applied today.
+  An order whose EVERY item is coupon-blocked (the product-page badge, or the promo-ineligible
+  list) is placed normally — no coupon can ever apply (`_all_coupon_blocked`).
   Everything else is logged `SUNDAY_HOLD` and waits **unlabelled**, so unticking releases it all at
   once. The reseller rule is judged on the pre-checkout estimate, not the checkout gate, because a
   failure there labels the order `Loss-Kamran checking` and it would never come back. Held orders
