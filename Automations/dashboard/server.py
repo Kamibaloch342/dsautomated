@@ -188,7 +188,7 @@ def _get_repricer_live_log(account: str = "Hathoro") -> Dict[str, Any]:
     }
 
 
-def _start_repricer_scrape(account: str = "Hathoro"):
+def _start_repricer_scrape(account: str = "Hathoro", wait: bool = False):
     global _REPRICER_SCRAPING
     acct = "Hathoro" if "HATHORO" in (account or "").upper() else "HOANK"
     if _REPRICER_SCRAPING.get(acct):
@@ -247,9 +247,30 @@ def _start_repricer_scrape(account: str = "Hathoro"):
             except Exception:
                 pass
 
+    if wait:                                  # the scheduler runs the stores one after another
+        _worker()
+        return {"status": "done", "message": f"Scraping finished for {acct}"}
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
     return {"status": "started", "message": f"Live scraping started for {acct}"}
+
+
+def _run_scheduled_repricer(accounts):
+    """Every store in the schedule, one after another. The schedule file has always listed both
+    Hathoro and HOANK, but the loop only ever started Hathoro, so HOANK's offers were refreshed
+    only by hand. Sequential, not parallel: each run starts its own headless Chrome on amazon.com,
+    and two at once doubles the memory and the CAPTCHA risk for no gain."""
+    if _REPRICER_SCRAPING.get("scheduled"):
+        return
+    def _seq():
+        _REPRICER_SCRAPING["scheduled"] = True
+        try:
+            for a in accounts:
+                if not _REPRICER_SCRAPING.get(a):
+                    _start_repricer_scrape(a, wait=True)
+        finally:
+            _REPRICER_SCRAPING["scheduled"] = False
+    threading.Thread(target=_seq, daemon=True, name="RepricerScheduledRun").start()
 
 
 def _start_repricer_scheduler():
@@ -275,10 +296,12 @@ def _start_repricer_scheduler():
                                 should_run = True
                         except Exception:
                             pass
-                    if should_run:
-                        print(f"[repricer_scheduler] ⏰ 12-hour cadence reached. Launching automated repricer scan...")
-                        if not _REPRICER_SCRAPING.get("Hathoro"):
-                            _start_repricer_scrape("Hathoro")
+                    if should_run and not _REPRICER_SCRAPING.get("scheduled"):
+                        accts = [a for a in (sched.get("accounts") or ["Hathoro", "HOANK"])
+                                 if a in ("Hathoro", "HOANK")] or ["Hathoro", "HOANK"]
+                        print(f"[repricer_scheduler] ⏰ {interval_hrs:g}-hour cadence reached. "
+                              f"Launching automated repricer scan for {', '.join(accts)}...")
+                        _run_scheduled_repricer(accts)
             except Exception as e:
                 print(f"[repricer_scheduler] Warning: {e}")
             time.sleep(60)
@@ -287,7 +310,8 @@ def _start_repricer_scheduler():
     sched_thread.start()
 
 
-_start_repricer_scheduler()
+if not OPS.CLOUD_MODE:          # Render has no Chrome and no scraper scripts to run
+    _start_repricer_scheduler()
 
 _env_port = int(os.environ.get("PORT") or 0)
 # Render (cloud mode) assigns the port through $PORT and must win even if a start

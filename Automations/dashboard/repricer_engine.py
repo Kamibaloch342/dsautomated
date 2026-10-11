@@ -116,8 +116,23 @@ def load_account_cache(account: str = "Hathoro") -> Dict[str, Any]:
     return {}
 
 
+# The repricer used to check only ASINs with orders in AUGUST 2026 (purchase_date LIKE
+# '2026-08%'), so its list froze at 443 Hathoro / 245 HOANK ASINs and every listing that started
+# selling after August — 129 Hathoro and 65 HOANK ASINs with orders in the last 30 days on
+# 11 Oct 2026 — was never checked. It now takes every ASIN with an order in the last
+# REPRICER_WINDOW_DAYS, so a new listing joins the loop as soon as it sells and one that stopped
+# selling drops out. (Key names such as total_august_orders are kept: the launcher and the legacy
+# dashboard page read them; they now mean "orders in the window".)
+REPRICER_WINDOW_DAYS = 30
+
+
+def _window_since(days=None):
+    from datetime import date, timedelta
+    return (date.today() - timedelta(days=int(days or REPRICER_WINDOW_DAYS))).isoformat()
+
+
 def get_account_orders_df(account: str = "Hathoro", db_path: str = DB_PATH) -> pd.DataFrame:
-    """Retrieve August orders, prices, and latest Zoro costs without tax for the given account."""
+    """Orders in the last REPRICER_WINDOW_DAYS, prices, and latest Zoro costs without tax for the account."""
     acct = "Hathoro" if "HATHORO" in (account or "").upper() else "HOANK"
     conn = sqlite3.connect(db_path)
     query = f"""
@@ -136,7 +151,7 @@ def get_account_orders_df(account: str = "Hathoro", db_path: str = DB_PATH) -> p
             purchase_date
         FROM closing_orders
         WHERE account = '{acct}' 
-          AND purchase_date LIKE '2026-08%'
+          AND purchase_date >= ?
     ),
     asin_metrics AS (
         SELECT 
@@ -197,7 +212,7 @@ def get_account_orders_df(account: str = "Hathoro", db_path: str = DB_PATH) -> p
     LEFT JOIN latest_placed_orders lpo ON m.asin = lpo.asin AND lpo.rn_placed = 1
     ORDER BY m.total_august_orders DESC;
     """
-    df = pd.read_sql_query(query, conn)
+    df = pd.read_sql_query(query, conn, params=[_window_since()])
     conn.close()
     return df
 

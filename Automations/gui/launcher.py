@@ -2323,7 +2323,7 @@ class App(tk.Tk):
         self._repricer_kpis = {}
         kpi_defs = [
             ("asins", "TOTAL ASINS", "0", self.TEXT),
-            ("orders", "AUG ORDERS", "0", self.CYAN),
+            ("orders", "ORDERS · 30 D", "0", self.CYAN),
             ("raise", "🚀 RAISE OPPS", "0", self.GREEN),
             ("gain", "POTENTIAL GAIN", "$0", self.GREEN),
             ("drop", "🎯 <10% DROP OPPS", "0", self.PURPLE),
@@ -2378,7 +2378,7 @@ class App(tk.Tk):
             ("low2", "Lowest 2 Seller & Price", 160, "w"),
             ("sellers", "Sellers", 60, "center"),
             ("bb_win", "In BB?", 60, "center"),
-            ("orders", "Aug Orders", 80, "e"),
+            ("orders", "Orders 30d", 80, "e"),
         ]
         for cid, title, w, align in headings:
             self._repricer_tree.heading(cid, text=title)
