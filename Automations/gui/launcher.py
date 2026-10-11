@@ -1229,8 +1229,10 @@ class App(tk.Tk):
         self._tip(_sun_cb,
                   "SUNDAY MODE — the weekly priority coupons arrive on Monday (~10:00 PKT).\n"
                   "Until then, place only what those coupons could not have improved:\n\n"
-                  "  • RESELLER placers place an order only when the Zoro cart (list price) is\n"
-                  "    UNDER the amount here AND its estimated margin is AT LEAST the % here.\n"
+                  "  • RESELLER placers place an order only when its Zoro COST — the cart after\n"
+                  "    any Zoro Select discount PLUS shipping — is UNDER the amount here AND its\n"
+                  "    estimated margin is AT LEAST the % here.\n"
+                  "    e.g. $34.99 + $5.99 shipping = $40.98 → under $50; $46 + $5.99 = $51.99 → waits.\n"
                   "  • COUPON placers use priority coupons only — never a regular coupon, since\n"
                   "    an item bought with one today may take a priority code tomorrow. They hand\n"
                   "    an order to the reseller only if it would pass the rule above, and never\n"
@@ -1243,7 +1245,7 @@ class App(tk.Tk):
                   "the numbers change, the priority coupons change, or 6 hours pass.\n"
                   "A Manual-C / Manual-R tag still goes straight through.\n\n"
                   "Running placers pick this up within 15 seconds — no restart needed.")
-        self._dim(r4, "  Reseller places only: Zoro cart under $").pack(side="left", padx=(8, 2))
+        self._dim(r4, "  Reseller places only: Zoro cost incl. shipping under $").pack(side="left", padx=(8, 2))
         _e_cart = tk.Entry(r4, textvariable=self._sun_cart, width=6, font=(self.MONO, 10),
                            bg=self.INP_BG, fg=self.TEXT, insertbackground=self.TEXT,
                            relief="flat", highlightthickness=1, highlightbackground=self.BORDER)
@@ -4613,7 +4615,7 @@ class App(tk.Tk):
             return
         self._render_sunday_label()
         if on:
-            msg = (f"Sunday mode ON — reseller places carts under ${cap:g} at ≥ {mm:g}% est. margin; "
+            msg = (f"Sunday mode ON — reseller places orders costing under ${cap:g} incl. shipping at ≥ {mm:g}% est. margin; "
                    f"coupon placers use priority coupons only; everything else waits, unlabelled")
         else:
             msg = "Sunday mode OFF — held orders go back to the normal rules from the next order"
@@ -4623,7 +4625,7 @@ class App(tk.Tk):
     def _render_sunday_label(self):
         vals = self._sunday_values()
         if self._sun_var.get() and vals:
-            self._sun_lbl.config(text=f"ON — holding carts ≥ ${vals[0]:g} and margins < {vals[1]:g}% "
+            self._sun_lbl.config(text=f"ON — holding costs ≥ ${vals[0]:g} (incl. shipping) and margins < {vals[1]:g}% "
                                       f"for Monday's priority coupons", fg=self.AMBER)
         else:
             self._sun_lbl.config(text="off — normal rules", fg=self.MUTED)

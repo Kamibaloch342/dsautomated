@@ -57,16 +57,25 @@ def main():
     check("an unreadable bot_config keeps the last setting", O._sunday_mode() == good)
     O._sunday_read = real
 
-    print("\n── the reseller rule ──")
+    print("\n── the reseller rule: Zoro COST including shipping (owner: shipping is a cost) ──")
     sun = good
-    check("$54.75 cart waits", O._sunday_gate(54.75, 0.35, sun) is not None)
+    check("$34.99 + $5.99 shipping = $40.98 at 34 % is placed", O._sunday_gate(40.98, 0.342, sun, 5.99) is None)
+    g = O._sunday_gate(51.99, 0.40, sun, 5.99) or ""
+    check("$46.00 + $5.99 shipping = $51.99 waits", "51.99" in g, g)
+    check("…and the reason names the shipping", "incl. $5.99 shipping" in g, g)
     check("exactly $50.00 waits (under means under)", O._sunday_gate(50.00, 0.35, sun) is not None)
-    check("$42 cart at 25 % is placed", O._sunday_gate(42.0, 0.25, sun) is None)
-    check("$42 cart at 12 % waits", "margin" in (O._sunday_gate(42.0, 0.12, sun) or ""))
+    check("$42 cost at 25 % is placed", O._sunday_gate(42.0, 0.25, sun) is None)
+    check("$42 cost at 12 % waits", "margin" in (O._sunday_gate(42.0, 0.12, sun) or ""))
     check("unknown earnings: only the cart decides (their own gate stops them)", O._sunday_gate(42.0, None, sun) is None)
     check("Sunday mode off: nothing waits", O._sunday_gate(500.0, -0.5, None) is None)
 
-    print("\n── what the reseller would make on a coupon profile's hand-over ──")
+    print("\n── what the reseller would pay on a coupon profile's hand-over ──")
+    c, sh = O._sunday_reseller_cost(46.0, all_zoro_select=False)
+    check("$46 list pays $5.99 shipping → $51.99", abs(c - 51.99) < 1e-6 and sh == 5.99, str((c, sh)))
+    c, sh = O._sunday_reseller_cost(54.75, all_zoro_select=True)
+    check("Zoro Select $54.75 list → $49.27 after Select, ships free", abs(c - 49.275) < 1e-6 and sh == 0, str((c, sh)))
+    check("a $46 hand-over waits on the cost", O._sunday_handover_gate(46.0, 90.0, False, good) is not None)
+    check("the Select $54.75 hand-over at a healthy margin goes", O._sunday_handover_gate(54.75, 70.0, True, good) is None)
     m = O._sunday_reseller_margin(54.75, 70.0, all_zoro_select=True)
     check("Zoro Select at 10 % off, no fee on a $54.75 list", abs(m - (70.0 - 49.275) / 49.275) < 1e-6, str(m))
     m = O._sunday_reseller_margin(40.0, 60.0, all_zoro_select=False)
@@ -143,12 +152,14 @@ def main():
           "_cf_action_20 = False" in seg)
     check("…and clears a reseller hand-over the Sunday rule refuses", "_cf_route = None" in seg)
     check("the failure row is logged SUNDAY_HOLD", '"SUNDAY_HOLD" if _sunday_status else' in body)
-    i_gate = body.index("_g = _sunday_gate(raw_cart_cost, margin if earnings else None, _sun_r)")
+    i_gate = body.index("_g = _sunday_gate(estimated_total_cost, margin if earnings else None, _sun_r, estimated_shipping)")
     i_hold = body.index("return _sunday_hold(amazon_id, _g, coupon_codes, _sun_r,")
     i_exempt = body.index("if _g and _all_coupon_blocked(resolved_items):")
     check("the reseller checks 'coupon-blocked' between the rule and the hold", i_gate < i_exempt < i_hold)
     check("both coupon-profile hand-overs exempt coupon-blocked items",
-          body.count("None if _all_coupon_blocked(resolved_items) else _sunday_gate(") == 2)
+          body.count("None if _all_coupon_blocked(resolved_items) else _sunday_handover_gate(") == 2)
+    check("the reseller gate uses the cost the placer prints, shipping included",
+          "estimated_total_cost" in body[i_gate - 10:i_gate + 120] and body.index("estimated_total_cost = strategy") < i_gate)
     check("a Manual-C/-R order skips Sunday mode on both profiles",
           "_sunday_mode() if (IS_COUPON_PROFILE and not manual_override)" in body
           and "_sunday_mode() if (IS_RESELLER_PROFILE and not manual_override)" in body)

@@ -1414,8 +1414,10 @@ def _coupon_pool_sig(coupon_codes):
 # The weekly priority coupons land on Monday around 10:00 PKT. An order bought on Sunday with a
 # regular coupon, or at reseller price, may be one Monday's priority code would have covered —
 # so on Sunday the placers only do what tomorrow cannot improve:
-#   reseller profiles  place a Zoro cart under `max_cart` (list price) whose estimated margin is
-#                      at least `min_margin_pct`; every other order waits, UNLABELLED;
+#   reseller profiles  place an order whose Zoro COST — what is paid: the cart after any Zoro
+#                      Select discount, PLUS shipping (or the filler that avoids it) — is under
+#                      `max_cart` and whose estimated margin is at least `min_margin_pct`; every
+#                      other order waits, UNLABELLED (owner, 11 Oct 2026: "shipping is a cost");
 #   coupon profiles    use priority coupons only, never a regular one; they hand an order to the
 #                      reseller only when it would pass the reseller rule above, and never mark
 #                      one '20' on the strength of "no priority coupon today".
@@ -1483,33 +1485,49 @@ def _sunday_mode():
 
 
 def _sunday_rule_text(sun):
-    return (f"reseller places Zoro carts under ${sun['max_cart']:.2f} at ≥ {sun['min_margin']:.0%} "
-            f"est. margin; coupon placers use priority coupons only; everything else waits for Monday")
+    return (f"reseller places orders whose Zoro cost incl. shipping is under ${sun['max_cart']:.2f} at "
+            f"≥ {sun['min_margin']:.0%} est. margin; coupon placers use priority coupons only; "
+            f"everything else waits for Monday")
 
 
-def _sunday_gate(cart, margin, sun):
+def _sunday_gate(cost, margin, sun, shipping=0.0):
     """Pure. Why an order must wait under Sunday mode, or None when it may be placed now.
-    `cart` is the Zoro cart at LIST price; `margin` is the estimated margin (profit / cost), or
-    None when earnings are unknown — those are never placed anyway, by their own gate."""
+    `cost` is what Zoro will be paid: the cart after any Zoro Select discount PLUS shipping (or
+    the filler that avoids it) — the owner's rule: shipping is a cost. `shipping` is only for the
+    message. `margin` is the estimated margin (profit / cost), or None when earnings are unknown
+    — those are never placed anyway, by their own gate."""
     if not sun:
         return None
-    if (cart or 0.0) >= sun["max_cart"]:
-        return f"Zoro cart ${cart:.2f} ≥ ${sun['max_cart']:.2f}"
+    if (cost or 0.0) >= sun["max_cart"]:
+        ship = f" incl. ${shipping:.2f} shipping" if shipping else ""
+        return f"Zoro cost ${cost:.2f}{ship} ≥ ${sun['max_cart']:.2f}"
     if margin is not None and margin < sun["min_margin"]:
         return f"est. margin {margin:.1%} < {sun['min_margin']:.0%}"
     return None
 
 
-def _sunday_reseller_margin(raw_cart_cost, earnings, all_zoro_select):
-    """The margin the RESELLER would make on a cart a coupon profile is thinking of handing it:
-    Zoro Select items 10 % off, the small-order fee only when the LIST total is under $50."""
+def _sunday_reseller_cost(raw_cart_cost, all_zoro_select):
+    """(cost, shipping) the RESELLER would pay for a cart a coupon profile is thinking of handing
+    it: Zoro Select items 10 % off, the small-order fee only when the LIST total is under $50."""
     from utils.config import (ZORO_SMALL_ORDER_FEE as _fee, FREE_SHIPPING_THRESHOLD as _free,
                               ZORO_SELECT_DISCOUNT_RATE as _sel)
     raw = float(raw_cart_cost or 0.0)
-    if not earnings or raw <= 0:
+    ship = _fee if 0 < raw < _free else 0.0
+    return raw * ((1 - _sel) if all_zoro_select else 1.0) + ship, ship
+
+
+def _sunday_reseller_margin(raw_cart_cost, earnings, all_zoro_select):
+    """The margin the RESELLER would make on that cart (profit / cost)."""
+    cost, _ship = _sunday_reseller_cost(raw_cart_cost, all_zoro_select)
+    if not earnings or cost <= 0:
         return None
-    cost = raw * ((1 - _sel) if all_zoro_select else 1.0) + (_fee if raw < _free else 0.0)
     return (earnings - cost) / cost
+
+
+def _sunday_handover_gate(raw_cart_cost, earnings, all_zoro_select, sun):
+    """The reseller rule, applied by a coupon profile before handing an order over."""
+    cost, ship = _sunday_reseller_cost(raw_cart_cost, all_zoro_select)
+    return _sunday_gate(cost, _sunday_reseller_margin(raw_cart_cost, earnings, all_zoro_select), sun, ship)
 
 
 def _all_coupon_blocked(resolved_items):
@@ -4213,9 +4231,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             print("  🧑‍⚖️ SUPERVISOR: no priority coupons loaded — order handled, ASIN left unsorted until they are")
         if _sun_c and _dec["action"] in ("reseller", "call_zoro_20", "wait"):
             if _dec["action"] == "reseller":
-                _g = None if _all_coupon_blocked(resolved_items) else _sunday_gate(
-                    raw_cart_cost, _sunday_reseller_margin(
-                        raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items)), _sun_c)
+                _g = None if _all_coupon_blocked(resolved_items) else _sunday_handover_gate(
+                    raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items), _sun_c)
                 _held = f"supervisor would hand it to the reseller, but {_g}" if _g else None
             elif _dec["action"] == "call_zoro_20":
                 _held = f"big order (${raw_cart_cost:.2f}) with no priority coupon today — not marked '20'"
@@ -4342,11 +4359,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         # logging/coupon-strategy below.)
 
     # ── SUNDAY MODE (reseller profiles): only what Monday's coupons cannot improve ──
-    # Judged on the estimate printed above, before anything is claimed. Not on the checkout
+    # Judged on the estimate printed above — Est Cost INCLUDING shipping or filler, which is what
+    # Zoro will be paid (owner: "shipping is a cost") — before anything is claimed. Not on the checkout
     # gate: a failure THERE labels the order "Loss-Kamran checking", which stops it coming back
     # on Monday. Here a miss only means the order waits.
     _sun_r = _sunday_mode() if (IS_RESELLER_PROFILE and not manual_override) else None
-    _g = _sunday_gate(raw_cart_cost, margin if earnings else None, _sun_r)
+    _g = _sunday_gate(estimated_total_cost, margin if earnings else None, _sun_r, estimated_shipping)
     if _g and _all_coupon_blocked(resolved_items):
         print(f"  🗓️  SUNDAY MODE: would wait ({_g}), but Zoro marks this item not eligible for any "
               f"promotions — no coupon can ever apply, so it is placed now")
@@ -4354,7 +4372,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     if _g:
         return _sunday_hold(amazon_id, _g, coupon_codes, _sun_r,
                             dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer, city=city,
-                                 state=state, earnings=earnings, cart=raw_cart_cost))
+                                 state=state, earnings=earnings, cart=round(estimated_total_cost, 2)))
 
     # ── Coupon strategy ─────────────────────────────────────────
     skip_coupons = not IS_COUPON_PROFILE or (TARGET_LABEL == 'Rajar 1')
@@ -5152,9 +5170,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 _cf_action_20 = False
                 _sunday_status = f"big order (${raw_cart_cost:.2f}) with no priority coupon today — not marked '20'"
             elif _cf_route:
-                _g = None if _all_coupon_blocked(resolved_items) else _sunday_gate(
-                    raw_cart_cost, _sunday_reseller_margin(
-                        raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items)), _sun_c)
+                _g = None if _all_coupon_blocked(resolved_items) else _sunday_handover_gate(
+                    raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items), _sun_c)
                 if _g:
                     _cf_route = None
                     _sunday_status = f"would go to the reseller, but {_g}"

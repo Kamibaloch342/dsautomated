@@ -220,8 +220,9 @@ are enforced in code, not by convention:
 * **Sunday mode (11 Oct 2026).** Launcher checkbox on the Orders page (`bot_config.json →
   sunday_mode: {enabled, max_cart, min_margin_pct}`), for the day before the weekly priority
   coupons land (Monday ~10:00 PKT). It never does anything a placer would not do on a normal day —
-  it only holds back: a **reseller** places an order only when the Zoro cart at list price is under
-  `max_cart` AND its estimated margin is at least `min_margin_pct`; a **coupon** placer strips
+  it only holds back: a **reseller** places an order only when its Zoro **cost** — the cart after
+  any Zoro Select discount PLUS shipping or filler, the placer's "Est Cost" (owner: "shipping is a
+  cost") — is under `max_cart` AND its estimated margin is at least `min_margin_pct`; a **coupon** placer strips
   regular codes before the supervisor or the checkout sees them (so no item can be called
   promo-ineligible either — that needs live regular codes), hands an order to the reseller only if
   it would pass the reseller rule, and never marks one '20' because no priority code applied today.
