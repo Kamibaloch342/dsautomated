@@ -1408,6 +1408,151 @@ def _coupon_pool_sig(coupon_codes):
         return ""
 
 
+# ══════════════════════════════════════════════════════════════════
+#  SUNDAY MODE  (launcher checkbox — owner, 11 Oct 2026)
+# ══════════════════════════════════════════════════════════════════
+# The weekly priority coupons land on Monday around 10:00 PKT. An order bought on Sunday with a
+# regular coupon, or at reseller price, may be one Monday's priority code would have covered —
+# so on Sunday the placers only do what tomorrow cannot improve:
+#   reseller profiles  place a Zoro cart under `max_cart` (list price) whose estimated margin is
+#                      at least `min_margin_pct`; every other order waits, UNLABELLED;
+#   coupon profiles    use priority coupons only, never a regular one; they hand an order to the
+#                      reseller only when it would pass the reseller rule above, and never mark
+#                      one '20' on the strength of "no priority coupon today".
+# Sunday mode never does anything a placer would not do on a normal day — it only holds back. It
+# writes no label, so unticking it releases every held order at once. A Manual-C/-R order is a
+# human decision and goes straight through. Held orders are not re-scraped or re-priced until the
+# numbers change, the priority coupons change, or SUNDAY_HOLD_MAX_AGE passes.
+# bot_config.json → "sunday_mode": {"enabled": bool, "max_cart": 50, "min_margin_pct": 20}
+_SUNDAY_HOLDS = {}                    # amazon_id -> {"sig", "pool", "at", "reason"}
+_SUNDAY_CFG = {"at": 0.0, "val": None, "loaded": False}
+SUNDAY_HOLD_MAX_AGE = 6 * 3600        # prices move: re-check a held order at least this often
+
+
+def _sunday_read(path=None):
+    """Parse the sunday_mode block of bot_config.json. Pure apart from the file read; raises on a
+    read/parse error so the caller can keep its last good value."""
+    from utils.config import CONFIG_PATH as _cfg_path
+    try:
+        with open(path or _cfg_path, "r", encoding="utf-8") as fh:
+            blk = (json.load(fh) or {}).get("sunday_mode") or {}
+    except FileNotFoundError:
+        return None
+    if not blk.get("enabled"):
+        return None
+
+    def _num(v, d):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return d
+    cap = _num(blk.get("max_cart"), 50.0)
+    mm = _num(blk.get("min_margin_pct"), 20.0) / 100.0
+    return {"max_cart": cap, "min_margin": mm, "sig": f"{cap:.2f}|{mm:.4f}"}
+
+
+def _sunday_mode():
+    """{"max_cart", "min_margin", "sig"} while Sunday mode is ticked in the launcher, else None.
+
+    Asked once per order, so cached for 15 s. It reads the file itself rather than through
+    load_gui_config(): that returns {} on any read error, which would switch Sunday mode OFF for
+    an order if the launcher happened to be rewriting bot_config.json at that instant — and the
+    order placed in that instant is exactly the kind Sunday mode exists to hold. On a read error
+    the last good value is kept."""
+    now = time.time()
+    if _SUNDAY_CFG["loaded"] and now - _SUNDAY_CFG["at"] < 15:
+        return _SUNDAY_CFG["val"]
+    try:
+        val = _sunday_read()
+    except Exception as e:
+        print(f"  ⚠️ Sunday mode: bot_config.json unreadable ({e}) — keeping the last setting")
+        _SUNDAY_CFG["at"] = now
+        return _SUNDAY_CFG["val"]
+    prev = _SUNDAY_CFG["val"]
+    if _SUNDAY_CFG["loaded"] and (prev or {}).get("sig") != (val or {}).get("sig"):
+        if val:
+            print(f"\n🗓️  SUNDAY MODE ON — {_sunday_rule_text(val)}")
+        else:
+            print(f"\n🗓️  SUNDAY MODE OFF — {len(_SUNDAY_HOLDS)} held order(s) released, normal rules again")
+            _SUNDAY_HOLDS.clear()
+    _SUNDAY_CFG.update(at=now, val=val, loaded=True)
+    return val
+
+
+def _sunday_rule_text(sun):
+    return (f"reseller places Zoro carts under ${sun['max_cart']:.2f} at ≥ {sun['min_margin']:.0%} "
+            f"est. margin; coupon placers use priority coupons only; everything else waits for Monday")
+
+
+def _sunday_gate(cart, margin, sun):
+    """Pure. Why an order must wait under Sunday mode, or None when it may be placed now.
+    `cart` is the Zoro cart at LIST price; `margin` is the estimated margin (profit / cost), or
+    None when earnings are unknown — those are never placed anyway, by their own gate."""
+    if not sun:
+        return None
+    if (cart or 0.0) >= sun["max_cart"]:
+        return f"Zoro cart ${cart:.2f} ≥ ${sun['max_cart']:.2f}"
+    if margin is not None and margin < sun["min_margin"]:
+        return f"est. margin {margin:.1%} < {sun['min_margin']:.0%}"
+    return None
+
+
+def _sunday_reseller_margin(raw_cart_cost, earnings, all_zoro_select):
+    """The margin the RESELLER would make on a cart a coupon profile is thinking of handing it:
+    Zoro Select items 10 % off, the small-order fee only when the LIST total is under $50."""
+    from utils.config import (ZORO_SMALL_ORDER_FEE as _fee, FREE_SHIPPING_THRESHOLD as _free,
+                              ZORO_SELECT_DISCOUNT_RATE as _sel)
+    raw = float(raw_cart_cost or 0.0)
+    if not earnings or raw <= 0:
+        return None
+    cost = raw * ((1 - _sel) if all_zoro_select else 1.0) + (_fee if raw < _free else 0.0)
+    return (earnings - cost) / cost
+
+
+def _priority_pool_sig(coupon_codes):
+    """Only the PRIORITY codes. Sunday mode never uses a regular code, so a regular-coupon scrape
+    must not wake every held order; a new priority code (Monday morning) must."""
+    try:
+        pri = coupon_codes[0] if isinstance(coupon_codes, tuple) else []
+        return "|".join(sorted({str((c or {}).get("code") or "") for c in (pri or [])}))
+    except Exception:
+        return ""
+
+
+def _sunday_park(amazon_id, why, coupon_codes, sun):
+    _SUNDAY_HOLDS[amazon_id] = {"sig": sun["sig"], "pool": _priority_pool_sig(coupon_codes),
+                                "at": time.time(), "reason": why}
+
+
+def _sunday_parked(amazon_id, coupon_codes, label=""):
+    """True while an order held under Sunday mode should be left alone: same numbers, same
+    priority coupons, held under SUNDAY_HOLD_MAX_AGE, and not since tagged Manual-C/-R."""
+    h = _SUNDAY_HOLDS.get(amazon_id)
+    if not h:
+        return False
+    sun = _sunday_mode()
+    if (sun and not str(label or "").startswith("Manual-") and sun["sig"] == h["sig"]
+            and _priority_pool_sig(coupon_codes) == h["pool"]
+            and time.time() - h["at"] < SUNDAY_HOLD_MAX_AGE):
+        return True
+    _SUNDAY_HOLDS.pop(amazon_id, None)
+    return False
+
+
+def _sunday_hold(amazon_id, why, coupon_codes, sun, f):
+    """Hold an order that has NOT been claimed yet: print, park, log SUNDAY_HOLD, write nothing
+    to Amazon. Returns the process_order status."""
+    print(f"  🗓️  SUNDAY MODE: waiting — {why}")
+    print(f"      ({_sunday_rule_text(sun)}; nothing is labelled — it is placed as soon as Sunday mode is off)")
+    _sunday_park(amazon_id, why, coupon_codes, sun)
+    _log_order({"amazon_id": amazon_id, "asin": f.get("asin", ""), "sku": f.get("sku", ""),
+                "qty": f.get("qty", ""), "buyer": f.get("buyer", ""), "city": f.get("city", ""),
+                "state": f.get("state", ""), "earnings": f.get("earnings") or "",
+                "zoro_price": f.get("cart") or "", "status": "SUNDAY_HOLD",
+                "notes": f"Sunday mode: {why}"})
+    return "skipped"
+
+
 def _coupon_fail_decision(last_fail, raw_cart_cost, earnings, all_zoro_select, small_fee, free_threshold, min_margin):
     """What a checkout 'COUPON FAIL' means for a Coupon-column order (pure; unit-tested):
       • every code says 'not valid for this item' while regular codes existed → this item can
@@ -3424,6 +3569,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
               f"the Gmail duplicate search will be SKIPPED for it. "
               f"The placement lock still applies, so it can only be placed once.")
 
+    # ── SUNDAY MODE: an order already held is not re-priced (a Manual tag always goes through) ──
+    if not manual_override and _sunday_parked(amazon_id, coupon_codes):
+        return "skipped"
+
     # ── Already processed? ────────────────────────────────────────
     if merchant_id and merchant_id.startswith("WB"):
         print(f"  ⏭️  Already has WB ID: {merchant_id} — skipping")
@@ -3970,6 +4119,19 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif isinstance(coupon_codes, list):
         regular_coupon_codes = coupon_codes  # legacy fallback
 
+    # ── SUNDAY MODE (coupon profiles): priority coupons only ──
+    # A regular code spent today may be on an item Monday's priority code would have covered.
+    # Stripped here, before the supervisor and the checkout see the list, so neither can use one.
+    # With no regular code tried, the checkout can never call an item promo-ineligible either
+    # (_coupon_fail_decision needs live regular codes for that).
+    _sunday_status = None
+    _sun_c = _sunday_mode() if (IS_COUPON_PROFILE and not manual_override) else None
+    _sun_f = dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer, city=city,
+                  state=state, earnings=earnings, cart=raw_cart_cost)
+    if _sun_c and regular_coupon_codes:
+        print(f"  🗓️  SUNDAY MODE: priority coupons only — {len(regular_coupon_codes)} regular code(s) kept for Monday")
+        regular_coupon_codes = []
+
     # ── Evaluate optimal coupon strategy ────────────────────────
     strategy = _evaluate_order_strategy(
         resolved_items, priority_coupons_with_pct, primary_item.get("unit_price", 0),
@@ -4020,6 +4182,17 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             _record_asin_verdict(primary_item.get("asin"), _dec["verdict"], _cart_txt, _dec.get("coupon") or "")
         elif _dec.get("verdict"):
             print("  🧑‍⚖️ SUPERVISOR: no priority coupons loaded — order handled, ASIN left unsorted until they are")
+        if _sun_c and _dec["action"] in ("reseller", "call_zoro_20", "wait"):
+            if _dec["action"] == "reseller":
+                _g = _sunday_gate(raw_cart_cost, _sunday_reseller_margin(
+                    raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items)), _sun_c)
+                _held = f"supervisor would hand it to the reseller, but {_g}" if _g else None
+            elif _dec["action"] == "call_zoro_20":
+                _held = f"big order (${raw_cart_cost:.2f}) with no priority coupon today — not marked '20'"
+            else:
+                _held = f"supervisor: {_dec['reason']}"
+            if _held:
+                return _sunday_hold(amazon_id, _held, coupon_codes, _sun_c, _sun_f)
         if _dec["action"] == "call_zoro_20":
             ok = update_amazon_seller_id(driver, amazon_id, "20", PROFILE_NAME)
             print(f"  📞 BIG ORDER (${raw_cart_cost:.2f} >= ${big_threshold:.0f}): {_dec['reason']} — marked '20' on Amazon"
@@ -4138,6 +4311,17 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         # The estimate above is informational only. (coupon_adjusted_margin kept for
         # logging/coupon-strategy below.)
 
+    # ── SUNDAY MODE (reseller profiles): only what Monday's coupons cannot improve ──
+    # Judged on the estimate printed above, before anything is claimed. Not on the checkout
+    # gate: a failure THERE labels the order "Loss-Kamran checking", which stops it coming back
+    # on Monday. Here a miss only means the order waits.
+    _sun_r = _sunday_mode() if (IS_RESELLER_PROFILE and not manual_override) else None
+    _g = _sunday_gate(raw_cart_cost, margin if earnings else None, _sun_r)
+    if _g:
+        return _sunday_hold(amazon_id, _g, coupon_codes, _sun_r,
+                            dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer, city=city,
+                                 state=state, earnings=earnings, cart=raw_cart_cost))
+
     # ── Coupon strategy ─────────────────────────────────────────
     skip_coupons = not IS_COUPON_PROFILE or (TARGET_LABEL == 'Rajar 1')
     _pcfg = gui_cfg.get("profiles", {}).get(PROFILE_NAME, {})
@@ -4189,6 +4373,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif IS_COUPON_PROFILE:
         print(f"  🏷️  Coupon: OFF ({TARGET_LABEL} profile)")
     if IS_COUPON_PROFILE and not skip_coupons and not manual_override and not coupon_arg:
+        if _sun_c:
+            return _sunday_hold(amazon_id, "no priority coupon in today's pool"
+                                + (f" (big order ${raw_cart_cost:.2f} — not marked '20')" if raw_cart_cost >= big_threshold else ""),
+                                coupon_codes, _sun_c, _sun_f)
         if raw_cart_cost >= big_threshold:
             ok = update_amazon_seller_id(driver, amazon_id, "20", PROFILE_NAME)
             reason = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon in pool; marked '20' for manual 20% Zoro phone discount"
@@ -4922,6 +5110,28 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     _cf_route = _cf["reason"]
                 else:
                     _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": _cf["reason"]}
+        # SUNDAY MODE: no priority code applied — act only as a normal day would AND the reseller
+        # rule allows. The claim is held at this point, so nothing returns early: the flags are
+        # cleared and the usual pre-payment release below runs.
+        if _sun_c and result_status == "COUPON FAIL" and IS_COUPON_PROFILE and not skip_coupons and not _foc_codes:
+            if _cf_action_20:
+                _cf_action_20 = False
+                _sunday_status = f"big order (${raw_cart_cost:.2f}) with no priority coupon today — not marked '20'"
+            elif _cf_route:
+                _g = _sunday_gate(raw_cart_cost, _sunday_reseller_margin(
+                    raw_cart_cost, earnings, all(it.get("is_zoro_select") for it in resolved_items)), _sun_c)
+                if _g:
+                    _cf_route = None
+                    _sunday_status = f"would go to the reseller, but {_g}"
+            else:
+                # A code that answered with a session/API error said nothing about the item: leave
+                # that order on the normal 45-min retry instead of parking it until Monday.
+                _lf_s = (asin_coupon_cache or {}).get("last_fail") or {}
+                if not any(int(_lf_s.get(k) or 0) for k in ("transient", "priority_transient", "regular_transient")):
+                    _sunday_status = "no priority coupon applied"
+            if _sunday_status:
+                status_note = f"Sunday mode: {_sunday_status} — waiting for Monday's priority coupons"
+                _sunday_park(amazon_id, _sunday_status, coupon_codes, _sun_c)
     else:
         status_note = f"Placement failed: {result_status}"
     
@@ -5023,7 +5233,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         "earnings": earnings or "",
         "zoro_price": logged_cost,
         "profit": profit if profit is not None else "",
-        "status": result_status or "FAILED",
+        "status": "SUNDAY_HOLD" if _sunday_status else (result_status or "FAILED"),
         "notes": "; ".join(filter(None, [status_note, order_note])),
     })
     return "failed"
@@ -5580,6 +5790,18 @@ def main():
                     print("   -> focus mode: nothing to place right now — next cycle in 60 s")
                     time.sleep(60)
                     continue
+
+            # ── SUNDAY MODE: held orders are not re-scraped or re-priced ──
+            _sun_cycle = _sunday_mode()
+            if _sun_cycle:
+                print(f"\n🗓️  SUNDAY MODE — {_sunday_rule_text(_sun_cycle)}")
+            if _SUNDAY_HOLDS and scraped_orders:
+                _held_ids = {o["amazon_id"] for o in scraped_orders
+                             if _sunday_parked(o["amazon_id"], coupon_codes, o.get("_label_matched", ""))}
+                if _held_ids:
+                    scraped_orders = [o for o in scraped_orders if o["amazon_id"] not in _held_ids]
+                    print(f"   {len(_held_ids)} order(s) already held — not re-checked until Sunday mode is "
+                          f"unticked, its numbers change, or the priority coupons change")
 
             scraped_orders, asin_counts = _sort_orders_for_processing(scraped_orders)
             if PRIORITY_ASINS:

@@ -217,6 +217,22 @@ are enforced in code, not by convention:
   nothing and says so). At checkout the focus coupon is tried first; if it fails on the live cart
   the normal order still applies. Use it when a code is about to expire; untick it afterwards —
   deferred orders are placed normally then.
+* **Sunday mode (11 Oct 2026).** Launcher checkbox on the Orders page (`bot_config.json →
+  sunday_mode: {enabled, max_cart, min_margin_pct}`), for the day before the weekly priority
+  coupons land (Monday ~10:00 PKT). It never does anything a placer would not do on a normal day —
+  it only holds back: a **reseller** places an order only when the Zoro cart at list price is under
+  `max_cart` AND its estimated margin is at least `min_margin_pct`; a **coupon** placer strips
+  regular codes before the supervisor or the checkout sees them (so no item can be called
+  promo-ineligible either — that needs live regular codes), hands an order to the reseller only if
+  it would pass the reseller rule, and never marks one '20' because no priority code applied today.
+  Everything else is logged `SUNDAY_HOLD` and waits **unlabelled**, so unticking releases it all at
+  once. The reseller rule is judged on the pre-checkout estimate, not the checkout gate, because a
+  failure there labels the order `Loss-Kamran checking` and it would never come back. Held orders
+  are filtered out before the detail scrape and not re-priced until the numbers change, the
+  PRIORITY pool changes (a regular scrape does not wake them), or 6 h pass. Manual-C/-R orders
+  bypass it. Placers re-read the setting every order (15 s cache, last good value kept on a read
+  error) — no restart. `engine/orders.py: _sunday_mode / _sunday_gate / _sunday_parked`;
+  test `scripts/test_sunday_mode.py`.
 * **Dead codes are not verdicts.** The checkout's failure summary is per tier; an expired code says
   nothing about the item. A priority code that three different carts report as expired is retired
   (marked INVALID) and should be removed from the tab. When no LIVE regular code is left and no

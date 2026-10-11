@@ -1210,6 +1210,55 @@ class App(tk.Tk):
             self._pstat[pk] = lbl
             self._pstop[pk] = stop_btn
 
+        # ── Sunday mode: hold what Monday's priority coupons could improve ──
+        r4 = tk.Frame(ci, bg=self.CARD)
+        r4.pack(fill="x", padx=14, pady=(0, 8))
+        _sun = _read_cfg_file().get("sunday_mode") or {}
+
+        def _g(v, d):
+            try:
+                return f"{float(v):g}"
+            except (TypeError, ValueError):
+                return d
+        self._sun_var = tk.BooleanVar(value=bool(_sun.get("enabled")))
+        self._sun_cart = tk.StringVar(value=_g(_sun.get("max_cart"), "50"))
+        self._sun_margin = tk.StringVar(value=_g(_sun.get("min_margin_pct"), "20"))
+        _sun_cb = ttk.Checkbutton(r4, text="🗓️ Sunday mode", variable=self._sun_var,
+                                  command=self._save_sunday_mode)
+        _sun_cb.pack(side="left")
+        self._tip(_sun_cb,
+                  "SUNDAY MODE — the weekly priority coupons arrive on Monday (~10:00 PKT).\n"
+                  "Until then, place only what those coupons could not have improved:\n\n"
+                  "  • RESELLER placers place an order only when the Zoro cart (list price) is\n"
+                  "    UNDER the amount here AND its estimated margin is AT LEAST the % here.\n"
+                  "  • COUPON placers use priority coupons only — never a regular coupon, since\n"
+                  "    an item bought with one today may take a priority code tomorrow. They hand\n"
+                  "    an order to the reseller only if it would pass the rule above, and never\n"
+                  "    mark an order '20' just because no priority coupon applied today.\n"
+                  "  • Everything else WAITS, unlabelled. Nothing is written to Amazon, so\n"
+                  "    unticking this releases every held order at once.\n\n"
+                  "Held orders are not re-checked every cycle (no re-scrape, no re-pricing) until\n"
+                  "the numbers change, the priority coupons change, or 6 hours pass.\n"
+                  "A Manual-C / Manual-R tag still goes straight through.\n\n"
+                  "Running placers pick this up within 15 seconds — no restart needed.")
+        self._dim(r4, "  Reseller places only: Zoro cart under $").pack(side="left", padx=(8, 2))
+        _e_cart = tk.Entry(r4, textvariable=self._sun_cart, width=6, font=(self.MONO, 10),
+                           bg=self.INP_BG, fg=self.TEXT, insertbackground=self.TEXT,
+                           relief="flat", highlightthickness=1, highlightbackground=self.BORDER)
+        _e_cart.pack(side="left")
+        self._dim(r4, "  and est. margin ≥").pack(side="left", padx=(6, 2))
+        _e_mgn = tk.Entry(r4, textvariable=self._sun_margin, width=4, font=(self.MONO, 10),
+                          bg=self.INP_BG, fg=self.TEXT, insertbackground=self.TEXT,
+                          relief="flat", highlightthickness=1, highlightbackground=self.BORDER)
+        _e_mgn.pack(side="left")
+        self._dim(r4, "%").pack(side="left", padx=(2, 12))
+        for _e in (_e_cart, _e_mgn):
+            _e.bind("<Return>", lambda _ev: self._save_sunday_mode())
+            _e.bind("<FocusOut>", lambda _ev: self._save_sunday_mode(quiet=True))
+        self._sun_lbl = tk.Label(r4, text="", font=(self.MONO, 9), bg=self.CARD, fg=self.MUTED)
+        self._sun_lbl.pack(side="left")
+        self._render_sunday_label()
+
         # ── 2×2 Profile cards ────────────────────────────────────────
         cards = tk.Frame(page, bg=self.BG)
         cards.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -4523,6 +4572,59 @@ class App(tk.Tk):
                         "ok" if on else "warn")
         self._log_line(f"🫥 Headless {'ON' if on else 'OFF'} (placers + trackers started from now; "
                        f"restart a running one to switch it)", source="remote")
+
+    def _sunday_values(self):
+        """(max_cart, min_margin_pct) from the two boxes, or None if either is not a number."""
+        try:
+            cap = float(self._sun_cart.get().strip().lstrip("$").replace(",", "") or "50")
+            mm = float(self._sun_margin.get().strip().rstrip("%") or "20")
+        except ValueError:
+            return None
+        if cap <= 0:
+            return None
+        return cap, mm
+
+    def _save_sunday_mode(self, quiet=False):
+        """Persist Sunday mode into bot_config.json → sunday_mode. Running placers read it on
+        every order (cached 15 s), so nothing is restarted."""
+        vals = self._sunday_values()
+        if vals is None:
+            # the box must show what the placers will actually do: put it back to the saved state
+            self._sun_var.set(bool((_read_cfg_file().get("sunday_mode") or {}).get("enabled")))
+            self._render_sunday_label()
+            if not quiet:
+                messagebox.showwarning("Sunday mode",
+                                       "The cart limit must be a positive number of dollars and the "
+                                       "margin a number of percent (e.g. 50 and 20).")
+            return
+        cap, mm = vals
+        on = bool(self._sun_var.get())
+        new = {"enabled": on, "max_cart": cap, "min_margin_pct": mm}
+        try:
+            cfg = _read_cfg_file()
+            if (cfg.get("sunday_mode") or {}) == new:
+                return                          # focus left a box without a change
+            cfg["sunday_mode"] = new
+            _write_cfg_file(cfg)
+        except Exception as e:
+            self._feed_line(f"Could not save Sunday mode: {e}", "warn")
+            return
+        self._render_sunday_label()
+        if on:
+            msg = (f"Sunday mode ON — reseller places carts under ${cap:g} at ≥ {mm:g}% est. margin; "
+                   f"coupon placers use priority coupons only; everything else waits, unlabelled")
+        else:
+            msg = "Sunday mode OFF — held orders go back to the normal rules from the next order"
+        self._feed_line(msg, "warn" if on else "ok")
+        self._log_line(f"🗓️ {msg} (running placers pick it up within 15 s)", source="remote")
+
+    def _render_sunday_label(self):
+        vals = self._sunday_values()
+        if self._sun_var.get() and vals:
+            self._sun_lbl.config(text=f"ON — holding carts ≥ ${vals[0]:g} and margins < {vals[1]:g}% "
+                                      f"for Monday's priority coupons", fg=self.AMBER)
+        else:
+            self._sun_lbl.config(text="off — normal rules", fg=self.MUTED)
 
     def _toggle_page_checkout(self):
         """Persist the attributed-checkout choice. Like headless, nothing is restarted: a
