@@ -112,6 +112,22 @@ def main():
             print(f"[auto-sync] amazon_report: {r['ingested']} report(s), {r['orders']:,} orders", flush=True)
     step("amazon_report", ar)
 
+    # 3c) The owner's report folders (11 Oct 2026): fold the new all-orders reports into the month
+    #     files in "1. AB ECOM/Order_Reports" and "2. Hypersale/Order_Reports" (every run, no
+    #     Chrome), and once a day per store download a fresh All Listings Report into
+    #     "<store> ALR.txt" through that store's Seller Central Chrome, holding its turn. A busy or
+    #     closed Chrome just means the next hour tries again. scripts/refresh_store_reports.py.
+    def sr():
+        py = PYBIN if os.path.exists(PYBIN) else sys.executable
+        r = subprocess.run([py, os.path.join(AUTO, "scripts", "refresh_store_reports.py"), "--auto"],
+                           cwd=AUTO, capture_output=True, text=True, timeout=2400)
+        for ln in (r.stdout or "").splitlines():
+            if ln.strip() and not ln.startswith("──"):
+                print(f"[auto-sync] store_reports:{ln}", flush=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"exit {r.returncode}: {(r.stderr or '')[-200:]}")
+    step("store_reports", sr)
+
     # 4) Delivery through Zoro's own order tracking, once a day (27 Sep 2026). The closing
     #    chain runs the same sweep as its step 5, but auto-closing is off, so this is what keeps
     #    every shipped order tracked daily regardless: skipped while a closing / bulk / delivery
