@@ -86,6 +86,17 @@ def download_amazon_order_report(driver, account_profile=None):
         return None
 
 
+_CITY_STATE_ZIP = re.compile(r'([^,]+),\s*([A-Z][A-Z\s]*)\s*(\d{5}(?:-\d{4})?)', re.IGNORECASE)
+
+
+def _clean_city_line(line):
+    """The City/State/ZIP line as the pattern above expects it: dots dropped (as always) and a
+    doubled comma collapsed. 12 Oct 2026: 'Loganville,, Georgia 30052' matched nothing, so order
+    114-0583064-9226627 failed its address scrape every cycle."""
+    s = str(line or "").replace('.', '')
+    return re.sub(r'\s*,(?:\s*,)+', ',', s)
+
+
 def scrape_amazon_address(driver, amazon_order_id, account_profile=None, skip_navigate=False):
     """Navigate to Amazon order page and extract shipping address.
     Returns address dict, or dict with skip_order=True, or None on failure.
@@ -120,7 +131,7 @@ def scrape_amazon_address(driver, amazon_order_id, account_profile=None, skip_na
         # Find city/state/zip line scanning from end
         city_state_idx = None
         for i in range(len(lines) - 1, 0, -1):
-            if re.search(r'([^,]+),\s*([A-Z][A-Z\s]*)\s*(\d{5}(?:-\d{4})?)', lines[i].replace('.', ''), re.IGNORECASE):
+            if _CITY_STATE_ZIP.search(_clean_city_line(lines[i])):
                 city_state_idx = i
                 break
 
@@ -143,8 +154,7 @@ def scrape_amazon_address(driver, amazon_order_id, account_profile=None, skip_na
         }
 
         city_state_line = lines[city_state_idx]
-        match = re.search(r'([^,]+),\s*([A-Z][A-Z\s]*)\s*(\d{5}(?:-\d{4})?)',
-                          city_state_line.replace('.', ''), re.IGNORECASE)
+        match = _CITY_STATE_ZIP.search(_clean_city_line(city_state_line))
         if match:
             state = STATE_MAP.get(match.group(2).strip().upper(), "INVALID")
             if state in BLOCKED_STATES:
