@@ -786,6 +786,19 @@ def _apply_coupons_api(driver, cart_id, coupon_list, priority_coupons,
         c = str(c or "").strip()
         if c and c not in pri_set and c not in reg:
             reg.append(c)
+    # The coupon sheet is read once per cycle, so a regular code that dies or gets used DURING the
+    # cycle stayed in the list: 12 Oct 2026, ~40 dead EMZM codes sat ahead of the live ones and
+    # every DM_COUPON order re-tried all of them (~80 s each order) before one worked.
+    # The metadata file is the record (update_coupon_status writes it on every death / use).
+    try:
+        from utils.helpers import load_coupon_metadata
+        _meta = load_coupon_metadata()
+    except Exception:
+        _meta = {}
+    _gone = {c for c in reg if _meta.get(c) in ("USED", "INVALID")}
+    if _gone:
+        reg = [c for c in reg if c not in _gone]
+        print(f"  ⏭️  {len(_gone)} regular coupon(s) used or dead since the sheet was loaded — skipped")
 
     def _win(code, how):
         cart = _get_cart(driver)
