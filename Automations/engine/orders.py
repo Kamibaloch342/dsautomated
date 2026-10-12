@@ -298,8 +298,14 @@ def _cleanup():
     except Exception:
         pass
     try:
+        # Only OUR lock: 12 Oct 2026, an instance that refused to start ("Another instance is
+        # already running") deleted the running one's lock on its way out, so the next start
+        # ran as a second HS_COUPON on the same Chrome — both fighting over one browser.
         if os.path.exists(_lockfile_path):
-            os.remove(_lockfile_path)
+            with open(_lockfile_path) as _lf:
+                _owner = _lf.read().strip()
+            if _owner == str(os.getpid()):
+                os.remove(_lockfile_path)
     except Exception:
         pass
     print("   -> ✅ Cleanup done.")
@@ -596,11 +602,17 @@ def connect_chrome():
 
     opts = Options()
     opts.add_experimental_option("debuggerAddress", f"localhost:{PORT}")
+    # Same page-load strategy as a managed Chrome (helpers.page_load_strategy): 12 Oct 2026, an
+    # HS_COUPON that attached to a leftover Chrome ran on "normal", waited on zoro.com's 'load'
+    # event that never comes, and placed nothing for half an hour while the others placed.
+    from utils.helpers import page_load_strategy
+    opts.page_load_strategy = page_load_strategy("orders")
     try:
         service = ChromeService(ensure_chromedriver())
         driver = webdriver.Chrome(service=service, options=opts)
         harden_driver(driver)
-        print(f"✅ Connected to Chrome on port {PORT} — {driver.current_url}")
+        print(f"✅ Connected to Chrome on port {PORT} — {driver.current_url}"
+              f" (page load: {opts.page_load_strategy})")
         # Apply stealth patches even when attaching to pre-launched Chrome
         print("   -> 🕵️  Applying stealth patches to existing session...")
         from utils.helpers import _build_stealth_js, _apply_stealth_now
@@ -3302,6 +3314,24 @@ def _normalize_second_part_sku(value):
 _MANUAL_KIND_SUFFIX = {"C": "COUPON", "R": "RESELLER"}
 
 
+def _only_labelled(orders, label):
+    """Keep the orders whose Seller order ID IS the label (case and spaces ignored).
+
+    Amazon's order search is fuzzy, and when it drops the query it returns every unshipped
+    order: 12 Oct 2026, 20:55, the 'MR' search came back with 1,004 orders and HS_COUPON set out
+    to work all of them as its own. The Manual-C/-R pass already re-checks its tag; the main
+    label search now does too — an order without this exact label is never this profile's."""
+    want = str(label or "").strip().upper()
+    if not want:
+        return orders
+    kept = [o for o in orders if str(o.get("seller_order_id") or "").strip().upper() == want]
+    dropped = len(orders) - len(kept)
+    if dropped:
+        print(f"  🛡️  '{label}' search returned {dropped} order(s) WITHOUT that label — ignored "
+              f"(Amazon's search is fuzzy or dropped the query); {len(kept)} kept")
+    return kept
+
+
 def _parse_manual_tag(merchant_id):
     """Return 'C' or 'R' if *merchant_id* is a manual-override tag, else None.
 
@@ -5600,6 +5630,8 @@ def main():
             else:
                 print(f"\n🔍 Scraping '{TARGET_LABEL}' orders from Amazon Seller Central...")
             scraped_orders = scrape_order_ids(driver, label=TARGET_LABEL, asin_search=ASIN_SEARCH)
+            if not ASIN_SEARCH:
+                scraped_orders = _only_labelled(scraped_orders, TARGET_LABEL)
             for o in scraped_orders:
                 o["_label_matched"] = TARGET_LABEL
                 o["_margin_thresh"] = MIN_MARGIN
@@ -5607,7 +5639,8 @@ def main():
             # If a second target label is defined (e.g. Coupon profile), scrape it too
             if TARGET_LABEL_2 and not ASIN_SEARCH:
                 print(f"\n🔍 Scraping secondary label '{TARGET_LABEL_2}' from Amazon Seller Central...")
-                scraped_2 = scrape_order_ids(driver, label=TARGET_LABEL_2, asin_search=None)
+                scraped_2 = _only_labelled(scrape_order_ids(driver, label=TARGET_LABEL_2, asin_search=None),
+                                           TARGET_LABEL_2)
                 seen_primary = {o["amazon_id"] for o in scraped_orders}
                 for o2 in scraped_2:
                     if o2["amazon_id"] not in seen_primary:
