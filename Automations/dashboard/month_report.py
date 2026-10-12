@@ -61,7 +61,7 @@ _C_COLS = ("amazon_order_id", "account", "purchase_date", "order_status", "order
            "carrier", "shipped_email_time", "delivery_note", "last_scan_time", "last_scan_location", "stalled_days",
            "last_movement_at", "zoro_order_status", "refund_done", "refund_amount", "return_requested",
            "delivered_msg_sent", "review_requested", "delay_notice_sent", "customer_messaged", "ship_city",
-           "ship_state", "delivery_checked_at", "profile_name", "zoro_gmail_account")
+           "ship_state", "delivery_checked_at", "profile_name", "zoro_gmail_account", "flag_color")
 _P_COLS = ("amazon_order_id", "account", "purchase_date", "placed_at", "wb_order_id", "sku", "asin", "title",
            "quantity", "earnings", "zoro_order_total", "profit_dollars", "tracking_ids", "shipped_email_time",
            "deliver_by_date", "ship_by_date", "ship_city", "ship_state", "profile_name")
@@ -318,6 +318,7 @@ def _order(a, c, p, today, late_days, stalled_min):
         "review": c.get("review_requested") in ("Yes", "Already Requested"),
         "delay": c.get("delay_notice_sent") == "Yes",
         "in_amazon": bool(a), "in_system": bool(c or p), "in_closing": bool(c),
+        "flag": c.get("flag_color") or "", "tags": "", "urgent": False,     # CRM overlay in _collect
     }
 
 
@@ -383,12 +384,21 @@ def _collect(c, d0, d1, acct):
             for i, r in _by_ids(c, "order_placer_orders", ["amazon_order_id", "profile_name"], blank).items():
                 if r.get("profile_name"):
                     C[i]["profile_name"] = r["profile_name"]
-    try:   # hand-marked deliveries (CRM) count as delivered, as everywhere else on the dashboard
-        md = {r[0] for r in c.execute("SELECT amazon_order_id FROM order_crm WHERE manual_delivered='Yes'")}
+    try:   # the CRM row: hand-marked deliveries count as delivered, as everywhere else on the
+        # dashboard; flag / tags / urgent ride along so a row shows what the drawer set on it
+        cc = _cols(c, "order_crm", ("amazon_order_id", "manual_delivered", "flag_color", "tags", "is_urgent")) \
+            if _has_table(c, "order_crm") else []
+        conds = [w for k, w in (("manual_delivered", "manual_delivered='Yes'"),
+                                ("flag_color", "COALESCE(flag_color,'')!=''"),
+                                ("tags", "COALESCE(tags,'')!=''"), ("is_urgent", "is_urgent='Yes'")) if k in cc]
+        crm = {r["amazon_order_id"]: r for r in _rows(
+            c, f"SELECT {', '.join(cc)} FROM order_crm WHERE {' OR '.join(conds)}")} \
+            if conds and "amazon_order_id" in cc else {}
     except sqlite3.Error:
-        md = set()
-    for i in md & set(C):
-        C[i]["manual_delivered"] = "Yes"
+        crm = {}
+    for i, r in crm.items():
+        if r.get("manual_delivered") == "Yes" and i in C:
+            C[i]["manual_delivered"] = "Yes"
     out = [_order(a, C.get(i), P.get(i), today, late_days, stalled_min) for i, a in A.items()]
     # 4. orders the DB dates into the range that Amazon's report does not list for it: on a day
     #    without a report they are all there is; otherwise Amazon's day decides (edges, time zones)
@@ -411,6 +421,12 @@ def _collect(c, d0, d1, acct):
         o = _order(None, C.get(i), None if i in C else P.get(i), today, late_days, stalled_min)
         o["day"] = day
         out.append(o)
+    for o in out:
+        r = crm.get(o["id"])
+        if r:
+            o["flag"] = r.get("flag_color") or o["flag"]
+            o["tags"] = r.get("tags") or ""
+            o["urgent"] = r.get("is_urgent") == "Yes"
     return out
 
 

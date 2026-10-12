@@ -846,7 +846,7 @@ const U = {
   flagdot(c){ return c ? `<span class="flagdot" style="background:${esc(c)}"></span>` : ""; },
   tags(t){ return String(t||"").split(",").map(x=>x.trim()).filter(Boolean).map(x=>`<span class="tag">${esc(x)}</span>`).join(""); },
   copy(text){ navigator.clipboard?.writeText(String(text)).then(()=>Toast.show("Copied "+String(text).slice(0,40)),()=>Toast.err("Copy failed")); },
-  deliv(s){ s = String(s||""); if (!s) return `<span class="pill">not shipped</span>`; const l = s.toLowerCase(); if (l.startsWith("deliver")||l==="alldelivered") return `<span class="pill ok">${esc(s)}</span>`; if (/exception|fail|return|lost|damag/.test(l)) return `<span class="pill bad">${esc(s)}</span>`; return `<span class="pill info">${esc(s)}</span>`; },
+  deliv(s, shipped){ s = String(s||""); if (!s) return shipped ? `<span class="pill info" title="shipped — Zoro's tracking has not answered for it yet">shipped · not tracked yet</span>` : `<span class="pill">not shipped</span>`; const l = s.toLowerCase(); if (l.startsWith("deliver")||l==="alldelivered") return `<span class="pill ok">${esc(s)}</span>`; if (/exception|fail|return|lost|damag/.test(l)) return `<span class="pill bad">${esc(s)}</span>`; return `<span class="pill info">${esc(s)}</span>`; },
   sc(id){ return `https://sellercentral.amazon.com/orders-v3/search?q=${encodeURIComponent(id)}&qt=orderid`; },
   skel(n=3){ return Array.from({length:n},(_,i)=>`<span class="skel" style="width:${90-i*15}%"></span>`).join(""); },
   empty(t, s=""){ return `<div class="empty"><b>${esc(t)}</b>${esc(s)}</div>`; },
@@ -1131,7 +1131,7 @@ const Report = {
   FILTERS: [["all","All"],["label:Incomplete","Incomplete"],["d:stalled","No movement"],["late","Late"],["d:exception","Exception"],
     ["d:freight","Freight"],["d:zoro_cancelled","Zoro cancelled"],["d:not_shipped","Not shipped"],["d:transit","In transit"],
     ["label:Not placed","Not placed"],["label:Cancelled","Cancelled"],["label:Loss","Loss"],["label:Refunded","Refunded"],
-    ["label:Completed","Completed"],["d:delivered","Delivered"]],
+    ["label:Completed","Completed"],["d:delivered","Delivered"],["flagged","Flagged / tagged"]],
   DSTATE: {delivered:["ok","Delivered"], transit:["info","In transit"], stalled:["bad","No movement"], exception:["bad","Exception"],
     freight:["purple","Freight"], zoro_cancelled:["bad","Zoro cancelled"], not_shipped:["warn","Not shipped"]},
 
@@ -1165,7 +1165,7 @@ const Report = {
       const d = await GET("/api/month_report", Object.assign({month: want, account: this.acct(), fresh: force ? 1 : ""}, this.who()));
       if (seq !== this._seq) return;
       this.data = d; this.month = d.month;
-      if (force) this.dayCache = {};
+      if (force) { this.dayCache = {}; this._dayFresh = true; }
       this.render();
       $("#rpt-upd").textContent = "updated " + new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
     } catch (e) { if (seq === this._seq) body.innerHTML = U.err(e) + `<div style="margin-top:8px"><button class="b s" onclick="Report.load(true)">Retry</button></div>`; }
@@ -1272,13 +1272,26 @@ const Report = {
   async loadDay(){
     const day = this.open; if (!day) return; const key = this.dkey(day);
     if (!this.dayCache[key]) {
-      try { this.dayCache[key] = await GET("/api/month_day", Object.assign({date: day, account: this.acct()}, this.who())); }
+      const fresh = this._dayFresh ? 1 : ""; this._dayFresh = false;
+      try { this.dayCache[key] = await GET("/api/month_day", Object.assign({date: day, account: this.acct(), fresh}, this.who())); }
       catch (e) { const box = $("#rpt-dayp"); if (box && this.open === day) box.innerHTML = U.err(e); return; }
     }
     if (this.open === day) this.renderDay();
   },
-  match(o, f){ if (f === "all") return true; if (f === "late") return o.late > 0; const i = f.indexOf(":"); const k = f.slice(0, i), v = f.slice(i + 1); return k === "label" ? o.label === v : k === "d" ? o.dstate === v : true; },
-  hay(o){ return o._h || (o._h = [o.id, o.wb, o.mid, o.sku, o.asin, o.title, o.city, o.state, o.tracking, o.why, o.label, o.acct].join(" ").toLowerCase()); },
+  match(o, f){ if (f === "all") return true; if (f === "late") return o.late > 0; if (f === "flagged") return !!(o.flag || o.urgent || o.tags); const i = f.indexOf(":"); const k = f.slice(0, i), v = f.slice(i + 1); return k === "label" ? o.label === v : k === "d" ? o.dstate === v : true; },
+  hay(o){ return o._h || (o._h = [o.id, o.wb, o.mid, o.sku, o.asin, o.title, o.city, o.state, o.tracking, o.why, o.label, o.acct, o.tags].join(" ").toLowerCase()); },
+  // a flag / tag / urgent saved in the drawer shows on the cached days at once; the server drops
+  // its stored days on every save (server.update_order), so Refresh / F5 / a teammate see it too
+  patch(id, f){
+    const m = {flag_color: "flag", tags: "tags"};
+    let hit = false;
+    for (const dd of Object.values(this.dayCache)) for (const o of (dd && dd.orders) || []) {
+      if (o.id !== id) continue;
+      for (const [k, v] of Object.entries(f)) { if (m[k]) o[m[k]] = v || ""; if (k === "is_urgent" || k === "urgent") o.urgent = v === "Yes"; }
+      o._h = null; hit = true;
+    }
+    if (hit && this.open && $("#rpt-dayp")) this.renderDay();
+  },
   dpill(o){
     if (o.dstate === "na") return `<span class="muted">—</span>`;
     const [c, t] = this.DSTATE[o.dstate] || ["", o.dstate];
@@ -1302,7 +1315,7 @@ const Report = {
     box.innerHTML = `<div class="rpt-dayh"><b>${esc(U.day(this.open))}</b><span class="muted">${U.int(os.length)} orders · ${U.int(t.placed || 0)} placed on Zoro · ${U.int(L.Cancelled || 0)} cancelled · ${U.int(L["Not placed"] || 0)} not placed · ${U.money(t.sales || 0, 0)} sales</span><span class="grow"></span><input class="in s" id="rpt-q" placeholder="find order, WB, SKU, city…" value="${esc(this.q)}" style="min-width:220px"><button class="b s ghost" onclick="Report.toggle('${this.open}','all',true)">Close</button></div>`
       + `<div class="rpt-chips">${this.FILTERS.filter(([f]) => n[f] || f === "all" || f === this.filt).map(([f, l]) => `<button class="chip ${f === this.filt ? "on" : ""}" data-f="${esc(f)}">${esc(l)} <b>${U.int(n[f])}</b></button>`).join("")}</div>`
       + (rows.length ? `<div class="tblwrap rpt-orders"><table class="t"><thead><tr><th>Time (PT)</th><th>Order</th><th>Store</th><th>Item</th><th class="num">Qty</th><th class="num">Sales</th><th>Amazon</th><th>Label</th><th>Why</th><th>Delivery</th><th>Deliver by</th><th>Tracking</th><th class="num">Profit</th></tr></thead><tbody>`
-        + shown.map(o => `<tr class="click" data-oid="${esc(o.id)}" data-sys="${o.in_system ? 1 : 0}"><td class="mono small">${esc(o.t || "—")}</td><td class="mono">${esc(o.id)}<br><span class="muted small">${esc(o.wb || o.mid || "")}</span></td><td>${esc(o.acct)}${o.prof || o.gmail ? `<br><span class="muted small">${esc([o.prof, o.gmail].filter(Boolean).join(" · "))}</span>` : ""}</td><td class="ttl" title="${esc(o.title)}"><span class="mono small">${esc(o.sku)}</span><br><span class="muted small">${esc(o.title)}</span></td><td class="num">${U.int(o.units)}</td><td class="num">${U.money(o.sales)}</td><td>${this.apill(o)}</td><td>${U.lb(o.label)}</td><td class="why">${esc(o.why)}</td><td>${this.dpill(o)}</td><td class="mono small">${esc(o.deliver_by ? this.dshort(o.deliver_by) : "")}</td><td class="mono small">${esc(o.tracking)}</td><td class="num ${o.profit < 0 ? "neg" : ""}">${o.profit == null ? "" : U.money(o.profit)}</td></tr>`).join("")
+        + shown.map(o => `<tr class="click" data-oid="${esc(o.id)}" data-sys="${o.in_system ? 1 : 0}"><td class="mono small">${esc(o.t || "—")}</td><td class="mono">${U.flagdot(o.flag)}${esc(o.id)}${o.urgent ? ` <span class="pill bad" title="marked urgent">urgent</span>` : ""}<br><span class="muted small">${esc(o.wb || o.mid || "")}</span></td><td>${esc(o.acct)}${o.prof || o.gmail ? `<br><span class="muted small">${esc([o.prof, o.gmail].filter(Boolean).join(" · "))}</span>` : ""}</td><td class="ttl" title="${esc(o.title)}"><span class="mono small">${esc(o.sku)}</span><br><span class="muted small">${esc(o.title)}</span></td><td class="num">${U.int(o.units)}</td><td class="num">${U.money(o.sales)}</td><td>${this.apill(o)}</td><td>${U.lb(o.label)}</td><td class="why">${esc(o.why)}${o.tags ? `<div>${U.tags(o.tags)}</div>` : ""}</td><td>${this.dpill(o)}</td><td class="mono small">${esc(o.deliver_by ? this.dshort(o.deliver_by) : "")}</td><td class="mono small">${esc(o.tracking)}</td><td class="num ${o.profit < 0 ? "neg" : ""}">${o.profit == null ? "" : U.money(o.profit)}</td></tr>`).join("")
         + `</tbody></table></div>` + (rows.length > shown.length ? `<div class="smallnote">showing the first ${shown.length} of ${U.int(rows.length)} — narrow it with a filter or the search</div>` : "")
         : U.empty("No orders match", "pick another filter"));
     $$("#rpt-dayp .rpt-chips .chip").forEach(b => b.onclick = e => { e.stopPropagation(); this.filt = b.dataset.f; this.renderDay(); });
@@ -1387,7 +1400,7 @@ const Orders = {
       <td class="ttl" title="${esc(o.title||"")}"><span class="mono">${esc(o.asin||"")}</span> <span class="muted">${esc(o.sku||"")}</span><div class="ttl-line">${esc(o.title||"")}</div></td>
       <td class="num">${esc(o.quantity??"")}</td><td class="num">${U.money(o.earnings)}</td><td class="num">${o.zoro_order_total!=null?U.money(o.zoro_order_total):"—"}</td>
       <td class="num ${p<0?"neg":p>0?"pos":""}">${o.profit_dollars!=null?U.money(p):"—"}</td><td class="num ${U.n(pp)<0?"neg":""}">${U.pct(pp)}</td>
-      <td>${U.deliv(o.delivery_status)}${o.manual_delivered==="Yes"?` <span class="pill teal" title="manually marked delivered">manual</span>`:""}</td>
+      <td>${U.deliv(o.delivery_status, o.tracking_ids)}${o.manual_delivered==="Yes"?` <span class="pill teal" title="manually marked delivered">manual</span>`:""}</td>
       <td class="mono small">${trk.slice(0,2).map(t=>esc(t)).join("<br>")}${trk.length>2?`<br>+${trk.length-2}`:""}</td>
       <td>${U.tags(o.tags)}</td></tr>`;
   },
@@ -1431,7 +1444,7 @@ const Drawer = {
       <div class="actions"><button class="b s urgent ${isUrgent?'on':''}" onclick="Drawer.toggleUrgent()" title="${isUrgent?'Urgent order (click to clear)':'Mark order as Urgent'}">🚨 ${isUrgent?'Urgent (Active)':'Urgent'}</button><a class="b s" href="${U.sc(id)}" target="_blank" rel="noopener">Seller Central ↗</a>${s.asin?`<a class="b s" href="https://www.amazon.com/dp/${esc(s.asin)}" target="_blank" rel="noopener">Amazon ${esc(s.asin)} ↗</a>`:""}${cp(s.wb_order_id,"WB")}${trk.map(t=>cp(t,"Tracking")).join("")}${s.sku?cp(s.sku,"SKU"):""}<button class="b s ghost" onclick="Drawer.copySummary()">Copy summary</button></div>`;
     const stat = (l, v, cls="") => `<div class="stat"><div class="l">${l}</div><div class="v ${cls}" title="${esc(v)}">${v}</div></div>`;
     const p = U.n(s.profit_dollars);
-    const stats = `<div class="stats">${stat("Earnings", U.money(s.earnings))}${stat("Zoro cost", s.zoro_order_total!=null&&s.zoro_order_total!==""?U.money(s.zoro_order_total)+(U.n(s.zoro_tax)?" <span class='muted small'>tax "+U.money(s.zoro_tax)+"</span>":""):"—")}${stat("Profit", s.profit_dollars!=null&&s.profit_dollars!==""?U.money(p)+" · "+U.pct(s.profit_percent):"—", p<0?"neg":p>0?"pos":"")}${stat("Qty", esc(s.quantity??"—"))}${stat("Purchased", esc(U.date(s.purchase_date)))}${stat("Ship by", esc(String(s.ship_by_date||"—").slice(0,10)))}${stat("Deliver by", esc(String(s.deliver_by_date||"—").split("|")[0].slice(0,18)))}${stat("Delivery", U.deliv(s.delivery_status)+(s.delivery_date?` <span class="muted small">${esc(s.delivery_date)}</span>`:""))}${s.coupon_used&&s.coupon_used!=="None"?stat("Coupon", esc(s.coupon_used)+" · −"+U.money(s.coupon_savings)):""}${s.refund_done==="Yes"||s.return_requested==="Yes"?stat("Refund / return", `<span class="pill bad">${s.refund_done==="Yes"?"refunded":"return requested"}</span> ${s.net_profit_after_refund!=null?"net "+U.money(s.net_profit_after_refund):""}`):""}</div>
+    const stats = `<div class="stats">${stat("Earnings", U.money(s.earnings))}${stat("Zoro cost", s.zoro_order_total!=null&&s.zoro_order_total!==""?U.money(s.zoro_order_total)+(U.n(s.zoro_tax)?" <span class='muted small'>tax "+U.money(s.zoro_tax)+"</span>":""):"—")}${stat("Profit", s.profit_dollars!=null&&s.profit_dollars!==""?U.money(p)+" · "+U.pct(s.profit_percent):"—", p<0?"neg":p>0?"pos":"")}${stat("Qty", esc(s.quantity??"—"))}${stat("Purchased", esc(U.date(s.purchase_date)))}${stat("Ship by", esc(String(s.ship_by_date||"—").slice(0,10)))}${stat("Deliver by", esc(String(s.deliver_by_date||"—").split("|")[0].slice(0,18)))}${stat("Delivery", U.deliv(s.delivery_status, s.tracking_ids || s.shipped_email_time)+(s.delivery_date?` <span class="muted small">${esc(s.delivery_date)}</span>`:""))}${s.coupon_used&&s.coupon_used!=="None"?stat("Coupon", esc(s.coupon_used)+" · −"+U.money(s.coupon_savings)):""}${s.refund_done==="Yes"||s.return_requested==="Yes"?stat("Refund / return", `<span class="pill bad">${s.refund_done==="Yes"?"refunded":"return requested"}</span> ${s.net_profit_after_refund!=null?"net "+U.money(s.net_profit_after_refund):""}`):""}</div>
       ${s.title?`<div class="ttl-line" style="margin-top:8px;white-space:normal" title="${esc(s.title)}"><span class="mono">${esc(s.asin||"")}</span> · ${esc(s.sku||"")} — ${esc(s.title)}</div>`:""}`;
     // re-sort client-side: the server leaves US-style "7/14/2026 10:48 am" FedEx stamps undated (at the end)
     const ev = (d.events || []).map((e,i) => ({e, i, t: (U.parseDt(e.at)||{getTime:()=>null}).getTime()}))
@@ -1509,6 +1522,7 @@ const Drawer = {
       if (r.ok === false) throw new Error(r.error||"save failed");
       Toast.ok(r.queued ? "Queued for the master DB" : "Saved "+Object.keys(fields).join(", "));
       Orders.patch(id, fields);
+      Report.patch(id, fields);
       if (this.data && this.data.summary) Object.assign(this.data.summary, fields);
       await this.reload();
     } catch (e) { Toast.err(e.message); }
@@ -1522,6 +1536,7 @@ const Drawer = {
       if (urgent) {
         await POST("/api/order_update", {order_id: this.id, is_urgent: "Yes"});
         Orders.patch(this.id, {is_urgent: "Yes"});
+        Report.patch(this.id, {is_urgent: "Yes"});
       }
       ta.value = "";
       Toast.ok(urgent ? "Note posted & marked Urgent" : "Note posted");

@@ -1387,6 +1387,13 @@ def update_order(body):
     except Exception:
         if not OPS.CLOUD_MODE:
             raise
+    try:   # the Daily report's stored days carry flag / tags / urgent / manual delivery from order_crm
+        import month_report as _mr
+        with _mr._CACHE_LOCK:
+            for k in [k for k in _mr._CACHE if k and k[0] == "d"]:
+                _mr._CACHE.pop(k, None)
+    except Exception:
+        pass
     if OPS.CLOUD_MODE:
         return OPS.push_crm_event("update_order", oid, fields, author)
     try:

@@ -639,6 +639,8 @@ class Agent:
                   "amazon_order_id TEXT NOT NULL, event_id TEXT UNIQUE, kind TEXT NOT NULL, field TEXT, "
                   "old_value TEXT, new_value TEXT, author TEXT, host TEXT, created_at TEXT DEFAULT (datetime('now')))")
         c.execute("CREATE INDEX IF NOT EXISTS ix_crm_history_oid ON crm_history(amazon_order_id, id)")
+        if "is_urgent" not in {r[1] for r in c.execute("PRAGMA table_info(order_crm)")}:
+            c.execute("ALTER TABLE order_crm ADD COLUMN is_urgent TEXT")
         cols = {r[1] for r in c.execute("PRAGMA table_info(crm_notes)")}
         if "cloud_id" not in cols:
             c.execute("ALTER TABLE crm_notes ADD COLUMN cloud_id TEXT")
@@ -646,7 +648,8 @@ class Agent:
                   "WHERE cloud_id IS NOT NULL")
 
     _CRM_FIELDS = ("case_status", "case_type", "case_resolution", "resolved_at", "reminder_at",
-                   "reminder_note", "flag_color", "manual_delivered", "comments", "tags")
+                   "reminder_note", "flag_color", "manual_delivered", "comments", "tags",
+                   "is_urgent")   # 13 Oct 2026: was missing — an urgent mark set on Render was dropped
 
     def _apply_crm_event(self, c: sqlite3.Connection, ev: dict) -> None:
         op, key, data = ev.get("op"), ev.get("key"), ev.get("data") or {}

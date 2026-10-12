@@ -170,9 +170,15 @@ def load_candidates(conn):
                  f"(wb_order_id IN ({','.join('?' * len(ONLY))}) OR amazon_order_id IN ({','.join('?' * len(ONLY))})) ")
         args = [*accts, *ONLY, *ONLY]
     else:
+        # Refunded orders are checked too (13 Oct 2026): a shipped order refunded on Amazon still
+        # needs its delivery — delivered means the buyer has the item AND the refund (ask for the
+        # return / file a claim), not delivered means Zoro owes the refund. WB4834992254 was
+        # delivered 16 Sep yet showed "in transit" for a month. The label cannot move: every
+        # Refunded row carries return_requested = refund_done = 'Yes', which closing.determine_label
+        # keeps Refunded; messaging and the Late/Stalled alerts already skip Refunded orders.
         where = (f"account IN ({ph}) AND COALESCE(wb_order_id,'') != '' "
                  f"AND COALESCE(delivery_status,'') NOT IN ('Delivered','AllDelivered') "
-                 f"AND COALESCE(order_label,'') NOT IN ('Cancelled','Refunded') "
+                 f"AND COALESCE(order_label,'') != 'Cancelled' "
                  f"AND COALESCE(order_status,'') != 'Cancelled' "
                  f"AND (order_status='Shipped' OR COALESCE(shipped_email_time,'') != '') "
                  f"AND substr(purchase_date,1,10) >= date('now', ?) "
@@ -282,6 +288,8 @@ def persist(conn, row, result, now_s):
         sets.append("profit_dollars=?"); vals.append(pd)
         sets.append("profit_percent=?"); vals.append(pp)
     label = C.determine_label(o)
+    if row.get("order_label") == "Refunded" and label != "Refunded":
+        label = ""      # a refunded order keeps its label — the sweep only adds where the parcel went
     if label and label != row.get("order_label") and not (
             label == "Incomplete" and row.get("order_label") in ("Completed", "Loss", "Refunded", "Cancelled")):
         sets.append("order_label=?"); vals.append(label)
