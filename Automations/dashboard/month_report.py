@@ -9,6 +9,8 @@ Zoro's tracking (the closing_orders delivery columns scripts/zoro_delivery_check
 month_report(q)  ?month=YYYY-MM&account=   per-day counts, month totals, report coverage
 month_day(q)     ?date=YYYY-MM-DD&account=  every order of one day with label, reason, delivery
 month_csv(q)     ?month=YYYY-MM&account=   the whole month as CSV, one row per order
+All three also take &profile= (DM_COUPON … or "none" = placed by hand) and &gmail= (the Zoro inbox
+the order was bought with): only the orders placed that way are counted (12 Oct 2026).
 
 Every order lands in exactly one bucket of each:
   label     Completed · Loss · Incomplete · Refunded · Cancelled · Not placed (· Manual)
@@ -59,7 +61,7 @@ _C_COLS = ("amazon_order_id", "account", "purchase_date", "order_status", "order
            "carrier", "shipped_email_time", "delivery_note", "last_scan_time", "last_scan_location", "stalled_days",
            "last_movement_at", "zoro_order_status", "refund_done", "refund_amount", "return_requested",
            "delivered_msg_sent", "review_requested", "delay_notice_sent", "customer_messaged", "ship_city",
-           "ship_state", "delivery_checked_at")
+           "ship_state", "delivery_checked_at", "profile_name", "zoro_gmail_account")
 _P_COLS = ("amazon_order_id", "account", "purchase_date", "placed_at", "wb_order_id", "sku", "asin", "title",
            "quantity", "earnings", "zoro_order_total", "profit_dollars", "tracking_ids", "shipped_email_time",
            "deliver_by_date", "ship_by_date", "ship_city", "ship_state", "profile_name")
@@ -155,6 +157,18 @@ def _thresholds():
         return int(cfg.get("late_days", 2)), int(cfg.get("stalled_days", 3))
     except Exception:
         return 2, 3
+
+
+@lru_cache(maxsize=1)
+def _inbox_map():
+    """{placer profile: Zoro inbox it buys with} — for orders placed but not closed yet, whose own
+    row has no inbox. Closing's zoro_gmail_account wins wherever it exists: DM_COUPON bought with
+    salesmercentile in September and robstark771 since."""
+    try:
+        from utils.accounts_config import zoro_profile_inboxes
+        return dict(zoro_profile_inboxes())
+    except Exception:
+        return {}
 
 
 def _code_reason(mid):
@@ -276,8 +290,13 @@ def _order(a, c, p, today, late_days, stalled_min):
         elif wkey == "not_closed" and p.get("placed_at"):
             why = f"Placed {str(p.get('placed_at'))[:16]} — not in closing yet"
     pdate = a.get("purchase_date") or str(src.get("purchase_date") or "")
+    prof = str(c.get("profile_name") or p.get("profile_name") or "").strip().upper() if placed else ""
+    gmail = str(c.get("zoro_gmail_account") or "").strip() if placed else ""
+    if placed and not gmail and prof:
+        gmail = _inbox_map().get(prof, "")
     return {
         "id": oid, "acct": a.get("account") or src.get("account") or "",
+        "prof": prof, "gmail": gmail,
         "day": a.get("purchase_day") or _day(src.get("purchase_date")),
         "t": pdate[11:16] if len(pdate) >= 16 and pdate[4] == "-" else "",
         "amz": amz or ("—" if not a else ""), "mid": mid, "wb": wb, "placed": placed,
@@ -358,6 +377,12 @@ def _collect(c, d0, d1, acct):
             c, f"SELECT {', '.join(pcols)} FROM order_placer_orders WHERE placed_at >= ? AND placed_at < ?{af}{not_closed}",
             [plo, phi] + aargs)}
         P.update(_by_ids(c, "order_placer_orders", pcols, [i for i in A if i not in C and i not in P]))
+        # a closed order whose closing row has no profile: the placer's own row knows it
+        blank = [i for i, r in C.items() if not (r.get("profile_name") or "").strip()]
+        if blank and "profile_name" in pcols:
+            for i, r in _by_ids(c, "order_placer_orders", ["amazon_order_id", "profile_name"], blank).items():
+                if r.get("profile_name"):
+                    C[i]["profile_name"] = r["profile_name"]
     try:   # hand-marked deliveries (CRM) count as delivered, as everywhere else on the dashboard
         md = {r[0] for r in c.execute("SELECT amazon_order_id FROM order_crm WHERE manual_delivered='Yes'")}
     except sqlite3.Error:
@@ -387,6 +412,33 @@ def _collect(c, d0, d1, acct):
         o["day"] = day
         out.append(o)
     return out
+
+
+def _who(q):
+    """(profile, gmail) filters from the query: '' = any; profile 'none' = placed with no profile (by hand)."""
+    prof = _q1(q, "profile").strip().upper()
+    gmail = _q1(q, "gmail").strip()
+    return ("" if prof in ("", "ALL") else prof), ("" if gmail.lower() in ("", "all") else gmail)
+
+
+def _keep(o, prof, gmail):
+    if prof and (o["prof"] or ("NONE" if o["placed"] else "")) != prof:
+        return False
+    return not gmail or o["gmail"] == gmail
+
+
+def _options(orders, prof, gmail):
+    """Dropdown choices with order counts. Each list is counted under the OTHER filter, so picking
+    an inbox narrows the profiles to the ones that bought with it, and the other way round."""
+    profs, mails = Counter(), Counter()
+    for o in orders:
+        if not o["placed"]:
+            continue
+        if _keep(o, "", gmail):
+            profs[o["prof"] or "NONE"] += 1
+        if _keep(o, prof, "") and o["gmail"]:
+            mails[o["gmail"]] += 1
+    return sorted(profs.items()), sorted(mails.items(), key=lambda x: (-x[1], x[0]))
 
 
 def _agg(orders):
@@ -498,6 +550,7 @@ def _months(c):
 def month_report(q):
     acct = _q1(q, "account")
     acct = "" if acct.lower() in ("", "all", "both") else acct
+    prof, gmail = _who(q)
     mkey = _month_key(q)
     first, last = _month_bounds(mkey)
 
@@ -507,6 +560,9 @@ def month_report(q):
             today = _today()
             end = min(last, today) if first <= today else last
             orders = _collect(c, first.isoformat(), end.isoformat(), acct) if first <= today else []
+            profiles, gmails = _options(orders, prof, gmail)
+            if prof or gmail:
+                orders = [o for o in orders if _keep(o, prof, gmail)]
             cov = _coverage(c)
             accts = _accounts(acct)
             by_day = {}
@@ -534,7 +590,8 @@ def month_report(q):
             except sqlite3.Error:
                 last_check = ""
             return {"month": mkey if mkey == LAST30 else first.strftime("%Y-%m"),
-                    "account": acct or "All", "from": first.isoformat(),
+                    "account": acct or "All", "profile": prof, "gmail": gmail,
+                    "profiles": profiles, "gmails": gmails, "from": first.isoformat(),
                     "to": end.isoformat(), "today": today.isoformat(), "months": _months(c),
                     "totals": tot, "days": days, "coverage": covinfo,
                     # today is still being written; a report downloaded this morning covers it only in part
@@ -543,12 +600,13 @@ def month_report(q):
                     "delivery_checked": last_check, "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         finally:
             c.close()
-    return _cached(("m", DB, mkey, first.isoformat(), acct), build, force=_q1(q, "fresh") == "1")
+    return _cached(("m", DB, mkey, first.isoformat(), acct, prof, gmail), build, force=_q1(q, "fresh") == "1")
 
 
 def month_day(q):
     acct = _q1(q, "account")
     acct = "" if acct.lower() in ("", "all", "both") else acct
+    prof, gmail = _who(q)
     day = _day(_q1(q, "date")) or _today().isoformat()
 
     def build():
@@ -557,12 +615,16 @@ def month_day(q):
             orders = _collect(c, day, day, acct)
         finally:
             c.close()
+        if prof or gmail:
+            orders = [o for o in orders if _keep(o, prof, gmail)]
         orders.sort(key=lambda o: (o["t"] or "99:99", o["id"]))
-        return {"date": day, "account": acct or "All", "orders": orders, "totals": _agg(orders)}
-    return _cached(("d", DB, day, acct), build, force=_q1(q, "fresh") == "1")
+        return {"date": day, "account": acct or "All", "profile": prof, "gmail": gmail,
+                "orders": orders, "totals": _agg(orders)}
+    return _cached(("d", DB, day, acct, prof, gmail), build, force=_q1(q, "fresh") == "1")
 
 
-CSV_COLS = (("date", "day"), ("time_pt", "t"), ("account", "acct"), ("amazon_order_id", "id"),
+CSV_COLS = (("date", "day"), ("time_pt", "t"), ("account", "acct"), ("profile", "prof"), ("zoro_gmail", "gmail"),
+            ("amazon_order_id", "id"),
             ("amazon_status", "amz"), ("merchant_order_id", "mid"), ("wb", "wb"), ("label", "label"),
             ("reason", "why"), ("delivery", "dstate"), ("late_days", "late"), ("no_movement_days", "stalled"),
             ("deliver_by", "deliver_by"), ("delivered", "delivered"), ("tracking", "tracking"),
@@ -577,6 +639,7 @@ _DSTATE_TEXT = {"delivered": "Delivered", "transit": "In transit", "stalled": "N
 def month_csv(q):
     acct = _q1(q, "account")
     acct = "" if acct.lower() in ("", "all", "both") else acct
+    prof, gmail = _who(q)
     mkey = _month_key(q)
     first, last = _month_bounds(mkey)
     end = min(last, _today())
@@ -585,6 +648,8 @@ def month_csv(q):
         orders = _collect(c, first.isoformat(), end.isoformat(), acct) if first <= end else []
     finally:
         c.close()
+    if prof or gmail:
+        orders = [o for o in orders if _keep(o, prof, gmail)]
     orders.sort(key=lambda o: (o["day"], o["t"] or "99:99", o["id"]))
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -600,4 +665,5 @@ def month_csv(q):
             row.append("" if v is None else v)
         w.writerow(row)
     tag = f"{first.isoformat()}_to_{end.isoformat()}" if mkey == LAST30 else first.strftime('%Y-%m')
-    return buf.getvalue(), f"orders_{tag}_{(acct or 'all').lower()}.csv"
+    who = "".join(f"_{x.lower()}" for x in (prof, gmail) if x)
+    return buf.getvalue(), f"orders_{tag}_{(acct or 'all').lower()}{who}.csv"

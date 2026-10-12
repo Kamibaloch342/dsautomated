@@ -602,6 +602,9 @@ body[data-sec="report"] .daterange{display:none}
 .rpt-month{display:inline-flex;align-items:center;gap:2px}
 .rpt-month select.in{font-weight:700;font-size:13px;padding:5px 8px}
 .rpt-month .b{font-size:15px;padding:3px 9px}
+.rpt-who{flex:0 0 auto;max-width:190px;font-size:13px;padding:5px 8px}
+#sec-report .sec-head{flex-wrap:wrap;row-gap:6px}
+.rpt-who.on{border-color:var(--accent);color:var(--accent);font-weight:700}
 .rpt-src{font-size:12px;color:var(--muted);margin:-10px 0 14px;font-weight:500;line-height:1.7}
 .rpt-src b{color:var(--text2);font-weight:700}
 .rpt-info{padding:9px 14px;border-radius:9px;background:var(--blue-bg);color:var(--blue-text);font-size:12.5px;font-weight:500;border:1px solid color-mix(in srgb,var(--blue) 20%,transparent);margin-bottom:14px;line-height:1.5}
@@ -686,6 +689,8 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
     <section class="sec on" id="sec-report">
       <div class="sec-head"><h1>Daily report</h1><span class="sub">every order by the day Amazon took it</span><span class="grow"></span><span class="upd" id="rpt-upd"></span>
         <span class="rpt-month"><button class="b s ghost" id="rpt-prev" title="Previous month">‹</button><select class="in s" id="rpt-month" title="Month"></select><button class="b s ghost" id="rpt-next" title="Next month">›</button></span>
+        <select class="in s rpt-who" id="rpt-prof" title="Placer profile — show only the orders it placed"><option value="">All profiles</option></select>
+        <select class="in s rpt-who" id="rpt-gmail" title="Zoro Gmail account the order was bought with — show only those orders"><option value="">All Gmail accounts</option></select>
         <a class="b s" id="rpt-csv" href="/api/month_report.csv" download title="Every order of the month, one row each">Export CSV</a><button class="b s" onclick="Report.load(true)">Refresh</button></div>
       <div id="rpt-body"><div class="kpis"><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div><div class="kpi"><span class="skel"></span><span class="skel" style="width:60%"></span></div></div><div class="card"><div class="bd"><span class="skel"></span><span class="skel"></span><span class="skel"></span></div></div></div>
     </section>
@@ -1110,6 +1115,7 @@ SECTIONS.home = Home;
 // day's orders with their label, the reason an order is still open, and its delivery.
 const Report = {
   month: "", data: null, sort: {k: "date", dir: "asc"}, open: null, filt: "all", q: "", dayCache: {}, _seq: 0,
+  prof: "", gmail: "",   // only the orders a placer profile / Zoro inbox bought (empty = everything)
   // key, header, tone, group, day filter
   COLS: [
     ["orders","Orders","","amz","all"], ["units","Units","","amz","all"], ["sales","Sales","","amz","all"],
@@ -1130,6 +1136,10 @@ const Report = {
     freight:["purple","Freight"], zoro_cancelled:["bad","Zoro cancelled"], not_shipped:["warn","Not shipped"]},
 
   acct(){ return S.account && S.account !== "All" ? S.account : ""; },
+  who(){ return {profile: this.prof, gmail: this.gmail}; },
+  dkey(day){ return [day, this.acct(), this.prof, this.gmail].join("|"); },
+  setWho(k, v){ if (this[k] === v) return; this[k] = v; this.open = null; this.dayCache = {}; this.load(); },
+  pname(p){ return p === "NONE" ? "By hand (no profile)" : p; },
   start(sub){ if (sub && (/^\d{4}-\d{2}$/.test(sub) || sub === "last30")) { if (sub !== this.month) { this.month = sub; this.open = null; } } this.load(); },
   onFilter(){ this.dayCache = {}; this.open = null; this.load(); },
   setMonth(m){ if (!m || m === this.month) return; this.month = m; this.open = null; this.filt = "all"; history.replaceState(null, "", "#report/"+m); this.load(); },
@@ -1149,9 +1159,10 @@ const Report = {
   async load(force){
     const seq = ++this._seq; const body = $("#rpt-body"); if (!body) return;
     const want = this.month; const acct = this.acct() || "All";
-    if (force || !this.data || (want && this.data.month !== want) || this.data.account !== acct) body.innerHTML = this.skel();
+    if (force || !this.data || (want && this.data.month !== want) || this.data.account !== acct
+        || (this.data.profile || "") !== this.prof || (this.data.gmail || "") !== this.gmail) body.innerHTML = this.skel();
     try {
-      const d = await GET("/api/month_report", {month: want, account: this.acct(), fresh: force ? 1 : ""});
+      const d = await GET("/api/month_report", Object.assign({month: want, account: this.acct(), fresh: force ? 1 : ""}, this.who()));
       if (seq !== this._seq) return;
       this.data = d; this.month = d.month;
       if (force) this.dayCache = {};
@@ -1177,6 +1188,7 @@ const Report = {
     return `<td class="num cell ${cls}" data-f="${esc(f)}" title="Show these orders">${this.fmt(k, v)}${mark}</td>`;
   },
   check(r){
+    if (this.prof || this.gmail) return "";   // a filtered day is a part of Amazon's day, not a match for it
     if (r.covered !== true && this.data && r.date === this.data.today) return `<span class="rpt-chk no" title="Today is still running — Amazon's report is downloaded through the day by closing and the tracker">…</span>`;
     if (r.covered === false) return `<span class="rpt-chk no" title="No Amazon report captured for this day — the count is only the orders placed on Zoro">~</span>`;
     if (r.covered === "partial") return `<span class="rpt-chk warn" title="Amazon's report is captured for one store only on this day">½</span>`;
@@ -1199,7 +1211,16 @@ const Report = {
     const months = ["last30"].concat(Array.from(new Set((d.month === "last30" ? [] : [d.month]).concat(d.months || []))).sort().reverse());
     sel.innerHTML = months.map(m => `<option value="${m}" ${m === d.month ? "selected" : ""}>${esc(this.mname(m))}${m === "last30" ? ` (${esc(this.dshort(d.from))} – ${esc(this.dshort(d.to))})` : ""}</option>`).join("");
     $("#rpt-next").disabled = d.month === "last30";
-    $("#rpt-csv").href = "/api/month_report.csv" + U.qs({month: d.month, account: this.acct()});
+    $("#rpt-csv").href = "/api/month_report.csv" + U.qs(Object.assign({month: d.month, account: this.acct()}, this.who()));
+    // the two "who" filters: choices counted from this window (each under the other filter)
+    const fillWho = (id, items, cur, all, name) => {
+      const s = $(id); const have = new Set(items.map(x => x[0]));
+      const list = cur && !have.has(cur) ? items.concat([[cur, 0]]) : items;
+      s.innerHTML = `<option value="">${all}</option>` + list.map(([v, n]) => `<option value="${esc(v)}" ${v === cur ? "selected" : ""}>${esc(name(v))} (${U.int(n)})</option>`).join("");
+      s.classList.toggle("on", !!cur);
+    };
+    fillWho("#rpt-prof", d.profiles || [], this.prof, "All profiles", v => this.pname(v));
+    fillWho("#rpt-gmail", d.gmails || [], this.gmail, "All Gmail accounts", v => v);
     const T = d.totals || {}, L = T.label || {}, D = T.del || {};
     const days = (d.days || []).filter(x => x.orders > 0 || x.date <= d.today);
     const nd = days.filter(x => x.orders > 0).length || 1;
@@ -1210,6 +1231,7 @@ const Report = {
     const src = Object.entries(cov).map(([a, c]) => c ? `<b>${esc(a)}</b> to ${esc(this.dshort(c.to))}` : `<b>${esc(a)}</b>: no report yet`).join(" · ");
     const unc = d.uncovered || [];
     let html = `<div class="rpt-src">Day totals come from Amazon's own order report (${src || "none captured yet"}), so they match Seller Central (<span class="rpt-chk ok">✓</span> on a day = every order in Amazon's report is here) · labels from closing · delivery from Zoro tracking${d.delivery_checked ? `, checked ${esc(U.rel(d.delivery_checked))}` : ""}</div>`;
+    if (this.prof || this.gmail) html += `<div class="rpt-info">Only orders placed${this.prof ? ` by <b>${esc(this.pname(this.prof))}</b>` : ""}${this.gmail ? ` with the Zoro account <b>${esc(this.gmail)}</b>` : ""}: <b>${U.int(T.orders)}</b>. Orders never placed on Zoro (cancelled first, or still waiting) belong to no profile or account, so they are left out, and the ✓ match with Amazon's day is hidden. <a href="#" onclick="Report.prof='';Report.gmail='';Report.open=null;Report.dayCache={};Report.load();return false">Show all orders</a></div>`;
     if (unc.length) html += `<div class="rpt-info">${esc(this.range(unc))}: Amazon's own order report for these days is not downloaded yet, so they show the orders placed on Zoro only (orders cancelled before placing are not counted). Days marked <b>~</b>.</div>`;
     html += `<div class="kpis">`
       + kpi("Orders", U.int(T.orders), `${U.int(Math.round(T.orders / nd))} a day · ${U.int(T.units)} units · ${U.money(T.sales, 0)}`)
@@ -1248,9 +1270,9 @@ const Report = {
     const tr = $(`#rpt-body tr.day[data-day="${day}"]`); if (tr) tr.scrollIntoView({block: "nearest", behavior: "smooth"});
   },
   async loadDay(){
-    const day = this.open; if (!day) return; const key = day + "|" + this.acct();
+    const day = this.open; if (!day) return; const key = this.dkey(day);
     if (!this.dayCache[key]) {
-      try { this.dayCache[key] = await GET("/api/month_day", {date: day, account: this.acct()}); }
+      try { this.dayCache[key] = await GET("/api/month_day", Object.assign({date: day, account: this.acct()}, this.who())); }
       catch (e) { const box = $("#rpt-dayp"); if (box && this.open === day) box.innerHTML = U.err(e); return; }
     }
     if (this.open === day) this.renderDay();
@@ -1271,7 +1293,7 @@ const Report = {
     return `<span class="pill ${c}">${esc(o.amz || "—")}</span>`;
   },
   renderDay(){
-    const box = $("#rpt-dayp"); const dd = this.dayCache[this.open + "|" + this.acct()]; if (!box || !dd) return;
+    const box = $("#rpt-dayp"); const dd = this.dayCache[this.dkey(this.open)]; if (!box || !dd) return;
     const os = dd.orders || []; const t = dd.totals || {}; const L = t.label || {};
     const n = {}; for (const [f] of this.FILTERS) n[f] = os.filter(o => this.match(o, f)).length;
     const q = this.q.trim().toLowerCase();
@@ -1280,7 +1302,7 @@ const Report = {
     box.innerHTML = `<div class="rpt-dayh"><b>${esc(U.day(this.open))}</b><span class="muted">${U.int(os.length)} orders · ${U.int(t.placed || 0)} placed on Zoro · ${U.int(L.Cancelled || 0)} cancelled · ${U.int(L["Not placed"] || 0)} not placed · ${U.money(t.sales || 0, 0)} sales</span><span class="grow"></span><input class="in s" id="rpt-q" placeholder="find order, WB, SKU, city…" value="${esc(this.q)}" style="min-width:220px"><button class="b s ghost" onclick="Report.toggle('${this.open}','all',true)">Close</button></div>`
       + `<div class="rpt-chips">${this.FILTERS.filter(([f]) => n[f] || f === "all" || f === this.filt).map(([f, l]) => `<button class="chip ${f === this.filt ? "on" : ""}" data-f="${esc(f)}">${esc(l)} <b>${U.int(n[f])}</b></button>`).join("")}</div>`
       + (rows.length ? `<div class="tblwrap rpt-orders"><table class="t"><thead><tr><th>Time (PT)</th><th>Order</th><th>Store</th><th>Item</th><th class="num">Qty</th><th class="num">Sales</th><th>Amazon</th><th>Label</th><th>Why</th><th>Delivery</th><th>Deliver by</th><th>Tracking</th><th class="num">Profit</th></tr></thead><tbody>`
-        + shown.map(o => `<tr class="click" data-oid="${esc(o.id)}" data-sys="${o.in_system ? 1 : 0}"><td class="mono small">${esc(o.t || "—")}</td><td class="mono">${esc(o.id)}<br><span class="muted small">${esc(o.wb || o.mid || "")}</span></td><td>${esc(o.acct)}</td><td class="ttl" title="${esc(o.title)}"><span class="mono small">${esc(o.sku)}</span><br><span class="muted small">${esc(o.title)}</span></td><td class="num">${U.int(o.units)}</td><td class="num">${U.money(o.sales)}</td><td>${this.apill(o)}</td><td>${U.lb(o.label)}</td><td class="why">${esc(o.why)}</td><td>${this.dpill(o)}</td><td class="mono small">${esc(o.deliver_by ? this.dshort(o.deliver_by) : "")}</td><td class="mono small">${esc(o.tracking)}</td><td class="num ${o.profit < 0 ? "neg" : ""}">${o.profit == null ? "" : U.money(o.profit)}</td></tr>`).join("")
+        + shown.map(o => `<tr class="click" data-oid="${esc(o.id)}" data-sys="${o.in_system ? 1 : 0}"><td class="mono small">${esc(o.t || "—")}</td><td class="mono">${esc(o.id)}<br><span class="muted small">${esc(o.wb || o.mid || "")}</span></td><td>${esc(o.acct)}${o.prof || o.gmail ? `<br><span class="muted small">${esc([o.prof, o.gmail].filter(Boolean).join(" · "))}</span>` : ""}</td><td class="ttl" title="${esc(o.title)}"><span class="mono small">${esc(o.sku)}</span><br><span class="muted small">${esc(o.title)}</span></td><td class="num">${U.int(o.units)}</td><td class="num">${U.money(o.sales)}</td><td>${this.apill(o)}</td><td>${U.lb(o.label)}</td><td class="why">${esc(o.why)}</td><td>${this.dpill(o)}</td><td class="mono small">${esc(o.deliver_by ? this.dshort(o.deliver_by) : "")}</td><td class="mono small">${esc(o.tracking)}</td><td class="num ${o.profit < 0 ? "neg" : ""}">${o.profit == null ? "" : U.money(o.profit)}</td></tr>`).join("")
         + `</tbody></table></div>` + (rows.length > shown.length ? `<div class="smallnote">showing the first ${shown.length} of ${U.int(rows.length)} — narrow it with a filter or the search</div>` : "")
         : U.empty("No orders match", "pick another filter"));
     $$("#rpt-dayp .rpt-chips .chip").forEach(b => b.onclick = e => { e.stopPropagation(); this.filt = b.dataset.f; this.renderDay(); });
@@ -1293,6 +1315,8 @@ SECTIONS.report = Report;
 $("#rpt-prev").onclick = () => Report.shift(-1);
 $("#rpt-next").onclick = () => Report.shift(1);
 $("#rpt-month").onchange = e => Report.setMonth(e.target.value);
+$("#rpt-prof").onchange = e => Report.setWho("prof", e.target.value);
+$("#rpt-gmail").onchange = e => Report.setWho("gmail", e.target.value);
 
 /* ═══════════════════════════ ORDERS ═════════════════════════════════ */
 const Orders = {
