@@ -1714,7 +1714,9 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
     print("  🌐 DOM fallback: navigating to checkout for Place Order...")
 
     driver.get("https://www.zoro.com/checkout")
-    deadline = time.time() + 12
+    # 30 s, not 12: with the "eager" page-load strategy driver.get returns at DOMContentLoaded,
+    # before the checkout's own data requests finish (helpers.page_load_strategy). Exits as soon as ready.
+    deadline = time.time() + 30
     while time.time() < deadline:
         ready = driver.execute_script("""
             var t = document.body.innerText;

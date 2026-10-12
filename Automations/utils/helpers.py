@@ -71,6 +71,28 @@ PAGE_LOAD_TIMEOUT_S = 60
 ASYNC_SCRIPT_TIMEOUT_S = 30
 
 
+def page_load_strategy(component: str = "orders") -> str:
+    """How long a placer's driver.get waits: "eager" = until the document is parsed
+    (DOMContentLoaded), "normal" = until the window 'load' event.
+
+    12 Oct 2026: zoro.com stopped firing 'load' at all — a DataDome captcha frame, a reCAPTCHA
+    frame and two live-update streams never finish, in a fresh visible Chrome too — so every
+    Zoro navigation, checkout included, timed out at 60 s on all four placers (3 orders
+    placed in 75 min). The document is ready in ~3 s; everything after a navigation already
+    waits for the elements it needs. Placers only — tracking/closing keep "normal".
+    env ZUHRA_PAGE_LOAD_STRATEGY or bot_config chrome.page_load_strategy (default "eager")."""
+    if str(component or "orders").strip().lower() not in ("orders", ""):
+        return "normal"
+    v = os.environ.get("ZUHRA_PAGE_LOAD_STRATEGY", "").strip().lower()
+    if not v:
+        try:
+            from utils.config import load_gui_config
+            v = str((load_gui_config().get("chrome") or {}).get("page_load_strategy") or "").strip().lower()
+        except Exception:
+            v = ""
+    return v if v in ("eager", "normal") else "eager"
+
+
 def apply_cdp_stealth(driver):
     """Hide navigator.webdriver & friends via CDP on every new document.
 
@@ -430,8 +452,15 @@ def safe_get(driver, url, retries=1):
     """driver.get for READ-ONLY navigations: on page-load timeout, stop the
     stalled load and retry once so one slow page doesn't fail the order.
     Never use for navigations that submit or check out — a retry could
-    re-submit."""
+    re-submit.
+
+    12 Oct 2026: in HS_COUPON's Chrome zoro.com rendered (title and page there) but never
+    fired "load" — some request on it never finished — so every navigation timed out at
+    60 s and the retry stalled the same way: no priority check ran and no order was placed.
+    A stopped page that IS the site asked for, with its document parsed, is used as is."""
+    from urllib.parse import urlparse
     from selenium.common.exceptions import TimeoutException
+    want = urlparse(url).netloc.lower()
     last = None
     for _ in range(retries + 1):
         try:
@@ -443,6 +472,14 @@ def safe_get(driver, url, retries=1):
                 driver.execute_script("window.stop()")
             except Exception:
                 pass
+            try:
+                state = driver.execute_script("return document.readyState")
+                here = urlparse(driver.current_url or "").netloc.lower()
+            except Exception:
+                state, here = None, ""
+            if want and here == want and state in ("interactive", "complete"):
+                print(f"   ⏱️  {want} kept loading past {PAGE_LOAD_TIMEOUT_S}s — stopped it; the page is usable")
+                return
     raise last
 
 
@@ -979,6 +1016,9 @@ def setup_driver(debugging_port, profile_folder_name, component="orders"):
         chrome_options = ChromeOptions()
         chrome_options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debugging_port}")
         chrome_options.add_argument("--lang=en-US")
+        chrome_options.page_load_strategy = page_load_strategy(component)
+        if chrome_options.page_load_strategy != "normal":
+            print(f"   -> ⚡ page load strategy: {chrome_options.page_load_strategy} (don't wait for the 'load' event)")
         # NOTE: excludeSwitches / useAutomationExtension cannot be used with
         # debuggerAddress (attach mode). The CDP stealth JS handles detection.
 

@@ -71,6 +71,7 @@ TAB = GOOGLE_SHEET_PRIORITY_ASIN_TAB
 CHECK_COLS = ["Check_ASIN", "Check_Status", "Check_Coupon", "Check_Cart", "Check_Suggest",
               "Check_At", "Check_Profile", "Check_Note"]
 RECHECK_DAYS = 7
+CART_STUCK_STOP = 2        # "cart add failed" this many times in a row → the cart is stuck, stop the sweep
 CART_THRESHOLD = 50.0
 DATA = os.path.join(AUTO, "data")
 from utils.jsonstore import mutate_json, read_json, write_json_atomic, locked  # noqa: E402
@@ -649,8 +650,10 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
         print("  ⏸️  Zoro session unavailable — nothing tested this run (ASINs stay queued)")
         return []
     results = []
+    cart_stuck = 0
     for i, (asin, col) in enumerate(asins_with_cols, 1):
         t0 = time.time()
+        row = None
         if i % 25 == 0:
             zoro_session_ready(driver)                # token refresh on long sweeps
         col = (current_cols or {}).get(asin, col) if current_cols is not None else col
@@ -708,11 +711,20 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
         except Exception as e:
             print(f"    ⚠️ {asin}: {e} — skipped this time (it stays queued for the next run if it was queued)")
         finally:
-            if on_done is not None:
+            # "cart add failed" is the session's fault, not a verdict on the ASIN: it stays queued
+            stuck = str((row or {}).get("Check_Note", "")).endswith("cart add failed")
+            if on_done is not None and not stuck:
                 try:
                     on_done(asin)
                 except Exception as e:
                     print(f"    ⚠️ queue bookkeeping failed for {asin}: {e}")
+        cart_stuck = cart_stuck + 1 if stuck else 0
+        if cart_stuck >= CART_STUCK_STOP and i < len(asins_with_cols):
+            # 12 Oct 2026: a leftover item the cart could not shed failed 57 re-checks at ~60 s
+            # each — an hour with no order placed and nothing learned. Stop; orders go ahead.
+            print(f"  ⏸️  Zoro cart could not be cleared {cart_stuck}× in a row — sweep stopped, "
+                  f"{len(asins_with_cols) - i} more ASIN(s) stay queued for the next run")
+            break
     print(f"  ✅ {len(results)} verdict(s) recorded" + (f" (+ Check_* columns in '{TAB}')" if notes else " in data/priority_verdicts.json"))
     try:
         write_json_atomic(_state_path(profile_name),

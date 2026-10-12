@@ -130,7 +130,7 @@ def ensure_on_site(driver):
     Re-applies stealth on every navigation. Self-healing on restriction."""
     url = driver.current_url
     if 'zoro.com' not in url or 'checkout' in url or 'confirmation' in url:
-        driver.get("https://www.zoro.com")
+        safe_get(driver, "https://www.zoro.com")      # read-only; a page that never finishes loading is still used
         time.sleep(4)
         reapply_stealth(driver)
     try:
@@ -561,7 +561,7 @@ def clear_cart_selenium(driver, timeout=90):
     returns False so the caller abandons the order before any money is spent instead of the
     whole placer standing still."""
     try:
-        driver.get("https://www.zoro.com/cart")
+        safe_get(driver, "https://www.zoro.com/cart")   # read-only: the Remove clicks come after
         time.sleep(3)
         deadline = time.time() + timeout
         last, stalls = None, 0
@@ -588,6 +588,25 @@ def clear_cart_selenium(driver, timeout=90):
         return False
 
 
+def _clear_cart_items_api(driver, cart_id, items):
+    """DELETE each cart line by zoroNo, then re-read the cart. Returns (emptied, cart_id).
+
+    12 Oct 2026: one leftover item sat in HS_COUPON's cart and every clear went straight to the
+    /cart page, which the headless Chrome never finished loading ("Timed out receiving message
+    from renderer", 60 s each) — 57 priority re-checks failed one after another, and every
+    order would have too. The API is tried first now; the page is only the fallback."""
+    for it in items or []:
+        zno = (it or {}).get("zoroNo")
+        if zno:
+            zoro_api(driver, "DELETE", f"/v1/cart/{cart_id}/items/{zno}")
+    time.sleep(1.0)
+    r = zoro_api(driver, "GET", "/v1/cart")
+    d = r.get('d') if isinstance(r, dict) else None
+    if r.get('s') == 200 and isinstance(d, dict) and not d.get('items'):
+        return True, d.get('cartId', cart_id)
+    return False, cart_id
+
+
 def clear_cart_and_add(driver, sku, qty):
     """Clear cart + add item via API. Returns (success, unit_price)."""
     r = zoro_api(driver, "GET", "/v1/cart")
@@ -602,7 +621,13 @@ def clear_cart_and_add(driver, sku, qty):
     items = r['d'].get('items', [])
 
     if items:
-        print(f"   [ZORO API] Cart has {len(items)} items — clearing via Selenium")
+        print(f"   [ZORO API] Cart has {len(items)} items — clearing via API")
+        emptied, cart_id = _clear_cart_items_api(driver, cart_id, items)
+        if emptied:
+            items = []
+        else:
+            print("   [ZORO API] API clear left items behind — clearing via Selenium")
+    if items:
         if not clear_cart_selenium(driver):
             return False, 0
         r = zoro_api(driver, "GET", "/v1/cart")
