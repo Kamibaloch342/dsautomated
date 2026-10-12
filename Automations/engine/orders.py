@@ -177,6 +177,10 @@ PORT = CONFIG["port"]
 PO_NUMBER = CONFIG["po_number"]
 TARGET_LABEL = CONFIG.get("target_label", "")
 TARGET_LABEL_2 = CONFIG.get("target_label_2", "") if "COUPON" in PROFILE_NAME else ""
+# A PO-box order is never placed (Zoro ships UPS/FedEx, neither delivers to a PO box): it is labelled
+# with this on Amazon so the team sees it, and recorded in po_box_orders (owner, 12 Oct 2026 — it
+# replaced the old "POBOX" label and the endless re-scrape of an unlabelled PO-box order).
+PO_BOX_LABEL = "BB"
 MIN_MARGIN = CONFIG.get("min_profit_margin", -0.2)
 MIN_MARGIN_2 = CONFIG.get("min_profit_margin_2", -0.2) if "COUPON" in PROFILE_NAME else MIN_MARGIN
 # The launcher's per-profile "Order Limit" box writes profiles.<P>.order_limit into
@@ -3314,6 +3318,50 @@ def _normalize_second_part_sku(value):
 _MANUAL_KIND_SUFFIX = {"C": "COUPON", "R": "RESELLER"}
 
 
+def _po_box_park(driver, amazon_id, addr, detected_by, defer=False):
+    """Record a PO-box order's address, then label it PO_BOX_LABEL on Amazon (deferred in rush).
+
+    12 Oct 2026: a Manual-R order to a PO box was scraped, refused and left untouched 285 times
+    in four days — nothing ever moved it off the label the placer searches for (the run logs since
+    June hold 39 such orders, one re-scraped 2,240 times). The address is saved FIRST, so a later
+    label write cannot lose it; a write Amazon does not confirm is reported, not claimed — the order
+    then comes back next cycle and the write is tried again."""
+    addr = addr or {}
+    street_line = ", ".join(x for x in (addr.get("street_address", ""), addr.get("street_address_2", ""),
+                                        addr.get("city", ""), addr.get("state_abbr", ""), addr.get("zip_code", "")) if x)
+    try:
+        from utils.unified_db import record_po_box, set_po_box_label
+        recorded = record_po_box({"amazon_order_id": amazon_id,
+                                  "account": "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK",
+                                  "profile": PROFILE_NAME, "street": addr.get("street_address", ""),
+                                  "street2": addr.get("street_address_2", ""), "city": addr.get("city", ""),
+                                  "state": addr.get("state_abbr", ""), "zip": addr.get("zip_code", ""),
+                                  "detected_by": detected_by, "label_written": ""})
+    except Exception as e:
+        recorded, set_po_box_label = False, None
+        print(f"  ⚠️  PO-box record failed for {amazon_id}: {e}")
+    if not recorded:
+        print(f"  ⚠️  PO-box address NOT saved (database busy) — {amazon_id}: {street_line}")
+    if defer:
+        _rush_defer_wb(amazon_id, PO_BOX_LABEL)
+        ok = True
+    else:
+        try:
+            ok = bool(update_amazon_seller_id(driver, amazon_id, PO_BOX_LABEL, PROFILE_NAME))
+        except Exception as e:
+            ok = False
+            print(f"  ⚠️  could not write '{PO_BOX_LABEL}' on {amazon_id}: {e}")
+    if ok and recorded and set_po_box_label:
+        set_po_box_label(amazon_id, PO_BOX_LABEL)
+    if ok:
+        print(f"  📮 PO box — labelled '{PO_BOX_LABEL}' on Amazon{' (queued for the rush write-back)' if defer else ''}, "
+              f"NOT placed (dashboard: Attention → PO boxes)")
+    else:
+        print(f"  📮 PO box — NOT placed; '{PO_BOX_LABEL}' write NOT confirmed — set it by hand on {amazon_id} "
+              f"(it comes back next cycle and the write is tried again)")
+    return ok
+
+
 def _only_labelled(orders, label):
     """Keep the orders whose Seller order ID IS the label (case and spaces ignored).
 
@@ -3751,6 +3799,14 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     if not addr_raw or addr_raw.get("skip_order"):
         reason = addr_raw.get("reason", "Scrape Fail") if addr_raw else "Scrape Fail"
         print(f"  ❌ Address: {reason}")
+        if addr_raw and reason == "PO_BOX":
+            _po_box_park(driver, amazon_id, addr_raw, "amazon_address", defer=defer_amazon_writes)
+            _log_order({
+                "amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                "status": "PO_BOX",
+                "notes": "; ".join(filter(None, [f"PO box — labelled {PO_BOX_LABEL}, not placed", order_note])),
+            })
+            return "skipped"
         _log_order({
             "amazon_id": amazon_id,
             "asin": asin_field,
@@ -5146,8 +5202,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         update_amazon_seller_id(driver, amazon_id, "SR", PROFILE_NAME)
         status_note = f"State restricted ({state})"
     elif result_status == "PO_BOX_RESTRICTED":
-        update_amazon_seller_id(driver, amazon_id, "POBOX", PROFILE_NAME)
-        status_note = f"PO Box not allowed by Zoro ({addr.get('city', '')}, {state})"
+        _po_box_park(driver, amazon_id, addr, "zoro_rejected", defer=defer_amazon_writes)
+        status_note = f"PO Box not allowed by Zoro ({addr.get('city', '')}, {state}) — labelled {PO_BOX_LABEL}"
     elif result_status == "NET30_RESTRICTED":
         update_amazon_seller_id(driver, amazon_id, "Net30", PROFILE_NAME)
         status_note = "Net30 restricted"

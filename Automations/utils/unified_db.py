@@ -481,6 +481,29 @@ CREATE INDEX IF NOT EXISTS idx_walmart_zip    ON walmart_orders(ship_zip);
 
 _SCHEMA += WALMART_ORDERS_SCHEMA
 
+# PO-box orders the placers refused (12 Oct 2026, owner): Zoro does not ship to PO boxes, so the
+# order is labelled "BB" on Amazon and NOT placed. The address is kept so the dashboard can show
+# what kinds of PO-box addresses come in (Attention → PO boxes).
+PO_BOX_SCHEMA = """
+CREATE TABLE IF NOT EXISTS po_box_orders (
+    amazon_order_id TEXT PRIMARY KEY,
+    account         TEXT,
+    profile         TEXT,
+    street          TEXT,
+    street2         TEXT,
+    city            TEXT,
+    state           TEXT,
+    zip             TEXT,
+    detected_by     TEXT,      -- amazon_address | zoro_rejected
+    label_written   TEXT,      -- the Amazon seller-order-id label set (BB)
+    first_seen      TEXT,
+    last_seen       TEXT,
+    times_seen      INTEGER DEFAULT 1
+);
+"""
+
+_SCHEMA += PO_BOX_SCHEMA
+
 
 # ── Connection helper ────────────────────────────────────────────────────────
 @contextmanager
@@ -519,6 +542,46 @@ def init_db(db_path=None):
     with get_conn(target) as conn:
         conn.executescript(_SCHEMA)
     logger.info("Unified DB ready: %s", target)
+
+
+def record_po_box(data: dict, db_path=None) -> bool:
+    """Remember a PO-box order (see PO_BOX_SCHEMA). Best-effort: never raises into the placer."""
+    try:
+        now = data.get("seen_at") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with get_conn(db_path) as conn:
+            conn.executescript(PO_BOX_SCHEMA)
+            conn.execute("""
+                INSERT INTO po_box_orders (amazon_order_id, account, profile, street, street2, city, state, zip,
+                                           detected_by, label_written, first_seen, last_seen, times_seen)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                ON CONFLICT(amazon_order_id) DO UPDATE SET
+                    last_seen     = excluded.last_seen,
+                    times_seen    = po_box_orders.times_seen + 1,
+                    street        = COALESCE(NULLIF(excluded.street, ''), po_box_orders.street),
+                    street2       = COALESCE(NULLIF(excluded.street2, ''), po_box_orders.street2),
+                    city          = COALESCE(NULLIF(excluded.city, ''), po_box_orders.city),
+                    state         = COALESCE(NULLIF(excluded.state, ''), po_box_orders.state),
+                    zip           = COALESCE(NULLIF(excluded.zip, ''), po_box_orders.zip),
+                    detected_by   = COALESCE(NULLIF(excluded.detected_by, ''), po_box_orders.detected_by),
+                    label_written = COALESCE(NULLIF(excluded.label_written, ''), po_box_orders.label_written)
+            """, (data.get("amazon_order_id"), data.get("account", ""), data.get("profile", ""),
+                  data.get("street", ""), data.get("street2", ""), data.get("city", ""), data.get("state", ""),
+                  data.get("zip", ""), data.get("detected_by", ""), data.get("label_written", ""), now, now))
+        return True
+    except Exception as e:
+        logger.warning("record_po_box failed for %s: %s", data.get("amazon_order_id"), e)
+        return False
+
+
+def set_po_box_label(amazon_order_id: str, label: str, db_path=None) -> bool:
+    """Mark the Amazon label as written for a recorded PO-box order (no change to times_seen)."""
+    try:
+        with get_conn(db_path) as conn:
+            conn.execute("UPDATE po_box_orders SET label_written=? WHERE amazon_order_id=?", (label, amazon_order_id))
+        return True
+    except Exception as e:
+        logger.warning("set_po_box_label failed for %s: %s", amazon_order_id, e)
+        return False
 
 
 def init_walmart_orders(db_path=None):

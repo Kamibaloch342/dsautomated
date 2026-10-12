@@ -62,6 +62,7 @@ TABLES: dict[str, list[str] | None] = {
     "archive_messages": ["amazon_order_id", "email_timestamp", "message_type", "gmail_account"],
     "archive_returns": ["amazon_order_id", "email_timestamp", "email_type", "gmail_account"],
     "archive_earnings": ["amazon_order_id", "gmail_account", "email_timestamp"],
+    "po_box_orders": ["amazon_order_id"],
     "archive_zoro": None,
     "order_messages": None,
     "bot_decisions": None,

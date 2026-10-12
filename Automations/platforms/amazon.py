@@ -89,6 +89,17 @@ def download_amazon_order_report(driver, account_profile=None):
 _CITY_STATE_ZIP = re.compile(r'([^,]+),\s*([A-Z][A-Z\s]*)\s*(\d{5}(?:-\d{4})?)', re.IGNORECASE)
 
 
+# A PO box in the street lines: "PO Box 12", "P.O. Box", "P O Box", "PO BX", "Post Office Box",
+# "POB 12" / "P.O.B. 12". A bare "Box 12" (rural route, suite box) is NOT one — those orders have
+# been placed and delivered. Zoro ships by UPS/FedEx, which cannot deliver to a PO box.
+_PO_BOX_RE = re.compile(r"\b(?:P\.?\s*O\.?\s*(?:BOX|BX)\b|POST\s+OFFICE\s+BOX\b|P\.?\s*O\.?\s*B\.?\s*#?\s*\d)",
+                        re.IGNORECASE)
+
+
+def is_po_box(*street_lines):
+    return bool(_PO_BOX_RE.search(" ".join(str(s or "") for s in street_lines)))
+
+
 def _clean_city_line(line):
     """The City/State/ZIP line as the pattern above expects it: dots dropped (as always) and a
     doubled comma collapsed. 12 Oct 2026: 'Loganville,, Georgia 30052' matched nothing, so order
@@ -167,10 +178,10 @@ def scrape_amazon_address(driver, amazon_order_id, account_profile=None, skip_na
         else:
             raise ValueError(f"City/State regex failed on: {city_state_line}")
 
-        # PO Box check
-        all_addr_text = (data["street_address"] + " " + data.get("street_address_2", "")).upper()
-        if re.search(r'\bP\.?\s*O\.?\s*BOX\b', all_addr_text):
-            return {"skip_order": True, "reason": "PO_BOX"}
+        # PO Box check — the parsed address rides along so the placer can label the order "BB"
+        # on Amazon and record what kinds of PO-box addresses come in (12 Oct 2026, owner).
+        if is_po_box(data["street_address"], data.get("street_address_2", "")):
+            return dict(data, skip_order=True, reason="PO_BOX")
 
         try:
             data["phone"] = driver.find_element(

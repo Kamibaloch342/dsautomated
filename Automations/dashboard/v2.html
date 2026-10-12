@@ -746,7 +746,7 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
 
     <section class="sec" id="sec-attention">
       <div class="sec-head"><h1>Attention</h1><span class="sub">severe money leaks, late and stalled deliveries, placer blockers and bot decisions</span><span class="grow"></span><span class="upd" id="att-upd"></span><button class="b s" onclick="Att.load(true)">Refresh</button></div>
-      <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="delivery">Delivery<span class="cnt" id="att-c-delivery"></span></button><button data-tab="sales">Sales drops<span class="cnt" id="att-c-sales"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="log">Supervisor log<span class="cnt" id="att-c-log"></span></button></div>
+      <div class="tabs" id="att-tabs"><button data-tab="severe" class="on">Severe<span class="cnt" id="att-c-severe"></span></button><button data-tab="delivery">Delivery<span class="cnt" id="att-c-delivery"></span></button><button data-tab="sales">Sales drops<span class="cnt" id="att-c-sales"></span></button><button data-tab="po_boxes">PO boxes<span class="cnt" id="att-c-po_boxes"></span></button><button data-tab="unmapped">Unmapped<span class="cnt" id="att-c-unmapped"></span></button><button data-tab="needs_priority">Needs priority<span class="cnt" id="att-c-needs_priority"></span></button><button data-tab="bot">Bot decisions<span class="cnt" id="att-c-bot"></span></button><button data-tab="log">Supervisor log<span class="cnt" id="att-c-log"></span></button></div>
       <div id="att-body"><span class="skel"></span><span class="skel"></span></div>
     </section>
 
@@ -1744,6 +1744,7 @@ const Att = {
     if (tab === "severe") return GET("/api/severe", {account: acct});
     if (tab === "delivery") return GET("/api/delivery_watch", {account: acct});
     if (tab === "sales") return GET("/api/sales_drops", Object.assign({account: acct}, this.salesQ || {}));
+    if (tab === "po_boxes") return GET("/api/po_boxes", {account: acct});
     if (tab === "unmapped") return GET("/api/unmapped", {account: acct});
     if (tab === "needs_priority") return GET("/api/needs_priority", {account: acct});
     if (tab === "bot") return GET("/api/placer_events", {hours: this.botHours, limit: 1000});
@@ -1791,6 +1792,32 @@ const Att = {
       + (alerts.length ? `<div class="card grp"><div class="hd"><h2>Dropped more than ${R.drop_pct}%</h2><span class="sub">${alerts.length} listing${alerts.length === 1 ? "" : "s"}, most orders lost first</span></div><div class="tblwrap" style="border:0;border-radius:0;box-shadow:none"><table class="t">${th}<tbody>${alerts.map(row).join("")}</tbody></table></div></div>`
                        : U.empty("No drops", `none of the ${U.int(d.watched || 0)} good sellers fell more than ${R.drop_pct}%`))
       + (steady.length ? `<details class="card grp"><summary class="hd" style="cursor:pointer"><h2>Holding up</h2><span class="sub">${steady.length} more good seller${steady.length === 1 ? "" : "s"} under the threshold</span></summary><div class="tblwrap" style="border:0;border-radius:0;box-shadow:none"><table class="t">${th}<tbody>${steady.map(row).join("")}</tbody></table></div></details>` : "");
+  },
+  r_po_boxes(d){
+    // Orders refused for a PO-box address (Zoro ships UPS/FedEx — neither delivers to one): labelled
+    // "BB" on Amazon and not placed; the address is kept so the kinds that come in can be seen.
+    const rows = d.rows || [];
+    $("#att-c-po_boxes").textContent = rows.length || "";
+    const kinds = (d.kinds || []).map(([k, n]) => `<span class="chip">${esc(k)} <b>${U.int(n)}</b></span>`).join("");
+    const head = `<div class="banner">A PO-box order is <b>never placed</b> — Zoro ships by UPS/FedEx and neither delivers to a PO box. The placer labels it <b>${esc(d.label || "BB")}</b> on Amazon (so it is not picked up again) and keeps the address here. <b>${U.int(rows.length)}</b> orders: ${U.int(d.recorded || 0)} with the street on record${rows.length > (d.recorded || 0) ? `; ${U.int(rows.length - (d.recorded || 0))} from before 12 Oct have no street — the placer never kept it then (they come from its run logs and labels, with how often each was re-scraped)` : ""}.</div>`
+      + (kinds ? `<div class="rpt-why"><span class="l">How the box is written</span>${kinds}</div>` : "");
+    if (!rows.length) return head + U.empty("No PO-box orders", "none refused yet — new ones appear here as the placers meet them");
+    const how = v => { v = v || "";
+      if (v.startsWith("amazon_address")) return "Amazon address" + (v.includes("run log") ? `<div class="small muted">from the run logs</div>` : "");
+      if (v === "zoro_rejected") return "Zoro refused it";
+      return v.startsWith("label only") ? `label only<div class="small muted">before 12 Oct</div>` : esc(v || "—"); };
+    const row = r => `<tr>
+        <td class="mono small">${esc(r.purchase_day || "")}</td>
+        <td><span class="pill ${r.account === "HOANK" ? "teal" : "purple"}">${esc(r.account || "")}</span>${r.profile ? `<div class="lab-note">${esc(r.profile)}</div>` : ""}</td>
+        <td class="mono"><a href="${U.sc(r.amazon_order_id)}" target="_blank" rel="noopener" title="Open in Seller Central — a PO-box order is never placed, so it has no order drawer">${esc(r.amazon_order_id)} ↗</a><div class="small muted">${esc(r.order_status || "")}</div></td>
+        <td>${r.street ? esc(r.street) + (r.street2 ? `<div class="small muted">${esc(r.street2)}</div>` : "") : `<span class="muted small">not recorded</span>`}</td>
+        <td class="small">${esc([r.city, r.state].filter(Boolean).join(", "))} ${esc(r.zip || "")}</td>
+        <td>${r.form ? `<span class="pill warn">${esc(r.form)}</span>` : ""}</td>
+        <td class="small">${how(r.detected_by)}</td>
+        <td>${r.label_written ? `<span class="pill">${esc(r.label_written)}</span>` : ""}${r.label_now && r.label_now !== r.label_written ? `<div class="small muted" title="What the order carries on Amazon now">now: ${esc(r.label_now)}</div>` : ""}</td>
+        <td class="num small">${r.times_seen ? U.int(r.times_seen) + "×" : ""}<div class="small muted">${esc((r.last_seen || "").slice(0, 16))}</div></td>
+        <td class="ttl small" title="${esc(r.title || "")}">${esc(r.title || "")}</td></tr>`;
+    return head + `<div class="tblwrap"><table class="t"><thead><tr><th>Ordered</th><th>Store</th><th>Order</th><th>Street (as the buyer wrote it)</th><th>City / ZIP</th><th>Box form</th><th>Found by</th><th>Label</th><th class="num">Times seen</th><th>Product</th></tr></thead><tbody>${rows.map(row).join("")}</tbody></table></div>`;
   },
   bind(){ $$("#att-body [data-open], #trk-body [data-open]").forEach(el => el.onclick = e => { e.stopPropagation(); Drawer.open(el.dataset.open); }); },
   r_severe(d){

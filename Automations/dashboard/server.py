@@ -2815,6 +2815,11 @@ class H(BaseHTTPRequestHandler):
                 _csv, _name = _mr.month_csv(q)
                 return self._send(_csv.encode("utf-8-sig"), ctype="text/csv; charset=utf-8",
                                   hdrs=[("Content-Disposition", f'attachment; filename="{_name}"')])
+            if p == "/api/po_boxes":
+                # Attention → PO boxes: orders refused for a PO-box address, labelled BB (dashboard/po_boxes.py)
+                import po_boxes as _pb
+                _pb.DB = DB
+                return self._send(_pb.po_boxes(q))
             if p == "/api/sales_drops":
                 # Attention → Sales drops: good sellers whose orders fell (dashboard/sales_drops.py)
                 import sales_drops as _sd
