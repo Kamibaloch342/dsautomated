@@ -319,6 +319,8 @@ def notify_order_placed(order_data: dict, driver=None, account: str = ""):
         status_header = f"🟢 <b>PROFIT ORDER (+{pp_display})</b>"
         log_msg = f"  📱 [Telegram] Profit order (+{pp_display}) — sending Amazon screenshot + details in background..."
 
+    if not driver:      # rush mode passes no driver: the alert goes without a screenshot
+        log_msg = log_msg.replace("Amazon screenshot + ", "").replace("in background...", "in background (text only)...")
     print(log_msg)
 
     # Status header + 1-tap copyable preformatted note block

@@ -4018,7 +4018,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                         sku=sku_field,
                         zoro_code=item.get("sku", ""),
                         account=PROFILE_NAME,
-                        driver=driver
+                        driver=None if defer_amazon_writes else driver,   # rush: text only (wrong page)
                     )
                 except Exception as _oose:
                     print(f"   [Telegram] ⚠️ OOS alert error: {_oose}")
@@ -4853,13 +4853,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 tg_data = dict(split_detail)
                 if 'note_data' in locals():
                     tg_data.update(note_data)
-                _s_tax_val = float(split_tax or 0.0) if 'split_tax' in locals() else 0.0
-                _s_cost_val = float(logged_cost) if 'logged_cost' in locals() and logged_cost else 0.0
-                _s_earn_val = float(split_earnings if 'split_earnings' in locals() else (earnings or 0.0))
-                _s_cost_no_tax = max(0.01, _s_cost_val - _s_tax_val)
-                _s_margin_no_tax = ((_s_earn_val - _s_cost_no_tax) / _s_cost_no_tax) if (_s_earn_val and _s_cost_no_tax > 0) else (margin or 0.0)
-                _s_need_photo = (margin is not None and (margin < 0.08 or margin > 0.30)) or (_s_margin_no_tax < 0.08)
-                notify_order_placed(tg_data, driver=driver if (not defer_amazon_writes or _s_need_photo) else None, account=PROFILE_NAME)
+                # Rush (deferred Amazon writes): the driver is not on THIS order's page, so a screenshot
+                # would show another order (owner, 12 Oct 2026) — the alert goes as text only.
+                notify_order_placed(tg_data, driver=None if defer_amazon_writes else driver, account=PROFILE_NAME)
             except Exception as _tge:
                 print(f"   [Telegram] ⚠️ Notification error: {_tge}")
 
@@ -4988,13 +4984,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             tg_data = dict(normal_detail)
             if 'note_data' in locals():
                 tg_data.update(note_data)
-            _n_tax_val = float(logged_tax or 0.0) if 'logged_tax' in locals() and logged_tax else 0.0
-            _n_cost_val = float(logged_cost) if 'logged_cost' in locals() and logged_cost else 0.0
-            _n_earn_val = float(earnings or 0.0)
-            _n_cost_no_tax = max(0.01, _n_cost_val - _n_tax_val)
-            _n_margin_no_tax = ((_n_earn_val - _n_cost_no_tax) / _n_cost_no_tax) if (_n_earn_val and _n_cost_no_tax > 0) else (margin or 0.0)
-            _n_need_photo = (margin is not None and (margin < 0.08 or margin > 0.30)) or (_n_margin_no_tax < 0.08)
-            notify_order_placed(tg_data, driver=driver if (not defer_amazon_writes or _n_need_photo) else None, account=PROFILE_NAME)
+            # Rush: no screenshot — the driver is not on this order's page (text-only alert)
+            notify_order_placed(tg_data, driver=None if defer_amazon_writes else driver, account=PROFILE_NAME)
         except Exception as _tge:
             print(f"   [Telegram] ⚠️ Notification error: {_tge}")
 
