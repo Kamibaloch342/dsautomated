@@ -1321,7 +1321,7 @@ $("#rpt-gmail").onchange = e => Report.setWho("gmail", e.target.value);
 /* ═══════════════════════════ ORDERS ═════════════════════════════════ */
 const Orders = {
   rows: [], view: [], sortKey: "purchase_date", sortDir: "desc", page: 0, PAGE: 100, loaded: false, _facetsDone: false,
-  COLS: [["amazon_order_id","Order"],["purchase_date","Date"],["account","Account"],["order_label","Label"],["asin","ASIN / title"],["quantity","Qty"],["earnings","Earnings"],["zoro_order_total","Cost"],["profit_dollars","Profit"],["profit_percent","%"],["delivery_status","Delivery"],["tracking_ids","Tracking"],["tags","Tags"]],
+  COLS: [["amazon_order_id","Order"],["purchase_date","Date"],["account","Account"],["zoro_gmail_account","Gmail"],["order_label","Label"],["asin","ASIN / title"],["quantity","Qty"],["earnings","Earnings"],["zoro_order_total","Cost"],["profit_dollars","Profit"],["profit_percent","%"],["delivery_status","Delivery"],["tracking_ids","Tracking"],["tags","Tags"]],
   start(){ this.facets(); if (!this.loaded) this.load(); },
   onFilter(){ this.load(); },
   async facets(){
@@ -1383,7 +1383,7 @@ const Orders = {
     const trk = String(o.tracking_ids||"").split(/[;,]/).map(s=>s.trim()).filter(Boolean);
     return `<tr class="click" data-id="${esc(o.amazon_order_id)}">
       <td class="mono">${U.flagdot(o.flag_color)}${esc(o.amazon_order_id)}${o.wb_order_id?`<div class="lab-note mono">${esc(o.wb_order_id)}</div>`:""}</td>
-      <td>${esc(U.date(date))}</td><td>${esc(o.account||"")}${o.profile_name?`<div class="lab-note">${esc(o.profile_name)}</div>`:""}</td><td>${U.lb(o.order_label)}</td>
+      <td>${esc(U.date(date))}</td><td>${esc(o.account||"")}${o.profile_name?`<div class="lab-note">${esc(o.profile_name)}</div>`:""}</td><td class="small">${esc(o.zoro_gmail_account||"")}</td><td>${U.lb(o.order_label)}</td>
       <td class="ttl" title="${esc(o.title||"")}"><span class="mono">${esc(o.asin||"")}</span> <span class="muted">${esc(o.sku||"")}</span><div class="ttl-line">${esc(o.title||"")}</div></td>
       <td class="num">${esc(o.quantity??"")}</td><td class="num">${U.money(o.earnings)}</td><td class="num">${o.zoro_order_total!=null?U.money(o.zoro_order_total):"—"}</td>
       <td class="num ${p<0?"neg":p>0?"pos":""}">${o.profit_dollars!=null?U.money(p):"—"}</td><td class="num ${U.n(pp)<0?"neg":""}">${U.pct(pp)}</td>
@@ -1427,7 +1427,7 @@ const Drawer = {
     const trk = String(s.tracking_ids||"").split(/[;,]/).map(x=>x.trim()).filter(Boolean);
     const isUrgent = isUrgentOrder(s);
     $("#dw-head").innerHTML = `<h2>${U.flagdot(s.flag_color)}${esc(id)}<button class="copy" onclick="U.copy('${esc(id)}')" title="copy order id"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg></button>${U.lb(s.order_label)}${s.pending?`<span class="pill info">awaiting closing</span>`:""}${isUrgent?`<span class="pill bad" style="font-weight:700">🚨 URGENT</span>`:""}<button class="b iconb ghost x" onclick="Drawer.close()" title="Close (Esc)">✕</button></h2>
-      <div class="meta"><span><b>Account</b>${esc(s.account||"—")}</span><span><b>Profile</b>${esc(s.profile_name||"—")}</span><span><b>Status</b>${esc(s.order_status||"—")}</span><span><b>Buyer</b>${esc(s.ship_name||"—")} · ${esc(s.ship_city||"")}${s.ship_state?", "+esc(s.ship_state):""} ${esc(s.ship_postal_code||"")}</span>${s.case_status?`<span><b>Case</b><span class="pill ${/resolved|closed/.test(s.case_status)?"ok":"warn"}">${esc(s.case_status)}${s.case_type?" · "+esc(s.case_type):""}</span></span>`:""}</div>
+      <div class="meta"><span><b>Account</b>${esc(s.account||"—")}</span><span><b>Profile</b>${esc(s.profile_name||"—")}</span><span><b>Gmail</b>${esc(s.zoro_gmail_account||"—")}</span><span><b>Status</b>${esc(s.order_status||"—")}</span><span><b>Buyer</b>${esc(s.ship_name||"—")} · ${esc(s.ship_city||"")}${s.ship_state?", "+esc(s.ship_state):""} ${esc(s.ship_postal_code||"")}</span>${s.case_status?`<span><b>Case</b><span class="pill ${/resolved|closed/.test(s.case_status)?"ok":"warn"}">${esc(s.case_status)}${s.case_type?" · "+esc(s.case_type):""}</span></span>`:""}</div>
       <div class="actions"><button class="b s urgent ${isUrgent?'on':''}" onclick="Drawer.toggleUrgent()" title="${isUrgent?'Urgent order (click to clear)':'Mark order as Urgent'}">🚨 ${isUrgent?'Urgent (Active)':'Urgent'}</button><a class="b s" href="${U.sc(id)}" target="_blank" rel="noopener">Seller Central ↗</a>${s.asin?`<a class="b s" href="https://www.amazon.com/dp/${esc(s.asin)}" target="_blank" rel="noopener">Amazon ${esc(s.asin)} ↗</a>`:""}${cp(s.wb_order_id,"WB")}${trk.map(t=>cp(t,"Tracking")).join("")}${s.sku?cp(s.sku,"SKU"):""}<button class="b s ghost" onclick="Drawer.copySummary()">Copy summary</button></div>`;
     const stat = (l, v, cls="") => `<div class="stat"><div class="l">${l}</div><div class="v ${cls}" title="${esc(v)}">${v}</div></div>`;
     const p = U.n(s.profit_dollars);

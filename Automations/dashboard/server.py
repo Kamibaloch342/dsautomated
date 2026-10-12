@@ -442,7 +442,7 @@ _LIST_COLS = [
     "title", "quantity", "earnings", "item_price", "shipping_amt", "zoro_order_total",
     "zoro_subtotal", "zoro_shipping", "zoro_tax", "profit_dollars", "profit_percent",
     "roi_percent", "net_profit", "net_profit_after_refund", "coupon_used", "coupon_savings",
-    "zoro_account_name", "zoro_payment_method", "zoro_payment_card", "zoro_buyer_zip",
+    "zoro_account_name", "zoro_gmail_account", "zoro_payment_method", "zoro_payment_card", "zoro_buyer_zip",
     "tracking_ids", "tracking_id_uploaded", "delivery_status", "delivery_date",
     "deliver_by_date", "ship_by_date", "shipped_email_time", "sold_email_time", "on_time",
     "shipped_on_time", "placement_speed", "zoro_ship_speed", "return_requested",
@@ -905,6 +905,7 @@ def orders(q):
         else:
             rows = [dict(r) for r in dbq.union_query(c, "v_orders_all", sel, where, args, dc, 3000)]
         _apply_crm_overlay(c, rows)
+        _fill_gmail(rows)
     finally:
         c.close()
     return {"orders": rows, "count": len(rows)}
@@ -919,6 +920,7 @@ def order_detail(oid):
         order = dict(r) if r else None
         if order:
             _apply_crm_overlay(c, [order])
+            _fill_gmail([order])
             seen = set(); wb = []
             for w in re.findall(r"WB\d+", str(order.get("merchant_order_id") or "").upper()):
                 if w not in seen:
@@ -1299,6 +1301,22 @@ _CRM_DDL = ("CREATE TABLE IF NOT EXISTS order_crm("
             "case_resolution TEXT, resolved_at TEXT, reminder_at TEXT, reminder_note TEXT, "
             "flag_color TEXT, manual_delivered TEXT, comments TEXT, tags TEXT, is_urgent TEXT, "
             "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+
+
+def _fill_gmail(rows):
+    """The Zoro inbox an order was bought with. Closing records it (zoro_gmail_account); an order
+    placed but not closed yet takes its profile's current inbox (accounts config) — the same rule
+    as the Daily report's Gmail filter. Unplaced orders stay blank."""
+    try:
+        from utils.accounts_config import zoro_profile_inboxes
+        inbox = zoro_profile_inboxes()
+    except Exception:
+        inbox = {}
+    for r in rows:
+        if r.get("zoro_gmail_account") or not r.get("profile_name"):
+            continue
+        if r.get("wb_order_id") or str(r.get("merchant_order_id") or "").upper().startswith("WB"):
+            r["zoro_gmail_account"] = inbox.get(str(r["profile_name"]).strip().upper(), "")
 
 
 def _apply_crm_overlay(c, rows):
