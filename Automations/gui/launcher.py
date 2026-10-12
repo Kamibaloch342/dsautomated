@@ -150,6 +150,9 @@ PROFILE_LABELS = list(PROFILE_CHOICES.values())
 CONSOLE_VIEW_CHOICES = (["All", "Closing", "Closing HOANK", "Closing Hathoro", "Walmart",
                          "Orders", "Tracking", "Tracking HOANK", "Tracking Hathoro",
                          "Coupons", "Listings"] + PROFILES)
+# Full-height pages: the console pane is hidden while one of these is open (the Dashboard
+# needs the room for CURRENT RUN; Logs / Loss Orders have their own full views).
+NO_CONSOLE_PAGES = ("dashboard", "logs", "loss_orders")
 
 
 def _profile_key_from_choice(choice):
@@ -445,6 +448,8 @@ class App(tk.Tk):
 
         self._pages["dashboard"].pack(fill="both", expand=True)
         self._highlight_nav("dashboard")
+        if self._current_page in NO_CONSOLE_PAGES:
+            self._main_pw.forget(self._console_frame)
 
         self._tick_clock()
         self._tick_toast()
@@ -957,15 +962,15 @@ class App(tk.Tk):
         self._pages[self._current_page].pack_forget()
         self._pages[name].pack(fill="both", expand=True)
 
-        # Hide console on Logs / Loss Orders tabs for full-height view; restore on others
-        if name in ("logs", "loss_orders"):
+        # Hide the console on the full-height pages; restore it on the others
+        if name in NO_CONSOLE_PAGES:
             self._main_pw.forget(self._console_frame)
-            if name == "logs":
-                self.after(100, self._refresh_logs_view)
-            elif name == "loss_orders":
-                self.after(100, self._refresh_loss_orders_table)
-        elif self._current_page in ("logs", "loss_orders"):
+        elif self._current_page in NO_CONSOLE_PAGES:
             self._main_pw.add(self._console_frame, minsize=150, stretch="never")
+        if name == "logs":
+            self.after(100, self._refresh_logs_view)
+        elif name == "loss_orders":
+            self.after(100, self._refresh_loss_orders_table)
 
         # Refresh the attention panels the moment they're opened.
         if name == "needs_priority":
