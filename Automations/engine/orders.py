@@ -1616,7 +1616,8 @@ def _sunday_hold(amazon_id, why, coupon_codes, sun, f):
     return "skipped"
 
 
-def _coupon_fail_decision(last_fail, raw_cart_cost, earnings, all_zoro_select, small_fee, free_threshold, min_margin):
+def _coupon_fail_decision(last_fail, raw_cart_cost, earnings, all_zoro_select, small_fee, free_threshold, min_margin,
+                          big_order_20=True):
     """What a checkout 'COUPON FAIL' means for a Coupon-column order (pure; unit-tested):
       • every code says 'not valid for this item' while regular codes existed → this item can
         never take a coupon → reseller, and it is definitive (promo-ineligible memory);
@@ -1634,7 +1635,7 @@ def _coupon_fail_decision(last_fail, raw_cart_cost, earnings, all_zoro_select, s
     if total and tr == total:
         return {"action": "wait", "definitive": False, "reason": "coupon API trouble on every code — retry next cycle"}
     big_threshold = float(((gui_cfg if "gui_cfg" in globals() else {}).get("big_order_threshold", 800.0) or 800.0))
-    if (raw_cart_cost or 0.0) >= big_threshold:
+    if big_order_20 and (raw_cart_cost or 0.0) >= big_threshold:      # False for a Manual-C order
         return {"action": "call_zoro_20", "definitive": False,
                 "reason": f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon applied; mark '20' for manual 20% Zoro phone discount"}
     tiered = "regular_dead" in lf or "priority_dead" in lf
@@ -3298,11 +3299,18 @@ def _normalize_second_part_sku(value):
 # eyeballed the order, they write "Manual-C" or "Manual-R" into Amazon's Seller order
 # ID field, and the placer will buy it ONCE.
 #
-# IT BYPASSES EXACTLY TWO GATES:
+# IT BYPASSES:
 #   1. the Gmail address-duplicate search   (engine/orders.py, "Duplicate check")
 #   2. the final margin / loss gate         (checkout_min_margin -> None)
-# and, as a consequence of (1), the post-failure duplicate re-check before keep_failed().
-# Nothing else. In particular it does NOT bypass the placement lock
+#   3. the big-order '20' label ($800+)     (owner, 13 Oct 2026: "once I write Manual-C or R,
+#      place it — no need to write 20"). Manual-R places at reseller price; Manual-C keeps the
+#      regular coupons a big cart normally loses. If coupons are tried and none applies, a
+#      Manual-C order WAITS with its tag (retried when the coupons change) and alerts once —
+#      Manual-R places it without a coupon. With NO coupon loaded at all it is placed at list
+#      price, as since 7 Sep (482884b). _big_order_regular_codes / _big_order_marks_20.
+# and, as a consequence of (1), the post-failure duplicate re-check before keep_failed(); a
+# human's tag also skips the routing helpers (supervisor, Deciding hand-off, Sunday mode).
+# It does NOT bypass the placement lock
 # (utils/placement_lock.py): that lock is keyed on this exact amazon_order_id, so even
 # with the tag the order can only ever be placed once — a second attempt is refused by
 # placer_claims like any other. The "only one time" guarantee comes from the lock, not
@@ -3392,6 +3400,45 @@ def _parse_manual_tag(merchant_id):
         return None
     m = re.match(r"^\s*manual\s*[-_ ]?\s*([cr])\s*$", str(merchant_id), re.I)
     return m.group(1).upper() if m else None
+
+
+def _big_order_regular_codes(regular_codes, raw_cart_cost, big_threshold, manual_override):
+    """The regular (10 % EM) codes a checkout may try. A cart at/above *big_threshold* gets none —
+    the team phones Zoro for 20 % instead — unless the order is tagged Manual-C: a human chose a
+    coupon over the phone call (owner, 13 Oct 2026)."""
+    if (raw_cart_cost or 0.0) >= big_threshold and not manual_override:
+        return []
+    return list(regular_codes or [])
+
+
+def _big_order_marks_20(raw_cart_cost, big_threshold, manual_override):
+    """True when a cart the coupons could not cover is labelled '20' (call Zoro for 20 %).
+    Never for a Manual-C/-R order — the human already decided how it is placed."""
+    return (raw_cart_cost or 0.0) >= big_threshold and not manual_override
+
+
+_MANUAL_NO_COUPON_ALERTED = set()       # amazon_ids already alerted this run (one alert per order)
+
+
+def _notify_manual_no_coupon(amazon_id, asin, sku, cart_cost, why, buyer="", city="", state=""):
+    """One alert per order: a Manual-C order no coupon worked on waits — say so, and how to place it."""
+    if amazon_id in _MANUAL_NO_COUPON_ALERTED:
+        return
+    _MANUAL_NO_COUPON_ALERTED.add(amazon_id)
+    loc = f"{city}, {state}".strip(", ")
+    text = (f"Manual-C order {amazon_id} NOT placed — no coupon worked (${cart_cost:.2f}, {asin} {sku}"
+            f"{', ' + buyer if buyer else ''}{' (' + loc + ')' if loc else ''}). {why}. It keeps its Manual-C tag and "
+            f"is tried again when the coupons change. Write Manual-R to place it now without a coupon.")
+    try:
+        from utils.whatsapp import send_whatsapp_message
+        send_whatsapp_message("🖐️ *MANUAL-C — NO COUPON*\n" + text)
+    except Exception as e:
+        print(f"  ⚠️ WhatsApp alert error: {e}")
+    try:
+        from utils.telegram import send_telegram_message
+        send_telegram_message("🖐️ <b>MANUAL-C — NO COUPON</b>\n" + html.escape(text))
+    except Exception as e:
+        print(f"  ⚠️ Telegram alert error: {e}")
 
 
 def _manual_tag_is_for_profile(kind, profile_name):
@@ -4490,11 +4537,14 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             regular_coupon_codes = []
             print(f"  🎯 Focus coupon mode ACTIVE: trying ONLY [{', '.join(_foc_codes)}] at checkout (no fallback to other coupons)")
 
-        # Big Order Gate ($800+): never place with regular 10% EM coupons
-        if raw_cart_cost >= big_threshold:
-            if regular_coupon_codes:
+        # Big Order Gate ($800+): never place with regular 10% EM coupons — unless tagged Manual-C
+        if raw_cart_cost >= big_threshold and regular_coupon_codes:
+            if manual_override:
+                print(f"  🖐️  BIG ORDER (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) tagged Manual-{_manual_kind} — "
+                      f"regular coupons allowed, never marked '20'")
+            else:
                 print(f"  📞 BIG ORDER (${raw_cart_cost:.2f} >= ${big_threshold:.0f}): regular 10% EM coupons disabled — trying ONLY priority coupons")
-            regular_coupon_codes = []
+        regular_coupon_codes = _big_order_regular_codes(regular_coupon_codes, raw_cart_cost, big_threshold, manual_override)
 
         coupon_arg = priority_codes_for_checkout + regular_coupon_codes
 
@@ -5213,18 +5263,23 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         status_note = (f"Coupon API / session trouble on every priority coupon — retry next cycle"
                        if result_status == "COUPON_RETRY" else f"No coupon worked — skipping (will retry next cycle)")
         if result_status == "COUPON FAIL" and IS_COUPON_PROFILE and not skip_coupons:
-            if raw_cart_cost >= big_threshold:
+            if _big_order_marks_20(raw_cart_cost, big_threshold, manual_override):
                 _cf_action_20 = True
                 status_note = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon worked at checkout"
             elif _foc_codes:
                 status_note = f"Focus coupon ({', '.join(_foc_codes)}) did not apply — deferred"
                 _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": status_note}
+                if manual_override:
+                    _notify_manual_no_coupon(amazon_id, asin_field, sku_field, raw_cart_cost,
+                                             f"focus-coupon mode is on and {', '.join(_foc_codes)} does not apply "
+                                             f"(untick it to try the other coupons)", buyer, city, state)
             else:
                 from utils.config import ZORO_SMALL_ORDER_FEE as _cf_fee, FREE_SHIPPING_THRESHOLD as _cf_free
                 _lf = (asin_coupon_cache or {}).get("last_fail") or {}
                 _cf = _coupon_fail_decision(_lf, raw_cart_cost, earnings,
                                             all(it.get("is_zoro_select") for it in resolved_items),
-                                            _cf_fee, _cf_free, DECIDING_MIN_MARGIN)
+                                            _cf_fee, _cf_free, DECIDING_MIN_MARGIN,
+                                            big_order_20=not manual_override)
                 _DLOG.log("coupon_fail", profile=PROFILE_NAME, amazon_id=amazon_id, asin=asin_field, sku=sku_field,
                           qty=qty_field, cart=raw_cart_cost, earnings=earnings, action=_cf["action"], reason=_cf["reason"],
                           definitive=bool(_cf.get("definitive")), last_fail=_lf)
@@ -5233,12 +5288,24 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     # every code rejected the item itself → promo-ineligible now, not after two strikes
                     _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), False,
                                          cache=asin_coupon_cache, definitive=True, source="checkout")
-                if _cf["action"] == "call_zoro_20":
+                if _cf["action"] == "call_zoro_20" and not manual_override:
                     _cf_action_20 = True
                 elif _cf["action"] == "route_reseller" and not manual_override:
                     _cf_route = _cf["reason"]
                 else:
                     _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": _cf["reason"]}
+                    if manual_override:
+                        # the reseller hand-off is not taken for a tagged order, so do not repeat its wording
+                        _mwhy = ("every coupon rejected this item — a coupon can never apply" if
+                                 (_cf["action"] == "route_reseller" and _cf.get("definitive")) else
+                                 "no coupon applies to this cart" if _cf["action"] == "route_reseller" else _cf["reason"])
+                        status_note = (f"Manual-{_manual_kind}: no coupon worked — {_mwhy} — NOT placed, not "
+                                       f"marked '20'; keeps its tag (write Manual-R to place it without a coupon)")
+                        # an API/session blip says nothing about the coupons: the next cycle decides,
+                        # and the one alert is kept for a real "no coupon"
+                        if not any(int(_lf.get(k) or 0) for k in ("transient", "priority_transient", "regular_transient")):
+                            _notify_manual_no_coupon(amazon_id, asin_field, sku_field, raw_cart_cost, _mwhy,
+                                                     buyer, city, state)
         # SUNDAY MODE: no priority code applied — act only as a normal day would AND the reseller
         # rule allows. The claim is held at this point, so nothing returns early: the flags are
         # cleared and the usual pre-payment release below runs.
