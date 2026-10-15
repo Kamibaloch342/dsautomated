@@ -5221,6 +5221,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     "earnings": earnings,
                     "pm": profit,
                     "pp": (margin * 100) if margin is not None else None,
+
+                    "ship_by_date": sb, "deliver_by_date": db, "ship_service": order_detail.get("ship_service", ""),
+
+                    "zoro_deliver_by": (addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "") or "",
+
+                    "shipping_amt": shipping_amt, "amazon_id": amazon_id,
                     "coupon": bool(last_checkout_result.get("used_coupon_code")) if last_checkout_result else False,
                     "coupon_code": (last_checkout_result.get("used_coupon_code") or "") if last_checkout_result else "",
                     "coupon_off": logged_discount,
@@ -5358,6 +5364,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 "earnings": earnings,
                 "pm": profit,
                 "pp": (margin * 100) if margin is not None else None,
+
+                "ship_by_date": sb, "deliver_by_date": db, "ship_service": order_detail.get("ship_service", ""),
+
+                "zoro_deliver_by": (addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "") or "",
+
+                "shipping_amt": shipping_amt, "amazon_id": amazon_id,
                 "coupon": bool(last_checkout_result.get("used_coupon_code")) if last_checkout_result else False,
                 "coupon_code": (last_checkout_result.get("used_coupon_code") or "") if last_checkout_result else "",
                 "coupon_off": logged_discount,
@@ -5502,6 +5514,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 "earnings": earnings,
                 "pm": profit,
                 "pp": (margin * 100) if margin is not None else None,
+
+                "ship_by_date": sb, "deliver_by_date": db, "ship_service": order_detail.get("ship_service", ""),
+
+                "zoro_deliver_by": (addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "") or "",
+
+                "shipping_amt": shipping_amt, "amazon_id": amazon_id,
             }
             enrich_note_basis(
                 note_data, profile_name=PROFILE_NAME,

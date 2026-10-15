@@ -183,105 +183,134 @@ def _short_day(v):
     return f"{m.group(1)} {int(m.group(2))}" if m else ""
 
 
-def format_boss_note_text(data: dict, markup: str = "plain") -> str:
-    """The order alert body — short enough that WhatsApp does not fold it behind 'Read more'
-    (owner, 15 Oct 2026). markup='wa' bolds a fast ship service with *…*; Telegram shows it in
-    capitals (the text sits in a <pre> block, where bold is not possible)."""
+def _money(v):
+    try:
+        return f"${float(v):.2f}" if v is not None and str(v).strip() != "" else "N/A"
+    except (TypeError, ValueError):
+        return "N/A"
+
+
+def order_card(data: dict, markup: str = "plain", note: bool = False) -> str:
+    """THE order layout — locked by the owner on 15 Oct 2026 for every order alert (WhatsApp,
+    Telegram) and the Amazon seller note. scripts/test_alert_format.py holds the owner's exact
+    sample; change the layout only together with that test.
+
+        *🟢 PROFIT ORDER (+52.3%)*                     ← header, added by the alert senders
+        114-5760875-7672210 { WB5894251624 }
+        Flat Corrugated Cardboard Shipping Boxes 20"
+
+        *SKU*: Hath_G1606970 | *ASIN*: B0GD8Y19SD
+        *Zoro Code:* K1606970 (Qty: 1)
+
+        *Zoro_Cost*: $29.30 (Tax $0.00) | *Amz_Earnings:* $44.62 (Shipping: $13.00)
+        Profit: $15.32 (52.3%) | Coupon: None
+
+        *Amazon:* [Ship by Oct 15 | Deliver by Oct 17 ] {*Second Day*} |
+        *Zoro_Delivery*: Oct 19
+
+    markup='wa' → WhatsApp bold (*…*); 'plain' → no asterisks (Telegram's copy block). note=True →
+    the seller note: plain, no order-id line (the order page shows it), no blank lines, title cut to
+    whatever Amazon's 256-character limit leaves."""
+    wa = markup == "wa" and not note
+    B = (lambda t: f"*{t}*") if wa else (lambda t: t)
+
     title = str(data.get("title") or "").strip()
     asin = str(data.get("asin") or "N/A").strip()
-    sku = str(data.get("sku") or "N/A").strip()
+    sku = str(data.get("sku") or "").strip()
     code = str(data.get("code") or data.get("zoro_sku") or "N/A").strip()
     if code.startswith("G"):
         code = "K" + code[1:]
     if data.get("alt_used") and " - ALT" not in code:
         code += " - ALT"
-
-    # Fallback lookup if title or SKU is missing
-    if not title or title in ("N/A", "None", "") or not sku or sku in ("N/A", "None", ""):
-        db_title, db_sku = _lookup_title_and_sku(asin)
-        if not title or title in ("N/A", "None", ""):
-            title = db_title
-        if not sku or sku in ("N/A", "None", ""):
-            sku = db_sku or code
-        
-    qty = data.get("qty", 1)
-    
-    tc = data.get("tc") or data.get("zoro_price")
-    tc_str = f"${float(tc):.2f}" if tc is not None and str(tc).strip() != "" else "N/A"
-    
-    tax = data.get("tax") or data.get("zoro_tax")
-    tax_str = f"${float(tax):.2f}" if tax is not None and str(tax).strip() != "" else "$0.00"
-    
-    earn = data.get("earnings")
-    earn_str = f"${float(earn):.2f}" if earn is not None and str(earn).strip() != "" else "N/A"
-    
-    pm = data.get("pm") or data.get("profit")
-    pm_str = f"${float(pm):.2f}" if pm is not None and str(pm).strip() != "" else "N/A"
-    
-    pp = data.get("pp")
-    if pp is None and tc and pm:
+    if not title or title in ("N/A", "None") or not sku or sku in ("N/A", "None"):
         try:
-            pp = (float(pm) / float(tc)) * 100.0
-        except ZeroDivisionError:
+            db_title, db_sku = _lookup_title_and_sku(asin)
+        except Exception:
+            db_title, db_sku = "", ""
+        title = title if title and title not in ("N/A", "None") else (db_title or "")
+        sku = sku if sku and sku not in ("N/A", "None") else (db_sku or code)
+    qty = data.get("qty", 1)
+
+    tc = data.get("tc") if data.get("tc") is not None else data.get("zoro_price")
+    tax = data.get("tax") if data.get("tax") is not None else data.get("zoro_tax")
+    tax_str = _money(tax) if tax is not None and str(tax).strip() != "" else "$0.00"
+    earn = data.get("earnings")
+    pm = data.get("pm") if data.get("pm") is not None else data.get("profit")
+    pp = data.get("pp")
+    if pp is None and tc and pm is not None:
+        try:
+            pp = float(pm) / float(tc) * 100.0
+        except (TypeError, ValueError, ZeroDivisionError):
             pp = None
     pp_str = f"{float(pp):.1f}%" if pp is not None else "N/A"
-    
-    # Coupon string - FULL coupon code written out
-    cu = str(data.get("coupon_code") or data.get("coupon") or "").strip()
+    try:
+        ship_amt = float(data.get("shipping_amt") or 0)
+    except (TypeError, ValueError):
+        ship_amt = 0.0
+
+    cu = str(data.get("coupon_code") or (data.get("coupon") if isinstance(data.get("coupon"), str) else "") or "").strip()
     c_off = data.get("coupon_off")
-    if cu and cu not in ("None", "N/A", "False", "0", ""):
-        sfx = f" - {cu.upper()}" if cu.upper() != "AUTO_APPLIED" else ""
-        if c_off:
-            c_str = f"Used{sfx} ( -${float(c_off):.2f} )"
-        else:
-            c_str = f"Used{sfx}"
+    if cu and cu not in ("None", "N/A", "False", "0"):
+        coupon = cu.upper() if cu.upper() != "AUTO_APPLIED" else "Auto"
+        try:
+            coupon += f" (-${float(c_off):.2f})" if c_off else ""
+        except (TypeError, ValueError):
+            pass
     else:
-        c_str = "Not Used"
+        coupon = "None"
+
+    svc = str(data.get("ship_service") or "").strip() or "—"
+    if svc != "—" and "standard" not in svc.lower():
+        svc = B(svc) if wa else (svc.upper() if not note else svc)
+    sb = _short_day(data.get("ship_by_date")) or "—"
+    dl = _short_day(data.get("deliver_by_date")) or "—"
+    zd = _short_day(data.get("zoro_deliver_by")) or "—"
 
     amazon_id = str(data.get("amazon_id") or data.get("amazon_order_id") or "").strip()
     wb_id = str(data.get("wb_id") or data.get("result_id") or "").strip()
     if wb_id and not wb_id.upper().startswith("WB"):
         wb_id = f"WB{wb_id}"
+    head = (f"{amazon_id} {{ {wb_id} }}" if amazon_id and wb_id else amazon_id or (f"{{ {wb_id} }}" if wb_id else ""))
+    short_title = (title or "Product Listing").split(" - ")[0].split(",")[0].strip()[:44].rstrip()
 
-    lines = []
-    if amazon_id and wb_id:
-        lines.append(f"{amazon_id} {{ {wb_id} }}")
-    elif amazon_id:
-        lines.append(amazon_id)
-    elif wb_id:
-        lines.append(f"{{ {wb_id} }}")
+    body = [
+        f"{B('SKU')}: {sku or 'N/A'} | {B('ASIN')}: {asin}",
+        f"{B('Zoro Code:')} {code} (Qty: {qty})",
+        "",
+        f"{B('Zoro_Cost')}: {_money(tc)} (Tax {tax_str}) | {B('Amz_Earnings:')} {_money(earn)}"
+        + (f" (Shipping: ${ship_amt:.2f})" if ship_amt > 0 else ""),
+        f"Profit: {_money(pm)} ({pp_str}) | Coupon: {coupon}",
+        "",
+        f"{B('Amazon:')} [Ship by {sb} | Deliver by {dl} ] {{{svc}}} |",
+        f"{B('Zoro_Delivery')}: {zd}",
+    ]
+    if not note:
+        return "\n".join(([head] if head else []) + [short_title, ""] + body)
 
-    short_title = (title or "Product Listing").split(",")[0].split(" - ")[0].strip()
-    if len(short_title) > 45:
-        short_title = short_title[:44].rstrip() + "…"
-    ship_amt = data.get("shipping_amt")
-    try:
-        ship_amt = float(ship_amt) if ship_amt not in (None, "") else 0.0
-    except (TypeError, ValueError):
-        ship_amt = 0.0
-    earn_full = earn_str + (f" (Shipping: ${ship_amt:.2f})" if ship_amt > 0 else "")
+    # Seller note: Amazon keeps 256 characters and the layout above runs ~260 without the title.
+    # Same lines, shortened step by step until it fits — the title (the order page shows it) goes
+    # first, the dates line last: zero tax, the ASIN (also on the page), Zoro's date onto the
+    # Amazon line, "Shipping:" → "Ship".
+    lines = [x for x in body if x]
+    steps = [
+        lambda L: [x.replace(" (Tax $0.00)", "") for x in L],
+        lambda L: [x.split(" | ASIN:")[0] if x.startswith("SKU:") else x for x in L],
+        lambda L: L[:-2] + [L[-2] + " " + L[-1]],
+        lambda L: [x.replace("(Shipping: ", "(Ship ") for x in L],
+    ]
+    for step in [None] + steps:
+        if step:
+            lines = step(lines)
+        text = "\n".join(lines)
+        if len(text) <= 256:
+            room = 256 - len(text) - 1
+            return (short_title[:room].rstrip() + "\n" + text) if room >= 20 else text
+    return text[:256]
 
-    svc = str(data.get("ship_service") or "").strip()
-    if svc and "standard" not in svc.lower():          # Second Day / Expedited / Next Day → stands out
-        svc = f"*{svc}*" if markup == "wa" else f"{svc.upper()} ⚡"
-    when = " | ".join(x for x in (
-        f"Ship by {_short_day(data.get('ship_by_date'))}" if _short_day(data.get("ship_by_date")) else "",
-        f"Deliver by {_short_day(data.get('deliver_by_date'))}" if _short_day(data.get("deliver_by_date")) else "",
-        svc,
-        f"Zoro {_short_day(data.get('zoro_deliver_by'))}" if _short_day(data.get("zoro_deliver_by")) else "",
-    ) if x)
 
-    lines.extend([
-        short_title,
-        f"SKU: {sku if sku else 'N/A'} | ASIN: {asin}",
-        f"Zoro Code: {code} (Qty: {qty})",
-        f"Cost: {tc_str} (Tax {tax_str}) | Earnings: {earn_full}",
-        f"Profit: {pm_str} ({pp_str}) | Coupon: "
-        + (c_str.replace("Used - ", "").replace("( -$", "(-$").replace(" )", ")") if c_str != "Not Used" else "None"),
-    ])
-    if when:
-        lines.append(when)
-    return "\n".join(lines)
+def format_boss_note_text(data: dict, markup: str = "plain") -> str:
+    """Alert body (WhatsApp markup='wa', Telegram 'plain') — the locked order_card layout."""
+    return order_card(data, markup=markup)
 
 
 def notify_order_placed(order_data: dict, driver=None, account: str = ""):
@@ -348,10 +377,10 @@ def notify_order_placed(order_data: dict, driver=None, account: str = ""):
             status_header = f"🔴 <b>LOW MARGIN ORDER (&lt; 8%): {pp_display}</b>"
             log_msg = f"  📱 [Telegram] Low margin order (< 8%: {pp_display}) — sending Amazon screenshot + Copy for Boss in background..."
     elif pp is not None and margin_decimal <= 0.20:
-        status_header = f"🟡 <b>ORDER PLACED ({pfx}{pp_display})</b>"
+        status_header = f"<b>🟡 ORDER PLACED ({pfx}{pp_display})</b>"
         log_msg = f"  📱 [Telegram] Order placed ({pfx}{pp_display}) — sending Amazon screenshot + order details in background..."
     else:
-        status_header = f"🟢 <b>PROFIT ORDER (+{pp_display})</b>"
+        status_header = f"<b>🟢 PROFIT ORDER (+{pp_display})</b>"
         log_msg = f"  📱 [Telegram] Profit order (+{pp_display}) — sending Amazon screenshot + details in background..."
 
     if not driver:      # rush mode passes no driver: the alert goes without a screenshot

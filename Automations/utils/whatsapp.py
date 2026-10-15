@@ -278,13 +278,13 @@ def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, acc
 
     if is_low_margin:
         if tax_val > 0:
-            wa_header = f"🔴 *Taxed{state_str} Low Margin Order (< 8%): {pp_display}*"
+            wa_header = f"*🔴 Taxed{state_str} Low Margin Order (< 8%): {pp_display}*"
         else:
-            wa_header = f"🔴 *LOW MARGIN ORDER (< 8%): {pp_display}*"
+            wa_header = f"*🔴 LOW MARGIN ORDER (< 8%): {pp_display}*"
     elif margin_decimal <= 0.20:
-        wa_header = f"🟡 *ORDER PLACED ({pfx}{pp_display})*"
+        wa_header = f"*🟡 ORDER PLACED ({pfx}{pp_display})*"
     else:
-        wa_header = f"🟢 *PROFIT ORDER (+{pp_display})*"
+        wa_header = f"*🟢 PROFIT ORDER (+{pp_display})*"
 
     try:
         from utils.telegram import format_boss_note_text

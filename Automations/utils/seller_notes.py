@@ -317,9 +317,17 @@ def extract_seller_note_data(amazon_id):
 
 
 def format_seller_note(data):
-    """Format the seller-note dict into the multi-line text block."""
+    """The seller note — the owner's locked order layout (utils.telegram.order_card, note=True),
+    15 Oct 2026. Notes built from order_log.txt alone (extract_seller_note_data: no dates) fall
+    back to the older line-per-field layout below."""
     if not data:
         return ""
+    if data.get("deliver_by_date") or data.get("ship_by_date"):
+        try:
+            from utils.telegram import order_card
+            return order_card(data, note=True)
+        except Exception:
+            pass
 
     # Build every line EXCEPT the title first. The whole note must fit in 256
     # chars, so the title later gets only whatever budget these lines leave —
