@@ -5,6 +5,8 @@ Owner's hard rule (16 Oct 2026): when the launcher is closed, NO alert goes out 
 (the gateway holds its queue, whatsapp_gateway/server.js) and not Telegram (dropped here, see
 utils/telegram.py). Same check as the gateway: pgrep for a Python process running
 gui/launcher.py; any error counts as closed (fail closed). Cached for 5 s.
+`pgrep -a`: macOS pgrep leaves out its own ancestors by default — and the placers are the
+launcher's children, so without -a they never saw it (16 Oct 2026: every alert held/dropped).
 """
 import subprocess
 import time
@@ -18,7 +20,7 @@ def launcher_running(max_age=5.0) -> bool:
     if now - _cache["at"] < max_age:
         return _cache["up"]
     try:
-        up = subprocess.run(["pgrep", "-f", _PATTERN], capture_output=True, timeout=5).returncode == 0
+        up = subprocess.run(["pgrep", "-a", "-f", _PATTERN], capture_output=True, timeout=5).returncode == 0
     except Exception:
         up = False
     _cache.update(at=now, up=up)

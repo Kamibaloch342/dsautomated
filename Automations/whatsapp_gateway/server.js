@@ -292,14 +292,17 @@ let nextSendAt = 0;
 
 // ── Owner's hard rule (16 Oct 2026): launcher closed → NOTHING is sent. ─────────────────────
 // Alerts keep queueing (saved in queue.json) and go out again once the launcher is back.
-// Checked every 5 s with pgrep; any error counts as "closed" (fail closed). The pattern's
+// Checked every 5 s with pgrep -a (macOS pgrep skips its own ancestors by default, and the launcher
+// is the grandparent of the placer that starts this gateway); any error counts as "closed". The pattern's
 // "[Pp]ython" cannot match its own text, so a shell running this check never counts.
 const { execFile } = require('child_process');
 let launcherUp = false;
 let launcherCheckedAt = 0;
+let launcherErr = '';
 function checkLauncher() {
-    execFile('pgrep', ['-f', '[Pp]ython.*gui/launcher\\.py'], (err) => {
+    execFile('pgrep', ['-a', '-f', '[Pp]ython.*gui/launcher\\.py'], (err, out, serr) => {
         const up = !err;
+        launcherErr = err ? `${err.code} ${String(serr || err.message).trim().slice(0, 200)}` : '';
         if (up !== launcherUp) {
             console.log(up ? '  [Queue] ▶️  launcher is running — alerts resume'
                            : '  [Queue] ⏸️  launcher is closed — alerts held');
@@ -394,7 +397,7 @@ app.get('/queue', (req, res) => {
     const waitS = Math.max(0, Math.round((nextSendAt - Date.now()) / 1000));
     res.json({ waiting: queue.length, order_alerts_waiting: queue.filter(q => q.priority <= 1).length,
                next_send_in_s: waitS, gap_s: ALERT_GAP_S, jitter_s: ALERT_JITTER_S, connected: isConnected,
-               launcher_running: launcherUp, paused: !launcherUp, ...stats });
+               launcher_running: launcherUp, paused: !launcherUp, launcher_check: launcherErr, ...stats });
 });
 
 app.listen(PORT, '127.0.0.1', () => {
