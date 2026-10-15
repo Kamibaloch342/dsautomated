@@ -1520,6 +1520,14 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
         # A page order that yields no order id is AMBIGUOUS, so it falls through to the normal
         # "ORDER FAILED" handling, which locks the order for review rather than retrying.
         from utils.helpers import page_checkout_wanted
+        # Delivery date before ANY payment (owner, 15 Oct 2026: "it should wait — I can't afford
+        # a mistake"). The page path reads it on the checkout page itself; the API path opens the
+        # checkout page just to read "Delivery expected by" (cart, address and shipping are already
+        # set), then pays through the API as before.
+        if not page_checkout_wanted() and int((address or {}).get("_delivery_gap_limit") or 0) > 0:
+            _dstat = _checkout_page_delivery_status(driver, address)
+            if _dstat:
+                return _format_checkout_result(_dstat, return_details=return_details)
         if page_checkout_wanted():
             print("   🧾 Attributed checkout ON — placing on Zoro's real /checkout page "
                   "(their analytics records this order)")
@@ -1596,8 +1604,8 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                     min_margin, return_details, zoro_code)
 
         _time("True API TOTAL checkout", t_start)
-        if zoro_id == "DELIVERY_TIME_HIGH":        # the checkout page's date — not placed
-            return _format_checkout_result("DELIVERY_TIME_HIGH", return_details=return_details)
+        if zoro_id in ("DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN"):   # decided before payment — not placed
+            return _format_checkout_result(zoro_id, return_details=return_details)
         print(f"\n{'='*60}")
         if zoro_id:
             print(f"  🎉 ORDER RESULT: {zoro_id}")
@@ -1718,6 +1726,40 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
 #  DOM FALLBACK (only for final Place Order step)
 # ==============================================================================
 
+def _checkout_page_delivery_status(driver, address):
+    """Open Zoro's checkout page and read its delivery date for this cart and address.
+    Returns 'DELIVERY_TIME_HIGH' (4+ days past Amazon's deliver-by), 'DELIVERY_UNKNOWN' (no date
+    on the checkout page AND none from the product page — never place blind) or None (go ahead)."""
+    from checkout.dom import checkout_delivery_gap
+    try:
+        driver.get("https://www.zoro.com/checkout")
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            if driver.execute_script(
+                    "return !!document.querySelector('[data-za=\"checkout-place-order-button\"]') "
+                    "&& /Delivery\\s+expected\\s+by/i.test(document.body.innerText || '');"):
+                break
+            time.sleep(0.5)
+        had = (address or {}).get("_zoro_deliver_by") or ""
+        address["_zoro_deliver_by"] = ""                 # what the checkout page itself says
+        gap = checkout_delivery_gap(driver, address)
+        if gap:
+            return "DELIVERY_TIME_HIGH"
+        if not address.get("_zoro_deliver_by"):
+            if had:
+                address["_zoro_deliver_by"] = had        # the product page's date (already checked)
+                print(f"   📅 checkout page showed no date — using the product page's {had}")
+                return None
+            print("   ⏸️  No Zoro delivery date on the checkout page or the product page — NOT placing")
+            return "DELIVERY_UNKNOWN"
+        return None
+    except Exception as e:
+        if (address or {}).get("_zoro_deliver_by"):
+            return None
+        print(f"   ⏸️  Could not read Zoro's delivery date ({type(e).__name__}) — NOT placing")
+        return "DELIVERY_UNKNOWN"
+
+
 def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profile,
                                earnings, checkout_total, profit, margin,
                                coupon_list, asin, asin_coupon_cache,
@@ -1755,9 +1797,18 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
     # has been bought, so the placer labels the order and releases its claim.
     try:
         from checkout.dom import checkout_delivery_gap
+        _had = (address or {}).get("_zoro_deliver_by") or ""
+        if isinstance(address, dict):
+            address["_zoro_deliver_by"] = ""
         _gap = checkout_delivery_gap(driver, address)
         if _gap:
             return "DELIVERY_TIME_HIGH"
+        if isinstance(address, dict) and not address.get("_zoro_deliver_by"):
+            if _had:
+                address["_zoro_deliver_by"] = _had
+            elif int(address.get("_delivery_gap_limit") or 0) > 0:
+                print("   ⏸️  No Zoro delivery date on the checkout page or the product page — NOT placing")
+                return "DELIVERY_UNKNOWN"
     except Exception as _dg:
         print(f"   ⚠️ delivery-date check skipped: {type(_dg).__name__}: {_dg}")
 

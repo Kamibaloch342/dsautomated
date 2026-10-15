@@ -1948,11 +1948,19 @@ def checkout_delivery_gap(driver, address):
     without the line — no date, no decision."""
     if not isinstance(address, dict):
         return None
-    texts = driver.execute_script(r"""
-        var out = [], re = /Delivery\s+expected\s+by\s+([A-Z][a-z]+\.?\s+\d{1,2})/gi, m;
-        var t = document.body.innerText || '';
-        while ((m = re.exec(t)) !== null) out.push(m[1]);
-        return out;""") or []
+    # The Items box (and its "Delivery expected by") renders AFTER the Place Order button that
+    # "checkout ready" waits for: read straight away it is not there yet (15 Oct 2026 — 28 pages
+    # read, no date found, while the screenshot of the same page shows "October 19"). Wait for it.
+    texts, deadline = [], time.time() + 20
+    while True:
+        texts = driver.execute_script(r"""
+            var out = [], re = /Delivery\s+expected\s+by\s+([A-Z][a-z]+\.?\s+\d{1,2})/gi, m;
+            var t = document.body.innerText || '';
+            while ((m = re.exec(t)) !== null) out.push(m[1]);
+            return out;""") or []
+        if texts or time.time() >= deadline:
+            break
+        time.sleep(0.5)
     dates = [d for d in (_short_date(x) for x in texts) if d]
     if not dates:
         return None

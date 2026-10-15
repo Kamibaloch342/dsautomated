@@ -238,9 +238,20 @@ def get_zoro_delivery_date(driver, sku):
             if links:
                 safe_get(driver, links[0].get_attribute("href"))
                 time.sleep(4)
-        html = driver.page_source or ""
+        # The delivery line is rendered client-side, and on a slow Chrome it is not there after
+        # 4 s: from 14 Oct 2026 every HS_COUPON / HS_RESELLER order (652) was placed with no Zoro
+        # date, so the delivery check never ran. Wait for it (up to 15 s more), then read.
+        html, m = "", None
+        deadline = time.time() + 15
+        while True:
+            html = driver.page_source or ""
+            m = _DELIV_RE1.search(html) or _DELIV_RE2.search(html) or _DELIV_RE3.search(html)
+            if m or time.time() >= deadline:
+                break
+            time.sleep(1)
         _record_pdp_promo(sku, html)                 # free: same rendered page
-        m = _DELIV_RE1.search(html) or _DELIV_RE2.search(html) or _DELIV_RE3.search(html)
+        if not m:
+            print(f"  ⚠️ Zoro product page for {sku}: no delivery date after waiting")
         return _parse_deliv(m.group(1)) if m else ""
     except Exception as e:
         print(f"  ⚠️ get_zoro_delivery_date({sku}) failed: {e}")
