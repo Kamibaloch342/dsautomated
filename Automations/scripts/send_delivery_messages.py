@@ -199,6 +199,8 @@ def _alert_sent(account, before, res):
         o = dict(before, **{k: v for k, v in res.items() if v not in (None, "")})
         d = lambda k: str(o.get(k) or "").split("|")[0].strip() or "—"
         yn = lambda v: "Yes" if str(v or "").strip().lower() == "yes" else "No"
+        # Amazon refuses some buyers ('No Permission' — opted out of messages): say so, not "No"
+        msg_state = lambda v: "No Permission" if str(v or "").strip().lower() == "no permission" else yn(v)
         what = " + ".join(x for x, f in (("Delivery message", new_msg), ("Review request", new_rev)) if f)
         text = (f"✅ *{account} — {what} sent*\n"
                 f"Order: {d('amazon_order_id')}\n"
@@ -208,7 +210,7 @@ def _alert_sent(account, before, res):
                 f"Delivered: {d('delivery_date')}\n"
                 f"Return requested: {yn(o.get('return_requested'))}\n"
                 f"Refund issued: {yn(o.get('refund_done'))}\n"
-                f"Delivery message sent: {yn(o.get('delivered_msg_sent'))}\n"
+                f"Delivery message sent: {msg_state(o.get('delivered_msg_sent'))}\n"
                 f"Review request: {yn(o.get('review_requested'))}")
         send_whatsapp_message(text, to=to)
     except Exception as e:
