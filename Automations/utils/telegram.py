@@ -51,9 +51,22 @@ def _get_api_url(endpoint: str) -> str:
     return f"{base}/bot{token}/{endpoint}"
 
 
+def _launcher_open() -> bool:
+    """Owner's hard rule (16 Oct 2026): launcher closed → no alert leaves. Telegram has no queue,
+    so an alert raised while the launcher is closed is dropped (WhatsApp's gateway holds them)."""
+    try:
+        from utils.launcher_state import launcher_running
+        if launcher_running():
+            return True
+    except Exception:
+        pass
+    print("  [Telegram] ⏸️  launcher is closed — alert not sent")
+    return False
+
+
 def _do_send_message(text: str, parse_mode: str = "HTML") -> bool:
     """Worker function to perform HTTP post for sendMessage."""
-    if not is_telegram_enabled():
+    if not is_telegram_enabled() or not _launcher_open():
         return False
     cfg = get_telegram_config()
     chat_id = cfg.get("chat_id")
@@ -88,7 +101,7 @@ def send_telegram_message(text: str, parse_mode: str = "HTML", background: bool 
 
 def _do_send_photo(photo_bytes: bytes, caption: str = "", parse_mode: str = "HTML", followup_message: str = None) -> bool:
     """Worker function to upload photo and immediately wipe memory."""
-    if not is_telegram_enabled():
+    if not is_telegram_enabled() or not _launcher_open():
         return False
     cfg = get_telegram_config()
     chat_id = cfg.get("chat_id")

@@ -289,6 +289,27 @@ const crypto = require('crypto');
 let queue = [];            // [{id, to, text, caption, image_base64, priority, at}]
 let sentKeys = {};         // dedupe key -> epoch ms
 let nextSendAt = 0;
+
+// ── Owner's hard rule (16 Oct 2026): launcher closed → NOTHING is sent. ─────────────────────
+// Alerts keep queueing (saved in queue.json) and go out again once the launcher is back.
+// Checked every 5 s with pgrep; any error counts as "closed" (fail closed). The pattern's
+// "[Pp]ython" cannot match its own text, so a shell running this check never counts.
+const { execFile } = require('child_process');
+let launcherUp = false;
+let launcherCheckedAt = 0;
+function checkLauncher() {
+    execFile('pgrep', ['-f', '[Pp]ython.*gui/launcher\\.py'], (err) => {
+        const up = !err;
+        if (up !== launcherUp) {
+            console.log(up ? '  [Queue] ▶️  launcher is running — alerts resume'
+                           : '  [Queue] ⏸️  launcher is closed — alerts held');
+        }
+        launcherUp = up;
+        launcherCheckedAt = Date.now();
+    });
+}
+checkLauncher();
+setInterval(checkLauncher, 5000);
 let sending = false;
 let stats = { sent: 0, failed: 0, deduped: 0 };
 
@@ -315,6 +336,7 @@ function gapMs() {
 
 async function drain() {
     if (sending || !queue.length || !isConnected || !sock || Date.now() < nextSendAt) return;
+    if (!launcherUp || Date.now() - launcherCheckedAt > 15000) return;   // launcher closed (or unknown) → hold
     sending = true;
     queue.sort((x, y) => (x.priority - y.priority) || (x.at - y.at));
     const m = queue[0];
@@ -371,7 +393,8 @@ app.post('/send', async (req, res) => {
 app.get('/queue', (req, res) => {
     const waitS = Math.max(0, Math.round((nextSendAt - Date.now()) / 1000));
     res.json({ waiting: queue.length, order_alerts_waiting: queue.filter(q => q.priority <= 1).length,
-               next_send_in_s: waitS, gap_s: ALERT_GAP_S, jitter_s: ALERT_JITTER_S, connected: isConnected, ...stats });
+               next_send_in_s: waitS, gap_s: ALERT_GAP_S, jitter_s: ALERT_JITTER_S, connected: isConnected,
+               launcher_running: launcherUp, paused: !launcherUp, ...stats });
 });
 
 app.listen(PORT, '127.0.0.1', () => {
