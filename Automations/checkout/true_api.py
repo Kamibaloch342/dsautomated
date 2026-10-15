@@ -1604,7 +1604,7 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                     min_margin, return_details, zoro_code)
 
         _time("True API TOTAL checkout", t_start)
-        if zoro_id in ("DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN"):   # decided before payment — not placed
+        if zoro_id in ("DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN", "PAYMENT_DECLINED"):   # nothing bought
             return _format_checkout_result(zoro_id, return_details=return_details)
         print(f"\n{'='*60}")
         if zoro_id:
@@ -1847,6 +1847,11 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
 
     zoro_id = _click_place_order(driver)
     print(f"   DOM fallback result: {zoro_id}")
+    if not zoro_id and getattr(driver, "_zuhra_payment_declined", False):
+        # Zoro said, on the page, that it could not authorize the payment — nothing was bought.
+        # The placer releases the order and retries it next cycle instead of locking it.
+        print("   💳 Zoro declined the payment on every try — no order was created")
+        return "PAYMENT_DECLINED"
     if is_net30 and not zoro_id:
         # Net30 Place Order produced no order id — capture the page (error
         # banners, validation messages) so the failure can be debugged.

@@ -3384,6 +3384,7 @@ def _delivery_gap_hold(amazon_deliver_by, zoro_estimate, limit, ships_fast):
 
 _DELIVERY_GAP_ALERTED = set()           # amazon_ids already alerted this run (one alert per order)
 _DELIVERY_UNKNOWN_TRIES = {}            # amazon_id -> tries with no Zoro delivery date (not placed)
+_PAYMENT_DECLINED_TRIES = {}            # amazon_id -> cycles Zoro declined the card (not placed)
 
 
 def _notify_alt_main_oos(driver, main_skus, account=""):
@@ -5539,6 +5540,17 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif result_status == "STATE_RESTRICTED":
         update_amazon_seller_id(driver, amazon_id, "SR", PROFILE_NAME)
         status_note = f"State restricted ({state})"
+    elif result_status == "PAYMENT_DECLINED":
+        # Zoro showed "unable to receive authorization for your payment method" on every try (with a
+        # checkout refresh between) — no order exists. Released and retried next cycle; a person
+        # is told when the same order keeps being declined (the card may need attention).
+        _PAYMENT_DECLINED_TRIES[amazon_id] = _PAYMENT_DECLINED_TRIES.get(amazon_id, 0) + 1
+        status_note = (f"Zoro could not authorize the payment (cycle {_PAYMENT_DECLINED_TRIES[amazon_id]}) — "
+                       f"NOT placed, retried next cycle")
+        if _PAYMENT_DECLINED_TRIES[amazon_id] == 3:
+            _notify_delivery_gap(amazon_id, asin_field, sku_field,
+                                 f"Zoro declined the {PROFILE_NAME} card on 3 cycles (3 tries each) — check the card",
+                                 order_detail.get("ship_by_date", ""), buyer, city, state)
     elif result_status == "DELIVERY_UNKNOWN":
         # Neither Zoro page showed a delivery date: never buy blind (owner, 15 Oct 2026). Nothing
         # is written to Amazon, so the order comes back next cycle; after 3 tries a person is told.
@@ -5660,7 +5672,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # ── Reconcile the local claim on failure ──────────────────────
     # These statuses are all detected BEFORE Zoro payment, so it is safe to release the
     # claim and let the order retry next cycle (matches the pre-existing retry intent).
-    _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED", "DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN",
+    _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED", "DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN", "PAYMENT_DECLINED",
                         "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
     if _HAS_LOCK and not DRY_RUN:
         if result_status in _SAFE_PREPAYMENT:

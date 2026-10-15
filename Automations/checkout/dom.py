@@ -2013,6 +2013,26 @@ def _report_checkout_refusal(driver, attempt):
         print(f"     screenshot: {fp}")
     except Exception:
         pass
+    return msgs
+
+
+_PAYMENT_AUTH_ERR = "unable to receive authorization for your payment method"
+
+
+def _refresh_checkout(driver):
+    """Zoro's own advice for a payment-authorization error: refresh the page and retry. Reload the
+    checkout (the cart, address, shipping and coupon live on the cart, not the page) and wait
+    until Place Order is back."""
+    try:
+        driver.get("https://www.zoro.com/checkout")
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            if driver.execute_script("return !!document.querySelector('[data-za=\"checkout-place-order-button\"]');"):
+                break
+            time.sleep(0.5)
+        time.sleep(3)
+    except Exception as e:
+        print(f"  ⚠️  checkout refresh failed: {type(e).__name__}")
 
 
 def _click_place_order(driver):
@@ -2020,6 +2040,10 @@ def _click_place_order(driver):
     print("  📝 Placing order...")
 
     zoro_id = None
+    try:
+        driver._zuhra_payment_declined = False
+    except Exception:
+        pass
     for attempt in range(3):
         btn, state = _wait_place_order_clickable(driver)
         if btn is None:
@@ -2066,9 +2090,20 @@ def _click_place_order(driver):
             print("  ⏸️  No order number, and the page has not returned to an idle checkout — "
                   "not clicking again (a second click could duplicate the order)")
             break
-        _report_checkout_refusal(driver, attempt + 1)
+        _msgs = _report_checkout_refusal(driver, attempt + 1) or []
+        _declined = any(_PAYMENT_AUTH_ERR in str(m).lower() for m in _msgs)
+        try:
+            driver._zuhra_payment_declined = _declined     # what the LAST attempt was told
+        except Exception:
+            pass
         if attempt < 2:
-            print("  ⚠️  Submission came back with no order number — trying once more")
+            if _declined:
+                # Zoro: "If the issue continues, refresh the page and retry". It is intermittent —
+                # the same card goes through on a later try (owner, 15 Oct 2026).
+                print("  🔄 Payment not authorized — refreshing the checkout and trying again")
+                _refresh_checkout(driver)
+            else:
+                print("  ⚠️  Submission came back with no order number — trying once more")
 
     if not zoro_id:
         print(f"  ❌ Order may have failed. URL: {driver.current_url[:80]}")
