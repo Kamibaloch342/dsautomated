@@ -30,6 +30,9 @@ DEFAULT_GROUPS = {
     # one line per buyer message / review request that actually went through (15 Oct 2026)
     "hathoro_messages": "120363430751417464@g.us",   # "Hathoro Delivery Messages + Review Requests"
     "hoank_messages": "120363431670792427@g.us",     # "HOANK Delivery Messages + Review Requests"
+    # one alert (order-page screenshot + times + tracking ids) per uploaded tracking (15 Oct 2026);
+    # a store without its own group falls back to its _messages group
+    "hathoro_tracking": "120363431994810056@g.us",   # "Hathoro Tracking ID's Alerts"
 }
 
 

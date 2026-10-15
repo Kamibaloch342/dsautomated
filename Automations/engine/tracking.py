@@ -67,26 +67,83 @@ TRACKING_UPLOAD_LOG_FILE = os.path.join(os.path.dirname(script_directory), "data
 LAST_MESSAGE_STATE = {"value": ""}
 
 
-def _alert_tracking_uploaded(store_name, amazon_id, wb_ids, tracking_ids, message_state):
-    """One WhatsApp line per order whose tracking was ACTUALLY uploaded (never for a failed or
-    skipped upload — a cancelled order that keeps failing at Confirm Shipment sends nothing). Goes to
-    the store's '<store>_messages' group; the gateway paces every alert (~20 s apart)."""
+def _tracking_page_shot(driver, amazon_id, tids):
+    """Open the order page, wait until Amazon shows the shipment as confirmed, bring the tracking
+    ids into view and return (png, confirmed). confirmed=False → Amazon does not show the upload."""
     try:
-        from utils.whatsapp import get_whatsapp_config, DEFAULT_GROUPS, send_whatsapp_message
+        driver.get(f"https://sellercentral.amazon.com/orders-v3/order/{amazon_id}")
+        end = time.time() + 20
+        confirmed = False
+        while time.time() < end:
+            time.sleep(1.5)
+            if _page_shows_already_shipped(driver):
+                confirmed = True
+                break
+        if not confirmed:
+            return None, False
+        try:
+            driver.execute_script("""
+                const ids = arguments[0];
+                const seen = new Set();
+                function walk(root) {
+                    const w = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+                    let n;
+                    while ((n = w.nextNode())) {
+                        if (n.nodeType === 3 && ids.some(i => n.nodeValue.includes(i))) {
+                            n.parentElement.scrollIntoView({block: 'center'}); return true;
+                        }
+                        if (n.shadowRoot && !seen.has(n)) { seen.add(n); if (walk(n.shadowRoot)) return true; }
+                    }
+                    return false;
+                }
+                if (!walk(document.body)) {
+                    const el = [...document.querySelectorAll('h2,h3,span,div')].find(e =>
+                        /Package|Tracking ID/i.test(e.textContent || '') && (e.textContent || '').length < 60);
+                    if (el) el.scrollIntoView({block: 'center'});
+                }
+            """, list(tids or []))
+        except Exception:
+            pass
+        time.sleep(1)
+        return driver.get_screenshot_as_png(), True
+    except Exception as e:
+        print(f"     ⚠️  tracking screenshot failed: {str(e)[:80]}")
+        return None, False
+
+
+def _alert_tracking_uploaded(driver, store_name, amazon_id, wb_ids, all_tids, uploaded_tids, message_state):
+    """One WhatsApp alert per order whose tracking Amazon now SHOWS as uploaded — the order page is
+    opened and must show the confirmed shipment, otherwise nothing is sent (a cancelled order that
+    fails at Confirm Shipment never alerts). Screenshot of the order page + the owner's caption
+    (utils/tracking_alert.py) to '<store>_tracking' ("<store> Tracking ID's Alerts"), falling back to
+    '<store>_messages' until that store has its own group. The gateway paces every alert (~20 s)."""
+    try:
+        from utils.whatsapp import get_whatsapp_config, DEFAULT_GROUPS, send_whatsapp_message, send_whatsapp_photo
+        from utils.tracking_alert import facts, format_alert
         store = "Hathoro" if "hathoro" in str(store_name).lower() else "HOANK"
-        key = f"{store.lower()}_messages"
-        to = (get_whatsapp_config().get("groups") or {}).get(key) or DEFAULT_GROUPS.get(key)
+        groups = get_whatsapp_config().get("groups") or {}
+        to = None
+        for key in (f"{store.lower()}_tracking", f"{store.lower()}_messages"):
+            to = groups.get(key) or DEFAULT_GROUPS.get(key)
+            if to:
+                break
         if not to:
             return
-        wbs = ", ".join(wb_ids if isinstance(wb_ids, list) else [str(wb_ids or "")]) or "—"
-        tids = ", ".join(tracking_ids or []) or "—"
-        send_whatsapp_message(f"📦 *{store} — Tracking uploaded*\n"
-                              f"Order: {amazon_id}\n"
-                              f"WB: {wbs}\n"
-                              f"Tracking: {tids}\n"
-                              f"Tracking message sent: {message_state}", to=to)
+        png, confirmed = _tracking_page_shot(driver, amazon_id, all_tids)
+        if not confirmed:
+            print(f"     ⚠️  Amazon does not show the shipment as confirmed — no tracking alert.")
+            return
+        caption = format_alert(amazon_id, list(all_tids or []), message_state,
+                               facts(amazon_id, wb_ids), uploaded=list(uploaded_tids or []))
+        if png:
+            send_whatsapp_photo(png, caption=caption, to=to)
+        else:
+            send_whatsapp_message(caption, to=to)
+        print(f"     📲  Tracking alert queued ({store}).")
     except Exception as e:
         print(f"     ⚠️  tracking alert skipped: {e}")
+
+
 # 26 Sep 2026 — cycle economics. A cycle used to request a fresh 30-day all-orders report
 # every ~10 min and re-sweep the same ~131 unshipped WBs across 8 inboxes for ~4 uploads.
 _REPORT_MAX_AGE_MIN = int(os.environ.get("TRACKING_REPORT_MAX_AGE_MIN", "30") or 0)   # reuse a report younger than this
@@ -2414,7 +2471,7 @@ def main_workflow(account_config, passed_driver=None):
                                     _mstate = "Messaging off"
                                 else:
                                     _mstate = "No"
-                                _alert_tracking_uploaded(store_name, amazon_id, order_wb_ids,
+                                _alert_tracking_uploaded(driver, store_name, amazon_id, order_wb_ids, list(_all_tids),
                                                          list(_all_tids) if _multi_ok else list(_all_tids[:1]), _mstate)
                             except Exception as e:
                                 failure_count += 1
