@@ -1690,6 +1690,19 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 checkout_shipping = float(_page["shipping"])
             if _page.get("total") and float(_page["total"]) > 0:
                 checkout_total = float(_page["total"])
+        # Tax still unknown: Zoro's own cart says it — total (tax included) minus priceTotal
+        # (items + shipping after discounts, before tax). The page reader misses the Zoro Select
+        # discount line, so its "remainder of the total" came out negative and 186 page-checkout
+        # orders up to 16 Oct 2026 logged no tax; 114-5268902-9708201 paid $2.05 tax and alerted
+        # as an untaxed low-margin order.
+        if checkout_tax is None and isinstance(cart, dict):
+            try:
+                _ct, _pt = float(cart.get("total") or 0), float(cart.get("priceTotal") or 0)
+                if _ct > 0 and _pt > 0:
+                    checkout_tax = round(max(_ct - _pt, 0.0), 2)
+                    print(f"  🧾 Tax from Zoro's cart: ${checkout_tax:.2f} (total ${_ct:.2f} − pre-tax ${_pt:.2f})")
+            except (TypeError, ValueError):
+                pass
 
         return _format_checkout_result(
             "SUCCESS" if zoro_id else "FAILED",
