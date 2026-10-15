@@ -67,6 +67,9 @@ _NO_MOVEMENT_RX = re.compile(r"information sent|label created|shipment informati
 _DELIVERED_RX = re.compile(r"\bdelivered\b", re.I)
 _EXCEPTION_RX = re.compile(r"exception|unable to deliver|delivery attempt|returned to shipper|"
                            r"return to sender|damaged|refused|held at", re.I)
+_RTS_RX = re.compile(r"return(?:ing|ed)? (?:package )?to shipper|return(?:ed)? to sender|"
+                     r"return to origin|damaged in transit.*return|unable to deliver.*return|"
+                     r"shipper requested.*return|package.*returned", re.I)
 _LEFT_AT_RX = re.compile(r"left at\s+([^.]*)", re.I)
 _UNSUPPORTED_RX = re.compile(r"carrier not support|unsupported carrier", re.I)
 _FEDEX_NUMBER_RX = re.compile(r"^\d{12}$|^\d{15}$|^\d{20}$|^\d{22}$")
@@ -204,8 +207,9 @@ def parse_package(t: dict, carrier_code: str = "") -> dict:
         events.append({"at": at, "desc": desc, "exception": exc, "location": loc})
     events.sort(key=lambda x: x["at"] or datetime.min, reverse=True)
 
-    delivered_at = steps.get("delivered")
-    delivered_event = next((e for e in events if _DELIVERED_RX.search(e["desc"]) and not _EXCEPTION_RX.search(e["desc"])), None)
+    rts_event = next((e for e in events if _RTS_RX.search(e["desc"] + " " + (e.get("exception") or ""))), None)
+    delivered_at = steps.get("delivered") if not rts_event else None
+    delivered_event = next((e for e in events if _DELIVERED_RX.search(e["desc"]) and not _EXCEPTION_RX.search(e["desc"])), None) if not rts_event else None
     if not delivered_at and delivered_event:
         delivered_at = delivered_event["at"]
     shipped_at = steps.get("shipped")
@@ -221,7 +225,9 @@ def parse_package(t: dict, carrier_code: str = "") -> dict:
             signed_by = m.group(1).strip()
         if not left_at and not signed_by and not _EXCEPTION_RX.search(note):
             left_at = note.split(".")[0].strip()
-    if delivered_at:
+    if rts_event:
+        status = "DeliveryException"
+    elif delivered_at:
         status = "Delivered"
     elif latest:
         status = normalize_status(latest["desc"])
@@ -240,13 +246,14 @@ def parse_package(t: dict, carrier_code: str = "") -> dict:
     latest_loc = (latest["location"] if latest else "") or _loc_text(t.get("latestLocation"))
     estimated = _first(t, "estimatedDeliveryDay", "estimatedDeliveryDate", "estimatedDelivery")
     err = t.get("error")
+    last_exc = (rts_event["exception"] or rts_event["desc"]) if rts_event else ((latest["exception"] if latest and latest is not delivered_event else "") or "")
     return {
         "tracking_number": number, "carrier": carrier or carrier_code, "carrier_code": carrier_code or carrier,
         "url": url, "status": status,
         "delivered_at": delivered_at, "shipped_at": shipped_at,
         "left_at": left_at, "signed_by": signed_by,
         "last_event": latest["desc"] if latest else "", "last_event_at": last_event_at,
-        "last_exception": (latest["exception"] if latest and latest is not delivered_event else "") or "",
+        "last_exception": last_exc,
         "last_location": latest_loc, "last_movement_at": last_movement_at,
         "estimated_delivery": fmt_ts(parse_ts(estimated)) if estimated else "",
         "delayed": bool(t.get("delayed")) if t.get("delayed") is not None else False,

@@ -35,7 +35,7 @@
             "est_margin_only": true,
             "labels_only": false,
             "rush_mode": false,
-            "rush_batch": 20
+            "rush_batch": 100
         },
         "HS_RESELLER": {
             "target_label": "Rajar",
@@ -44,8 +44,8 @@
             "est_margin_only": true,
             "labels_only": false,
             "rush_mode": false,
-            "rush_batch": 10,
-            "payment_method": "NET30"
+            "rush_batch": 100,
+            "payment_method": "CREDIT_CARD"
         }
     },
     "velocity": {
@@ -74,9 +74,9 @@
     },
     "automation": {
         "auto_closing": {
-            "enabled": false,
+            "enabled": true,
             "times": [
-                "03:30"
+                "04:00"
             ],
             "accounts": [
                 "HOANK",
@@ -111,9 +111,14 @@
         }
     },
     "checkout": {
-        "page_checkout": false
+        "page_checkout": true
     },
     "closing": {
         "message_after_closing": true
+    },
+    "sunday_mode": {
+        "enabled": false,
+        "max_cart": 50.0,
+        "min_margin_pct": 15.0
     }
 }

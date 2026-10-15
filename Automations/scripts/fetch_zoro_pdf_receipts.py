@@ -27,8 +27,8 @@ from engine import closing_signals as CS
 
 ACCT = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("--") else "Hathoro"
 GO = "--go" in sys.argv
-INBOXES = {"Hathoro": ["abecomllc26", "salesmercentile", "wrenchlyllc"],
-           "HOANK": ["asad_amazon_us", "inhur_llc"]}.get(ACCT, ["abecomllc26", "salesmercentile", "wrenchlyllc"])
+INBOXES = {"Hathoro": ["abecomllc26", "robstark771", "salesmercentile", "wrenchlyllc"],
+           "HOANK": ["asad_amazon_us", "inhur_llc"]}.get(ACCT, ["abecomllc26", "robstark771", "salesmercentile", "wrenchlyllc"])
 ID = re.compile(r"(?:WB|SO)\d+")
 _PDF = os.path.join(_AUTO, "scratch_zoro.pdf")
 

@@ -22,8 +22,9 @@
       "pd_key": "hathoro",
       "earnings_inbox": "abecomllc26",
       "zoro_preferred": [
-        "salesmercentile",
-        "wrenchlyllc"
+        "robstark771",
+        "wrenchlyllc",
+        "salesmercentile"
       ],
       "sc_store_name": "Discounted Maal",
       "sc_marketplace": "United States"
@@ -34,7 +35,9 @@
     "abecomllc26",
     "asad_amazon_us",
     "inhur_llc",
-    "wrenchlyllc"
+    "wrenchlyllc",
+    "salesmercentile",
+    "robstark771"
   ],
   "gmail_accounts": [
     "qurtdis",
@@ -42,7 +45,9 @@
     "asad_amazon_us",
     "inhur_llc",
     "wrenchlyllc",
-    "abecomllc02"
+    "abecomllc02",
+    "salesmercentile",
+    "robstark771"
   ],
   "zoro_accounts": [
     "salesmercentile",
@@ -61,6 +66,12 @@
     "salestreendfitinc",
     "toolzsolutionsllc"
   ],
+  "zoro_profile_inboxes": {
+    "HS_COUPON": "inhur_llc",
+    "HS_RESELLER": "asad_amazon_us",
+    "DM_RESELLER": "abecomllc26",
+    "DM_COUPON": "robstark771"
+  },
   "walmart": {
     "zoro_port": 9361,
     "profile_dir": "port_9361",

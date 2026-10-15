@@ -440,7 +440,7 @@ def refund_issues(account=None, zoro_account=None, date_from=None, date_to=None)
 
 
 # ── SEVERE ISSUES (action center — money-leak items needing a human) ──────────
-_SEV_INBOX = {"Hathoro": ("abecomllc26", "salesmercentile", "wrenchlyllc"),
+_SEV_INBOX = {"Hathoro": ("abecomllc26", "robstark771", "salesmercentile", "wrenchlyllc"),
               "HOANK": ("asad_amazon_us", "inhur_llc")}
 
 def severe_issues(account=None, zoro_account=None, date_from=None, date_to=None):

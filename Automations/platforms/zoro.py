@@ -160,6 +160,15 @@ def ensure_token(driver):
                 app.__vue_app__.config.globalProperties.$store.dispatch('auth/checkIfAuthenticated');
         """)
         time.sleep(4)
+        post_ttl = driver.execute_script("""
+            try{var s=JSON.parse(localStorage.getItem('okta-token-storage'));
+            return s.accessToken.expiresAt-Math.floor(Date.now()/1000);}catch(e){return -1;}
+        """)
+        if post_ttl < 0:
+            print("   🚨 [ZORO AUTH] No active Okta session token! Chrome profile is not logged in to Zoro.com.")
+            print("   👉 Please open the browser for this profile and sign into Zoro.")
+            return False
+    return True
 
 
 # ==============================================================================
@@ -176,7 +185,10 @@ def check_inventory(driver, sku, qty):
     if r.get('s') != 200:
         status = r.get('s', 'unknown')
         detail = r.get('d', '')
-        print(f"   [ZORO INV] check_inventory failed for {sku} — HTTP {status}, detail: {str(detail)[:200]}")
+        if detail == 'no_token':
+            print(f"   [ZORO INV] check_inventory failed for {sku} — HTTP -1, detail: no_token (Zoro NOT logged in in this Chrome profile)")
+        else:
+            print(f"   [ZORO INV] check_inventory failed for {sku} — HTTP {status}, detail: {str(detail)[:200]}")
         return False, "API_ERROR"
     payload = r['d'].get('payload', [])
     if not payload:

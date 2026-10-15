@@ -21,11 +21,11 @@ _FALLBACK = {
                     "zoro_preferred": ["salesmercentile1", "inhur_llc"]},
         "Hathoro": {"report_port": 9333, "fedex_port": 9334, "sc_port": 9333, "pd_key": "hathoro",
                     "earnings_inbox": "abecomllc26",
-                    "zoro_preferred": ["salesmercentile", "wrenchlyllc"]},
+                    "zoro_preferred": ["robstark771", "wrenchlyllc", "salesmercentile"]},
     },
-    "gmail_tokens": ["qurtdis", "abecomllc26", "asad_amazon_us", "inhur_llc", "wrenchlyllc"],
+    "gmail_tokens": ["qurtdis", "abecomllc26", "asad_amazon_us", "inhur_llc", "wrenchlyllc", "salesmercentile", "robstark771"],
     "gmail_accounts": ["qurtdis", "abecomllc26", "asad_amazon_us", "inhur_llc", "wrenchlyllc",
-                       "abecomllc02"],
+                       "abecomllc02", "salesmercentile", "robstark771"],
     "zoro_accounts": ["salesmercentile", "salesmercentile1", "abecomllc26", "asad_amazon_us",
                       "inhur_llc", "wrenchlyllc", "toolzsolutionsllc220", "qurtdis", "abecomllc02",
                       "kamibaloch342", "kamran_va_342", "kamranwork342", "robstark771",
@@ -53,7 +53,7 @@ _FALLBACK = {
     },
     # Placer profile → the Zoro inbox (token name) that profile buys with (owner, 27 Sep 2026).
     "zoro_profile_inboxes": {"HS_COUPON": "inhur_llc", "HS_RESELLER": "asad_amazon_us",
-                             "DM_RESELLER": "abecomllc26", "DM_COUPON": "salesmercentile"},
+                             "DM_RESELLER": "abecomllc26", "DM_COUPON": "robstark771"},
     # Zoro guest tracking sweep (engine/zoro_tracking.py, scripts/zoro_delivery_check.py).
     "zoro_tracking": {"transport": "auto", "port": 9225, "delay_s": 0.4, "workers": 4, "days": 60,
                       "recheck_hours": 20, "late_days": 2, "stalled_days": 3},

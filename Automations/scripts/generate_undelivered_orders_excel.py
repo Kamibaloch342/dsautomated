@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
 generate_undelivered_orders_excel.py
-Generates a comprehensive, executive-grade multi-account Excel workbook
-reconciling all undelivered Zoro orders placed before September 8th, 2026 across:
+Generates comprehensive, executive-grade multi-account and per-account Excel workbooks
+reconciling all undelivered and partial delivered Zoro orders using the latest, authoritative
+delivery tracking details (Zoro order tracking sweep + FedEx carrier scan events) across:
 - Inhur LLC (inuhrecomllc5@gmail.com)
 - Asad Amazon US (asad.amazon.us@gmail.com)
-- Salesmercentile (salesmercentile@gmail.com)
-- AB Ecom LLC / DM (abecomllc26@gmail.com)
-- Wrenchly LLC (wrenchlyllc@gmail.com)
 - Salesmercentile 1 (salesmercentile1@gmail.com)
-- Other & Legacy Pools (abecomllc02 & unassigned placer orders)
 
 Features:
-- Executive Summary with cross-account KPIs and financial exposure ($124,569.28)
-- Master Actionable tab (Partial Delivered & Exceptions & Label Created)
-- Dedicated tabs for each business Gmail account with tracking IDs, package ratios, and scan details
+- Executive Summary with cross-account KPIs and financial exposure
+- Master Actionable Claims tab (Partial Deliveries, Carrier Exceptions & Ghost Labels)
+- Dedicated tabs per account with parcel counts, scan history, exception notes, and earnings
+- Individual standalone workbooks per account for distribution to team leads / VAs
 """
 
 import os
@@ -26,18 +24,22 @@ from openpyxl.utils import get_column_letter
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 AUTO_DIR = os.path.dirname(SCRIPT_DIR)
-DB_PATH = os.path.join(AUTO_DIR, "data", "dashboard_slim.db")
-OUTPUT_XLSX = os.path.join(AUTO_DIR, "data", "Zoro_Undelivered_Orders_Reconciliation_2026.xlsx")
+DATA_DIR = os.path.join(AUTO_DIR, "data")
+
+DB_PATH_MASTER = os.path.join(DATA_DIR, "automations_unified.db")
+DB_PATH_SLIM = os.path.join(DATA_DIR, "dashboard_slim.db")
+
+OUTPUT_COMBINED_XLSX = os.path.join(DATA_DIR, "Undelivered_Orders_Asad_Inuhr_Salesmercentile1_2026.xlsx")
+OUTPUT_LEGACY_XLSX = os.path.join(DATA_DIR, "Zoro_Undelivered_Orders_Reconciliation_2026.xlsx")
 
 # Styling Definitions
 NAVY_HEADER = PatternFill(start_color="1B365D", end_color="1B365D", fill_type="solid")
-HEADER_FONT = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
-TITLE_FONT = Font(name="Segoe UI", size=16, bold=True, color="1B365D")
-SUBTITLE_FONT = Font(name="Segoe UI", size=10, italic=True, color="475569")
-BOLD_FONT = Font(name="Segoe UI", size=10, bold=True, color="0F172A")
-REGULAR_FONT = Font(name="Segoe UI", size=10, color="1E293B")
-KPI_TITLE_FONT = Font(name="Segoe UI", size=9, bold=True, color="64748B")
-KPI_VAL_FONT = Font(name="Segoe UI", size=18, bold=True, color="1B365D")
+HEADER_FONT = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+TITLE_FONT = Font(name="Segoe UI", size=15, bold=True, color="1B365D")
+SUBTITLE_FONT = Font(name="Segoe UI", size=9, italic=True, color="475569")
+BOLD_FONT = Font(name="Segoe UI", size=9, bold=True, color="0F172A")
+REGULAR_FONT = Font(name="Segoe UI", size=9, color="1E293B")
+MONO_FONT = Font(name="Consolas", size=9, color="0F172A")
 
 BORDER_THIN = Border(
     left=Side(style="thin", color="E2E8F0"),
@@ -59,6 +61,10 @@ STATUS_STYLES = {
         PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid"),
         Font(name="Segoe UI", size=9, bold=True, color="92400E")
     ),
+    "DeliveryException": (
+        PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid"),
+        Font(name="Segoe UI", size=9, bold=True, color="991B1B")
+    ),
     "Delivery exception": (
         PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid"),
         Font(name="Segoe UI", size=9, bold=True, color="991B1B")
@@ -70,6 +76,14 @@ STATUS_STYLES = {
     "Returning to FedEx facility": (
         PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid"),
         Font(name="Segoe UI", size=9, bold=True, color="991B1B")
+    ),
+    "Cancelled": (
+        PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid"),
+        Font(name="Segoe UI", size=9, bold=True, color="7F1D1D")
+    ),
+    "InTransit": (
+        PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid"),
+        Font(name="Segoe UI", size=9, bold=True, color="1E40AF")
     ),
     "On the way": (
         PatternFill(start_color="DBEAFE", end_color="DBEAFE", fill_type="solid"),
@@ -83,11 +97,11 @@ STATUS_STYLES = {
         PatternFill(start_color="E0F2FE", end_color="E0F2FE", fill_type="solid"),
         Font(name="Segoe UI", size=9, bold=True, color="0369A1")
     ),
-    "Out for delivery": (
+    "OutForDelivery": (
         PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid"),
         Font(name="Segoe UI", size=9, bold=True, color="166534")
     ),
-    "OutForDelivery": (
+    "Out for delivery": (
         PatternFill(start_color="DCFCE7", end_color="DCFCE7", fill_type="solid"),
         Font(name="Segoe UI", size=9, bold=True, color="166534")
     ),
@@ -110,7 +124,13 @@ DEFAULT_BADGE = (
     Font(name="Segoe UI", size=9, bold=True, color="334155")
 )
 
-ACCOUNTS = [
+TARGET_ACCOUNTS = [
+    ("inhur_llc", "Inhur LLC (inuhr)", "inuhrecomllc5@gmail.com", "Child Account"),
+    ("asad_amazon_us", "Asad Amazon US (asad)", "asad.amazon.us@gmail.com", "Sister Account"),
+    ("salesmercentile1", "Salesmercentile 1", "salesmercentile1@gmail.com", "Secondary Pool")
+]
+
+ALL_ACCOUNTS = [
     ("inhur_llc", "Inhur LLC (inuhr)", "inuhrecomllc5@gmail.com", "Child Account"),
     ("asad_amazon_us", "Asad Amazon US", "asad.amazon.us@gmail.com", "Sister Account"),
     ("salesmercentile", "Salesmercentile", "salesmercentile@gmail.com", "Primary Zoro Pool"),
@@ -120,12 +140,6 @@ ACCOUNTS = [
 ]
 
 OTHER_ACCOUNT = ("other_legacy", "Other & Legacy Pools", "abecomllc02 / Unassigned", "Legacy & Placer")
-
-ACTIVE_STATUSES = (
-    "PartialDelivered", "On the way", "Delivery updated", "Delivery exception",
-    "Shipment exception", "LabelCreated", "Out for delivery", "OutForDelivery",
-    "We have your package", "We tried to deliver", "Returning to FedEx facility", "Ready for pickup"
-)
 
 def parse_tids(raw_str):
     if not raw_str:
@@ -138,27 +152,51 @@ def parse_tids(raw_str):
             clean.append(s)
     return clean
 
-def get_package_detail(status, tids):
-    count = len(tids)
-    if status == "PartialDelivered":
-        if count > 1:
-            return f"Partial Delivery: At least 1 of {count} pkgs still undelivered"
-        else:
-            return "Partial Delivery: 1 pkg tracked (multi-piece split / partial scan)"
-    else:
-        if count > 1:
-            return f"All {count} packages undelivered ({status})"
-        elif count == 1:
-            return f"1 of 1 package undelivered ({status})"
-        else:
-            return f"Undelivered ({status})"
+def get_db_connection():
+    target_path = DB_PATH_MASTER if os.path.exists(DB_PATH_MASTER) else DB_PATH_SLIM
+    conn = sqlite3.connect(f"file:{target_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-def fetch_data():
-    conn = sqlite3.connect(DB_PATH)
+def fetch_package_tracking_map(conn):
+    """Map wb_order_id -> list of package records from zoro_package_tracking."""
+    pkgs_map = {}
+    try:
+        rows = conn.execute("""
+            SELECT wb_order_id, tracking_number, carrier, status, 
+                   delivered_at, shipped_at, last_event, last_event_at, 
+                   last_exception, last_location, last_movement_at, url
+            FROM zoro_package_tracking
+        """).fetchall()
+        for r in rows:
+            wb = r["wb_order_id"]
+            if wb not in pkgs_map:
+                pkgs_map[wb] = []
+            pkgs_map[wb].append(dict(r))
+    except Exception as e:
+        print(f"  ⚠️ Warning reading zoro_package_tracking: {e}")
+    return pkgs_map
+
+def fetch_undelivered_orders(conn, target_keys=None):
+    """Fetch all undelivered/partial delivered orders from closing_orders."""
     cur = conn.cursor()
 
-    ph_s = ",".join(["?"] * len(ACTIVE_STATUSES))
+    where_clauses = [
+        "delivery_status NOT IN ('Delivered', 'AllDelivered')",
+        "delivery_status IS NOT NULL",
+        "delivery_status != ''",
+        "COALESCE(manual_delivered, '') != 'Yes'",
+        "tracking_ids IS NOT NULL",
+        "tracking_ids != ''"
+    ]
+    params = []
 
+    if target_keys:
+        ph = ",".join(["?"] * len(target_keys))
+        where_clauses.append(f"zoro_gmail_account IN ({ph})")
+        params.extend(target_keys)
+
+    where_sql = " AND ".join(where_clauses)
     query = f"""
         SELECT 
             amazon_order_id,
@@ -177,41 +215,85 @@ def fetch_data():
             ship_state,
             ship_postal_code,
             zoro_order_total,
+            earnings,
+            profit_dollars,
             last_scan_location,
             last_scan_time,
-            delivery_note
+            delivery_note,
+            carrier,
+            zoro_order_status
         FROM closing_orders
-        WHERE purchase_date < '2026-09-08'
-          AND delivery_status IN ({ph_s})
-          AND COALESCE(manual_delivered, '') != 'Yes'
-          AND tracking_ids IS NOT NULL AND tracking_ids != ''
+        WHERE {where_sql}
         ORDER BY purchase_date DESC
     """
-    cur.execute(query, list(ACTIVE_STATUSES))
+    rows = cur.execute(query, params).fetchall()
     cols = [d[0] for d in cur.description]
-    rows = cur.fetchall()
-    conn.close()
+
+    pkgs_map = fetch_package_tracking_map(conn)
 
     records = []
     for r in rows:
         d = dict(zip(cols, r))
+        wb = d.get("wb_order_id")
         tids = parse_tids(d.get("tracking_ids"))
         d["clean_tids"] = tids
         d["pkg_count"] = len(tids)
-        d["pkg_ratio_text"] = get_package_detail(d.get("delivery_status"), tids)
+
+        # Enrich from zoro_package_tracking if available
+        p_list = pkgs_map.get(wb, [])
+        status = d.get("delivery_status") or "Unknown"
+
+        if p_list:
+            total_pkgs = len(p_list)
+            deliv_pkgs = sum(1 for p in p_list if p.get("status") == "Delivered")
+            d["pkg_count"] = max(total_pkgs, len(tids))
+            
+            if status == "PartialDelivered":
+                d["pkg_ratio_text"] = f"Partial Delivery: {deliv_pkgs} of {total_pkgs} pkgs delivered"
+            else:
+                d["pkg_ratio_text"] = f"All {total_pkgs} pkgs undelivered ({status})" if total_pkgs > 1 else f"1 of 1 pkg undelivered ({status})"
+
+            exceptions = [p["last_exception"] for p in p_list if p.get("last_exception")]
+            if exceptions and not d.get("delivery_note"):
+                d["delivery_note"] = "; ".join(set(exceptions))
+
+            # Pick latest scan location and time if missing
+            if not d.get("last_scan_location"):
+                locs = [p["last_location"] for p in p_list if p.get("last_location")]
+                if locs:
+                    d["last_scan_location"] = locs[0]
+
+            if not d.get("last_scan_time"):
+                movs = [p["last_movement_at"] or p["last_event_at"] for p in p_list if (p.get("last_movement_at") or p.get("last_event_at"))]
+                if movs:
+                    d["last_scan_time"] = movs[0]
+        else:
+            if status == "PartialDelivered":
+                if len(tids) > 1:
+                    d["pkg_ratio_text"] = f"Partial Delivery: At least 1 of {len(tids)} pkgs undelivered"
+                else:
+                    d["pkg_ratio_text"] = "Partial Delivery: Multi-piece split / partial scan"
+            else:
+                if len(tids) > 1:
+                    d["pkg_ratio_text"] = f"All {len(tids)} pkgs undelivered ({status})"
+                elif len(tids) == 1:
+                    d["pkg_ratio_text"] = f"1 of 1 pkg undelivered ({status})"
+                else:
+                    d["pkg_ratio_text"] = f"Undelivered ({status})"
+
         records.append(d)
 
     return records
 
 def populate_orders_sheet(ws, orders, title_text, subtitle_text):
     # Title
-    ws.merge_cells("A1:Q1")
+    ws.merge_cells("A1:R1")
     ws["A1"] = title_text
     ws["A1"].font = TITLE_FONT
     ws["A1"].alignment = Alignment(vertical="center")
     ws.row_dimensions[1].height = 28
 
-    ws.merge_cells("A2:Q2")
+    ws.merge_cells("A2:R2")
     ws["A2"] = subtitle_text
     ws["A2"].font = SUBTITLE_FONT
     ws["A2"].alignment = Alignment(vertical="center")
@@ -231,11 +313,13 @@ def populate_orders_sheet(ws, orders, title_text, subtitle_text):
         ("Tracking Numbers", 36, Alignment(horizontal="left")),
         ("Qty", 8, Alignment(horizontal="center")),
         ("Zoro Cost ($)", 14, Alignment(horizontal="right")),
+        ("Amazon Earnings ($)", 15, Alignment(horizontal="right")),
         ("Buyer Name", 20, Alignment(horizontal="left")),
         ("Destination City, State", 24, Alignment(horizontal="left")),
+        ("Carrier", 14, Alignment(horizontal="center")),
         ("Last Scan Location", 22, Alignment(horizontal="left")),
-        ("Last Scan Time", 16, Alignment(horizontal="center")),
-        ("Exception / Delivery Note", 40, Alignment(horizontal="left"))
+        ("Last Scan Time / Event", 18, Alignment(horizontal="center")),
+        ("Carrier Exception / Note", 42, Alignment(horizontal="left"))
     ]
 
     header_row = 4
@@ -262,11 +346,13 @@ def populate_orders_sheet(ws, orders, title_text, subtitle_text):
         p_date = str(o.get("purchase_date") or "")[:10]
         d_date = str(o.get("deliver_by_date") or "").split("|")[0].strip()[:10]
         cost = float(o.get("zoro_order_total") or 0.0)
+        earn = float(o.get("earnings") or 0.0)
         status = o.get("delivery_status") or "Unknown"
 
         loc = o.get("last_scan_location") or ""
         scan_time = str(o.get("last_scan_time") or "")[:16]
         note = o.get("delivery_note") or ""
+        carrier = o.get("carrier") or "FedEx"
         buyer_dest = f"{o.get('ship_city') or ''}, {o.get('ship_state') or ''} {o.get('ship_postal_code') or ''}".strip()
 
         row_vals = [
@@ -282,8 +368,10 @@ def populate_orders_sheet(ws, orders, title_text, subtitle_text):
             tids_str,
             o.get("quantity") or 1,
             cost,
+            earn,
             o.get("ship_name"),
             buyer_dest,
+            carrier,
             loc,
             scan_time,
             note
@@ -295,7 +383,6 @@ def populate_orders_sheet(ws, orders, title_text, subtitle_text):
             cell.fill = fill
             cell.border = BORDER_THIN
 
-            # Alignment & formatting
             _, _, align = headers[c_idx - 1]
             cell.alignment = align
 
@@ -310,7 +397,7 @@ def populate_orders_sheet(ws, orders, title_text, subtitle_text):
                     cell.font = Font(name="Segoe UI", size=9, bold=True, color="991B1B")
                 else:
                     cell.font = Font(name="Segoe UI", size=9, color="1E293B")
-            elif c_idx == 12:  # Cost Currency
+            elif c_idx in (12, 13):  # Cost / Earnings Currency
                 cell.number_format = "$#,##0.00"
 
     # Total Row
@@ -331,51 +418,57 @@ def populate_orders_sheet(ws, orders, title_text, subtitle_text):
             cell.value = f"=SUM(K{header_row+1}:K{tot_row-1})"
             cell.font = BOLD_FONT
             cell.alignment = Alignment(horizontal="center")
-        elif c == 12:  # Cost Sum
+        elif c == 12:  # Zoro Cost Sum
             cell.value = f"=SUM(L{header_row+1}:L{tot_row-1})"
+            cell.font = BOLD_FONT
+            cell.number_format = "$#,##0.00"
+            cell.alignment = Alignment(horizontal="right")
+        elif c == 13:  # Amazon Earnings Sum
+            cell.value = f"=SUM(M{header_row+1}:M{tot_row-1})"
             cell.font = BOLD_FONT
             cell.number_format = "$#,##0.00"
             cell.alignment = Alignment(horizontal="right")
 
     ws.freeze_panes = f"A{header_row+1}"
 
-def build_executive_summary(ws, all_orders):
+def build_executive_summary(ws, all_orders, account_list, title_str, subtitle_str):
     # Title
-    ws.merge_cells("A1:K1")
-    ws["A1"] = "EXECUTIVE SUMMARY — MULTI-ACCOUNT UNDELIVERED ORDERS RECONCILIATION"
+    ws.merge_cells("A1:L1")
+    ws["A1"] = title_str
     ws["A1"].font = TITLE_FONT
     ws.row_dimensions[1].height = 30
 
-    ws.merge_cells("A2:K2")
-    ws["A2"] = "Audit of all Zoro orders placed before September 8th, 2026 with unconfirmed or partial delivery across all business Gmail accounts"
+    ws.merge_cells("A2:L2")
+    ws["A2"] = subtitle_str
     ws["A2"].font = SUBTITLE_FONT
     ws.row_dimensions[2].height = 20
 
     # Top KPI Cards
     tot_orders = len(all_orders)
     tot_cost = sum(float(o.get("zoro_order_total") or 0.0) for o in all_orders)
-    tot_pkgs = sum(o["pkg_count"] for o in all_orders)
+    tot_earn = sum(float(o.get("earnings") or 0.0) for o in all_orders)
     tot_partial = sum(1 for o in all_orders if o["delivery_status"] == "PartialDelivered")
-    tot_exceptions = sum(1 for o in all_orders if o["delivery_status"] in ("Delivery exception", "Shipment exception", "Returning to FedEx facility"))
-    tot_in_transit = sum(1 for o in all_orders if o["delivery_status"] in ("On the way", "Delivery updated", "We have your package", "Out for delivery", "OutForDelivery", "We tried to deliver", "Ready for pickup"))
+    tot_exceptions = sum(1 for o in all_orders if o["delivery_status"] in ("DeliveryException", "Delivery exception", "Shipment exception", "Returning to FedEx facility"))
+    tot_in_transit = sum(1 for o in all_orders if o["delivery_status"] in ("InTransit", "On the way", "Delivery updated", "We have your package", "We tried to deliver", "Ready for pickup"))
+    tot_out_for_delivery = sum(1 for o in all_orders if o["delivery_status"] in ("OutForDelivery", "Out for delivery"))
     tot_label_created = sum(1 for o in all_orders if o["delivery_status"] == "LabelCreated")
 
     kpis = [
-        ("TOTAL UNDELIVERED ORDERS", f"{tot_orders:,}", "A4:B5", "FEF2F2", "991B1B"),
-        ("TOTAL CAPITAL AT RISK ($)", f"${tot_cost:,.2f}", "C4:D5", "FEF2F2", "991B1B"),
-        ("PARTIAL DELIVERED (SPLIT)", f"{tot_partial:,}", "E4:F5", "FEF3C7", "92400E"),
-        ("DELIVERY EXCEPTIONS", f"{tot_exceptions:,}", "G4:H5", "FEE2E2", "B91C1C"),
-        ("IN TRANSIT / DELAYED (>11D)", f"{tot_in_transit:,}", "I4:J5", "DBEAFE", "1E40AF"),
-        ("LABEL CREATED ONLY", f"{tot_label_created:,}", "K4:L5", "F1F5F9", "475569")
+        ("TOTAL UNDELIVERED", f"{tot_orders:,} Orders", "A4:B5", "FEF2F2", "991B1B"),
+        ("CAPITAL AT RISK ($)", f"${tot_cost:,.2f}", "C4:D5", "FEF2F2", "991B1B"),
+        ("AMAZON EARNINGS ($)", f"${tot_earn:,.2f}", "E4:F5", "EFF6FF", "1E40AF"),
+        ("PARTIAL DELIVERIES", f"{tot_partial:,} Orders", "G4:H5", "FEF3C7", "92400E"),
+        ("CARRIER EXCEPTIONS", f"{tot_exceptions:,} Orders", "I4:J5", "FEE2E2", "B91C1C"),
+        ("GHOST LABELS (OOS)", f"{tot_label_created:,} Orders", "K4:L5", "F1F5F9", "475569")
     ]
 
     for title, val, rng, bg, fg in kpis:
-        top_left, bottom_right = rng.split(":")
+        top_left, _ = rng.split(":")
         ws.merge_cells(rng)
         cell = ws[top_left]
         cell.value = f"{title}\n{val}"
         cell.fill = PatternFill(start_color=bg, end_color=bg, fill_type="solid")
-        cell.font = Font(name="Segoe UI", size=13, bold=True, color=fg)
+        cell.font = Font(name="Segoe UI", size=12, bold=True, color=fg)
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
     ws.row_dimensions[4].height = 25
@@ -386,13 +479,14 @@ def build_executive_summary(ws, all_orders):
     ws.cell(row=start_row, column=1, value="CROSS-ACCOUNT BREAKDOWN").font = Font(name="Segoe UI", size=12, bold=True, color="1B365D")
     
     headers_acct = [
-        ("Zoro Account Key", 18),
+        ("Account Key", 18),
         ("Account Display Name", 24),
         ("Gmail Address", 28),
         ("Total Undelivered", 18),
         ("Partial Delivered", 18),
         ("Exceptions", 15),
-        ("In Transit / Delayed", 20),
+        ("In Transit", 15),
+        ("Out For Delivery", 16),
         ("Label Created", 15),
         ("Total Zoro Cost ($)", 20)
     ]
@@ -408,27 +502,20 @@ def build_executive_summary(ws, all_orders):
         ws.column_dimensions[col_letter].width = width
 
     cur_r = h_row + 1
-    # 6 main accounts
-    all_account_entries = list(ACCOUNTS) + [OTHER_ACCOUNT]
-    main_keys = [a[0] for a in ACCOUNTS]
-
-    for key, disp, gmail, role in all_account_entries:
-        if key == "other_legacy":
-            acct_orders = [o for o in all_orders if o.get("zoro_gmail_account") not in main_keys]
-        else:
-            acct_orders = [o for o in all_orders if o.get("zoro_gmail_account") == key]
-
+    for key, disp, gmail, _ in account_list:
+        acct_orders = [o for o in all_orders if o.get("zoro_gmail_account") == key]
         cnt = len(acct_orders)
         cost = sum(float(o.get("zoro_order_total") or 0.0) for o in acct_orders)
         part = sum(1 for o in acct_orders if o["delivery_status"] == "PartialDelivered")
-        exc = sum(1 for o in acct_orders if o["delivery_status"] in ("Delivery exception", "Shipment exception", "Returning to FedEx facility"))
-        trans = sum(1 for o in acct_orders if o["delivery_status"] in ("On the way", "Delivery updated", "We have your package", "Out for delivery", "OutForDelivery", "We tried to deliver", "Ready for pickup"))
+        exc = sum(1 for o in acct_orders if o["delivery_status"] in ("DeliveryException", "Delivery exception", "Shipment exception", "Returning to FedEx facility"))
+        trans = sum(1 for o in acct_orders if o["delivery_status"] in ("InTransit", "On the way", "Delivery updated", "We have your package", "We tried to deliver", "Ready for pickup"))
+        ofd = sum(1 for o in acct_orders if o["delivery_status"] in ("OutForDelivery", "Out for delivery"))
         lbl = sum(1 for o in acct_orders if o["delivery_status"] == "LabelCreated")
 
         fill = ZEBRA_FILL if (cur_r % 2 == 0) else WHITE_FILL
         ws.row_dimensions[cur_r].height = 22
 
-        row_vals = [key, disp, gmail, cnt, part, exc, trans, lbl, cost]
+        row_vals = [key, disp, gmail, cnt, part, exc, trans, ofd, lbl, cost]
         for c_idx, v in enumerate(row_vals, 1):
             cell = ws.cell(row=cur_r, column=c_idx, value=v)
             cell.font = REGULAR_FONT
@@ -436,7 +523,7 @@ def build_executive_summary(ws, all_orders):
             cell.border = BORDER_THIN
             if c_idx in (1, 2, 3):
                 cell.alignment = Alignment(horizontal="left", vertical="center")
-            elif c_idx == 9:
+            elif c_idx == 10:
                 cell.alignment = Alignment(horizontal="right", vertical="center")
                 cell.number_format = "$#,##0.00"
             else:
@@ -453,11 +540,11 @@ def build_executive_summary(ws, all_orders):
         cell = ws.cell(row=cur_r, column=c)
         cell.border = BORDER_TOP_BOTTOM
         col_let = get_column_letter(c)
-        if c in (4, 5, 6, 7, 8):
+        if c in (4, 5, 6, 7, 8, 9):
             cell.value = f"=SUM({col_let}{h_row+1}:{col_let}{cur_r-1})"
             cell.font = BOLD_FONT
             cell.alignment = Alignment(horizontal="center")
-        elif c == 9:
+        elif c == 10:
             cell.value = f"=SUM({col_let}{h_row+1}:{col_let}{cur_r-1})"
             cell.font = BOLD_FONT
             cell.number_format = "$#,##0.00"
@@ -465,7 +552,7 @@ def build_executive_summary(ws, all_orders):
 
     # Delivery Status Breakdown Table
     st_start = cur_r + 3
-    ws.cell(row=st_start, column=1, value="BREAKDOWN BY FEDEX DELIVERY STATUS").font = Font(name="Segoe UI", size=12, bold=True, color="1B365D")
+    ws.cell(row=st_start, column=1, value="BREAKDOWN BY CARRIER DELIVERY STATUS").font = Font(name="Segoe UI", size=12, bold=True, color="1B365D")
     
     headers_st = [("Delivery Status", 24), ("Order Count", 15), ("Capital Exposure ($)", 22), ("Action Recommendation", 45)]
     sh_row = st_start + 1
@@ -479,15 +566,17 @@ def build_executive_summary(ws, all_orders):
         ws.column_dimensions[col_letter].width = width
 
     st_map = {
-        "PartialDelivered": "Multi-package shipment split: 1+ items delivered, remainder stuck. File Zoro replacement/refund.",
-        "Shipment exception": "Damaged in transit, barcode unreadable, or returned to sender. Claim Zoro refund.",
-        "Delivery exception": "Customer address issue, business closed, or damaged. Review buyer message & claim Zoro refund.",
-        "On the way": "Package in transit >11 days. Severely past deliver-by window. Presumed lost by FedEx.",
-        "Delivery updated": "Delivery date rescheduled multiple times. Package stalled in transit.",
-        "LabelCreated": "Label generated by Zoro but never tendered to FedEx. Ghost order — request refund from Zoro.",
-        "We have your package": "FedEx accepted package but no subsequent movement. Lost at origin hub.",
-        "Out for delivery": "Scanned out for delivery days ago but never scanned as delivered. Likely lost/misplaced.",
-        "OutForDelivery": "Scanned out for delivery days ago but never scanned as delivered. Likely lost/misplaced.",
+        "PartialDelivered": "Multi-package split: 1+ items delivered, remainder stuck. File Zoro replacement/refund for missing units.",
+        "DeliveryException": "Customer address issue, damaged in transit, or business closed. Review scan note & claim Zoro refund.",
+        "Delivery exception": "Customer address issue, damaged in transit, or business closed. Claim Zoro refund.",
+        "Shipment exception": "Barcode unreadable, damaged package, or return initiated. Claim Zoro refund.",
+        "InTransit": "Package stalled in transit beyond delivery SLA. Contact carrier / request Zoro trace & refund.",
+        "On the way": "Package stalled in transit beyond delivery SLA. Contact carrier / request Zoro trace & refund.",
+        "OutForDelivery": "Scanned out for delivery but missing final delivery confirmation. Check for carrier loss.",
+        "Out for delivery": "Scanned out for delivery but missing final delivery confirmation. Check for carrier loss.",
+        "LabelCreated": "Label generated by Zoro but package never tendered to carrier. Ghost order — claim immediate Zoro refund.",
+        "Cancelled": "Zoro cancelled order while Amazon marked as shipped. High risk — buyer will not receive items.",
+        "We have your package": "Carrier accepted package but movement stalled at origin hub. Claim carrier loss.",
         "We tried to deliver": "Delivery attempt failed. Customer hasn't picked up or package returning.",
         "Returning to FedEx facility": "Return to sender initiated.",
         "Ready for pickup": "Held at FedEx location."
@@ -528,56 +617,105 @@ def build_executive_summary(ws, all_orders):
 
         s_row += 1
 
-def main():
-    print("Fetching active undelivered orders from database...")
-    all_orders = fetch_data()
-    print(f"Total matching orders found: {len(all_orders)}")
-
+def generate_targeted_workbook(orders, account_list, output_file):
+    """Generate master workbook with Executive Summary, Master Actionable, and tabs for target accounts."""
     wb = openpyxl.Workbook()
-    # Default sheet
     ws_exec = wb.active
     ws_exec.title = "Executive Summary"
-    build_executive_summary(ws_exec, all_orders)
+    build_executive_summary(
+        ws_exec, orders, account_list,
+        "EXECUTIVE SUMMARY — UNDELIVERED ORDERS RECONCILIATION",
+        "Authoritative audit of Zoro orders with unconfirmed or partial delivery across Asad, Inuhr, and Salesmercentile 1"
+    )
 
-    # Master Actionable tab (Partial Delivered & Exceptions & Ghost Labels)
+    # Master Actionable tab (Partial Delivered, DeliveryException, LabelCreated, Cancelled)
     actionable_orders = [
-        o for o in all_orders 
-        if o["delivery_status"] in ("PartialDelivered", "Delivery exception", "Shipment exception", "Returning to FedEx facility", "LabelCreated")
+        o for o in orders 
+        if o["delivery_status"] in ("PartialDelivered", "DeliveryException", "Delivery exception", "Shipment exception", "Returning to FedEx facility", "LabelCreated", "Cancelled")
     ]
-    ws_act = wb.create_sheet(title="Actionable Exceptions & Partial")
+    ws_act = wb.create_sheet(title="Actionable Claims & Partial")
     populate_orders_sheet(
         ws_act,
         actionable_orders,
         "MASTER ACTIONABLE CLAIMS — PARTIAL DELIVERIES & EXCEPTIONS",
-        f"Critical priority: {len(actionable_orders)} orders requiring Zoro refunds, replacements, or carrier claims (placed before Sep 8, 2026)"
+        f"Critical priority: {len(actionable_orders)} orders requiring Zoro refunds, replacements, or carrier claims"
     )
 
-    # Dedicated tabs for each of the 6 core business accounts
-    main_keys = [a[0] for a in ACCOUNTS]
-    for key, disp, gmail, role in ACCOUNTS:
-        acct_orders = [o for o in all_orders if o.get("zoro_gmail_account") == key]
-        ws_acct = wb.create_sheet(title=disp[:31])
+    # Dedicated tabs for each target account
+    for key, disp, gmail, _ in account_list:
+        acct_orders = [o for o in orders if o.get("zoro_gmail_account") == key]
+        tab_name = disp.split("(")[0].strip()[:31]
+        ws_acct = wb.create_sheet(title=tab_name)
         populate_orders_sheet(
             ws_acct,
             acct_orders,
             f"UNDELIVERED ORDERS — {disp.upper()}",
-            f"Zoro Account: {gmail} | Total Undelivered Orders: {len(acct_orders)} | Orders placed before Sep 8, 2026"
+            f"Zoro Account: {gmail} | Total Undelivered Orders: {len(acct_orders)}"
         )
 
-    # Dedicated tab for Other & Legacy pools (abecomllc02 & unassigned placer orders)
-    other_orders = [o for o in all_orders if o.get("zoro_gmail_account") not in main_keys]
-    if other_orders:
-        ws_other = wb.create_sheet(title="Other & Legacy Pools")
+    print(f"Saving targeted workbook to {output_file}...")
+    wb.save(output_file)
+    print(f"  ✅ Saved: {output_file}")
+
+def generate_individual_account_workbooks(orders, account_list):
+    """Generate separate standalone workbooks for each account."""
+    for key, disp, gmail, _ in account_list:
+        acct_orders = [o for o in orders if o.get("zoro_gmail_account") == key]
+        clean_name = key.replace("_amazon_us", "").replace("_llc", "").replace("1", "_1")
+        filename = f"Undelivered_Orders_{clean_name.capitalize()}_2026.xlsx"
+        filepath = os.path.join(DATA_DIR, filename)
+
+        wb = openpyxl.Workbook()
+        ws_exec = wb.active
+        ws_exec.title = "Summary"
+        build_executive_summary(
+            ws_exec, acct_orders, [(key, disp, gmail, "")],
+            f"UNDELIVERED ORDERS AUDIT — {disp.upper()}",
+            f"Account: {gmail} | Total Undelivered: {len(acct_orders)}"
+        )
+
+        ws_data = wb.create_sheet(title="Undelivered Orders")
         populate_orders_sheet(
-            ws_other,
-            other_orders,
-            "UNDELIVERED ORDERS — OTHER & LEGACY POOLS",
-            f"Accounts: abecomllc02 & Unassigned Placer Orders | Total: {len(other_orders)} orders placed before Sep 8, 2026"
+            ws_data,
+            acct_orders,
+            f"DETAILED ORDER RECORDS — {disp.upper()}",
+            f"All {len(acct_orders)} active undelivered/partial delivered orders"
         )
 
-    print(f"Saving workbook to {OUTPUT_XLSX}...")
-    wb.save(OUTPUT_XLSX)
-    print("Workbook successfully created!")
+        wb.save(filepath)
+        print(f"  ✅ Saved standalone file: {filepath}")
+
+def main():
+    print("=" * 65)
+    print(" 🚚 GENERATING UNDELIVERED ORDERS RECONCILIATION WORKBOOKS")
+    print("=" * 65)
+
+    conn = get_db_connection()
+    try:
+        # 1. Fetch targeted accounts: asad, inuhr, salesmercentile1
+        target_keys = [a[0] for a in TARGET_ACCOUNTS]
+        print(f"Fetching undelivered orders for target accounts: {target_keys}...")
+        target_orders = fetch_undelivered_orders(conn, target_keys=target_keys)
+        print(f"  Found {len(target_orders)} matching orders across {len(target_keys)} accounts.")
+
+        # 2. Build the primary consolidated workbook for asad, inuhr, salesmercentile1
+        generate_targeted_workbook(target_orders, TARGET_ACCOUNTS, OUTPUT_COMBINED_XLSX)
+
+        # 3. Generate individual standalone files for each of the 3 accounts
+        print("Generating individual account workbooks...")
+        generate_individual_account_workbooks(target_orders, TARGET_ACCOUNTS)
+
+        # 4. Also refresh the full portfolio reconciliation if requested or as reference
+        if "--all" in sys.argv:
+            print("\nFetching undelivered orders across ALL accounts...")
+            all_orders = fetch_undelivered_orders(conn, target_keys=None)
+            print(f"  Found {len(all_orders)} matching orders across all accounts.")
+            generate_targeted_workbook(all_orders, ALL_ACCOUNTS + [OTHER_ACCOUNT], OUTPUT_LEGACY_XLSX)
+
+    finally:
+        conn.close()
+
+    print("\n✅ Reconciliation generation complete!")
 
 if __name__ == "__main__":
     main()

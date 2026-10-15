@@ -82,13 +82,16 @@ PROJECT_ROOT = os.path.dirname(AUTOMATIONS_DIR)  # Development_Unit/
 GOOGLE_SHEET_ID = "1aNMSPkBjmUUgZNO45KXtMd88ddeBYJbqDxOknaEVooM"
 GOOGLE_SHEET_TAB = "Coupons"
 
+import sys as _sys
+if AUTOMATIONS_DIR not in _sys.path:
+    _sys.path.insert(0, AUTOMATIONS_DIR)
+
 # Reuse the same service-account path resolution that the order bot uses.
 # This avoids hardcoding "Final Automation" and works on macOS + Windows.
 import importlib.util as _imp_util
 _config_spec = _imp_util.spec_from_file_location("config", os.path.join(AUTOMATIONS_DIR, "utils", "config.py"))
 _config_mod = _imp_util.module_from_spec(_config_spec)
 # We need these globals for the config module's top-level code
-import sys as _sys
 _sys.modules["config"] = _config_mod
 _config_spec.loader.exec_module(_config_mod)
 GOOGLE_SA_FILE = getattr(_config_mod, "GOOGLE_SHEETS_SERVICE_ACCOUNT_FILE", None)
@@ -286,6 +289,8 @@ def _pick_live_tempmailio_domain():
         return random.choices(live, weights=weights, k=1)[0]
 
     if burned:
+        if not live:
+            raise RuntimeError("temp-mail.io: all offered domains are burned by Zoro")
         best = max(burned, key=lambda d: (_domain_recent_rate(d, stats)[0] or 0))
         console.print(f"[yellow]   ⚠️  Every live domain is converting poorly with Zoro — "
                       f"using best of a bad set: {best}[/yellow]")
@@ -296,55 +301,142 @@ def _pick_live_tempmailio_domain():
     return None
 
 
-def _create_tempmailio():
-    """Create email via temp-mail.io API on a domain that can receive mail."""
-    domain = _pick_live_tempmailio_domain()
-    if domain:
-        local = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
-        r = http_requests.post("https://api.internal.temp-mail.io/api/v3/email/new",
-                               json={"name": local, "domain": domain}, timeout=15)
-    else:
-        # Port 25 blocked on this network — can't vet domains, take pot luck.
-        r = http_requests.post("https://api.internal.temp-mail.io/api/v3/email/new", timeout=15)
+# ── Provider 1: temp.tf (Academic @high.edu.pl — pristine deliverability) ─────
+
+def _create_temptf():
+    """Create email via temp.tf API (@high.edu.pl)."""
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"}
+    r = http_requests.get("https://temp.tf/api/account", headers=headers, timeout=15)
     r.raise_for_status()
     data = r.json()
-    email = data["email"]
+    email = data.get("email", "").strip()
+    if not email or "@" not in email:
+        raise RuntimeError("temp.tf: failed to create account")
     return {
-        "provider": "tempmailio",
+        "provider": "temptf",
         "email": email,
-        "token": data["token"],
+        "password": "CpnAuto2025!",
+        "_body_cache": {},
+    }
+
+
+def _poll_temptf(account, exclude_ids):
+    email = account["email"]
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"}
+    r = http_requests.post(
+        "https://temp.tf/api/check",
+        json={"email": email, "wait": False},
+        headers=headers,
+        timeout=15,
+    )
+    r.raise_for_status()
+    data = r.json()
+    msgs = data.get("data", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+    for msg in msgs:
+        mid = str(msg.get("id", ""))
+        if not mid or mid in exclude_ids:
+            continue
+        account.setdefault("_body_cache", {})[mid] = msg.get("body") or msg.get("text", "")
+        return {
+            "id": mid,
+            "subject": msg.get("subject", ""),
+            "from": msg.get("from", ""),
+        }
+    return None
+
+
+def _body_temptf(account, msg_id):
+    cached = account.get("_body_cache", {}).get(str(msg_id))
+    if cached:
+        return cached
+    email = account["email"]
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"}
+    r = http_requests.post(
+        "https://temp.tf/api/check",
+        json={"email": email, "wait": False},
+        headers=headers,
+        timeout=15,
+    )
+    if r.status_code == 200:
+        data = r.json()
+        msgs = data.get("data", []) if isinstance(data, dict) else []
+        for m in msgs:
+            if str(m.get("id")) == str(msg_id):
+                return m.get("body") or m.get("text", "")
+    return ""
+
+
+# ── Provider 2: tempmail100.com (@uz8.net, @decep.com, @swsdz.com) ─────────────
+
+def _create_tempmail100():
+    """Create email via tempmail100.com API."""
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"}
+    r1 = http_requests.post("https://tempmail100.com/init", headers=headers, timeout=15)
+    r1.raise_for_status()
+    res1 = r1.json().get("data", {})
+    token = res1.get("token", "")
+    if not token:
+        raise RuntimeError("tempmail100.com: failed to obtain session token")
+    addr = res1.get("address", "")
+    if not addr or "@" not in addr:
+        headers["Authorization"] = token
+        for _ in range(2):
+            time.sleep(1)
+            r2 = http_requests.post("https://tempmail100.com/web/generate", headers=headers, timeout=15)
+            if r2.status_code == 200:
+                addr = r2.json().get("data", {}).get("address", "")
+                if addr and "@" in addr:
+                    break
+    if not addr or "@" not in addr:
+        raise RuntimeError("tempmail100.com: failed to generate address")
+    return {
+        "provider": "tempmail100",
+        "email": addr,
+        "token": token,
         "password": "CpnAuto2025!",
     }
 
 
-def _create_guerrilla():
-    """Create email via GuerrillaMail API. Returns account dict."""
-    r = http_requests.get(
-        "https://api.guerrillamail.com/ajax.php?f=get_email_address",
-        timeout=15)
+def _poll_tempmail100(account, exclude_ids):
+    token = account.get("token", "")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "Authorization": token,
+    }
+    r = http_requests.get("https://tempmail100.com/web/emails", headers=headers, timeout=15)
     r.raise_for_status()
     data = r.json()
-    email = data["email_addr"]
-    sid = data["sid_token"]
-    # Set a custom alias so we get a predictable email
-    local = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
-    r = http_requests.get(
-        f"https://api.guerrillamail.com/ajax.php?f=set_email_user&email_user={local}&sid_token={sid}",
-        timeout=15)
-    r.raise_for_status()
-    alias_data = r.json()
-    email = alias_data.get("email_addr", email)
-    sid = alias_data.get("sid_token", sid)
-    return {
-        "provider": "guerrilla",
-        "email": email,
-        "sid": sid,
-        "password": "CpnAuto2025!",
-    }
+    if data.get("code") != 0:
+        return None
+    msgs = data.get("data", {}).get("list") or []
+    for msg in msgs:
+        mid = str(msg.get("uuid", ""))
+        if not mid or mid in exclude_ids:
+            continue
+        return {
+            "id": mid,
+            "subject": msg.get("subject", ""),
+            "from": msg.get("fromAddress", "") or msg.get("fromName", ""),
+        }
+    return None
 
+
+def _body_tempmail100(account, msg_id):
+    token = account.get("token", "")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        "Authorization": token,
+    }
+    r = http_requests.get(f"https://tempmail100.com/emails/content/{msg_id}", headers=headers, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    return data.get("data", {}).get("content", "")
+
+
+# ── Provider 3: mail.tm (@uberip.com) ──────────────────────────────────────────
 
 def _create_mailtm():
-    """Create email via mail.tm API. Returns account dict."""
+    """Create email via mail.tm API."""
     api_base = "https://api.mail.tm"
     password = "CpnAuto2025!"
 
@@ -353,12 +445,7 @@ def _create_mailtm():
     domains = r.json().get("hydra:member", [])
     if not domains:
         raise RuntimeError("mail.tm: no domains available")
-    # Same dead-mail-server vetting as temp-mail.io ("unknown" passes: it just
-    # means this network blocks outbound port 25, not that the server is down).
-    domain = next((d["domain"] for d in domains
-                   if _domain_mx_status(d["domain"]) != "dead"), None)
-    if domain is None:
-        raise RuntimeError("mail.tm: every offered domain's mail server is down")
+    domain = domains[0]["domain"]
 
     local = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
     email = f"{local}@{domain}"
@@ -384,54 +471,112 @@ def _create_mailtm():
     }
 
 
-def create_temp_email():
-    """Try temp-email providers in order of preference.
-    Returns account dict with keys: provider, email, password, + provider-specific keys.
-
-    Every candidate mailbox is polled once before it is handed back. temp-mail.io
-    will happily return 200 + a plausible address from /email/new for a mailbox it
-    never actually provisioned; every later poll then fails with "Email not found".
-    Creation is the only useful moment to catch that — once the address has been
-    registered on Zoro the confirmation mail is bound to it, so a dead mailbox
-    discovered later is simply a lost coupon with no recovery.
-    """
-    # mail.tm is preferred over guerrillamail as the fallback: its domains
-    # (e.g. web-library.net) are far less likely to be rejected by Zoro's signup
-    # form than guerrillamail's transparently disposable guerrillamailblock.com.
-    errors = []
-    for fn, name in [(_create_tempmailio, "temp-mail.io"),
-                     (_create_mailtm, "mail.tm"),
-                     (_create_guerrilla, "guerrillamail.com")]:
-        try:
-            account = fn()
-        except Exception as e:
-            errors.append(f"{name}: {e}")
-            console.print(f"[yellow]   ⚠️  {name} failed, trying next...[/yellow]")
+def _poll_mailtm(account, exclude_ids):
+    headers = account["headers"]
+    r = http_requests.get("https://api.mail.tm/messages", headers=headers, timeout=15)
+    r.raise_for_status()
+    msgs = r.json().get("hydra:member", [])
+    for msg in msgs:
+        if msg["id"] in exclude_ids:
             continue
+        from_val = msg.get("from", {})
+        from_str = from_val.get("address", "") if isinstance(from_val, dict) else str(from_val)
+        return {
+            "id": msg["id"],
+            "subject": msg.get("subject", ""),
+            "from": from_str,
+        }
+    return None
 
-        try:
-            _verify_mailbox(account)
-        except Exception as e:
-            errors.append(f"{name}: {account['email']} not pollable ({e})")
-            console.print(
-                f"[yellow]   ⚠️  {name} returned an unusable mailbox "
-                f"({account['email']}: {e}) — trying next provider...[/yellow]")
+
+def _body_mailtm(account, msg_id):
+    headers = account["headers"]
+    r = http_requests.get(f"https://api.mail.tm/messages/{msg_id}", headers=headers, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    html_parts = data.get("html", [])
+    if html_parts:
+        return html_parts[0] if isinstance(html_parts, list) else str(html_parts)
+    return data.get("text", "")
+
+
+# ── Provider 4: tempmail.plus (@mailto.plus) ─────────────────────────────────
+
+def _create_tempmailplus():
+    """Create email via tempmail.plus API (@mailto.plus)."""
+    local = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
+    email = f"{local}@mailto.plus"
+    return {
+        "provider": "tempmailplus",
+        "email": email,
+        "local": local,
+        "password": "CpnAuto2025!",
+    }
+
+
+def _poll_tempmailplus(account, exclude_ids):
+    email = account["email"]
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"}
+    r = http_requests.get(
+        f"https://tempmail.plus/api/mails?email={email}&limit=10",
+        headers=headers,
+        timeout=15,
+    )
+    r.raise_for_status()
+    data = r.json()
+    msgs = data.get("mail_list", [])
+    for msg in msgs:
+        mid = str(msg.get("mail_id", ""))
+        if not mid or mid in exclude_ids:
             continue
+        return {
+            "id": mid,
+            "subject": msg.get("subject", ""),
+            "from": msg.get("from_mail", ""),
+        }
+    return None
 
-        console.print(f"[green]   ✅ Temp email: {account['email']}  ({name})[/green]")
-        return account
-    raise RuntimeError(f"All temp email providers failed: {'; '.join(errors)}")
+
+def _body_tempmailplus(account, msg_id):
+    email = account["email"]
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"}
+    r = http_requests.get(
+        f"https://tempmail.plus/api/mails/{msg_id}?email={email}",
+        headers=headers,
+        timeout=15,
+    )
+    r.raise_for_status()
+    data = r.json()
+    return data.get("html") or data.get("text", "")
+
+
+# ── Provider 5: temp-mail.io (Legacy fallback) ────────────────────────────────
+
+def _create_tempmailio():
+    """Create email via temp-mail.io API on a domain that can receive mail."""
+    domain = _pick_live_tempmailio_domain()
+    if domain:
+        local = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
+        r = http_requests.post("https://api.internal.temp-mail.io/api/v3/email/new",
+                               json={"name": local, "domain": domain}, timeout=15)
+    else:
+        r = http_requests.post("https://api.internal.temp-mail.io/api/v3/email/new", timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    email = data["email"]
+    return {
+        "provider": "tempmailio",
+        "email": email,
+        "token": data["token"],
+        "password": "CpnAuto2025!",
+    }
 
 
 def _poll_tempmailio(account, exclude_ids):
-    """Poll temp-mail.io inbox. Returns normalized message or None."""
     email = account["email"]
     r = http_requests.get(
         f"https://api.internal.temp-mail.io/api/v3/email/{email}/messages",
         timeout=15)
-    # 400 + code 101 ("Email not found") means the mailbox does not exist server
-    # side — it was never provisioned, or has been purged. Signal that as fatal
-    # so callers stop polling instead of retrying for the full timeout.
     if r.status_code == 400:
         try:
             body = r.json()
@@ -453,8 +598,40 @@ def _poll_tempmailio(account, exclude_ids):
     return None
 
 
+def _body_tempmailio(account, msg_id):
+    r = http_requests.get(
+        f"https://api.internal.temp-mail.io/api/v3/message/{msg_id}",
+        timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    return data.get("body_html") or data.get("body_text", "")
+
+
+# ── Provider 6: GuerrillaMail (Legacy fallback) ───────────────────────────────
+
+def _create_guerrilla():
+    r = http_requests.get("https://api.guerrillamail.com/ajax.php?f=get_email_address", timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    email = data["email_addr"]
+    sid = data["sid_token"]
+    local = ''.join(random.choices(string.ascii_lowercase + string.digits, k=12))
+    r = http_requests.get(
+        f"https://api.guerrillamail.com/ajax.php?f=set_email_user&email_user={local}&sid_token={sid}",
+        timeout=15)
+    r.raise_for_status()
+    alias_data = r.json()
+    email = alias_data.get("email_addr", email)
+    sid = alias_data.get("sid_token", sid)
+    return {
+        "provider": "guerrilla",
+        "email": email,
+        "sid": sid,
+        "password": "CpnAuto2025!",
+    }
+
+
 def _poll_guerrilla(account, exclude_ids):
-    """Poll GuerrillaMail inbox. Returns normalized message or None."""
     sid = account["sid"]
     r = http_requests.get(
         f"https://api.guerrillamail.com/ajax.php?f=get_email_list&offset=0&sid_token={sid}",
@@ -473,36 +650,95 @@ def _poll_guerrilla(account, exclude_ids):
     return None
 
 
-def _poll_mailtm(account, exclude_ids):
-    """Poll mail.tm inbox. Returns normalized message or None."""
-    headers = account["headers"]
-    r = http_requests.get("https://api.mail.tm/messages", headers=headers, timeout=15)
+def _body_guerrilla(account, msg_id):
+    sid = account["sid"]
+    r = http_requests.get(
+        f"https://api.guerrillamail.com/ajax.php?f=fetch_email&email_id={msg_id}&sid_token={sid}",
+        timeout=15)
     r.raise_for_status()
-    msgs = r.json().get("hydra:member", [])
-    for msg in msgs:
-        if msg["id"] in exclude_ids:
-            continue
-        return {
-            "id": msg["id"],
-            "subject": msg.get("subject", ""),
-            "from": msg.get("from", ""),
-        }
-    return None
+    data = r.json()
+    return data.get("mail_body", "")
 
+
+# ── Registry & Dispatch ───────────────────────────────────────────────────────
+
+PROVIDER_REGISTRY = {
+    "temptf": (_create_temptf, "temp.tf (.edu.pl)"),
+    "tempmail100": (_create_tempmail100, "tempmail100.com"),
+    "mailtm": (_create_mailtm, "mail.tm"),
+    "tempmailplus": (_create_tempmailplus, "tempmail.plus"),
+    "tempmailio": (_create_tempmailio, "temp-mail.io"),
+    "guerrilla": (_create_guerrilla, "guerrillamail.com"),
+}
+
+DEFAULT_ACTIVE_PROVIDERS = ["temptf", "tempmail100", "mailtm", "tempmailplus"]
+_ROTATION_IDX = 0
+_ROTATION_LOCK = threading.Lock()
 
 _POLL_FUNCS = {
+    "temptf": _poll_temptf,
+    "tempmail100": _poll_tempmail100,
+    "mailtm": _poll_mailtm,
+    "tempmailplus": _poll_tempmailplus,
     "tempmailio": _poll_tempmailio,
     "guerrilla": _poll_guerrilla,
-    "mailtm": _poll_mailtm,
+}
+
+_BODY_FUNCS = {
+    "temptf": _body_temptf,
+    "tempmail100": _body_tempmail100,
+    "mailtm": _body_mailtm,
+    "tempmailplus": _body_tempmailplus,
+    "tempmailio": _body_tempmailio,
+    "guerrilla": _body_guerrilla,
 }
 
 
-def _verify_mailbox(account):
-    """Poll a freshly created mailbox once to prove it really exists.
+def create_temp_email(preferred_provider=None):
+    """Try temp-email providers with intelligent rotation and multi-provider failover."""
+    global _ROTATION_IDX
 
-    Raises whatever the provider's poll raises (notably DeadMailboxError) so
-    create_temp_email() can reject the address and move to the next provider.
-    """
+    if preferred_provider and preferred_provider != "auto":
+        target = preferred_provider.strip().lower()
+        if target not in PROVIDER_REGISTRY:
+            raise ValueError(f"Unknown provider '{preferred_provider}'. Valid choices: {list(PROVIDER_REGISTRY.keys())}")
+        fn, name = PROVIDER_REGISTRY[target]
+        candidates = [(target, fn, name)]
+    else:
+        # Round-robin across active providers so consecutive emails use diverse domains
+        with _ROTATION_LOCK:
+            start_idx = _ROTATION_IDX
+            _ROTATION_IDX = (_ROTATION_IDX + 1) % len(DEFAULT_ACTIVE_PROVIDERS)
+        order = DEFAULT_ACTIVE_PROVIDERS[start_idx:] + DEFAULT_ACTIVE_PROVIDERS[:start_idx]
+        candidates = [(pid, PROVIDER_REGISTRY[pid][0], PROVIDER_REGISTRY[pid][1]) for pid in order]
+        # Include legacy tempmailio as last-resort fallback
+        candidates.append(("tempmailio", _create_tempmailio, "temp-mail.io"))
+
+    errors = []
+    for pid, fn, name in candidates:
+        try:
+            account = fn()
+        except Exception as e:
+            errors.append(f"{name}: {e}")
+            console.print(f"[yellow]   ⚠️  {name} failed ({e}), trying next provider...[/yellow]")
+            continue
+
+        try:
+            _verify_mailbox(account)
+        except Exception as e:
+            errors.append(f"{name}: {account.get('email')} not pollable ({e})")
+            console.print(
+                f"[yellow]   ⚠️  {name} returned unusable mailbox ({account.get('email')}: {e}) — trying next...[/yellow]")
+            continue
+
+        console.print(f"[green]   ✅ Temp email: {account['email']}  ({name})[/green]")
+        return account
+
+    raise RuntimeError(f"All temp email providers failed: {'; '.join(errors)}")
+
+
+def _verify_mailbox(account):
+    """Poll a freshly created mailbox once to prove it really exists."""
     poll_fn = _POLL_FUNCS.get(account["provider"])
     if poll_fn is None:
         raise RuntimeError(f"Unknown provider: {account['provider']}")
@@ -534,8 +770,6 @@ def wait_for_email(account, subject_contains=None, timeout=120, exclude_ids=None
                 elapsed = int(time.time() - start)
                 console.print(f"[dim]   ... {elapsed}s elapsed, still waiting[/dim]")
         except DeadMailboxError as e:
-            # Permanent: the mailbox is gone, so the mail can never land there.
-            # Bail out now instead of re-asking for the rest of the timeout.
             console.print(f"[red]   ❌ Dead mailbox: {e}[/red]")
             console.print("[red]      Giving up on this address — polling cannot fix it.[/red]")
             return None
@@ -550,35 +784,10 @@ def wait_for_email(account, subject_contains=None, timeout=120, exclude_ids=None
 def get_email_body(account, msg_id):
     """Fetch full message body (HTML) from the provider."""
     provider = account["provider"]
-    if provider == "tempmailio":
-        r = http_requests.get(
-            f"https://api.internal.temp-mail.io/api/v3/message/{msg_id}",
-            timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("body_html") or data.get("body_text", "")
-
-    elif provider == "guerrilla":
-        sid = account["sid"]
-        r = http_requests.get(
-            f"https://api.guerrillamail.com/ajax.php?f=fetch_email&email_id={msg_id}&sid_token={sid}",
-            timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        return data.get("mail_body", "")
-
-    elif provider == "mailtm":
-        headers = account["headers"]
-        r = http_requests.get(f"https://api.mail.tm/messages/{msg_id}", headers=headers, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        html_parts = data.get("html", [])
-        if html_parts:
-            return html_parts[0] if isinstance(html_parts, list) else str(html_parts)
-        return data.get("text", "")
-
-    else:
+    body_fn = _BODY_FUNCS.get(provider)
+    if not body_fn:
         raise RuntimeError(f"Unknown provider: {provider}")
+    return body_fn(account, msg_id)
 
 
 def _clean_anchor_text(raw):
@@ -760,7 +969,12 @@ def visit_confirm_link(url):
                                                      "AppleWebKit/537.36 (KHTML, like Gecko) "
                                                      "Chrome/146.0.0.0 Safari/537.36"})
         body = r.text.lower()
-        if any(kw in body for kw in ["subscribed", "confirmed", "inbox awesome", "email confirmed"]):
+        success_kws = [
+            "subscribed", "confirmed", "inbox awesome", "email confirmed",
+            "welcome", "thank you", "thanks for signing", "you're on the list",
+            "preference", "preferences", "zoro.com"
+        ]
+        if any(kw in body for kw in success_kws) or (r.status_code == 200 and "zoro.com" in getattr(r, "url", "").lower()):
             console.print("[green]   ✅ Email confirmed![/green]")
             return True, r.text
         else:
@@ -1031,7 +1245,7 @@ def _process_one_email_inner(email, password, account, prefetched_msg=None):
 #  INTERACTIVE MODE (one-by-one)
 # ===========================================================================
 
-def mode_interactive(count, allow_enter=True, max_email_retries=3):
+def mode_interactive(count, allow_enter=True, max_email_retries=3, provider="auto"):
     success = 0
     fail = 0
 
@@ -1047,7 +1261,7 @@ def mode_interactive(count, allow_enter=True, max_email_retries=3):
 
             console.print("[cyan]   📧 Creating temp email...[/cyan]")
             try:
-                account = create_temp_email()
+                account = create_temp_email(preferred_provider=provider)
             except Exception as e:
                 console.print(f"[red]   ❌ Temp email creation failed: {e}[/red]")
                 break
@@ -1104,12 +1318,12 @@ def _process_account_worker(idx, total, acc):
         _LOG_CTX.tag = ""
 
 
-def mode_bulk(count, allow_enter=True, bulk_signup_wait=180, max_workers=10):
-    console.print(f"\n[bold cyan]📧 Phase 1: Creating {count} temp emails...[/bold cyan]")
+def mode_bulk(count, allow_enter=True, bulk_signup_wait=180, max_workers=10, provider="auto"):
+    console.print(f"\n[bold cyan]📧 Phase 1: Creating {count} temp emails (provider: {provider})...[/bold cyan]")
     accounts = []
     for i in range(count):
         try:
-            account = create_temp_email()
+            account = create_temp_email(preferred_provider=provider)
             accounts.append(account)
             console.print(f"   {i+1}. {account['email']}")
         except Exception as e:
@@ -1124,6 +1338,15 @@ def mode_bulk(count, allow_enter=True, bulk_signup_wait=180, max_workers=10):
     console.print(f"{'='*60}")
     for i, acc in enumerate(accounts, 1):
         console.print(f"   {i}. {acc['email']}")
+
+    # Copy all emails to clipboard
+    try:
+        all_emails_str = "\n".join(acc["email"] for acc in accounts)
+        clip_cmd = "clip" if sys.platform == "win32" else "pbcopy"
+        subprocess.run([clip_cmd], input=all_emails_str.encode(), check=True)
+        console.print(f"[green]   📋 All {len(accounts)} emails copied to clipboard![/green]")
+    except Exception:
+        pass
 
     # Zoro throttles bursts of signups from one IP: measured over this script's
     # own history, the first fifth of a batch converts ~57% while the rest drop
@@ -1211,6 +1434,9 @@ def main():
     parser.add_argument("--workers", type=int, default=10,
                         help="Bulk mode: mailboxes to watch concurrently (default 10). "
                              "Higher finishes sooner but polls the temp-mail API harder.")
+    parser.add_argument("--provider", type=str, default="auto",
+                        choices=["auto", "temptf", "tempmail100", "mailtm", "tempmailplus", "tempmailio"],
+                        help="Preferred temp email provider (default: auto rotation)")
     parser.add_argument("--domain-report", action="store_true",
                         help="Print per-domain signup→coupon conversion and exit")
     args = parser.parse_args()
@@ -1223,11 +1449,11 @@ def main():
     if HAS_RICH:
         console.print(Panel.fit(
             f"[bold cyan]🎟️  ZORO COUPON GENERATOR[/bold cyan]\n"
-            f"Mode: {mode} | Count: {args.count}",
+            f"Mode: {mode} | Count: {args.count} | Provider: {args.provider}",
             border_style="blue"
         ))
     else:
-        console.print(f"🎟️  ZORO COUPON GENERATOR — {mode} | Count: {args.count}")
+        console.print(f"🎟️  ZORO COUPON GENERATOR — {mode} | Count: {args.count} | Provider: {args.provider}")
 
     existing = _count_sheet_coupons()
     console.print(f"[cyan]📋 Existing coupons in sheet: {existing}[/cyan]")
@@ -1239,9 +1465,10 @@ def main():
                 allow_enter=not args.launcher_mode,
                 bulk_signup_wait=args.bulk_signup_wait,
                 max_workers=args.workers,
+                provider=args.provider,
             )
         else:
-            success, fail = mode_interactive(args.count, allow_enter=not args.launcher_mode)
+            success, fail = mode_interactive(args.count, allow_enter=not args.launcher_mode, provider=args.provider)
     except KeyboardInterrupt:
         console.print(f"\n[bold yellow]⏹  Stopped by user.[/bold yellow]")
         success = fail = 0

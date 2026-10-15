@@ -248,9 +248,10 @@ def persist(conn, row, result, now_s):
             o[k] = v
     prev = str(row.get("delivery_status") or "").strip()
     new = agg["delivery_status"]
+    is_downgrade_exception = (new == "DeliveryException" and ("return" in str(agg.get("delivery_note") or "").lower() or "damaged" in str(agg.get("delivery_note") or "").lower()))
     if new and new not in ("Unknown", "Blocked"):
-        # Never move an order backwards unless the new answer is a delivery.
-        if new in DELIVERED or not prev or STATUS_RANK.get(new, 0) >= STATUS_RANK.get(prev, 0):
+        # Never move an order backwards unless the new answer is a delivery or an RTS/DeliveryException.
+        if new in DELIVERED or not prev or STATUS_RANK.get(new, 0) >= STATUS_RANK.get(prev, 0) or is_downgrade_exception:
             o["delivery_status"] = new
             sets.append("delivery_status=?"); vals.append(new)
             sets.append("enriched_from_fedex=1")
@@ -260,6 +261,9 @@ def persist(conn, row, result, now_s):
                 if v:
                     sets.append(f"{col}=?"); vals.append(str(v)[:300])
                     o[col] = v
+                elif is_downgrade_exception and col in ("delivery_date", "left_at", "signed_by"):
+                    sets.append(f"{col}=NULL")
+                    o[col] = None
     if pkgs and agg.get("untracked") == len(pkgs):
         # Freight: the order stays unconfirmed, but say why (dashboard bucket, no alerts), and
         # clear any stall a FedEx-era status left behind — there are no scans to stall on.
@@ -290,8 +294,10 @@ def persist(conn, row, result, now_s):
     label = C.determine_label(o)
     if row.get("order_label") == "Refunded" and label != "Refunded":
         label = ""      # a refunded order keeps its label — the sweep only adds where the parcel went
-    if label and label != row.get("order_label") and not (
-            label == "Incomplete" and row.get("order_label") in ("Completed", "Loss", "Refunded", "Cancelled")):
+    allow_downgrade = is_downgrade_exception and row.get("order_label") in ("Completed", "Loss")
+    if label and label != row.get("order_label") and (
+            allow_downgrade or not (
+                label == "Incomplete" and row.get("order_label") in ("Completed", "Loss", "Refunded", "Cancelled"))):
         sets.append("order_label=?"); vals.append(label)
     else:
         label = ""

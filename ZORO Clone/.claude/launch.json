@@ -4,8 +4,31 @@
     {
       "name": "zorostore-frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "ekuipt-local-backend",
+      "runtimeExecutable": "/private/tmp/claude-501/-Users-kamibaloch342-Downloads-Dropshipping-Development-Unit-ZORO-Clone/3fe9410c-62d6-4108-a8ed-02af0ddc869b/scratchpad/run_local_backend.sh",
+      "runtimeArgs": [],
+      "port": 5001
+    },
+    {
+      "name": "ekuipt-local-store",
+      "runtimeExecutable": "/private/tmp/claude-501/-Users-kamibaloch342-Downloads-Dropshipping-Development-Unit-ZORO-Clone/3fe9410c-62d6-4108-a8ed-02af0ddc869b/scratchpad/run_local_frontend.sh",
+      "runtimeArgs": [],
+      "port": 5173
+    },
+    {
+      "name": "ekuipt-csp-check",
+      "runtimeExecutable": "/private/tmp/claude-501/-Users-kamibaloch342-Downloads-Dropshipping-Development-Unit-ZORO-Clone/3fe9410c-62d6-4108-a8ed-02af0ddc869b/scratchpad/run_csp_backend.sh",
+      "runtimeArgs": [],
+      "port": 5071
     }
   ]
 }

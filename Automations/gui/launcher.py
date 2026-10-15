@@ -1558,6 +1558,19 @@ class App(tk.Tk):
                   "one go, then every inbox is watched in parallel.\nOff = one email "
                   "at a time.")\
             .pack(side="left")
+        self._dim(r1, "Provider").pack(side="left", padx=(16, 0))
+        self.cpn_provider = tk.StringVar(value="auto")
+        cb_prov = ttk.Combobox(r1, textvariable=self.cpn_provider,
+                               values=["auto", "temptf", "tempmail100", "mailtm", "tempmailplus"],
+                               width=12, state="readonly")
+        cb_prov.pack(side="left", padx=(6, 0))
+        self._tip(cb_prov,
+                  "Temp email provider:\n"
+                  "• auto: intelligent rotation across all working services (.edu.pl, uz8.net, uberip.com, mailto.plus)\n"
+                  "• temptf: uses academic @high.edu.pl (best deliverability)\n"
+                  "• tempmail100: uses @uz8.net and partner domains\n"
+                  "• mailtm: uses @uberip.com\n"
+                  "• tempmailplus: uses @mailto.plus")
 
         r2 = tk.Frame(ci, bg=self.CARD)
         r2.pack(fill="x", padx=14, pady=(0, 6))
@@ -4763,10 +4776,12 @@ class App(tk.Tk):
             messagebox.showerror("Invalid parallel count", "Parallel must be at least 1.")
             return
 
+        provider = (getattr(self, "cpn_provider", None) and self.cpn_provider.get() or "auto").strip().lower()
         cmd = [RUNNER_PYTHON, "-u", COUPON_SCRIPT,
                "--count", str(count), "--launcher-mode",
                "--bulk-signup-wait", str(bulk_wait),
-               "--workers", str(workers)]
+               "--workers", str(workers),
+               "--provider", provider]
         if self.cpn_bulk.get():
             cmd.append("--bulk")
 

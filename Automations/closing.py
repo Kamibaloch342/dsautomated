@@ -1390,7 +1390,9 @@ def determine_label(order):
         return "Cancelled"
     earnings = _safe_float(order.get("earnings"))
     zoro = _safe_float(order.get("zoro_order_total"))
-    if earnings and zoro and order.get("tracking_ids") \
+    deliv_note = str(order.get("delivery_note") or "").lower()
+    is_rts = "return" in deliv_note and ("shipper" in deliv_note or "sender" in deliv_note)
+    if not is_rts and earnings and zoro and order.get("tracking_ids") \
             and order.get("delivery_status") in ("Delivered", "AllDelivered"):
         profit = _safe_float(order.get("profit_dollars"))
         if profit is not None and profit < 0:
