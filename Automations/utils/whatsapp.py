@@ -33,6 +33,7 @@ DEFAULT_GROUPS = {
     # one alert (order-page screenshot + times + tracking ids) per uploaded tracking (15 Oct 2026);
     # a store without its own group falls back to its _messages group
     "hathoro_tracking": "120363431994810056@g.us",   # "Hathoro Tracking ID's Alerts"
+    "hoank_tracking": "120363436018692282@g.us",     # "HOANK Tracking ID's Alerts"
 }
 
 
