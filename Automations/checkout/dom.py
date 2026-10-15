@@ -1920,6 +1920,41 @@ def _await_order_number(driver, timeout=25.0):
     return None
 
 
+def _report_checkout_refusal(driver, attempt):
+    """The click registered, Zoro returned the page to an idle checkout and no order number came
+    back — Zoro refused the submission and says why somewhere on the page. Print every visible
+    alert / error / validation text and keep a screenshot (data/debug/checkout_refused_*.png), so a
+    run of these (HS_COUPON 15 Oct 2026: 15 refused, 2 placed, same cart and coupon) shows the
+    cause instead of only 'no order number'. Never raises; changes nothing on the page."""
+    try:
+        msgs = driver.execute_script(r"""
+            var out = [], seen = {};
+            var sel = '[role="alert"], [role="status"], [aria-live], .alert, .error, .errors, .invalid-feedback, ' +
+                      '[class*="error" i], [class*="alert" i], [class*="warning" i], [class*="message" i], ' +
+                      '[class*="toast" i], [class*="notification" i], iframe[src*="recaptcha"], iframe[title*="challenge" i]';
+            document.querySelectorAll(sel).forEach(function (e) {
+                var r = e.getBoundingClientRect();
+                if (r.width < 2 || r.height < 2) return;
+                var t = e.tagName === 'IFRAME' ? ('[iframe ' + (e.title || e.src).slice(0, 60) + ']')
+                                               : (e.innerText || '').replace(/\s+/g, ' ').trim();
+                if (t && t.length > 2 && t.length < 400 && !seen[t]) { seen[t] = 1; out.push(t); }
+            });
+            return out.slice(0, 8);
+        """) or []
+    except Exception as e:
+        msgs = [f"(could not read the page: {type(e).__name__})"]
+    print(f"  🔎 Zoro refused submission {attempt} — page says: " + (" | ".join(m[:160] for m in msgs) or "nothing visible"))
+    try:
+        import os
+        d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "debug")
+        os.makedirs(d, exist_ok=True)
+        fp = os.path.join(d, f"checkout_refused_{time.strftime('%Y%m%d-%H%M%S')}_{attempt}.png")
+        driver.save_screenshot(fp)
+        print(f"     screenshot: {fp}")
+    except Exception:
+        pass
+
+
 def _click_place_order(driver):
     """Click Place Order and wait for WB confirmation. Returns WB ID or None."""
     print("  📝 Placing order...")
@@ -1971,6 +2006,7 @@ def _click_place_order(driver):
             print("  ⏸️  No order number, and the page has not returned to an idle checkout — "
                   "not clicking again (a second click could duplicate the order)")
             break
+        _report_checkout_refusal(driver, attempt + 1)
         if attempt < 2:
             print("  ⚠️  Submission came back with no order number — trying once more")
 
