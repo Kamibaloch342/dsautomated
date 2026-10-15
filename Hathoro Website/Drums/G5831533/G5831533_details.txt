@@ -1,0 +1,58 @@
+ZORO PRODUCT DATA PROFILE: G5831533
+Title: Zoro Select 30-Gallon Polyethylene Closed-Head Transport Drum - Blue
+Short Title: Zoro Select 30-Gal Poly Drum - Blue
+Brand: Zoro Select
+MFR #: POLY30TH-BL
+Price: $108.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G5831533/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Polyethylene
+  - Drum Head Type: Closed Head
+  - Drum Volume Capacity: 30 gal
+  - Lined/Unlined: Unlined
+  - Drum Color: Blue
+  - UN Rating Liquid: 1H1/Y1.8/100
+  - Packing Group: II and III of Hazardous Materials
+  - For Use With: Packing Group II and III of Hazardous Materials
+  - Inside Dia.: 19 in
+  - Standards: DOT 49 CFR 173, FDA Approved
+  - Material Thickness: 0.087 in
+  - Item: Transport Drum
+  - Overall Height: 29 in
+  - Load Capacity: 449 lb
+  - Outside Dia.: 19 1/4 in
+  - Bung Hole Dia.: 2 in NPT x 3/4 in Fittings
+  - Color: Blue
+  - Hazardous Materials Packing Group: II, III
+  - Bung Hole Size: 2 in NPT, 3/4 in
+  - Body Material Gauge: Not Applicable
+  - Drum Message Text: None
+  - Bottom Material Gauge: Not Applicable
+  - Drum Material: Polyethylene
+  - Number of Bung Holes: 2
+  - Bung Hole Thread Type: NPT
+  - Drum Closure: Not Applicable
+  - Handle Style: No Handle
+  - UN Rating Solids: Not Rated
+  - Cover Color: Blue
+  - Bottom Inside Diameter: 19 in
+  - Body Thickness: 2.21 mm
+  - For Holding: Liquids
+  - Interior Lining: Unlined/No Interior Coating
+  - UN Rating Liquids: 1H1/Y1.8/100
+  - Weight Capacity: 449 lb
+  - Closing Ring Material: Not Applicable
+  - Top Material Gauge: Not Applicable
+  - Cover Material: Polyethylene
+  - Number of Rolling Hoops: 2
+  - Body Color: Blue
+  - Drum Type: Transport
+  - For Drum Capacity: 30 gal
+  - Top Outside Diameter: 19 1/4 in
+  - Volume Capacity: 30 gal
+  - Features: 2" Buttress And 2" NPT Threaded Bungs
+  - FDA Compliant: FDA Compliant
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

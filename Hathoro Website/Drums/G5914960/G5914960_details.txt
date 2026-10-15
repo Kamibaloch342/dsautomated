@@ -1,0 +1,68 @@
+ZORO PRODUCT DATA PROFILE: G5914960
+Title: Zoro Select 55-Gallon Unlined Closed-Head Steel Transport Drum - Black
+Short Title: Zoro Select 55-Gal Steel Transport Drum
+Brand: Zoro Select
+MFR #: DRTU55-1212
+Price: $165.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G5914960/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Steel
+  - Drum Head Type: Closed Head
+  - Drum Volume Capacity: 55 gal
+  - Lined/Unlined: Unlined
+  - Drum Interior Coating: Rust Inhibitor
+  - Drum Color: Black
+  - UN Rating Solid: 1A1/X1.2/300
+  - UN Rating Liquid: 1A1/X1.8/300
+  - Gauge: 18
+  - For Use With: liquids
+  - Gasket Material: Rubber
+  - Inside Dia.: 22.5 in
+  - Drum Lid Closure: Tight Head
+  - Item: Transport Drum
+  - Standards: DOT 49 CFR 173
+  - Weight: 48 lb
+  - Packing Group: I, II and III of Hazardous Materials
+  - Drum Lid Color: White
+  - Overall Height: 36 in
+  - Drum Cover Color: White
+  - Bung Hole Dia.: 2 in NPT x 3/4 in Fittings
+  - Outside Dia.: 24 in
+  - Material Thickness: (3) 12 mm
+  - Load Capacity: 824 lb
+  - Bottom Thickness: 0.47 in
+  - Body Thickness: 1.2 mm
+  - Number of Bung Holes: 2
+  - Number of Rolling Hoops: 2
+  - Top Thickness: 0.47 in
+  - Volume Capacity: 55 gal
+  - Top Material Gauge: 18 ga
+  - Drum Material: Steel
+  - Bung Hole Size: 2 in NPT, 3/4 in
+  - UN Rating Solids: Not Rated
+  - Body Color: Black
+  - Drum Closure: Not Applicable
+  - For Holding: Liquids
+  - Bottom Material Gauge: 18 ga
+  - UN Rating Liquids: 1A1/X1.8/300
+  - Bottom Inside Diameter: 22 1/2 in
+  - Top Outside Diameter: 24 in
+  - Seal Material: Rubber
+  - Closing Ring Material: Not Applicable
+  - Drum Message Text: None
+  - Weight Capacity: 824 lb
+  - Drum Type: Transport
+  - Empty Container Weight: 48 lb
+  - Bung Hole Thread Type: NPT
+  - Handle Style: No Handle
+  - Cover Color: White
+  - Cover Material: Carbon Steel
+  - Body Material Gauge: 18 ga
+  - For Drum Capacity: 55 gal
+  - Interior Lining: Unlined with Rust Inhibitor
+  - Hazardous Materials Packing Group: I, II, III
+  - FDA Compliant: Not FDA Compliant
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

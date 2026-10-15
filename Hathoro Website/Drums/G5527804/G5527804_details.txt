@@ -1,0 +1,23 @@
+ZORO PRODUCT DATA PROFILE: G5527804
+Title: Basco 55-Gallon Reconditioned Tight-Head Steel Drum - Black (UN-Rated)
+Short Title: Basco 55-Gal Tight-Head Steel Drum
+Brand: Basco
+MFR #: TH55-3R-RECON
+Price: $98.99
+Rating: 4.89 (9 reviews)
+URL: https://www.zoro.com/i/G5527804/
+Specifications:
+  - Drum Item: Reconditioned Tight Head Drum
+  - Primary Drum Material: Steel
+  - Drum Head Type: Tight Head
+  - Drum Volume Capacity: 55 gal
+  - Lined/Unlined: Unlined
+  - Drum Color: Black
+  - UN Rating Liquid: 1A1/X1.8/300
+  - Gauge: 18
+  - Top Design: Tight Head
+  - Container Type: Drum
+  - Item: Reconditioned 55 gal Drum
+  - Refurbished Product Warranty: 1 Year
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

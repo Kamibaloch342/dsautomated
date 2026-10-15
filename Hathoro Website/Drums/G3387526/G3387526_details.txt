@@ -1,0 +1,62 @@
+ZORO PRODUCT DATA PROFILE: G3387526
+Title: Eagle Mfg 20-Gallon Polyethylene Open-Head Salvage Drum - Yellow (UN-Rated)
+Short Title: Eagle 20-Gal Poly Salvage Drum
+Brand: Eagle Mfg
+MFR #: 1654
+Price: $78.99
+Rating: 4.86 (14 reviews)
+URL: https://www.zoro.com/i/G3387526/
+Specifications:
+  - Drum Item: Salvage Drum
+  - Primary Drum Material: Polyethylene
+  - Drum Head Type: Open Head
+  - Drum Volume Capacity: 20 gal
+  - Lined/Unlined: Unlined
+  - Drum Color: Yellow
+  - UN Rating Solid: 1H2/X75/S
+  - UN Rating Liquid: 1H2/X75/S
+  - Packing Group: I, II and III of Hazardous Materials
+  - Inside Dia.: 19 in
+  - Standards: DOT 49 CFR 173.3
+  - Item: Salvage Drum
+  - Overall Height: 20 1/2 in
+  - For Use With: Packing Groups I, II and III of Hazardous Materials
+  - Outside Dia.: 20 7/8 in
+  - Drum Lid Closure: Lever Lock Ring
+  - Load Capacity: 165 lb
+  - Weight: 16 lb
+  - Color: Yellow
+  - Weight Capacity: 165 lb
+  - Drum Closure: Lever Lock Ring
+  - Drum Material: HDPE
+  - Drum Type: Salvage
+  - UN Rating Solids: 1H2/X75/S
+  - Inside Height: 19 in
+  - For Holding: Bio Waste Disposal and Incineration, Hazardous Materials, Original Shipping Container, Spill Containment and Cleanup of Hazardous Materials
+  - Resistance Properties: Chemical Resistant, Weather Resistant
+  - Drum Message Text: None
+  - Body Material Gauge: Not Applicable
+  - Body Color: Yellow
+  - Closing Ring Material: Metal
+  - For Drum Capacity: 20 gal
+  - Number of Bung Holes: 0
+  - Volume Capacity: 20 gal
+  - Cover Material: HDPE
+  - Top Outside Diameter: 20 7/8 in
+  - Cover Color: White
+  - Interior Lining: Unlined/No Interior Coating
+  - Body Thickness: 4.57 mm
+  - Empty Container Weight: 16 lb
+  - Bottom Inside Diameter: 16 1/4 in
+  - Bottom Material Gauge: Not Applicable
+  - Handle Style: No Handle
+  - Bung Hole Size: Not Applicable
+  - Hazardous Materials Packing Group: I, II, III
+  - Top Material Gauge: Not Applicable
+  - Bung Hole Thread Type: Not Applicable
+  - Bottom Thickness: Not Applicable
+  - Drum Material Grade: Blow Molded HDPE
+  - FDA Compliant: FDA Compliant
+  - UN Rating Liquids: 1H2/X75/S
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

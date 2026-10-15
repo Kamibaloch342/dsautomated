@@ -1,0 +1,57 @@
+ZORO PRODUCT DATA PROFILE: G0424182
+Title: Eagle Mfg 1633 1-Drum Modular Low-Profile Spill Containment Platform (15-Gallon Sump, 2,000 lb Capacity)
+Short Title: Eagle 1-Drum Spill Platform (15 Gal)
+Brand: Eagle Mfg
+MFR #: 1633
+Price: $140.67
+Rating: 5.0 (8 reviews)
+URL: https://www.zoro.com/i/G0424182/
+Specifications:
+  - Item: Spill Deck
+  - Color: Black, Yellow
+  - Number of Drums: 1
+  - Width: 26 1/4 in
+  - Length: 26 1/4 in
+  - Spill Capacity: 15 gal
+  - Height: 6 1/2 in
+  - Dimensions: 26 1/4 in L x 26 1/4 in W x 6 1/2 in H
+  - For Number of 55 gal. Drums: 1
+  - Load Capacity: 2,000 lb
+  - Material: Polyethylene
+  - Includes: U Channel Connection Strip
+  - Standards: EPA 40 CFR 264.175, SPCC
+  - Spill Capacity, gal.: 15 gal
+  - Spill Containment Load Capacity: 2,000 lb
+  - Covered/Uncovered: Uncovered
+  - Spill Containment Opening Type: No Cover
+  - Outside Length: 26.5625 in
+  - Outside Height: 6.63 in
+  - Outside Width: 26.5625 in
+  - Modular: Yes
+  - Opening Type: No Doors
+  - Sump Connection Capability: Yes
+  - Includes Drain: No
+  - For Use With Ramp Connection Mfr. Model Number: 1689, 1689B
+  - For Number of IBC: 0
+  - Low Profile: Yes
+  - Pallet Color: Yellow
+  - Manufacturer Warranty: 1 yr
+  - Inline: No
+  - Product Type: Spill Deck
+  - Product Weight: 16 lb
+  - Grate Material: Polyethylene
+  - Includes Overflow Bladder: No
+  - Modular Type: Modular
+  - Forklift Pockets: No Pockets
+  - Supports SPCC Compliance: Yes
+  - Pallet Material: Polyethylene
+  - For Use With Standard Fork: Yes
+  - Supports EPA Compliance: 40 CFR 264.175
+  - Recycled Content (%): No Recycled Content
+  - Indoor/Outdoor Use: Indoor
+  - Grate Color: Black
+  - Composition: Polyethylene
+  - "Spill Capacity: 15 gal
+  - Recycled Content: Not Applicable
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

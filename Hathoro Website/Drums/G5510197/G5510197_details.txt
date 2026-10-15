@@ -1,0 +1,65 @@
+ZORO PRODUCT DATA PROFILE: G5510197
+Title: Zoro Select 16-Gallon Closed-Head Steel Transport Drum with Bungs - Black
+Short Title: Zoro Select 16-Gal Closed Steel Drum
+Brand: Zoro Select
+MFR #: CQ1603
+Price: $130.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G5510197/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Steel
+  - Drum Head Type: Closed Head
+  - Drum Volume Capacity: 16 gal
+  - Lined/Unlined: Unlined
+  - Drum Interior Coating: Rust Inhibitor
+  - Drum Color: Black
+  - UN Rating Liquid: 1A1/X1.4/250
+  - Gauge: 20
+  - Material Thickness: 0.9 mm
+  - Outside Dia.: 14 1/4 in
+  - Drum Cover Color: White
+  - Inside Dia.: 14 in
+  - Standards: DOT 49 CFR 173
+  - Overall Height: 27 in
+  - Gasket Material: Buna
+  - Weight: 17 lb
+  - Drum Lid Color: White
+  - Item: Transport Drum
+  - Packing Group: I, II and III of Hazardous Materials
+  - For Use With: Packing Groups I, II and III of Hazardous Materials
+  - Load Capacity: 186 lb
+  - Bung Hole Dia.: 2 in NPT x 3/4 in Fittings
+  - Color: Black with White Cover
+  - Bottom Inside Diameter: 14 in
+  - Cover Material: Carbon Steel
+  - Empty Container Weight: 17 lb
+  - Body Material Gauge: 20 ga
+  - For Drum Capacity: 16 gal
+  - Top Material Gauge: 20 ga
+  - Body Thickness: 0.9 mm
+  - UN Rating Solids: Not Rated
+  - Bung Hole Thread Type: NPT
+  - Cover Color: White
+  - Body Color: Black
+  - Top Outside Diameter: 14 1/4 in
+  - For Holding: Liquids
+  - Seal Material: Nitrile Rubber
+  - Bottom Material Gauge: 20 ga
+  - Weight Capacity: 186 lb
+  - Drum Material: Steel
+  - UN Rating Liquids: 1A1/X1.4/250
+  - Drum Type: Transport
+  - Closing Ring Material: Not Applicable
+  - Hazardous Materials Packing Group: I, II, III
+  - Drum Closure: Not Applicable
+  - Handle Style: No Handle
+  - Drum Message Text: None
+  - Volume Capacity: 16 gal
+  - Number of Rolling Hoops: 2
+  - Bung Hole Size: 2 in NPT, 3/4 in
+  - Number of Bung Holes: 2
+  - Interior Lining: Unlined with Rust Inhibitor
+  - FDA Compliant: Not FDA Compliant
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

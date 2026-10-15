@@ -1,0 +1,38 @@
+ZORO PRODUCT DATA PROFILE: G4301586
+Title: Dayton Heavy-Duty Vertical Steel Salvage Drum Lifter (1,000 lb Capacity) - Yellow
+Short Title: Dayton Vertical Drum Lifter
+Brand: Dayton
+MFR #: 12R543
+Price: $151.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G4301586/
+Specifications:
+  - Item: Drum Lifter
+  - Material: Steel
+  - Color: Yellow
+  - For Use With: SD-CT
+  - Overall Height: 16 in
+  - Load Capacity: 1,000 lb
+  - Type: Duct Mount
+  - Finish: Powder-Coated,Yellow
+  - Rotation Angle: 0 Degrees
+  - Overall Width: 9 in
+  - Construction: Steel
+  - Drum Capacity: 85 gal, 55
+  - Overall Length: 24 in
+  - Number of Drums: 1
+  - Drum Rotation: 0 Degrees
+  - Product Type: Lifting Hook
+  - Grip Location: Rim
+  - Weight Capacity: 1,000 lb
+  - For Maximum Drum Diameter: 23 1/2 in
+  - For Drum Capacity: 55 gal, 85 gal
+  - For Maximum Drum Height: 41 in
+  - Drum Orientation: Vertical
+  - Number of Grip Points: 2
+  - For Drum Material: Metal
+  - Drum Tilt Control: Not Applicable
+  - Wire Rope Length: 24 in
+  - Length: 24 in
+  - Country of Origin (subject to change): China
+  - Package Quantity: 1

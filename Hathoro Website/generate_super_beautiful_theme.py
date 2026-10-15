@@ -1,0 +1,1059 @@
+import os
+
+# Complete Super-Beautiful Design System
+shared_css = """
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      
+      --c-black: #09090b;
+      --c-dark: #18181b;
+      --c-slate: #334155;
+      --c-muted: #64748b;
+      --c-light-muted: #94a3b8;
+      --c-border: #e2e8f0;
+      --c-border-light: #f1f5f9;
+      --c-surface: #f8fafc;
+      --c-surface-hover: #f1f5f9;
+      --c-white: #ffffff;
+      
+      --c-accent: #f74143;
+      --c-accent-hover: #dc2626;
+      --c-accent-soft: #fef2f2;
+      --c-green: #10b981;
+      --c-green-soft: #ecfdf5;
+      --c-blue: #2563eb;
+      --c-blue-soft: #eff6ff;
+      --c-amber: #f59e0b;
+      
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-xl: 24px;
+      --radius-pill: 9999px;
+      
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 6px 16px -2px rgba(0,0,0,0.06), 0 2px 6px -1px rgba(0,0,0,0.03);
+      --shadow-lg: 0 16px 32px -4px rgba(0,0,0,0.08), 0 4px 12px -2px rgba(0,0,0,0.04);
+      --shadow-lift: 0 14px 28px -4px rgba(15,23,42,0.12), 0 4px 10px -2px rgba(15,23,42,0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font-body);
+      color: var(--c-black);
+      background-color: #fafbfc;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      font-family: var(--font-display);
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* Top Announcement Bar */
+    .top-bar-luxe {
+      background: linear-gradient(90deg, #09090b 0%, #1e293b 100%);
+      color: #ffffff;
+      padding: 10px 24px;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      letter-spacing: 0.01em;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+    .top-badge-red {
+      background: var(--c-accent);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    /* Main Navigation Header */
+    header {
+      background: #ffffff;
+      border-bottom: 1px solid var(--c-border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      box-shadow: var(--shadow-sm);
+    }
+    .header-content {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 36px;
+    }
+    .brand-mark {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--c-black);
+    }
+    .brand-red-dot {
+      width: 9px;
+      height: 9px;
+      background: var(--c-accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px rgba(247, 65, 67, 0.4);
+    }
+
+    .search-input-shell {
+      flex: 1;
+      max-width: 560px;
+      position: relative;
+    }
+    .search-input-shell input {
+      width: 100%;
+      padding: 11px 18px 11px 44px;
+      font-family: var(--font-body);
+      font-size: 14px;
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-pill);
+      outline: none;
+      background: #f8fafc;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .search-input-shell input:focus {
+      border-color: var(--c-black);
+      background: #ffffff;
+      box-shadow: 0 0 0 4px rgba(9, 9, 11, 0.05);
+    }
+    .search-input-shell svg {
+      position: absolute;
+      left: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 17px;
+      height: 17px;
+      color: var(--c-muted);
+    }
+
+    .header-actions-rack {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+    }
+    .header-nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--c-slate);
+      transition: color 0.15s;
+    }
+    .header-nav-btn:hover {
+      color: var(--c-accent);
+    }
+    .cart-pill-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--c-black);
+      color: #ffffff !important;
+      padding: 9px 18px;
+      border-radius: var(--radius-pill);
+      font-size: 13.5px;
+      font-weight: 700;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 2px 8px rgba(9, 9, 11, 0.12);
+    }
+    .cart-pill-btn:hover {
+      background: var(--c-dark);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(9, 9, 11, 0.2);
+    }
+    .cart-pill-count {
+      background: var(--c-accent);
+      color: #ffffff;
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 20px;
+      font-weight: 800;
+    }
+
+    /* Sub-Navigation Strip */
+    .sub-nav-strip {
+      border-top: 1px solid var(--c-border-light);
+      background: #ffffff;
+    }
+    .sub-nav-content {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      gap: 32px;
+    }
+    .sub-nav-link {
+      display: inline-block;
+      padding: 12px 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--c-slate);
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s ease;
+    }
+    .sub-nav-link:hover, .sub-nav-link.active {
+      color: var(--c-accent);
+      border-bottom-color: var(--c-accent);
+    }
+
+    /* Full 4-Column Clean Footer */
+    footer {
+      background: #09090b;
+      color: #ffffff;
+      padding: 64px 24px 32px 24px;
+      margin-top: 80px;
+      border-top: 1px solid #18181b;
+    }
+    .footer-inner-grid {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1.5fr;
+      gap: 48px;
+      margin-bottom: 48px;
+    }
+    .footer-col h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 18px;
+      color: #ffffff;
+      letter-spacing: -0.01em;
+    }
+    .footer-col p {
+      font-size: 13.5px;
+      color: #a1a1aa;
+      line-height: 1.65;
+      margin-bottom: 12px;
+    }
+    .footer-col ul {
+      list-style: none;
+    }
+    .footer-col ul li {
+      margin-bottom: 10px;
+    }
+    .footer-col ul li a {
+      font-size: 13.5px;
+      color: #a1a1aa;
+      transition: color 0.15s;
+    }
+    .footer-col ul li a:hover {
+      color: #ffffff;
+    }
+    .footer-bottom-bar {
+      max-width: 1280px;
+      margin: 0 auto;
+      border-top: 1px solid #18181b;
+      padding-top: 28px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      color: #71717a;
+    }
+  </style>
+"""
+
+# Header HTML
+header_html = """
+  <!-- Top Announcement Bar -->
+  <div class="top-bar-luxe">
+    <span class="top-badge-red">B2B Direct</span>
+    <span>🚚 Free Freight on Orders Over $50 &bull; 500+ Units Ready to Ship Same Day</span>
+    <span style="opacity: 0.3;">|</span>
+    <span>Regional Logistics Hotline: <strong>(727) 609-8404</strong></span>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="header-content">
+      <a href="index.html" class="brand-mark">
+        HATHORO<span class="brand-red-dot"></span>
+      </a>
+
+      <div class="search-input-shell">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input type="text" placeholder="Search 108+ industrial steel drums, poly barrels, spill pallets, degreasers...">
+      </div>
+
+      <div class="header-actions-rack">
+        <a href="#quote" class="header-nav-btn">
+          <svg width="17" height="17" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+          Facility Portal
+        </a>
+        <a href="#cart" class="cart-pill-btn" onclick="alert('Cart preview opened.')">
+          <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+          Cart <span class="cart-pill-count" id="cartPillCount">0</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Navigation Strip -->
+    <div class="sub-nav-strip">
+      <div class="sub-nav-content">
+        <a href="index.html" class="sub-nav-link">Catalog Overview</a>
+        <a href="index.html#drums" class="sub-nav-link active">Industrial Drums & Containment</a>
+        <a href="index.html#drums" class="sub-nav-link">Hathoro Select™ Line</a>
+        <a href="index.html#drums" class="sub-nav-link">Heavy Degreasers</a>
+        <a href="index.html#drums" class="sub-nav-link">Hardware & Facility</a>
+        <a href="tel:7276098404" class="sub-nav-link" style="color: var(--c-accent); font-weight: 700;">Direct Quotes: (727) 609-8404</a>
+      </div>
+    </div>
+  </header>
+"""
+
+# Footer HTML
+footer_html = """
+  <footer>
+    <div class="footer-inner-grid">
+      <div class="footer-col">
+        <div class="brand-mark" style="color: #ffffff; margin-bottom: 16px;">
+          HATHORO<span class="brand-red-dot"></span>
+        </div>
+        <p>Premium industrial packaging, certified hazmat handling, and warehouse containment equipment. Built for American manufacturing facilities and commercial operations.</p>
+        <p><strong>Logistics Operations:</strong> (727) 609-8404<br>Email: sales@hathoro.com</p>
+      </div>
+
+      <div class="footer-col">
+        <h4>Product Categories</h4>
+        <ul>
+          <li><a href="index.html#drums">Steel & Poly Drums (30G & 55G)</a></li>
+          <li><a href="index.html#drums">Hathoro Select Heavy-Duty</a></li>
+          <li><a href="index.html#drums">Spill Containment Pallets</a></li>
+          <li><a href="index.html#drums">Industrial Degreasers & Solvents</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h4>Facility Customer Care</h4>
+        <ul>
+          <li><a href="#shipping">Freight & Liftgate Delivery</a></li>
+          <li><a href="#returns">Hathoro Commercial Guarantee</a></li>
+          <li><a href="#terms">Net-30 B2B Purchase Orders</a></li>
+          <li><a href="#contact">Compliance Certifications (UN/DOT)</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h4>B2B Direct Accounts</h4>
+        <p>Join over 1,400+ manufacturing plants and logistics hubs for wholesale pricing and tax-exempt purchasing.</p>
+        <div style="display: flex; gap: 8px;">
+          <input type="email" placeholder="facility@company.com" style="padding: 10px 14px; font-family: inherit; font-size: 13.5px; border: 1px solid #27272a; border-radius: 6px; background: #18181b; color: white; width: 100%;">
+          <button style="background: var(--c-accent); color: white; border: none; border-radius: 6px; padding: 10px 18px; font-size: 13.5px; font-weight: 700; cursor: pointer;">Join</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer-bottom-bar">
+      <div>&copy; 2026 Hathoro.com. All rights reserved. Registered Industrial Trade Partner.</div>
+      <div>Engineered for American Industry</div>
+    </div>
+  </footer>
+"""
+
+# Product Page
+product_page = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hathoro Select 30-Gallon Closed-Head Steel Transport Drum | Hathoro</title>
+  {shared_css}
+  <style>
+    /* Super-Clean Product Stage Styles */
+    .product-outer-container {{
+      max-width: 1280px;
+      margin: 24px auto 80px auto;
+      padding: 0 24px;
+    }}
+
+    .crumb-trail {{
+      font-size: 13.5px;
+      color: var(--c-muted);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    .crumb-trail a {{ color: var(--c-muted); transition: color 0.15s; }}
+    .crumb-trail a:hover {{ color: var(--c-black); }}
+    .crumb-trail span.sep {{ color: #cbd5e1; }}
+    .crumb-trail span.active {{ color: var(--c-black); font-weight: 600; }}
+
+    /* Two Column Main Section */
+    .showcase-grid {{
+      display: grid;
+      grid-template-columns: 53% 47%;
+      gap: 60px;
+      background: #ffffff;
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-xl);
+      padding: 44px;
+      box-shadow: var(--shadow-sm);
+    }}
+
+    /* Left Stage */
+    .visual-stage-col {{
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }}
+    .hero-photo-canvas {{
+      background: radial-gradient(ellipse at center, #ffffff 40%, #f4f6f8 100%);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-lg);
+      height: 540px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      overflow: hidden;
+    }}
+    .hero-photo-canvas img {{
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      mix-blend-mode: multiply;
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+      cursor: zoom-in;
+    }}
+    .hero-photo-canvas:hover img {{
+      transform: scale(1.08);
+    }}
+
+    .canvas-badge-stack {{
+      position: absolute;
+      top: 18px;
+      left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }}
+    .badge-luxe-dark {{
+      background: #09090b;
+      color: #ffffff;
+      font-size: 11.5px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 5px 12px;
+      border-radius: var(--radius-pill);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }}
+    .badge-cert-yellow {{
+      background: #fef08a;
+      color: #854d0e;
+      border: 1px solid #fde047;
+      font-size: 11.5px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+    }}
+
+    .thumb-picker-strip {{
+      display: flex;
+      gap: 14px;
+    }}
+    .thumb-picker-slot {{
+      width: 96px;
+      height: 96px;
+      background: #ffffff;
+      border: 1.5px solid var(--c-border);
+      border-radius: var(--radius-md);
+      padding: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }}
+    .thumb-picker-slot img {{
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      mix-blend-mode: multiply;
+    }}
+    .thumb-picker-slot:hover {{
+      border-color: var(--c-black);
+      transform: translateY(-2px);
+    }}
+    .thumb-picker-slot.active {{
+      border-color: var(--c-black);
+      box-shadow: 0 0 0 1.5px var(--c-black);
+      background: #ffffff;
+    }}
+
+    /* Right Buying Column */
+    .commerce-action-col {{
+      display: flex;
+      flex-direction: column;
+    }}
+
+    .brand-eyebrow {{
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--c-accent);
+      margin-bottom: 8px;
+    }}
+
+    .headline-product {{
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.2;
+      color: var(--c-black);
+      margin-bottom: 12px;
+    }}
+
+    .rating-meta-bar {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13.5px;
+      margin-bottom: 22px;
+    }}
+    .gold-stars {{
+      color: #f59e0b;
+      letter-spacing: 1px;
+      font-size: 15px;
+    }}
+    .verified-note {{
+      color: var(--c-muted);
+      font-weight: 500;
+    }}
+
+    /* Price Card */
+    .price-box-clean {{
+      background: var(--c-surface);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-md);
+      padding: 20px 24px;
+      margin-bottom: 22px;
+    }}
+    .price-display-row {{
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 6px;
+    }}
+    .bold-price {{
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      color: var(--c-black);
+    }}
+    .was-price {{
+      font-size: 18px;
+      color: var(--c-light-muted);
+      text-decoration: line-through;
+      font-weight: 500;
+    }}
+    .save-tag-pill {{
+      background: #fee2e2;
+      color: #b91c1c;
+      font-size: 12.5px;
+      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      letter-spacing: 0.01em;
+    }}
+    .tax-delivery-text {{
+      font-size: 12.5px;
+      color: var(--c-muted);
+    }}
+
+    /* Stock & Dispatch Notification */
+    .readiness-bar {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 18px;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: var(--radius-sm);
+      margin-bottom: 26px;
+    }}
+    .stock-highlight {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #15803d;
+    }}
+    .live-pulse {{
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25);
+    }}
+    .shipping-deadline {{
+      font-size: 12.5px;
+      color: #166534;
+      font-weight: 600;
+    }}
+
+    /* Quantity and Action Buttons */
+    .purchase-stepper-row {{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 16px;
+    }}
+    .stepper-caption {{
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--c-black);
+    }}
+    .stepper-pill-shell {{
+      display: inline-flex;
+      align-items: center;
+      border: 1.5px solid var(--c-border);
+      border-radius: var(--radius-pill);
+      overflow: hidden;
+      background: #ffffff;
+    }}
+    .stepper-pill-shell button {{
+      background: none;
+      border: none;
+      width: 42px;
+      height: 42px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--c-black);
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }}
+    .stepper-pill-shell button:hover {{
+      background: #f1f5f9;
+    }}
+    .stepper-pill-shell input {{
+      width: 48px;
+      height: 42px;
+      border: none;
+      text-align: center;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--c-black);
+      outline: none;
+    }}
+
+    .btn-buy-primary {{
+      width: 100%;
+      padding: 16px;
+      background: #09090b;
+      color: #ffffff;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 4px 14px rgba(9, 9, 11, 0.18);
+      margin-bottom: 12px;
+    }}
+    .btn-buy-primary:hover {{
+      background: #18181b;
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lift);
+    }}
+    .btn-buy-primary:active {{
+      transform: scale(0.985);
+    }}
+
+    .btn-shoppay-luxe {{
+      width: 100%;
+      padding: 15px;
+      background: #5a31f4;
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 28px;
+    }}
+    .btn-shoppay-luxe:hover {{
+      background: #4a21e4;
+      transform: translateY(-1px);
+    }}
+
+    /* Trust Props Box */
+    .b2b-guarantee-card {{
+      background: var(--c-surface);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-md);
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }}
+    .b2b-guarantee-item {{
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }}
+    .b2b-icon-badge {{
+      width: 36px;
+      height: 36px;
+      background: #ffffff;
+      border: 1px solid var(--c-border);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+      box-shadow: var(--shadow-sm);
+    }}
+    .b2b-guarantee-text h5 {{
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--c-black);
+      margin-bottom: 2px;
+    }}
+    .b2b-guarantee-text p {{
+      font-size: 12.5px;
+      color: var(--c-muted);
+      line-height: 1.45;
+    }}
+
+    /* Technical Specifications Section */
+    .specs-super-container {{
+      max-width: 1280px;
+      margin: 48px auto 0 auto;
+      padding: 0 24px;
+    }}
+    .specs-block-card {{
+      background: #ffffff;
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-xl);
+      padding: 40px;
+      box-shadow: var(--shadow-sm);
+    }}
+    .specs-card-title {{
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--c-black);
+      margin-bottom: 24px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--c-border);
+    }}
+
+    .specs-table-luxe {{
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: #ffffff;
+    }}
+    .specs-table-luxe tr {{
+      border-bottom: 1px solid var(--c-border);
+      transition: background 0.15s ease;
+    }}
+    .specs-table-luxe tr:last-child {{
+      border-bottom: none;
+    }}
+    .specs-table-luxe tr:nth-child(even) {{
+      background: #f8fafc;
+    }}
+    .specs-table-luxe tr:hover {{
+      background: #f1f5f9;
+    }}
+    .specs-table-luxe td {{
+      padding: 14px 22px;
+      font-size: 14.5px;
+      border-bottom: 1px solid var(--c-border);
+    }}
+    .specs-table-luxe tr:last-child td {{
+      border-bottom: none;
+    }}
+    .specs-table-luxe td.spec-key {{
+      width: 38%;
+      font-weight: 600;
+      color: #64748b;
+      border-right: 1px solid var(--c-border);
+    }}
+    .specs-table-luxe td.spec-val {{
+      color: var(--c-black);
+      font-weight: 600;
+    }}
+  </style>
+</head>
+<body>
+
+  {header_html}
+
+  <div class="product-outer-container">
+    
+    <div class="crumb-trail">
+      <a href="index.html">Catalog Home</a>
+      <span class="sep">/</span>
+      <a href="index.html#drums">Industrial Drums & Containment</a>
+      <span class="sep">/</span>
+      <span class="active">Hathoro Select 30-Gallon Closed-Head Steel Transport Drum</span>
+    </div>
+
+    <!-- Product Showcase -->
+    <div class="showcase-grid">
+
+      <!-- Gallery (Left) -->
+      <div class="visual-stage-col">
+        <div class="hero-photo-canvas">
+          <div class="canvas-badge-stack">
+            <span class="badge-luxe-dark">Hathoro Select™</span>
+            <span class="badge-cert-yellow">UN 1A1/Y1.5/300 Certified</span>
+          </div>
+          <img id="mainDrumPhoto" src="images/G1877111/image_01_1000x1000.jpg" alt="Hathoro Select 30-Gallon Steel Transport Drum">
+        </div>
+
+        <div class="thumb-picker-strip">
+          <div class="thumb-picker-slot active" onclick="swapDrumPhoto('images/G1877111/image_01_1000x1000.jpg', this)">
+            <img src="images/G1877111/image_01_1000x1000.jpg" alt="Angle 1">
+          </div>
+          <div class="thumb-picker-slot" onclick="swapDrumPhoto('images/G1877111/image_02_1000x1000.jpg', this)">
+            <img src="images/G1877111/image_02_1000x1000.jpg" alt="Angle 2">
+          </div>
+          <div class="thumb-picker-slot" onclick="swapDrumPhoto('images/G1877111/image_03_1000x1000.jpg', this)">
+            <img src="images/G1877111/image_03_1000x1000.jpg" alt="Angle 3">
+          </div>
+        </div>
+      </div>
+
+      <!-- Purchasing & Details (Right) -->
+      <div class="commerce-action-col">
+        <div class="brand-eyebrow">HATHORO SELECT™ INDUSTRIAL</div>
+        <h1 class="headline-product">Hathoro Select 30-Gallon Closed-Head Heavy-Duty Steel Transport Drum</h1>
+
+        <div class="rating-meta-bar">
+          <div class="gold-stars">★★★★★</div>
+          <span class="verified-note">4.9 / 5.0 (28 Commercial Reviews)</span>
+          <span style="color: #cbd5e1;">&bull;</span>
+          <span style="color: var(--c-muted); font-weight: 600;">SKU: H1877111</span>
+        </div>
+
+        <!-- Pricing Block -->
+        <div class="price-box-clean">
+          <div class="price-display-row">
+            <span class="bold-price" id="priceDisplay">$151.99</span>
+            <span class="was-price">$174.79</span>
+            <span class="save-tag-pill">Save $22.80 (15% Off)</span>
+          </div>
+          <div class="tax-delivery-text">Qualifies for Free Commercial Freight Delivery &bull; Volume discounts applied at checkout.</div>
+        </div>
+
+        <!-- Stock Status -->
+        <div class="readiness-bar">
+          <div class="stock-highlight">
+            <span class="live-pulse"></span>
+            <span>IN STOCK — 500 units ready to ship</span>
+          </div>
+          <div class="shipping-deadline">⚡ Ships today if ordered by 3:00 PM CT</div>
+        </div>
+
+        <!-- Stepper and Action -->
+        <div class="purchase-stepper-row">
+          <span class="stepper-caption">Quantity:</span>
+          <div class="stepper-pill-shell">
+            <button type="button" onclick="alterQuantity(-1)">&minus;</button>
+            <input type="text" id="orderQtyInput" value="1" readonly>
+            <button type="button" onclick="alterQuantity(1)">&plus;</button>
+          </div>
+        </div>
+
+        <button class="btn-buy-primary" onclick="executeAddToCart()">
+          <svg width="19" height="19" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+          <span id="buyBtnText">Add to Cart &mdash; $151.99</span>
+        </button>
+
+        <button class="btn-shoppay-luxe" onclick="executeAddToCart()">
+          Buy with <span style="font-weight: 900; letter-spacing: -0.04em;">Shop Pay</span>
+        </button>
+
+        <!-- B2B Guarantee Box -->
+        <div class="b2b-guarantee-card">
+          <div class="b2b-guarantee-item">
+            <div class="b2b-icon-badge">🚚</div>
+            <div class="b2b-guarantee-text">
+              <h5>Fast Commercial Freight Shipping</h5>
+              <p>Palletized and dispatched same business day via regional freight carriers.</p>
+            </div>
+          </div>
+          <div class="b2b-guarantee-item">
+            <div class="b2b-icon-badge">🛡️</div>
+            <div class="b2b-guarantee-text">
+              <h5>UN 1A1 Pressure Tested Certification</h5>
+              <p>UN rating 1A1/Y1.5/300 certified. Unlined interior with protective rust inhibitor.</p>
+            </div>
+          </div>
+          <div class="b2b-guarantee-item">
+            <div class="b2b-icon-badge">🏢</div>
+            <div class="b2b-guarantee-text">
+              <h5>B2B Facility Quotes & Net-30 Terms</h5>
+              <p>Corporate purchase orders and tiered volume discounts available for facilities.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Technical Specs -->
+  <div class="specs-super-container">
+    <div class="specs-block-card">
+      <h2 class="specs-card-title">Technical Specifications & Engineering Data</h2>
+
+      <table class="specs-table-luxe">
+        <tbody>
+          <tr>
+            <td class="spec-key">Primary Drum Material</td>
+            <td class="spec-val">Cold-Rolled Carbon Steel</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Volume Capacity</td>
+            <td class="spec-val">30 Gallon (113.5 Liters)</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Drum Head Configuration</td>
+            <td class="spec-val">Closed-Head (Tight-Head) with Precision Seams</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Body Material Thickness</td>
+            <td class="spec-val">20 Gauge (0.9 mm)</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Top & Bottom Gauge</td>
+            <td class="spec-val">20 Gauge (0.9 mm)</td>
+          </tr>
+          <tr>
+            <td class="spec-key">UN Liquids Rating</td>
+            <td class="spec-val"><strong>1A1/Y1.5/300</strong> (Packing Groups II & III)</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Overall Height</td>
+            <td class="spec-val">29 1/2 in (749 mm)</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Top Outside Diameter</td>
+            <td class="spec-val">18 3/4 in (476 mm)</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Bung Openings</td>
+            <td class="spec-val">2 Precision Openings (2" NPS Bung & 3/4" Vent Bung)</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Color Finish</td>
+            <td class="spec-val">White Cover / Baked Black Enamel Body</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Interior Protection</td>
+            <td class="spec-val">Unlined with Specialized Rust Inhibitor</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Empty Tare Weight</td>
+            <td class="spec-val">34.0 lbs (15.4 kg)</td>
+          </tr>
+          <tr>
+            <td class="spec-key">Compliance Certifications</td>
+            <td class="spec-val">DOT 49 CFR 178.504, OSHA, EPA Compliant</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {footer_html}
+
+  <script>
+    var drumUnitPrice = 151.99;
+    var currentItemQuantity = 1;
+    var cartBadgeTotal = 0;
+
+    function swapDrumPhoto(src, slotElement) {{
+      var image = document.getElementById('mainDrumPhoto');
+      image.style.opacity = '0';
+      image.style.transform = 'scale(0.96)';
+
+      setTimeout(function() {{
+        image.src = src;
+        image.style.opacity = '1';
+        image.style.transform = 'scale(1)';
+      }}, 140);
+
+      document.querySelectorAll('.thumb-picker-slot').forEach(function(slot) {{
+        slot.classList.remove('active');
+      }});
+      slotElement.classList.add('active');
+    }}
+
+    function alterQuantity(delta) {{
+      var next = currentItemQuantity + delta;
+      if (next >= 1 && next <= 500) {{
+        currentItemQuantity = next;
+        document.getElementById('orderQtyInput').value = currentItemQuantity;
+        var total = (drumUnitPrice * currentItemQuantity).toFixed(2);
+        document.getElementById('buyBtnText').innerText = 'Add ' + currentItemQuantity + ' to Cart — $' + total;
+      }}
+    }}
+
+    function executeAddToCart() {{
+      cartBadgeTotal += currentItemQuantity;
+      document.getElementById('cartPillCount').innerText = cartBadgeTotal;
+      alert('✅ Successfully added ' + currentItemQuantity + ' unit(s) of Hathoro Select 30-Gallon Drum to cart!');
+    }}
+  </script>
+
+</body>
+</html>
+"""
+
+with open('preview/product.html', 'w', encoding='utf-8') as f:
+    f.write(product_page)
+
+print("Super beautiful product.html created successfully!")

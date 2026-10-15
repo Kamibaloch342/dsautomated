@@ -1,0 +1,68 @@
+ZORO PRODUCT DATA PROFILE: G4423443
+Title: SpillTech 5-Gallon Oil-Only Emergency Spill Response Kit in Overpack Pail Drum - Yellow
+Short Title: SpillTech 5-Gal Oil Spill Kit
+Brand: Spilltech
+MFR #: SPKO-5
+Price: $84.89
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G4423443/
+Specifications:
+  - Item: Spill Kit
+  - Color: Yellow
+  - Fluids Absorbed: Oils
+  - Container Type: Drum
+  - Container Capacity: 5 gal
+  - Volume Absorbed Per Kit: 5 gal
+  - Number of Components: 24
+  - Height: 17 1/4 in
+  - Includes: (10) Absorbent Pads, (2) Absorbent Socks, (2) Disposal Bags and Ties, (6) Tamper Proof Seals, White Overpack Bucket
+  - UV Resistant: No
+  - Standards: 29 CFR 1910.120(j)(1), 29 CFR 1910.1450(e), 33 CFR 154.1047(c)(2), 40 CFR 263.30(a), 40 CFR 263.31, 49 CFR 173.3(c)(1)
+  - Spill Control - Fluids Absorbed: 5 gal
+  - Static Dissipative: No
+  - Portable: Yes
+  - Wheels: No
+  - Volume Absorbed Range: 0 to 9 gal
+  - Lockable: No
+  - Volume Absorbed per Pkg.: 4.6 gal
+  - Series: SPKO
+  - Fluids Absorbed - Socks: Oils
+  - Ph Tester Kit Included: No
+  - Fluids Absorbed - Pads: Oils
+  - Overpack Drum Included: Drum Not Included
+  - Vapor Suppressant Included: No
+  - Additional Components Included: (2) Disposal Bags and Ties, (6) Tamper Proof Seals, White Overpack Bucket
+  - Sock Length: 48 in
+  - Solidifier Included: No
+  - Number of Goggles: 1
+  - Land Fill Disposable: No
+  - Epoxy Putty Included: No
+  - Neutralizer Included: No
+  - Granular Sorbent Included: No
+  - Number of Disposal Bags Included: 2
+  - Sock Diameter: 3 in
+  - Sorbents Included: (10) Absorbent Pads, (2) Absorbent Socks
+  - Product Weight: 11 lb
+  - Pad Length: 19 in
+  - Number of Ties Included: 2
+  - Empty or Filled: Filled
+  - Number of Pads Included: 10
+  - PPE Included: Pair of Gloves, Safety Goggles
+  - Includes Mounting Fasteners: No
+  - Emergency Response Handbook/Instructions Included: Emergency Response Handbook Not Included
+  - Cleaning Solution Included: No
+  - Pad Width: 15 in
+  - Number of Sorbent Socks Included: 2
+  - Number of Tamperproof Seal Labels Included: 6
+  - For Use With Mfr. Model Number: SPKO Series
+  - UN Rating: 1H2/Y1.5/30
+  - Product Type: Spill Kit
+  - Container Color: White
+  - Number of Pairs of Nitrile Gloves Included: 1
+  - NSF Rating: Not Rated
+  - Overpack Drum Size Included: Not Applicable
+  - Neutralizer Product Form: Not Applicable
+  - Neutralizes Chemical Type: Not Applicable
+  - Wheel Size: Not Applicable
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

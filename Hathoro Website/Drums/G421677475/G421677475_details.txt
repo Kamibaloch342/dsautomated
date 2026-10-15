@@ -1,0 +1,42 @@
+ZORO PRODUCT DATA PROFILE: G421677475
+Title: Action Pump 3/4" Manual Fuel & Drum Dispensing Nozzle with 6-1/4" Aluminum Spout - Black
+Short Title: Action Pump 3/4" Drum Nozzle
+Brand: Action Pump
+MFR #: AutoFuelNozzle3/4
+Price: $161.99
+Rating: 5.0 (8 reviews)
+URL: https://www.zoro.com/i/G421677475/
+Specifications:
+  - Primary Color: Black
+  - Nozzle Material: Aluminum
+  - Spout Tip Shape: Round
+  - Spout Connection Size: 3/4 in
+  - Spout Length: 6 1/4 in
+  - Standards: Not Applicable
+  - Flow Rate - Maximum: 14.5 gpm
+  - Operating Temperature - Maximum: 120  Degrees F
+  - Maximum Operating Pressure: 50 psi
+  - Nozzle Extension Type: Not Applicable
+  - Number of Latch Positions: 3
+  - Wetted Material: Aluminum/Nitrile/Steel
+  - Flow Mechanism: Pressure Activated
+  - Spout Material: Aluminum
+  - Compatible Manufacturer Part Number: Not Applicable
+  - Minimum Fluid Temperature: 32  Degrees F
+  - Spout Connection Type: Hose Barb
+  - Compatible NLGI Viscosity Grade: Not Applicable
+  - Spout Shape: Curved
+  - Spout Tip Outside Diameter: 3/4 in
+  - Meter Type Included: No Meter Included
+  - Item: Drum Pump Nozzle
+  - Inlet Type: NPT
+  - Inlet Size: 3/4 in
+  - Spout Discharge Size: 5/8 in
+  - Spout Tip Outside Width: Not Applicable
+  - Operating Temperature - Minimum: Not Applicable
+  - Cover Color: Black
+  - Nozzle Operation: Automatic, Manual
+  - Includes: Not Applicable
+  - Maximum Fluid Temperature: 120  Degrees F
+  - Country of Origin (subject to change): India
+  - Package Quantity: 1

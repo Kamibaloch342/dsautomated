@@ -1,0 +1,65 @@
+ZORO PRODUCT DATA PROFILE: G5590724
+Title: Zoro Select 55-Gallon Rust-Inhibitor Lined Closed-Head Steel Transport Drum - Black
+Short Title: Zoro Select 55-Gal Lined Steel Drum
+Brand: Zoro Select
+MFR #: TH55-3R
+Price: $164.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G5590724/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Steel
+  - Drum Head Type: Closed Head
+  - Drum Volume Capacity: 55 gal
+  - Lined/Unlined: Lined
+  - Drum Interior Coating: Rust Inhibitor
+  - Drum Color: Black
+  - UN Rating Liquid: 1A1/X1.8/300
+  - Gauge: 18/18/20
+  - Item: Transport Drum
+  - For Use With: liquids
+  - Overall Height: 35 3/4 in
+  - Packing Group: I, II and III of Hazardous Materials
+  - Outside Dia.: 23 in
+  - Load Capacity: 824 lb
+  - Inside Dia.: 22.5 in
+  - Bung Hole Dia.: 2 in NPT x 3/4 in Fittings
+  - Material Thickness: 1.2 mil
+  - Includes: EPDM Gasket
+  - Standards: UN Certified
+  - Color: Black
+  - Top Outside Diameter: 23 1/2 in
+  - Body Color: Black
+  - For Drum Capacity: 55 gal
+  - Bottom Inside Diameter: 22 1/2 in
+  - Cover Color: Black
+  - Handle Style: No Handle
+  - Volume Capacity: 55 gal
+  - Body Thickness: 1.2 mm
+  - Empty Container Weight: 45 lb
+  - Seal Material: EPDM Rubber
+  - Weight Capacity: 824 lb
+  - Drum Material: Steel
+  - Drum Type: Transport
+  - Interior Lining: Unlined with Rust Inhibitor
+  - UN Rating Liquids: 1A1/X1.8/300
+  - Cover Material: Steel
+  - Top Thickness: 0.05 in
+  - Hazardous Materials Packing Group: I, II, III
+  - Bung Hole Thread Type: NPS
+  - Drum Message Text: None
+  - For Holding: Chemicals, Detergents, Inks, Lubricants and More without Rust Formation
+  - UN Rating Solids: Not Rated
+  - Top Material Gauge: 18 ga
+  - Closing Ring Material: Not Applicable
+  - Bottom Material Gauge: 18 ga
+  - Body Material Gauge: 18 ga
+  - Bottom Thickness: 0.05 in
+  - Number of Bung Holes: 2
+  - Bung Hole Size: 2 in NPS, 3/4 in NPS
+  - Number of Rolling Hoops: 2
+  - Drum Closure: Not Applicable
+  - Features: Steel Plugs
+  - FDA Compliant: Not FDA Compliant
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

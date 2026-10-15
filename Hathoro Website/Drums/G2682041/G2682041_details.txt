@@ -1,0 +1,66 @@
+ZORO PRODUCT DATA PROFILE: G2682041
+Title: Dayton 3/4" NPT Polypropylene Chemical & Acid Hand Drum Pump
+Short Title: Dayton 3/4" Poly Hand Drum Pump
+Brand: Dayton
+MFR #: 5UWH4
+Price: $143.99
+Rating: 3.67 (3 reviews)
+URL: https://www.zoro.com/i/G2682041/
+Specifications:
+  - Item: Hand Pump
+  - Action Type: Piston
+  - For Media Type: General Purpose
+  - For Container Size: 55 gal
+  - Max. Flow Rate: 22 oz per stroke
+  - Max. Viscosity: 1,000 SUS
+  - Wetted Materials: Cork, Nitrile, Polypropylene, PTFE, Stainless Steel, Viton
+  - Includes Suction Tube: Yes
+  - For Use With: Liquids Within a pH Range of 4 to 11. Includes Many Organic Acids, Alcohols and Water Soluble Inorganic Chemicals
+  - Discharge Tube Outlet OD: 3/4 in
+  - Adapter Material: Polypropylene
+  - Adapter Type: 2" Bung
+  - Overall Length: 8-7/8"
+  - Piston Material: PTFE
+  - Manufacturers Warranty Length: 1 yr.
+  - Gasket Material: Cork, Nitrile
+  - Self-Priming: Yes
+  - Suction Tube Length: 40 in
+  - Ounces per Stroke: 22 oz.
+  - pH Range: 4 to 11
+  - Discharge Tubing Material: Polypropylene
+  - Type: Piston Action
+  - Includes: Manual
+  - Inlet Size: 1"
+  - Metered: No
+  - Includes Bung Adapter: Yes
+  - Height Above Container: 18 in
+  - Includes Nozzle: No
+  - Includes Discharge Hose: No
+  - Includes Spout: Yes
+  - Suction Tube OD: 3/4 in
+  - Power Source: Manual
+  - For Container Type: Drum
+  - Housing Material - Pumps: Polypropylene
+  - Max. Fluid Temp.: 130  Degrees F
+  - Overall Height: 59 in
+  - Hose Cover Material: Not Applicable
+  - Hose Inside Diameter: Not Applicable
+  - Hose Outside Diameter: Not Applicable
+  - Suction Tube Material: Polypropylene
+  - Suction Tube Length - Minimum: Not Applicable
+  - Hose Tube Material: Not Applicable
+  - Wetted Material: Cork/Nitrile/Polypropylene/PTFE/Stainless Steel/Viton
+  - Nozzle Material: Not Applicable
+  - Hose Length: Not Applicable
+  - Suction Tube Length - Maximum: 40 in
+  - Maximum Fluid Temperature: 130  Degrees F
+  - Maximum Flow Rate: 22 oz per stroke
+  - Spout Material: Polypropylene
+  - Housing Material: Polypropylene
+  - Meter Type Included: No Meter Included
+  - Nozzle Operation: Not Applicable
+  - Maximum Viscosity: 1,000 SUS
+  - Power Source - TS Only: Manual
+  - Power Source - old: Manual
+  - Country of Origin (subject to change): India
+  - Package Quantity: 1

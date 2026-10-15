@@ -1,0 +1,49 @@
+ZORO PRODUCT DATA PROFILE: G7216015
+Title: BriskHeat 55-Gallon Heavy-Duty Silicone Band Drum Heater (120V, 1200W, 70" x 4")
+Short Title: BriskHeat 55-Gal Band Drum Heater
+Brand: Briskheat
+MFR #: DHLS15
+Price: $158.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G7216015/
+Specifications:
+  - Item: Drum Heater
+  - Watts: 1,200 W
+  - Amps AC: 10 A
+  - Voltage: 120 V
+  - Watt Density: 4 W/sq in
+  - Length: 70 in
+  - Drum Capacity: 55 gal
+  - Drum Dia.: 22 1/3 in
+  - Type: Electric
+  - Width: 4 in
+  - Standards: NEC 427.23
+  - Control Range: 50 Degrees  to 160 Degrees F
+  - Powered By: Electric
+  - Includes: Adjustable Controller, Spring Closure
+  - Height: 4 in
+  - Features: 360 Degrees  Grounded Multi-Stranded Heating Element, Chemical Resistant, Heating Element is Laminated, Moisture Resistant
+  - For Use With: Metal Drum
+  - Operating Voltage: 115V AC
+  - Electrical Connection Type: 5-15P Plug
+  - For Container Type: Drums
+  - Current Rating: 10 A
+  - Operating Temperature - Maximum: 160  Degrees F
+  - Thermostat Safety High-Limit: 160  Degrees F
+  - Drum Diameter - Maximum: 22 1/3 in
+  - Environment: Indoor, Outdoor
+  - Operating Temperature - Minimum: 50  Degrees F
+  - For Container Capacity: 55 gal
+  - For Container Material Type: Metal
+  - Thermostat Temperature -Minimum: 0  Degrees F
+  - Controller Type: Digital
+  - Thermostat Temperature -Maximum: 160  Degrees F
+  - Heater Material: Silicone Rubber
+  - Closure Method: Spring
+  - IP Rating: IP54
+  - Heater Length: 70 in
+  - Heater Width: 4 in
+  - Thermostat Type: Adjustable
+  - Power Cord Length: 6 ft
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

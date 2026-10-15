@@ -1,0 +1,42 @@
+ZORO PRODUCT DATA PROFILE: G621681630
+Title: Action Pump 1" Automatic Shut-Off Fuel Drum Dispensing Nozzle with 6-1/4" Aluminum Spout - Black
+Short Title: Action Pump 1" Auto Fuel Nozzle
+Brand: Action Pump
+MFR #: AutoFuelNozzle1
+Price: $176.99
+Rating: 5.0 (3 reviews)
+URL: https://www.zoro.com/i/G621681630/
+Specifications:
+  - Spout Connection Size: 1 in
+  - Minimum Fluid Temperature: 32  Degrees F
+  - Spout Tip Outside Width: Not Applicable
+  - Number of Latch Positions: 3
+  - Spout Tip Shape: Round
+  - Primary Color: Black
+  - Inlet Type: NPT
+  - Nozzle Extension Type: Not Applicable
+  - Nozzle Material: Aluminum
+  - Operating Temperature - Maximum: 120  Degrees F
+  - Cover Color: Black
+  - Spout Shape: Curved
+  - Spout Connection Type: Hose Barb
+  - Spout Discharge Size: 3/4 in
+  - Includes: Not Applicable
+  - Operating Temperature - Minimum: Not Applicable
+  - Compatible NLGI Viscosity Grade: Not Applicable
+  - Maximum Fluid Temperature: 120  Degrees F
+  - Flow Mechanism: Pressure Activated
+  - Compatible Manufacturer Part Number: Not Applicable
+  - Item: Drum Pump Nozzle
+  - Wetted Material: Aluminum/Nitrile/Steel
+  - Meter Type Included: No Meter Included
+  - Spout Material: Aluminum
+  - Spout Tip Outside Diameter: 1 in
+  - Standards: Not Applicable
+  - Flow Rate - Maximum: 14.5 gpm
+  - Spout Length: 6 1/4 in
+  - Inlet Size: 1 in
+  - Nozzle Operation: Automatic, Manual
+  - Maximum Operating Pressure: 50 psi
+  - Country of Origin (subject to change): India
+  - Package Quantity: 1

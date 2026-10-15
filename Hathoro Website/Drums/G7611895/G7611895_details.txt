@@ -1,0 +1,63 @@
+ZORO PRODUCT DATA PROFILE: G7611895
+Title: Eagle Mfg 57.5-Gallon Polyethylene Open-Head Transport Drum with Lever Lock - Yellow
+Short Title: Eagle 57.5-Gal Poly Drum (Lever Lock)
+Brand: Eagle Mfg
+MFR #: 1656
+Price: $117.99
+Rating: 5.0 (3 reviews)
+URL: https://www.zoro.com/i/G7611895/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Polyethylene
+  - Drum Head Type: Open Head
+  - Drum Volume Capacity: 57.5 gal
+  - Lined/Unlined: Unlined
+  - Drum Color: Yellow
+  - UN Rating Solid: 1H2/X100/S, 1H2/Y100/S
+  - UN Rating Liquid: 1H2/Y100/S, 1H2/X100/S
+  - Material Thickness: 0.18
+  - Overall Height: 36 3/8 in
+  - Inside Dia.: 22.125 in
+  - Standards: DOT 49 CFR 173.12
+  - Load Capacity: 552 lb
+  - For Use With: Bottles, Cans, Small Drums
+  - Outside Dia.: 22 1/2 in
+  - Item: Transport Drum
+  - Packing Group: Hazardous Material
+  - Weight: 23.5 lb
+  - Drum Lid Closure: Lever Lock Ring
+  - Features: Poly Lever Lock Ring
+  - Color: Yellow
+  - Closing Ring Material: Plastic
+  - Top Material Gauge: Not Applicable
+  - Inside Height: 35 3/4 in
+  - Body Color: Yellow
+  - For Drum Capacity: 57.5 gal
+  - Body Material Gauge: Not Applicable
+  - Weight Capacity: 220 lb
+  - Drum Closure: Lever Lock Ring
+  - Drum Message Text: None
+  - Number of Bung Holes: 0
+  - Bottom Material Gauge: Not Applicable
+  - Handle Style: No Handle
+  - Drum Material: HDPE
+  - Interior Lining: Unlined/No Interior Coating
+  - Drum Type: Transport
+  - Resistance Properties: Chemical Resistant, Weather Resistant
+  - Cover Color: White
+  - Cover Material: HDPE
+  - Body Thickness: 4.57 mm
+  - Bottom Inside Diameter: 22 1/8 in
+  - UN Rating Solids: 1H2/X100/S, 1H2/Y100/S
+  - For Holding: Bio Waste Disposal and Incineration, Hazardous Materials, Original Shipping Container, Spill Containment and Cleanup of Hazardous Materials
+  - Empty Container Weight: 23.5 lb
+  - Volume Capacity: 55 gal
+  - Top Outside Diameter: 22 1/2 in
+  - Bung Hole Size: Not Applicable
+  - Bung Hole Thread Type: Not Applicable
+  - Drum Material Grade: Blow Molded HDPE
+  - FDA Compliant: FDA Compliant
+  - Bottom Thickness: Not Applicable
+  - UN Rating Liquids: 1H2/X100/S, 1H2/Y100/S
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

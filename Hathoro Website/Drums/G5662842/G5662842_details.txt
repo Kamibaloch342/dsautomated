@@ -1,0 +1,67 @@
+ZORO PRODUCT DATA PROFILE: G5662842
+Title: Zoro Select 30-Gallon Heavy-Gauge Closed-Head Steel Transport Drum - Black
+Short Title: Zoro Select 30-Gal Steel Drum
+Brand: Zoro Select
+MFR #: CQ3013
+Price: $165.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G5662842/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Steel
+  - Drum Head Type: Closed Head
+  - Drum Volume Capacity: 30 gal
+  - Lined/Unlined: Unlined
+  - Drum Interior Coating: Rust Inhibitor
+  - Drum Color: Black
+  - UN Rating Liquid: 1A1/X1.8/300
+  - Gauge: 16/16/20
+  - Load Capacity: 299 lb
+  - Item: Transport Drum
+  - Weight: 31 lb
+  - Gasket Material: Buna
+  - Packing Group: I, II and III of Hazardous Materials
+  - Bung Hole Dia.: 2 in NPT x 3/4 in Fittings
+  - Standards: DOT 49 CFR 173
+  - Drum Cover Color: White
+  - Material Thickness: 0.9 mm (2) 1.5 mm
+  - Outside Dia.: 18 3/4 in
+  - Overall Height: 29 1/2 in
+  - Drum Lid Color: White
+  - For Use With: Packing Groups I, II and III of Hazardous Materials
+  - Inside Dia.: 18.25 in
+  - Color: Black with White Cover
+  - Body Thickness: 0.9 mm
+  - Top Material Gauge: 16 ga
+  - Seal Material: Nitrile Rubber
+  - Weight Capacity: 299 lb
+  - UN Rating Liquids: 1A1/X1.8/300
+  - Drum Message Text: None
+  - Bottom Thickness: 0.06 in
+  - Closing Ring Material: Not Applicable
+  - Drum Type: Transport
+  - Interior Lining: Unlined with Rust Inhibitor
+  - Bottom Inside Diameter: 18 1/4 in
+  - Top Thickness: 0.04 in
+  - Body Material Gauge: 20 ga
+  - For Holding: Liquids
+  - UN Rating Solids: Not Rated
+  - For Drum Capacity: 30 gal
+  - Cover Material: Carbon Steel
+  - Bung Hole Thread Type: NPT
+  - Bung Hole Size: 2 in NPT, 3/4 in
+  - Number of Bung Holes: 2
+  - Number of Rolling Hoops: 3
+  - Hazardous Materials Packing Group: I, II, III
+  - Drum Material: Steel
+  - Body Color: Black
+  - Handle Style: No Handle
+  - Bottom Material Gauge: 16 ga
+  - Empty Container Weight: 31 lb
+  - Cover Color: White
+  - Volume Capacity: 30 gal
+  - Drum Closure: Not Applicable
+  - Top Outside Diameter: 18 3/4 in
+  - FDA Compliant: Not FDA Compliant
+  - Country of Origin (subject to change): Japan
+  - Package Quantity: 1

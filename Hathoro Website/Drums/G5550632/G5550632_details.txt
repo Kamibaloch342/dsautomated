@@ -1,0 +1,58 @@
+ZORO PRODUCT DATA PROFILE: G5550632
+Title: Zoro Select 55-Gallon High-Density Polyethylene (HDPE) Closed-Head Drum - Blue
+Short Title: Zoro Select 55-Gal HDPE Drum
+Brand: Zoro Select
+MFR #: POLY55TH-BL
+Price: $113.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G5550632/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: HDPE
+  - Drum Head Type: Closed Head
+  - Drum Volume Capacity: 55 gal
+  - Lined/Unlined: Unlined
+  - Drum Color: Blue
+  - UN Rating Liquid: 1H1/Y1.8/100
+  - Overall Height: 34 3/4 in
+  - Packing Group: II and III of Hazardous Materials
+  - Load Capacity: 824 lb
+  - Inside Dia.: 23 in
+  - Outside Dia.: 23 1/4 in
+  - Bung Hole Dia.: 2 in NPT x 3/4 in Fittings
+  - Material Thickness: 0.087 in
+  - For Use With: Packing Groups II and III of hazardous Materials.
+  - Item: Transport Drum
+  - Standards: DOT 49 CFR 173, FDA Approved
+  - Color: Blue
+  - Bung Hole Size: 2 in NPT, 3/4 in
+  - UN Rating Solids: Not Rated
+  - Body Color: Blue
+  - Bottom Inside Diameter: 23 in
+  - Cover Color: Blue
+  - UN Rating Liquids: 1H1/Y1.8/100
+  - Top Material Gauge: Not Applicable
+  - Body Material Gauge: Not Applicable
+  - For Drum Capacity: 55 gal
+  - Drum Closure: Not Applicable
+  - Cover Material: Polyethylene
+  - Number of Bung Holes: 2
+  - Volume Capacity: 55 gal
+  - Closing Ring Material: Not Applicable
+  - Bottom Material Gauge: Not Applicable
+  - Number of Rolling Hoops: 2
+  - Body Thickness: 2.21 mm
+  - For Holding: Liquids
+  - Handle Style: No Handle
+  - Top Outside Diameter: 23 1/4 in
+  - Drum Material: HDPE
+  - Drum Message Text: None
+  - Interior Lining: Unlined/No Interior Coating
+  - Drum Type: Transport
+  - Weight Capacity: 824 lb
+  - Hazardous Materials Packing Group: II, III
+  - Bung Hole Thread Type: NPT
+  - Features: 2" Buttress And 2" NPT Threaded Bungs
+  - FDA Compliant: FDA Compliant
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

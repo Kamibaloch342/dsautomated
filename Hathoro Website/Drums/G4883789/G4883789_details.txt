@@ -1,0 +1,40 @@
+ZORO PRODUCT DATA PROFILE: G4883789
+Title: Tough Guy Heavy-Duty Industrial Purple Cleaner & Degreaser Concentrate - 1 Gallon Jug
+Short Title: Tough Guy Purple Degreaser (1 Gal)
+Brand: Tough Guy
+MFR #: 
+Price: $25.0
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G4883789/
+Specifications:
+  - Item: Butyl Degreaser
+  - Container Type: Jug
+  - Cleaner Form: Liquid
+  - Fragrance: Sassafras
+  - Recommended Dilution: 1:32
+  - Degreaser Solvent Type: Solvent
+  - Ready to Use/Concentrated: Concentrate
+  - Color: Purple
+  - Net Weight: 9.13 lb
+  - RTU Yield per Container: Varies with Usage
+  - Degreaser VOC Range: Less than or equal to 10% / 10 g/L
+  - Flash Point: Greater Than 200  Degrees F
+  - Green Environmental Attribute: Meets SCAQMD Requirements
+  - VOC Content: 3%
+  - Primary Chemical: None
+  - Cleaner Chemical Product Grouping: Degreasers
+  - Includes Chemical: None
+  - Dielectric Strength: Undetermined
+  - Container Size: 1 gal
+  - Nonflammable: Yes
+  - Application: Facility Maintenance
+  - Base Formula: Water-Based
+  - Butyl Free: No
+  - Properties: Biodegradable, Nonflammable, Plastic Safe
+  - NSF Rating: Not Rated
+  - Plastic Safe: Yes
+  - Biodegradable: Yes
+  - Series: Tough Guy(R)
+  - Product Type: Butyl Degreaser
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

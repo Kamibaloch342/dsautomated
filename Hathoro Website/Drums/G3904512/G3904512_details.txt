@@ -1,0 +1,59 @@
+ZORO PRODUCT DATA PROFILE: G3904512
+Title: ENPAC 20-Gallon Polyethylene Open-Head Wheeled Salvage Drum - Yellow
+Short Title: ENPAC 20-Gal Salvage Drum
+Brand: Enpac
+MFR #: 1220-YE
+Price: $122.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G3904512/
+Specifications:
+  - Drum Item: Salvage Drum
+  - Primary Drum Material: Polyethylene
+  - Drum Head Type: Open Head
+  - Drum Volume Capacity: 20 gal
+  - Lined/Unlined: Unlined
+  - Drum Color: Yellow
+  - UN Rating Solid: 1H2/X75/S, 1H2/Y100/S
+  - For Use With: 5 gal Pails, Bottles, Cans
+  - Overall Height: 19 in
+  - Item: Salvage Drum
+  - Load Capacity: 166 lb
+  - Inside Dia.: 21.5 in
+  - Weight: 10 lb
+  - Standards: DOT 49 CFR 173.3(c), EPA, SPCC and NPDES
+  - Drum Lid Closure: Screw On Lid
+  - Includes: Lid
+  - Outside Dia.: 22 1/4 in
+  - Color: Yellow
+  - For Drum Capacity: 5 gal
+  - Drum Type: Salvage
+  - Drum Closure: Screw-On Lid
+  - Weight Capacity: 166 lb
+  - Body Color: Yellow
+  - Closing Ring Material: HDPE
+  - Bung Hole Size: Not Applicable
+  - Drum Material: Polyethylene
+  - Cover Material: HDPE
+  - Volume Capacity: 20 gal
+  - Body Material Gauge: Not Applicable
+  - Number of Bung Holes: 0
+  - Top Outside Diameter: 22 1/4 in
+  - For Holding: Bottles, Cans, Pails, Sludges, Solids
+  - Bottom Material Gauge: Not Applicable
+  - Empty Container Weight: 10 lb
+  - Body Thickness: 6.35 mm
+  - Drum Message Text: Salvage Drum
+  - Storage Features: Nestable
+  - Cover Color: Yellow
+  - Interior Lining: Unlined/No Interior Coating
+  - Bottom Inside Diameter: 18 in
+  - Handle Style: No Handle
+  - UN Rating Liquids: Not Rated
+  - UN Rating Solids: UN 1H2/X75/S
+  - Top Material Gauge: Not Applicable
+  - Bung Hole Thread Type: Not Applicable
+  - Drum Material Grade: Not Applicable
+  - FDA Compliant: Not FDA Compliant
+  - Bottom Thickness: Not Applicable
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

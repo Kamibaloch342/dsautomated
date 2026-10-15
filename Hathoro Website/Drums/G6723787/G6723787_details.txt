@@ -1,0 +1,65 @@
+ZORO PRODUCT DATA PROFILE: G6723787
+Title: Zoro Select 55-Gallon Polyethylene Open-Head Transport Drum with Ring - Blue
+Short Title: Zoro Select 55-Gal Poly Drum
+Brand: Zoro Select
+MFR #: 1656MB
+Price: $145.99
+Rating: 5.0 (2 reviews)
+URL: https://www.zoro.com/i/G6723787/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Polyethylene
+  - Drum Head Type: Open Head
+  - Drum Volume Capacity: 55 gal
+  - Lined/Unlined: Unlined
+  - Drum Color: Blue
+  - UN Rating Solid: 1H2/X200/S, 1H2/Y250/S
+  - UN Rating Liquid: 1H1/Y1.8/100
+  - Material Thickness: 0.125 in
+  - Outside Dia.: 22 1/2 in
+  - Weight: 23.5 lb
+  - Load Capacity: 552 lb
+  - Drum Lid Closure: Lever Lock Ring
+  - Overall Height: 36 3/8 in
+  - Inside Dia.: 22.125 in
+  - Standards: DOT 49 CFR 173.12
+  - Item: Transport Drum
+  - Packing Group: Hazardous Material
+  - Color: Blue
+  - Material: High-Density-Polyethylene
+  - Overall Length: 21 in
+  - Features: Metal Lever Lock Closure
+  - Drum Cover Style: Regular Lid
+  - Body Color: Blue
+  - Interior Lining: Unlined/No Interior Coating
+  - Drum Type: Transport
+  - Volume Capacity: 55 gal
+  - For Holding: Bio Waste Disposal and Incineration, Hazardous Materials, Original Shipping Container, Spill Containment and Cleanup of Hazardous Materials
+  - Bung Hole Size: Not Applicable
+  - Top Outside Diameter: 22 1/2 in
+  - Bottom Material Gauge: Not Applicable
+  - Body Material Gauge: Not Applicable
+  - Resistance Properties: Chemical Resistant, Weather Resistant
+  - Closing Ring Material: Metal
+  - Body Thickness: 4.57 mm
+  - Handle Style: No Handle
+  - UN Rating Solids: 1H2/X200/S, 1H2/Y250/S
+  - Cover Material: HDPE
+  - Weight Capacity: 551 lb
+  - Drum Message Text: None
+  - Drum Material: HDPE
+  - For Drum Capacity: 55 gal
+  - Number of Bung Holes: 0
+  - Empty Container Weight: 23.5 lb
+  - Top Material Gauge: Not Applicable
+  - Cover Color: White
+  - Drum Closure: Lever Lock Ring
+  - Bottom Inside Diameter: 22 1/8 in
+  - Inside Height: 35 3/4 in
+  - FDA Compliant: FDA Compliant
+  - Bung Hole Thread Type: Not Applicable
+  - UN Rating Liquids: 1H2/X200/S, 1H2/Y250/S
+  - Bottom Thickness: Not Applicable
+  - Drum Material Grade: Blow Molded HDPE
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

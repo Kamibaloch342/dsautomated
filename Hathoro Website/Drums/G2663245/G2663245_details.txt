@@ -1,0 +1,68 @@
+ZORO PRODUCT DATA PROFILE: G2663245
+Title: Dayton 1-Inch OD Polypropylene Manual Hand Drum Pump for 15, 30 & 55 Gallon Drums
+Short Title: Dayton 1" Poly Hand Drum Pump
+Brand: Dayton
+MFR #: 3BY41
+Price: $83.99
+Rating: 4.2 (5 reviews)
+URL: https://www.zoro.com/i/G2663245/
+Specifications:
+  - Item: Hand Pump
+  - Action Type: Rotary
+  - For Media Type: Antifreeze, Automatic Transmission Fluid, Bleach, Diesel Fuel, Ethanol, Gasoline, Isopropanol, Kerosene, Water
+  - For Container Size: 15 gal, 30 gal, 55 gal
+  - Max. Flow Rate: 8 gal per 120 strokes
+  - Max. Viscosity: 2,000 SUS
+  - Wetted Materials: 304 Stainless Steel, PVDF
+  - Includes Suction Tube: Yes
+  - For Use With: Alkaline, Detergents, Mild Acids, Water Based Chemicals
+  - Discharge Tube Outlet ID: 1 in
+  - Discharge Tube Outlet OD: 1 in
+  - Adapter Material: Polypropylene
+  - Suction Tube Type: 3-Piece Tube
+  - Type: Rotary Action
+  - Self-Priming: Yes
+  - Inlet Size: 1-5/32" ID, 1-1/4" OD
+  - Discharge Tube Length: 9-1/16"
+  - Ounces per Stroke: 8 GPM @ 135 RPM
+  - Adapter Type: Drum
+  - Features: Light Weight
+  - Overall Length: 52-3/4"
+  - Max. Flow GPM: 8 gpm
+  - Includes: Lip Seal
+  - Adapter Dia.: 2"
+  - Discharge Tubing Material: Polypropylene
+  - Suction Tube Length: 41 in
+  - Metered: No
+  - Motor RPM: 135
+  - Includes Discharge Hose: No
+  - Housing Material - Pumps: Polypropylene
+  - Bung Connection Dia.: 2 in
+  - Compatible Chemicals: Antifreeze (Coolant), Automatic Transmission Fluid, Deionized Water, Diesel Fuel, Ethyl (Ethanol), Fresh Water, Gasoline, Isopropyl  (Isopropanol), Kerosene, Salt Water, Sodium Hypochlorite/Bleach (to 20%)
+  - Includes Bung Adapter: Yes
+  - Not Recommended Chemicals: Methyl Ethyl Ketone
+  - Suction Tube OD: 1 1/4 in
+  - Max. Fluid Temp.: 140  Degrees F
+  - Power Source: Manual
+  - Includes Nozzle: No
+  - For Container Type: Bucket, Drum
+  - Includes Spout: Yes
+  - Gear Lube: NT
+  - Maximum Fluid Temperature: 140  Degrees F
+  - Hose Tube Material: Not Applicable
+  - Maximum Flow Rate: 8.53 oz per stroke
+  - Chemical Compatibility: Antifreeze Coolant, Automatic Transmission Fluid, Bleach, Deionized Water, Diesel Fuel, Ethanol, Fresh Water, Gasoline, Isopropanol, Kerosene, Salt Water
+  - Maximum Viscosity: 2,000 SUS
+  - Adapter Connection Diameter: 2 in
+  - Meter Type Included: No Meter Included
+  - Suction Tube Length - Minimum: Not Applicable
+  - Hose Cover Material: Not Applicable
+  - Hose Outside Diameter: Not Applicable
+  - Suction Tube Length - Maximum: 41 in
+  - Hose Length: Not Applicable
+  - Hose Inside Diameter: Not Applicable
+  - Housing Material: Polypropylene
+  - Power Source - TS Only: Manual
+  - Power Source - old: Manual
+  - Country of Origin (subject to change): Taiwan, Province of China
+  - Package Quantity: 1

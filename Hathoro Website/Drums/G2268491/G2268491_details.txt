@@ -1,0 +1,50 @@
+ZORO PRODUCT DATA PROFILE: G2268491
+Title: Condor 1-Drum Modular Polyethylene Spill Containment Deck (15-Gallon Sump, 2,000 lb Capacity)
+Short Title: Condor 1-Drum Spill Deck (15 Gal)
+Brand: Condor
+MFR #: 1633BC
+Price: $123.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G2268491/
+Specifications:
+  - Item: Spill Deck
+  - Color: Black
+  - Width: 26 1/4 in
+  - Length: 26 1/4 in
+  - Height: 6 1/2 in
+  - Dimensions: 26 1/4 in L x 26 1/4 in W x 6 1/2 in H
+  - For Number of 55 gal. Drums: 1
+  - Load Capacity: 2,000 lb
+  - Material: Polyethylene
+  - Standards: EPA 40 CFR 264.175
+  - Spill Capacity, gal.: 15 gal
+  - Covered/Uncovered: Uncovered
+  - Spill Containment Opening Type: No Cover
+  - Spill Containment Load Capacity: 2,000 lb
+  - Number of Drums: 1
+  - Spill Capacity: 15 gal
+  - Modular: Yes
+  - Opening Type: No Doors
+  - Modular Type: Modular
+  - Product Type: Spill Deck
+  - Includes Drain: No
+  - Composition: Polyethylene
+  - Manufacturer Warranty: 1 yr
+  - Indoor/Outdoor Use: Indoor
+  - Inline: No
+  - Recycled Content (%): No Recycled Content
+  - For Use With Standard Fork: Yes
+  - Forklift Pockets: No Pockets
+  - Supports EPA Compliance: 40 CFR 264.175
+  - For Number of IBC: 0
+  - Low Profile: Yes
+  - Sump Connection Capability: No
+  - Includes Overflow Bladder: No
+  - Pallet Material: Polyethylene
+  - Grate Color: Black
+  - For Use With Ramp Connection Mfr. Model Number: 1689BC
+  - Pallet Color: Black
+  - "Spill Capacity: 15 gal
+  - Recycled Content: Not Applicable
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

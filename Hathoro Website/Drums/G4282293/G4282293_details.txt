@@ -1,0 +1,57 @@
+ZORO PRODUCT DATA PROFILE: G4282293
+Title: Zoro Select 15-Gallon Epoxy-Lined Open-Head Steel Transport Drum - Yellow
+Short Title: Zoro Select 15-Gal Lined Steel Drum
+Brand: Zoro Select
+MFR #: B15BR12   17855W
+Price: $143.09
+Rating: 5.0 (2 reviews)
+URL: https://www.zoro.com/i/G4282293/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Steel
+  - Drum Head Type: Open Head
+  - Drum Volume Capacity: 15 gal
+  - Lined/Unlined: Lined
+  - Drum Interior Coating: Epoxy Phenolic
+  - Drum Color: Yellow
+  - UN Rating Solid: 1A2/X193/S
+  - Gauge: 18
+  - Outside Dia.: 14 in
+  - Item: Transport Drum
+  - Standards: DOT 49 CFR 173.3(c)
+  - Drum Lid Closure: Bolt Ring
+  - Packing Group: I, II and III of Hazardous Materials
+  - Gasket Material: Rubber
+  - Overall Height: 25 in
+  - For Use With: Hazardous Waste
+  - Includes: Hazardous Waste Label, Lid
+  - Color: Yellow
+  - Top Outside Diameter: 14 in
+  - Top Material Gauge: 20 ga
+  - Drum Material: Steel
+  - Seal Material: Rubber
+  - Drum Message Text: Hazardous Waste Salvage Drum
+  - Bottom Material Gauge: 20 ga
+  - Drum Closure: Bolt Ring
+  - Handle Style: No Handle
+  - Body Thickness: 0.9 mm
+  - Bung Hole Size: Not Applicable
+  - Volume Capacity: 15 gal
+  - UN Rating Liquids: Not Rated
+  - Number of Rolling Hoops: 2
+  - Drum Type: Transport
+  - UN Rating Solids: 1A2/X193/S
+  - Cover Color: Red
+  - Body Color: Yellow
+  - Interior Lining: Epoxy Phenolic
+  - Body Material Gauge: 20 ga
+  - Number of Bung Holes: 0
+  - Cover Material: Carbon Steel
+  - For Holding: Solids
+  - For Drum Capacity: 15 gal
+  - Hazardous Materials Packing Group: I, II, III
+  - Closing Ring Material: Steel
+  - Features: Pre-Labeled
+  - FDA Compliant: FDA Compliant
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

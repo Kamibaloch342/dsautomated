@@ -1,0 +1,62 @@
+ZORO PRODUCT DATA PROFILE: G5732167
+Title: Zoro Select 55-Gallon Epoxy-Phenolic Lined Closed-Head Steel Drum - Black
+Short Title: Zoro Select 55-Gal Lined Steel Drum
+Brand: Zoro Select
+MFR #: TH55-3E
+Price: $180.99
+Rating: 5.0 (1 reviews)
+URL: https://www.zoro.com/i/G5732167/
+Specifications:
+  - Drum Item: Transport Drum
+  - Primary Drum Material: Steel
+  - Drum Head Type: Closed Head
+  - Drum Volume Capacity: 55 gal
+  - Lined/Unlined: Lined
+  - Drum Interior Coating: Epoxy Phenolic
+  - Drum Color: Black
+  - UN Rating Liquid: 1A1/X1.8/300
+  - Gauge: 18/18/20
+  - Inside Dia.: 22.5 in
+  - Standards: UN Certified
+  - Packing Group: II and III of Hazardous Materials
+  - Item: Transport Drum
+  - Outside Dia.: 23 in
+  - Bung Hole Dia.: 2 in NPT x 3/4 in Fittings
+  - Overall Height: 34 7/8 in
+  - Includes: EPDM Gasket, Fittings
+  - Color: Black
+  - Bung Hole Size: 2 in NPS, 3/4 in
+  - Handle Style: No Handle
+  - Bottom Inside Diameter: 22 1/2 in
+  - For Holding: Liquids
+  - Hazardous Materials Packing Group: II, III
+  - Number of Rolling Hoops: 2
+  - Drum Message Text: None
+  - Volume Capacity: 55 gal
+  - Top Material Gauge: 18 ga
+  - UN Rating Liquids: 1A1/X1.8/300
+  - For Drum Capacity: 55 gal
+  - Bottom Thickness: 0.05 in
+  - Cover Color: Black
+  - Resistance Properties: Chemical Resistant, Corrosion Resistant
+  - Bottom Material Gauge: 18 ga
+  - Top Outside Diameter: 23 in
+  - Body Color: Black
+  - UN Rating Solids: Not Rated
+  - Body Thickness: 1.1 mm
+  - Number of Bung Holes: 2
+  - Drum Closure: Not Applicable
+  - Bung Hole Thread Type: NPS
+  - Seal Material: Nitrile Rubber
+  - Drum Material: Steel
+  - Drum Type: Transport
+  - Top Thickness: 0.05 in
+  - Interior Lining: Epoxy Phenolic
+  - Closing Ring Material: Not Applicable
+  - Body Material Gauge: 18 ga
+  - Empty Container Weight: 42 lb
+  - Cover Material: Steel
+  - Features: Two Fittings in the Top (2" and 3/4")
+  - FDA Compliant: FDA Compliant
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 1

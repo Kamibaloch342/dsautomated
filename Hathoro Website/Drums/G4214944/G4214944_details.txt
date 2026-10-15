@@ -1,0 +1,21 @@
+ZORO PRODUCT DATA PROFILE: G4214944
+Title: Zoro Select 42-Inch Rigid High-Density Polyethylene Drum Sampler, 250 mL (12-Pack)
+Short Title: Zoro Select 42" Drum Samplers (12-Pk)
+Brand: Zoro Select
+MFR #: 5665S
+Price: $89.72
+Rating: 3.0 (2 reviews)
+URL: https://www.zoro.com/i/G4214944/
+Specifications:
+  - Item: Coliwasa
+  - Type: Sterilized
+  - Capacity: 0.25 L
+  - Material: HDPE
+  - Length: 42 in
+  - Product Type: Coliwasa
+  - Overall Length: 42 in
+  - Disposability: Single-Use
+  - Sterility: Sterile
+  - Wire Rope Length: 42 in
+  - Country of Origin (subject to change): United States
+  - Package Quantity: 12
