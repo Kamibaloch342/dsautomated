@@ -596,23 +596,23 @@ def request_amazon_review(driver, order_id: str) -> str:
         # clicked whichever primary control happened to be there and then reported on it.
         # Clicking an unidentified button on a live Seller Central page is not worth any
         # number of review requests.
+        # The review box holds TWO kat-buttons, Cancel then Yes. Until 15 Oct 2026 this clicked the
+        # box's FIRST button — Cancel — so from mid-September every "request" was cancelled and
+        # recorded "No" (0 sent on Hathoro since 19 Aug, HOANK since 14 Sep). Only a button whose
+        # label is exactly "Yes" / "Request a review" is ever clicked, inside the box first.
         js_click_yes = """
+        function hit(scope) {
+            for (const b of scope.querySelectorAll('kat-button, button')) {
+                const label = (b.getAttribute('label') || b.textContent || '').trim().toLowerCase();
+                if (label !== 'yes' && label !== 'request a review') continue;
+                const inner = b.shadowRoot ? b.shadowRoot.querySelector('button') : null;
+                (inner || b).click();
+                return true;
+            }
+            return false;
+        }
         const box = document.querySelector('.ayb-reviews-button-container');
-        if (box) {
-            const inner = box.querySelector('button');
-            if (inner) { inner.click(); return true; }
-            const kb = box.querySelector('kat-button');
-            const kin = kb && kb.shadowRoot ? kb.shadowRoot.querySelector('button') : null;
-            if (kin) { kin.click(); return true; }
-        }
-        const btns = document.querySelectorAll('kat-button');
-        for (let b of btns) {
-            const label = (b.getAttribute('label') || '').trim().toLowerCase();
-            if (label !== 'yes' && label !== 'request a review') continue;
-            const inner = b.shadowRoot && b.shadowRoot.querySelector('button');
-            if (inner) { inner.click(); return true; }
-        }
-        return false;
+        return (box && hit(box)) || hit(document);
         """
         try:
             WebDriverWait(driver, 10).until(lambda d: d.execute_script(js_click_yes))
