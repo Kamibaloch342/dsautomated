@@ -50,7 +50,8 @@ WHY = {   # Incomplete reasons, in the order the page lists them
 _CODES = (("C-WB", "Zoro order cancelled"), ("OOS", "Out of stock"), ("SR", "State restricted"),
           ("LOW_PROFIT", "Low profit"), ("LOSS", "Low profit"), ("DISCONTINUED", "Discontinued"),
           ("POBOX", "PO box"), ("PO_BOX", "PO box"), ("BB", "PO box (BB)"), ("UNMAPPED", "ASIN not mapped"), ("DUPLICATE", "Duplicate"),
-          ("NET30", "Net-30"), ("UNPLACED", "Unplaced"), ("CANCELLED", "Cancelled"))
+          ("NET30", "Net-30"), ("UNPLACED", "Unplaced"), ("CANCELLED", "Cancelled"),
+          ("DELIVERY TIME HIGH", "Zoro delivery too late for Amazon's date"))
 _WB_RX = re.compile(r"WB\d{6,}")
 _TZ_RX = re.compile(r"\s+(?:PST|PDT|EST|EDT|CST|CDT|MST|MDT|UTC|GMT)\b.*$")
 _TIME_RX = re.compile(r",?\s+(?:at\s+)?\d{1,2}:\d{2}(?::\d{2})?\s*(?:[AaPp][Mm])?$")
