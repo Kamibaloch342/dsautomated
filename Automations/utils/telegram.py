@@ -432,8 +432,11 @@ def notify_order_placed(order_data: dict, driver=None, account: str = ""):
 
 def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
                                cost: float, earnings: float, min_margin: float,
-                               reason: str = "", account: str = ""):
-    """Send immediate notification when an order is skipped/marked Loss-Kamran."""
+                               reason: str = "", account: str = "", margin=None):
+    """Send immediate notification when an order is skipped/marked Loss-Kamran.
+    `margin` is accepted for the placer's call (engine/orders.py passes it) — before 16 Oct 2026
+    the unexpected keyword made every low-profit rejection alert fail silently. The % shown is
+    still computed here from earnings and cost."""
     diff = earnings - cost
     pct = (diff / cost) * 100.0 if cost > 0 else 0.0
     pfx = "+" if diff >= 0 else ""

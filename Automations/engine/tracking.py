@@ -120,6 +120,10 @@ def _alert_tracking_uploaded(driver, store_name, amazon_id, wb_ids, all_tids, up
     try:
         from utils.whatsapp import get_whatsapp_config, DEFAULT_GROUPS, send_whatsapp_message, send_whatsapp_photo
         from utils.tracking_alert import facts, format_alert
+        png, confirmed = _tracking_page_shot(driver, amazon_id, all_tids)
+        if not confirmed:
+            print(f"     ⚠️  Amazon does not show the shipment as confirmed — no tracking alert.")
+            return False
         store = "Hathoro" if "hathoro" in str(store_name).lower() else "HOANK"
         groups = get_whatsapp_config().get("groups") or {}
         to = None
@@ -128,11 +132,7 @@ def _alert_tracking_uploaded(driver, store_name, amazon_id, wb_ids, all_tids, up
             if to:
                 break
         if not to:
-            return
-        png, confirmed = _tracking_page_shot(driver, amazon_id, all_tids)
-        if not confirmed:
-            print(f"     ⚠️  Amazon does not show the shipment as confirmed — no tracking alert.")
-            return
+            return True
         caption = format_alert(amazon_id, list(all_tids or []), message_state,
                                facts(amazon_id, wb_ids), uploaded=list(uploaded_tids or []))
         if png:
@@ -140,8 +140,24 @@ def _alert_tracking_uploaded(driver, store_name, amazon_id, wb_ids, all_tids, up
         else:
             send_whatsapp_message(caption, to=to)
         print(f"     📲  Tracking alert queued ({store}).")
+        return True
     except Exception as e:
         print(f"     ⚠️  tracking alert skipped: {e}")
+        return None
+
+
+def _mark_upload_confirmed(amazon_id):
+    """Flag this order's latest 'success' entry in the upload log as confirmed on the order page,
+    so recent_already_shipped() skips it on later runs (Amazon's report lags the order page)."""
+    try:
+        from utils.jsonstore import mutate_json
+        with mutate_json(TRACKING_UPLOAD_LOG_FILE, [], indent=2) as entries:
+            for e in reversed(entries if isinstance(entries, list) else []):
+                if e.get("amazon_order_id") == amazon_id and e.get("status") == "success":
+                    e["confirmed"] = True
+                    break
+    except Exception as e:
+        print(f"     ⚠️  could not mark the upload as confirmed: {e}")
 
 
 # 26 Sep 2026 — cycle economics. A cycle used to request a fresh 30-day all-orders report
@@ -510,19 +526,37 @@ def run_account_loop(account_config, sleep_seconds):
 
 def load_message_log():
     """Loads the persistent message log from JSON. Returns an empty dict if not found."""
-    if os.path.exists(MESSAGE_LOG_FILE):
-        try:
-            with open(MESSAGE_LOG_FILE, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"⚠️ Could not read message log: {e}")
+    try:
+        from utils.jsonstore import locked, read_json
+        with locked(MESSAGE_LOG_FILE):
+            data = read_json(MESSAGE_LOG_FILE, {})
+        return data if isinstance(data, dict) else {}
+    except Exception as e:
+        print(f"⚠️ Could not read message log: {e}")
     return {}
 
 def save_message_log(log):
-    """Saves the message log dict to JSON."""
+    """Merges this process's message log into the file under the shared lock.
+
+    Both tracker processes (HOANK + Hathoro) keep their own copy loaded at the start of a run and
+    used to write it back WHOLE — the second writer silently erased the first one's new records.
+    112-2828790-9810632 was messaged at 01:08 on 16 Oct 2026, its record was overwritten, and at
+    01:40 the tracker tried to message the buyer again. Now: re-read under the lock, add ours, never
+    let a stale copy undo a 'sent' record, write atomically, and pick up the other process's records."""
     try:
-        with open(MESSAGE_LOG_FILE, "w") as f:
-            json.dump(log, f, indent=2)
+        from utils.jsonstore import locked, read_json, write_json_atomic
+        with locked(MESSAGE_LOG_FILE):
+            cur = read_json(MESSAGE_LOG_FILE, {})
+            if not isinstance(cur, dict):
+                cur = {}
+            for k, v in log.items():
+                old = cur.get(k)
+                if isinstance(old, dict) and old.get("sent") and not (isinstance(v, dict) and v.get("sent")):
+                    continue
+                cur[k] = v
+            write_json_atomic(MESSAGE_LOG_FILE, cur, indent=2)
+        for k, v in cur.items():
+            log.setdefault(k, v)
     except Exception as e:
         print(f"⚠️ Could not save message log: {e}")
 
@@ -772,14 +806,35 @@ def save_tracking_upload_log(entries):
         print(f"⚠️ Could not save tracking upload log: {e}")
 
 
-def _page_shows_already_shipped(driver):
+def _page_shows_already_shipped(driver, wait=0.0):
     """True when the order page shows a CONFIRMED shipment instead of a
     'Confirm shipment' button — tracking was already uploaded (previous run,
     by hand, or a stale report row). Without this check the flow burned the
     20s confirm-button wait + 20s tracking-field wait and logged a FAILED
     with a chromedriver stacktrace on every cycle for such orders.
     A partial shipment still shows a confirm button → returns False → upload
-    proceeds for the remaining units."""
+    proceeds for the remaining units.
+    wait > 0: Seller Central draws the order page after the load event — keep looking for up to
+    `wait` seconds until either the Confirm button or a shipped marker is on screen (a check made
+    too early saw neither, said "not shipped", and an uploaded order was processed again)."""
+    if wait and wait > 0:
+        end = time.time() + wait
+        while True:
+            try:
+                state = driver.execute_script("""
+                    if (document.querySelector('[data-test-id="confirm-shipment-button"]')) return 'open';
+                    const t = (document.body && document.body.innerText) || '';
+                    if (t.indexOf('Edit shipment') !== -1) return 'shipped';
+                    if (t.indexOf('Print packing slip') !== -1 && /Ship date/i.test(t)) return 'shipped';
+                    return '';
+                """)
+            except Exception:
+                state = ""
+            if state:
+                return state == "shipped"
+            if time.time() >= end:
+                return False
+            time.sleep(0.5)
     try:
         return bool(driver.execute_script("""
             if (document.querySelector('[data-test-id="confirm-shipment-button"]'))
@@ -805,7 +860,8 @@ def recent_already_shipped(days=14):
     cutoff = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - days * 86400))
     out = set()
     for e in load_tracking_upload_log():
-        if e.get("status") == "already_shipped" and (e.get("timestamp") or "") >= cutoff:
+        if ((e.get("status") == "already_shipped" or (e.get("status") == "success" and e.get("confirmed")))
+                and (e.get("timestamp") or "") >= cutoff):
             oid = (e.get("amazon_order_id") or "").strip()
             if oid:
                 out.add(oid)
@@ -2265,7 +2321,7 @@ def main_workflow(account_config, passed_driver=None):
                             # buyer got a second tracking notice for an order already confirmed.
                             try:
                                 driver.get(f"https://sellercentral.amazon.com/orders-v3/order/{amazon_id}")
-                                if _page_shows_already_shipped(driver):
+                                if _page_shows_already_shipped(driver, wait=10):
                                     already_shipped_skips += 1
                                     _shipped_recent.add(amazon_id)
                                     print(f"     ⏩  Already shipped on Amazon — no message, no upload.")
@@ -2471,8 +2527,11 @@ def main_workflow(account_config, passed_driver=None):
                                     _mstate = "Messaging off"
                                 else:
                                     _mstate = "No"
-                                _alert_tracking_uploaded(driver, store_name, amazon_id, order_wb_ids, list(_all_tids),
-                                                         list(_all_tids) if _multi_ok else list(_all_tids[:1]), _mstate)
+                                if _alert_tracking_uploaded(driver, store_name, amazon_id, order_wb_ids, list(_all_tids),
+                                                            list(_all_tids) if _multi_ok else list(_all_tids[:1]), _mstate):
+                                    # Amazon shows it shipped: never process it again from a stale report row
+                                    _shipped_recent.add(amazon_id)
+                                    _mark_upload_confirmed(amazon_id)
                             except Exception as e:
                                 failure_count += 1
                                 print(f"     ❌  Upload FAILED: {e}")
