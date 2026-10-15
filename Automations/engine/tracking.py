@@ -62,6 +62,31 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 MASTER_CREDENTIALS_FILE = os.path.join(TOKEN_DIRECTORY, "AB ECOM Credentials.json")
 MESSAGE_LOG_FILE = os.path.join(os.path.dirname(script_directory), "data", "message_log.json")
 TRACKING_UPLOAD_LOG_FILE = os.path.join(os.path.dirname(script_directory), "data", "tracking_upload_log.json")
+# What the last buyer message attempt ran into — "No Permission" when Amazon will not let us write to
+# this buyer (opted out / access denied). Read by the tracking-upload alert (owner, 15 Oct 2026).
+LAST_MESSAGE_STATE = {"value": ""}
+
+
+def _alert_tracking_uploaded(store_name, amazon_id, wb_ids, tracking_ids, message_state):
+    """One WhatsApp line per order whose tracking was ACTUALLY uploaded (never for a failed or
+    skipped upload — a cancelled order that keeps failing at Confirm Shipment sends nothing). Goes to
+    the store's '<store>_messages' group; the gateway paces every alert (~20 s apart)."""
+    try:
+        from utils.whatsapp import get_whatsapp_config, DEFAULT_GROUPS, send_whatsapp_message
+        store = "Hathoro" if "hathoro" in str(store_name).lower() else "HOANK"
+        key = f"{store.lower()}_messages"
+        to = (get_whatsapp_config().get("groups") or {}).get(key) or DEFAULT_GROUPS.get(key)
+        if not to:
+            return
+        wbs = ", ".join(wb_ids if isinstance(wb_ids, list) else [str(wb_ids or "")]) or "—"
+        tids = ", ".join(tracking_ids or []) or "—"
+        send_whatsapp_message(f"📦 *{store} — Tracking uploaded*\n"
+                              f"Order: {amazon_id}\n"
+                              f"WB: {wbs}\n"
+                              f"Tracking: {tids}\n"
+                              f"Tracking message sent: {message_state}", to=to)
+    except Exception as e:
+        print(f"     ⚠️  tracking alert skipped: {e}")
 # 26 Sep 2026 — cycle economics. A cycle used to request a fresh 30-day all-orders report
 # every ~10 min and re-sweep the same ~131 unshipped WBs across 8 inboxes for ~4 uploads.
 _REPORT_MAX_AGE_MIN = int(os.environ.get("TRACKING_REPORT_MAX_AGE_MIN", "30") or 0)   # reuse a report younger than this
@@ -848,6 +873,7 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
     # Check for access issues
     if "home" in driver.current_url.lower() or "not authorized" in driver.page_source.lower():
         print(f"     ⚠️  Order {order_id}: Page not accessible (access denied or not found).")
+        LAST_MESSAGE_STATE["value"] = "No Permission"
         return False
 
     # --- STEP 1: Click radio button (try each value in priority order) ---
@@ -1004,6 +1030,7 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
         err_str = str(e).lower()
         if "not interactable" in err_str or "not reachable" in err_str:
             print(f"     ⚠️  Order {order_id}: Textarea not interactable (No Permission): {e}")
+            LAST_MESSAGE_STATE["value"] = "No Permission"
         else:
             print(f"     ❌  Typing error for {order_id}: {e}")
         return False
@@ -2172,6 +2199,7 @@ def main_workflow(account_config, passed_driver=None):
                             # Track message outcome for the audit log
                             _msg_sent = False
                             _msg_type = None
+                            LAST_MESSAGE_STATE["value"] = ""
                             _need_seller_note = False
 
                             # Is it already shipped? Ask the order page BEFORE spending ~20 s on a
@@ -2376,6 +2404,18 @@ def main_workflow(account_config, passed_driver=None):
                                 _record_upload_db(amazon_id, order_wb_ids,
                                                   list(_all_tids) if _multi_ok else list(_all_tids[:1]),
                                                   "success", note="multi-package" if _multi_ok else "")
+                                if _msg_sent:
+                                    _mstate = "Yes" + (" (cancellation reply)" if _msg_type == "cancellation_denial" else "")
+                                elif LAST_MESSAGE_STATE["value"] == "No Permission":
+                                    _mstate = "No Permission"
+                                elif (message_log.get(amazon_id) or {}).get("sent"):
+                                    _mstate = "Already sent earlier"
+                                elif not should_send_messages:
+                                    _mstate = "Messaging off"
+                                else:
+                                    _mstate = "No"
+                                _alert_tracking_uploaded(store_name, amazon_id, order_wb_ids,
+                                                         list(_all_tids) if _multi_ok else list(_all_tids[:1]), _mstate)
                             except Exception as e:
                                 failure_count += 1
                                 print(f"     ❌  Upload FAILED: {e}")

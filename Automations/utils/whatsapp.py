@@ -121,6 +121,17 @@ def get_gateway_status() -> dict:
     return {"connected": False, "phone": None, "has_qr": False}
 
 
+def _alert_priority(target: str) -> int:
+    """1 for the stores' order-alert groups (they jump the gateway's queue), 5 for the rest."""
+    try:
+        groups = get_whatsapp_config().get("groups") or DEFAULT_GROUPS
+        orders = {groups.get("hoank_orders"), groups.get("hathoro_orders"),
+                  DEFAULT_GROUPS.get("hoank_orders"), DEFAULT_GROUPS.get("hathoro_orders")}
+        return 1 if target in orders else 5
+    except Exception:
+        return 5
+
+
 def _do_send_message(text: str, to: str = None) -> bool:
     """Worker function to send text message via local gateway."""
     if not is_whatsapp_enabled():
@@ -132,6 +143,7 @@ def _do_send_message(text: str, to: str = None) -> bool:
     payload = {
         "to": target,
         "text": text,
+        "priority": _alert_priority(target),   # the gateway paces everything (one per ~20 s)
     }
     try:
         resp = requests.post(f"{base_url}/send", json=payload, timeout=15)
@@ -173,6 +185,7 @@ def _do_send_photo(photo_bytes: bytes, caption: str = "", to: str = None) -> boo
             "to": target,
             "image_base64": b64_str,
             "caption": caption,
+            "priority": _alert_priority(target),
         }
         try:
             resp = requests.post(f"{base_url}/send", json=payload, timeout=25)

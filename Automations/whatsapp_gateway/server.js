@@ -271,38 +271,107 @@ app.get('/groups', async (req, res) => {
 });
 
 // Send Message / Photo API
+// ── One paced queue for every alert (owner, 15 Oct 2026) ─────────────────────────────────────
+// Placers, the tracker and closing/messaging are separate processes, and they all POST here.
+// Sending each the moment it arrives produced bursts that look automated in groups the owner's
+// boss reads. So /send only QUEUES; one message leaves every ALERT_GAP_S seconds (± jitter) across
+// ALL groups and both stores — a Hathoro alert and a HOANK alert never go out together.
+//   priority  1 = order alerts (placers), 5 = everything else — order alerts are never stuck
+//             behind a backlog of review-request lines
+//   dedupe    the same text to the same group within DEDUPE_HOURS is dropped (retry loops)
+//   persist   queue.json survives a gateway restart
+const ALERT_GAP_S = Number(process.env.ALERT_GAP_S || 20);
+const ALERT_JITTER_S = Number(process.env.ALERT_JITTER_S || 4);
+const DEDUPE_HOURS = Number(process.env.ALERT_DEDUPE_HOURS || 6);
+const QUEUE_FILE = path.join(__dirname, 'queue.json');
+const crypto = require('crypto');
+
+let queue = [];            // [{id, to, text, caption, image_base64, priority, at}]
+let sentKeys = {};         // dedupe key -> epoch ms
+let nextSendAt = 0;
+let sending = false;
+let stats = { sent: 0, failed: 0, deduped: 0 };
+
+try {
+    const saved = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
+    queue = saved.queue || [];
+    sentKeys = saved.sentKeys || {};
+} catch (e) { /* first run */ }
+
+function persist() {
+    try {
+        fs.writeFileSync(QUEUE_FILE + '.tmp', JSON.stringify({ queue, sentKeys }));
+        fs.renameSync(QUEUE_FILE + '.tmp', QUEUE_FILE);
+    } catch (e) { console.error('  [Queue] ⚠️ could not save queue:', e.message); }
+}
+
+function dedupeKey(to, text, caption) {
+    return crypto.createHash('sha1').update(`${to}\u0000${text || ''}\u0000${caption || ''}`).digest('hex');
+}
+
+function gapMs() {
+    return Math.max(5, ALERT_GAP_S + (Math.random() * 2 - 1) * ALERT_JITTER_S) * 1000;
+}
+
+async function drain() {
+    if (sending || !queue.length || !isConnected || !sock || Date.now() < nextSendAt) return;
+    sending = true;
+    queue.sort((x, y) => (x.priority - y.priority) || (x.at - y.at));
+    const m = queue[0];
+    try {
+        if (m.image_base64) {
+            await sock.sendMessage(m.to, { image: Buffer.from(m.image_base64, 'base64'), caption: m.caption || m.text || '' });
+        } else {
+            await sock.sendMessage(m.to, { text: m.text });
+        }
+        stats.sent += 1;
+        sentKeys[dedupeKey(m.to, m.text, m.caption)] = Date.now();
+        queue.shift();
+    } catch (err) {
+        stats.failed += 1;
+        m.tries = (m.tries || 0) + 1;
+        console.error('  [Queue] ⚠️ send failed (try ' + m.tries + '):', err.message);
+        if (m.tries >= 5) queue.shift();     // give up on a message WhatsApp keeps refusing
+    }
+    const cutoff = Date.now() - DEDUPE_HOURS * 3600 * 1000;
+    for (const k of Object.keys(sentKeys)) if (sentKeys[k] < cutoff) delete sentKeys[k];
+    nextSendAt = Date.now() + gapMs();
+    persist();
+    sending = false;
+}
+setInterval(drain, 1000);
+
 app.post('/send', async (req, res) => {
     try {
-        if (!isConnected || !sock) {
-            return res.status(503).json({ error: 'WhatsApp Gateway is not connected' });
-        }
-
         const { to, text, image_base64, caption } = req.body;
+        const priority = Number(req.body.priority || 5);
         const targetJid = formatJid(to);
-
         if (!targetJid) {
             return res.status(400).json({ error: 'Recipient JID or phone number is required when not connected to self' });
         }
-
-        if (image_base64) {
-            const buffer = Buffer.from(image_base64, 'base64');
-            const result = await sock.sendMessage(targetJid, {
-                image: buffer,
-                caption: caption || text || '',
-            });
-            return res.json({ success: true, messageId: result.key.id });
-        } else if (text) {
-            const result = await sock.sendMessage(targetJid, {
-                text: text,
-            });
-            return res.json({ success: true, messageId: result.key.id });
-        } else {
+        if (!image_base64 && !text) {
             return res.status(400).json({ error: 'Either image_base64 or text is required' });
         }
+        const key = dedupeKey(targetJid, text, caption);
+        const recent = sentKeys[key] && sentKeys[key] > Date.now() - DEDUPE_HOURS * 3600 * 1000;
+        if (recent || queue.some(q => dedupeKey(q.to, q.text, q.caption) === key)) {
+            stats.deduped += 1;
+            return res.json({ success: true, queued: false, deduped: true });
+        }
+        queue.push({ id: crypto.randomUUID(), to: targetJid, text: text || '', caption: caption || '',
+                     image_base64: image_base64 || null, priority, at: Date.now() });
+        persist();
+        return res.json({ success: true, queued: true, position: queue.length });
     } catch (err) {
-        console.error('  [WhatsApp] ⚠️ Send error:', err);
+        console.error('  [WhatsApp] ⚠️ Queue error:', err);
         return res.status(500).json({ error: err.message });
     }
+});
+
+app.get('/queue', (req, res) => {
+    const waitS = Math.max(0, Math.round((nextSendAt - Date.now()) / 1000));
+    res.json({ waiting: queue.length, order_alerts_waiting: queue.filter(q => q.priority <= 1).length,
+               next_send_in_s: waitS, gap_s: ALERT_GAP_S, jitter_s: ALERT_JITTER_S, connected: isConnected, ...stats });
 });
 
 app.listen(PORT, '127.0.0.1', () => {
