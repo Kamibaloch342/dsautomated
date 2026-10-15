@@ -38,10 +38,11 @@ Flat Corrugated Cardboard Shipping Boxes 20"
 *SKU*: Hath_G1606970 | *ASIN*: B0GD8Y19SD
 *Zoro Code:* K1606970 (Qty: 1)
 
-*Zoro_Cost*: $29.30 (Tax $0.00) | *Amz_Earnings:* $44.62 (Shipping: $13.00)
-Profit: $15.32 (52.3%) | Coupon: None
+*Zoro_Cost*: $29.30 (Tax $0.00) |
+*Amz_Earnings:* $44.62 (*Shipping*: $13.00)
+*Profit:* $15.32 (52.3%) | Coupon: None
 
-*Amazon:* [Ship by Oct 15 | Deliver by Oct 17 ] {*Second Day*} |
+*Amazon:* [Ship by Oct 15 | Deliver by Oct 17 ] {*Second Day*}
 *Zoro_Delivery*: Oct 19"""
 
 print("\nWhatsApp")
@@ -58,11 +59,11 @@ check("same layout, no asterisks, fast service in capitals",
 
 print("\nvariants")
 std = order_card(dict(ORDER, ship_service="Standard", shipping_amt=None, coupon_code="EMZMPWFDFWLT", coupon_off=17.0), markup="wa")
-check("Standard service is not bold", "{Standard} |" in std and "{*Standard*}" not in std, std)
+check("Standard service is not bold", "{Standard}" in std and "{*Standard*}" not in std, std)
 check("no customer shipping → no '(Shipping: …)'", "(Shipping:" not in std, std)
 check("coupon shows code and saving", "Coupon: EMZMPWFDFWLT (-$17.00)" in std, std)
 miss = order_card(dict(ORDER, ship_by_date="", deliver_by_date="", ship_service="", zoro_deliver_by=""), markup="wa")
-check("missing dates keep the layout ('—')", "*Amazon:* [Ship by — | Deliver by — ] {—} |\n*Zoro_Delivery*: —" in miss, miss)
+check("missing dates keep the layout ('—')", "*Amazon:* [Ship by — | Deliver by — ] {—}\n*Zoro_Delivery*: —" in miss, miss)
 alt = order_card(dict(ORDER, alt_used=True), markup="wa")
 check("ALT order marks the code", "K1606970 - ALT (Qty: 1)" in alt, alt)
 
@@ -74,7 +75,7 @@ check("same lines, plain text, no order-id line",
       and "SKU: Hath_G1606970" in note and "Zoro Code: K1606970 (Qty: 1)" in note
       and "Zoro_Cost: $29.30 | Amz_Earnings: $44.62 (Shipping: $13.00)" in note
       and "Profit: $15.32 (52.3%) | Coupon: None" in note
-      and "Amazon: [Ship by Oct 15 | Deliver by Oct 17 ] {Second Day} |" in note
+      and "Amazon: [Ship by Oct 15 | Deliver by Oct 17 ] {Second Day}" in note
       and note.endswith("Zoro_Delivery: Oct 19"), note)
 long = format_seller_note(dict(ORDER, coupon_code="EMZMPWFDFWLT", coupon_off=17.0, sku="Imran-G8179537-LONG-SKU-NAME"))
 check("a longer note still fits, every data line kept", len(long) <= 256 and long.endswith("Zoro_Delivery: Oct 19")

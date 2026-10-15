@@ -202,10 +202,11 @@ def order_card(data: dict, markup: str = "plain", note: bool = False) -> str:
         *SKU*: Hath_G1606970 | *ASIN*: B0GD8Y19SD
         *Zoro Code:* K1606970 (Qty: 1)
 
-        *Zoro_Cost*: $29.30 (Tax $0.00) | *Amz_Earnings:* $44.62 (Shipping: $13.00)
-        Profit: $15.32 (52.3%) | Coupon: None
+        *Zoro_Cost*: $29.30 (Tax $0.00) |
+        *Amz_Earnings:* $44.62 (*Shipping*: $13.00)
+        *Profit:* $15.32 (52.3%) | Coupon: None
 
-        *Amazon:* [Ship by Oct 15 | Deliver by Oct 17 ] {*Second Day*} |
+        *Amazon:* [Ship by Oct 15 | Deliver by Oct 17 ] {*Second Day*}
         *Zoro_Delivery*: Oct 19
 
     markup='wa' → WhatsApp bold (*…*); 'plain' → no asterisks (Telegram's copy block). note=True →
@@ -277,11 +278,11 @@ def order_card(data: dict, markup: str = "plain", note: bool = False) -> str:
         f"{B('SKU')}: {sku or 'N/A'} | {B('ASIN')}: {asin}",
         f"{B('Zoro Code:')} {code} (Qty: {qty})",
         "",
-        f"{B('Zoro_Cost')}: {_money(tc)} (Tax {tax_str}) | {B('Amz_Earnings:')} {_money(earn)}"
-        + (f" (Shipping: ${ship_amt:.2f})" if ship_amt > 0 else ""),
-        f"Profit: {_money(pm)} ({pp_str}) | Coupon: {coupon}",
+        f"{B('Zoro_Cost')}: {_money(tc)} (Tax {tax_str}) |",
+        f"{B('Amz_Earnings:')} {_money(earn)}" + (f" ({B('Shipping')}: ${ship_amt:.2f})" if ship_amt > 0 else ""),
+        f"{B('Profit:')} {_money(pm)} ({pp_str}) | Coupon: {coupon}",
         "",
-        f"{B('Amazon:')} [Ship by {sb} | Deliver by {dl} ] {{{svc}}} |",
+        f"{B('Amazon:')} [Ship by {sb} | Deliver by {dl} ] {{{svc}}}",
         f"{B('Zoro_Delivery')}: {zd}",
     ]
     if not note:
@@ -292,6 +293,7 @@ def order_card(data: dict, markup: str = "plain", note: bool = False) -> str:
     # first, the dates line last: zero tax, the ASIN (also on the page), Zoro's date onto the
     # Amazon line, "Shipping:" → "Ship".
     lines = [x for x in body if x]
+    lines = [lines[0], lines[1], lines[2] + " " + lines[3]] + lines[4:]      # cost | earnings on one line
     steps = [
         lambda L: [x.replace(" (Tax $0.00)", "") for x in L],
         lambda L: [x.split(" | ASIN:")[0] if x.startswith("SKU:") else x for x in L],
