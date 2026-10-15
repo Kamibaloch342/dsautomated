@@ -1737,7 +1737,7 @@ def _checkout_page_delivery_status(driver, address):
         while time.time() < deadline:
             if driver.execute_script(
                     "return !!document.querySelector('[data-za=\"checkout-place-order-button\"]') "
-                    "&& /Delivery\\s+expected\\s+by/i.test(document.body.innerText || '');"):
+                    "&& /Delivery\\s+expected/i.test(document.body.innerText || '');"):
                 break
             time.sleep(0.5)
         had = (address or {}).get("_zoro_deliver_by") or ""

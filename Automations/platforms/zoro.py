@@ -212,6 +212,12 @@ _DELIV_RE3 = re.compile(r"Delivery (?:on or before|by) (?:tomorrow,?\s*)?"
                         r"(?:(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day,?\s+)?([A-Z][a-z]{2,9}\.?\s+\d{1,2})")
 
 
+# Oct 2026 wording on reseller/HS accounts: "Delivery expected tomorrow, October 16" / "Delivery
+# today, October 15" — none of the patterns above matched it, so those pages read as dateless.
+_DELIV_RE4 = re.compile(r"Delivery\s+(?:expected\s+)?(?:on or before\s+|by\s+|on\s+)?(?:today,?\s*|tomorrow,?\s*)?"
+                        r"(?:(?:Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day,?\s+)?([A-Z][a-z]{2,9}\.?\s+\d{1,2})\b")
+
+
 def _parse_deliv(s):
     import datetime
     today = datetime.date.today()
@@ -245,7 +251,8 @@ def get_zoro_delivery_date(driver, sku):
         deadline = time.time() + 15
         while True:
             html = driver.page_source or ""
-            m = _DELIV_RE1.search(html) or _DELIV_RE2.search(html) or _DELIV_RE3.search(html)
+            m = (_DELIV_RE1.search(html) or _DELIV_RE2.search(html) or _DELIV_RE3.search(html)
+                 or _DELIV_RE4.search(html))
             if m or time.time() >= deadline:
                 break
             time.sleep(1)
