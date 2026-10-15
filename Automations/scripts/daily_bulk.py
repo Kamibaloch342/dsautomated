@@ -295,6 +295,13 @@ def main():
         run(f"Reconcile {a} (final recompute)", [PY, "scripts/reconcile_and_reenrich.py", a, "--go"],
             timeout=1800)
 
+    # 6b) Exact Zoro ship times + speeds from the shipping e-mails (15 Oct 2026): closing keeps the
+    #     tracker's date-only ship value ('Tue, Sep 1') and never upgrades it, which left ~10 % of
+    #     shipped orders without zoro_ship_speed. Fills only empty / date-only values.
+    run("Ship times + speeds from Zoro e-mails", [PY, "scripts/backfill_ship_times.py", "--apply",
+                                                  "--since", (datetime.date.today() - datetime.timedelta(days=45)).isoformat()],
+        timeout=900, critical=False)
+
     # 7) MESSAGING — the decoupled pass: delivery check-ins + review requests for every
     #    order the DB now shows delivered (incl. ones fedex_recheck just flipped, which
     #    the in-pipeline messaging could never see). Best-effort: no logged-in Chrome →
