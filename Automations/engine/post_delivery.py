@@ -1173,7 +1173,8 @@ def process_single_order(
         order["delivered_msg_sent"] = "No"
 
     # ── Review request ──
-    if can_review and review_sent not in ("Yes", "Already Requested", "Expired") and days_since >= DAYS_AFTER_DELIVERY_TO_REVIEW:
+    if can_review and review_sent not in ("Yes", "Already Requested", "Expired") \
+            and DAYS_AFTER_DELIVERY_TO_REVIEW <= days_since <= REVIEW_MAX_DAYS:      # Amazon: 5-30 days
         if dry_run:
             logger.info("  [DRY] [%s] %s — would request review", store_name, oid)
         else:

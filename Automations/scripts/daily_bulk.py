@@ -302,16 +302,21 @@ def main():
     if SKIP_MESSAGES:
         print("\n(SKIP_MESSAGES=1 → skipping delivery messages/review requests; they stay pending)")
     else:
-        # MSG_LIMIT caps sends per account per run (default 1000, set by the owner on
-        # 29 Sep 2026): enough to clear a day's delivered volume and a backlog behind it in
-        # one pass, while still bounding a single run — Amazon reads an unbounded burst of
-        # buyer messages as spam. Raise/lower via env, or the launcher's box; 0 = unlimited.
-        for a in ACCTS:
-            run(f"Messages {a} (delivery check-ins + review requests)",
-                [PY, "scripts/send_delivery_messages.py"],
-                env={"MSG_ACCOUNT": a, "MSG_DRY": os.environ.get("MSG_DRY", ""),
-                     "MSG_LIMIT": os.environ.get("MSG_LIMIT", "1000")},
-                timeout=int(os.environ.get("MSG_TIMEOUT", "10800")), critical=False)
+        # No cap and oldest first (owner, 15 Oct 2026): MSG_LIMIT defaults to 0 = unlimited (it was
+        # 1000). The two stores run AT THE SAME TIME — each has its own Seller Central Chrome — so
+        # HOANK's backlog no longer keeps Hathoro waiting, and the ceiling is 20 h instead of 3 h
+        # (the 3 h cut-off ended almost every run since 1 Oct). MSG_TIMEOUT still overrides.
+        import threading
+        _msg_threads = [threading.Thread(target=run, daemon=True, kwargs=dict(
+            label=f"Messages {a} (delivery check-ins + review requests)",
+            cmd=[PY, "scripts/send_delivery_messages.py"],
+            env={"MSG_ACCOUNT": a, "MSG_DRY": os.environ.get("MSG_DRY", ""),
+                 "MSG_LIMIT": os.environ.get("MSG_LIMIT", "0")},
+            timeout=int(os.environ.get("MSG_TIMEOUT", "72000")), critical=False)) for a in ACCTS]
+        for t in _msg_threads:
+            t.start()
+        for t in _msg_threads:
+            t.join()
 
     # 8) coverage report (Shipped) — counts per column + a missing-ids file per account
     print(f"\n{'='*72}\n📊  COVERAGE (Shipped) after bulk — should be ~0 except deliver_by if SC skipped\n{'='*72}")

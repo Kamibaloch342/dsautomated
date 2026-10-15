@@ -21,9 +21,8 @@ pending for the next run) and NEVER launches a blank not-logged-in Chrome.
 Usage:
   MSG_ACCOUNT=HOANK ../.venv/bin/python scripts/send_delivery_messages.py
 Env: MSG_ACCOUNT (HOANK) | MSG_DRY=1 (preview only)
-     MSG_LIMIT (default 1000 per run — the owner's setting, 29 Sep 2026; a backlog
-     drains gradually instead of blasting thousands of buyer messages at once —
-     Amazon reads that as spam; 0 = unlimited, use deliberately)
+     MSG_LIMIT (default 0 = no cap — owner, 15 Oct 2026; was 1000 from 29 Sep, but with
+     review requests silently cancelled the backlog only grew)
      MSG_MAX_DAYS (30 — don't message deliveries older than this; Amazon's
      review-request window is ~30 days and a check-in that late reads as spam)
 """
@@ -48,7 +47,7 @@ from engine.amazon_scraper import _connect_chrome
 
 ACCOUNT  = os.environ.get("MSG_ACCOUNT", "HOANK").strip()
 DRY      = os.environ.get("MSG_DRY", "").strip().lower() in ("1", "true", "yes")
-LIMIT    = int(os.environ.get("MSG_LIMIT", "1000") or 0)  # 0 = unlimited (deliberate only)
+LIMIT    = int(os.environ.get("MSG_LIMIT", "0") or 0)     # 0 = no cap (owner, 15 Oct 2026)
 MAX_DAYS = int(os.environ.get("MSG_MAX_DAYS") or REVIEW_MAX_DAYS)
 DELAY_LIMIT = int(os.environ.get("MSG_DELAY_LIMIT", "100") or 0)   # delay notices per run
 DB       = os.path.join(_AUTO, "data", "automations_unified.db")
@@ -138,15 +137,9 @@ def load_pending():
     # window go before they are lost). A run that ends on MSG_LIMIT or its timeout used to spend
     # everything on one kind: the 27 Sep chain sent 440 check-ins and not one review request
     # while ~12,000 reviews were due. An order owed both is in the check-in queue (one visit).
-    checkins = sorted((o for o in pending if o["_msg_due"]), key=lambda o: o["_days"])
-    reviews = sorted((o for o in pending if not o["_msg_due"]), key=lambda o: -o["_days"])
-    mixed = []
-    for i in range(max(len(checkins), len(reviews))):
-        if i < len(reviews):
-            mixed.append(reviews[i])
-        if i < len(checkins):
-            mixed.append(checkins[i])
-    return mixed
+    # Oldest delivery first (owner, 15 Oct 2026): an order nearest the end of Amazon's 30-day
+    # review window goes before it is lost; an order owed both is one visit.
+    return sorted(pending, key=lambda o: -o["_days"])
 
 
 def load_delayed():
@@ -187,6 +180,39 @@ def load_delayed():
     finally:
         conn.close()
     return [dict(r) for r in rows]
+
+
+def _alert_sent(account, before, res):
+    """One WhatsApp line per order where a check-in or a review request ACTUALLY went through on
+    this visit (owner, 15 Oct 2026). Errors, 'No Permission', 'Already Requested' and 'Expired'
+    are never posted. Only accounts with a '<store>_messages' group get the feed."""
+    new_msg = res.get("delivered_msg_sent") == "Yes" and before.get("delivered_msg_sent") != "Yes"
+    new_rev = res.get("review_requested") == "Yes" and before.get("review_requested") != "Yes"
+    if not (new_msg or new_rev) or DRY:
+        return
+    try:
+        from utils.whatsapp import get_whatsapp_config, DEFAULT_GROUPS, send_whatsapp_message
+        key = f"{str(account).strip().lower()}_messages"
+        to = (get_whatsapp_config().get("groups") or {}).get(key) or DEFAULT_GROUPS.get(key)
+        if not to:
+            return
+        o = dict(before, **{k: v for k, v in res.items() if v not in (None, "")})
+        d = lambda k: str(o.get(k) or "").split("|")[0].strip() or "—"
+        yn = lambda v: "Yes" if str(v or "").strip().lower() == "yes" else "No"
+        what = " + ".join(x for x, f in (("Delivery message", new_msg), ("Review request", new_rev)) if f)
+        text = (f"✅ *{account} — {what} sent*\n"
+                f"Order: {d('amazon_order_id')}\n"
+                f"ASIN: {d('asin')} | SKU: {d('sku')} | Qty: {d('quantity')}\n"
+                f"Purchase date: {d('purchase_date')}\n"
+                f"Deliver by: {d('deliver_by_date')}\n"
+                f"Delivered: {d('delivery_date')}\n"
+                f"Return requested: {yn(o.get('return_requested'))}\n"
+                f"Refund issued: {yn(o.get('refund_done'))}\n"
+                f"Delivery message sent: {yn(o.get('delivered_msg_sent'))}\n"
+                f"Review request: {yn(o.get('review_requested'))}")
+        send_whatsapp_message(text, to=to)
+    except Exception as e:
+        print(f"[MSG]   WhatsApp alert skipped: {e}")
 
 
 def _turn(sc_port, driver):
@@ -302,9 +328,11 @@ def _run(pd_cfg, sc_port):
                       "the rest stay pending.")
                 break
         try:
+            before = dict(o)
             with _turn(sc_port, driver):
                 res = process_single_order(driver, o, pd_cfg, gmail_services,
                                            closing_table=True, dry_run=DRY, guards=guards)
+            _alert_sent(ACCOUNT, before, res)
             if res.get("delivered_msg_sent") == "Yes":
                 sent += 1
             elif res.get("customer_messaged") == "Yes" or res.get("return_requested") == "Yes" \

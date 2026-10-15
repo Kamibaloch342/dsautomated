@@ -27,6 +27,8 @@ DEFAULT_GROUPS = {
     "hoank_insights": "120363429340767368@g.us",
     "hathoro_orders": "120363412233188303@g.us",
     "hathoro_insights": "120363413450875187@g.us",
+    # one line per buyer message / review request that actually went through (15 Oct 2026)
+    "hathoro_messages": "120363430751417464@g.us",   # "Hathoro Delivery Messages + Review Requests"
 }
 
 
