@@ -192,7 +192,7 @@ def _money(v):
 
 def order_card(data: dict, markup: str = "plain", note: bool = False) -> str:
     """THE order layout — locked by the owner on 15 Oct 2026 for every order alert (WhatsApp,
-    Telegram) and the Amazon seller note. scripts/test_alert_format.py holds the owner's exact
+    Telegram). The Amazon seller note keeps its OLD format (utils/seller_notes.py) — owner. scripts/test_alert_format.py holds the owner's exact
     sample; change the layout only together with that test.
 
         *🟢 PROFIT ORDER (+52.3%)*                     ← header, added by the alert senders
@@ -272,7 +272,9 @@ def order_card(data: dict, markup: str = "plain", note: bool = False) -> str:
     if wb_id and not wb_id.upper().startswith("WB"):
         wb_id = f"WB{wb_id}"
     head = (f"{amazon_id} {{ {wb_id} }}" if amazon_id and wb_id else amazon_id or (f"{{ {wb_id} }}" if wb_id else ""))
-    short_title = (title or "Product Listing").split(" - ")[0].split(",")[0].strip()[:44].rstrip()
+    _t = (title or "Product Listing").strip()
+    _head = _t.split(" - ")[0].strip()
+    short_title = ((_head if len(_head) >= 25 else _t)[:44]).rstrip(" ,;-")
 
     body = [
         f"{B('SKU')}: {sku or 'N/A'} | {B('ASIN')}: {asin}",
@@ -288,7 +290,8 @@ def order_card(data: dict, markup: str = "plain", note: bool = False) -> str:
     if not note:
         return "\n".join(([head] if head else []) + [short_title, ""] + body)
 
-    # Seller note: Amazon keeps 256 characters and the layout above runs ~260 without the title.
+    # Seller note: Amazon saves at most 230 characters (a 256-char note came back "There was an error
+    # updating your notes", 15 Oct 2026) and the layout above runs ~250 without the title.
     # Same lines, shortened step by step until it fits — the title (the order page shows it) goes
     # first, the dates line last: zero tax, the ASIN (also on the page), Zoro's date onto the
     # Amazon line, "Shipping:" → "Ship".
@@ -300,14 +303,18 @@ def order_card(data: dict, markup: str = "plain", note: bool = False) -> str:
         lambda L: L[:-2] + [L[-2] + " " + L[-1]],
         lambda L: [x.replace("(Shipping: ", "(Ship ") for x in L],
     ]
+    try:
+        from utils.seller_notes import _MAX_NOTE_CHARS as cap
+    except Exception:
+        cap = 230
     for step in [None] + steps:
         if step:
             lines = step(lines)
         text = "\n".join(lines)
-        if len(text) <= 256:
-            room = 256 - len(text) - 1
+        if len(text) <= cap:
+            room = cap - len(text) - 1
             return (short_title[:room].rstrip() + "\n" + text) if room >= 20 else text
-    return text[:256]
+    return text[:cap]
 
 
 def format_boss_note_text(data: dict, markup: str = "plain") -> str:

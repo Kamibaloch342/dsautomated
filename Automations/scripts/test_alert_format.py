@@ -67,20 +67,13 @@ check("missing dates keep the layout ('—')", "*Amazon:* [Ship by — | Deliver
 alt = order_card(dict(ORDER, alt_used=True), markup="wa")
 check("ALT order marks the code", "K1606970 - ALT (Qty: 1)" in alt, alt)
 
-print("\nseller note")
-note = format_seller_note(dict(ORDER))
-check("fits Amazon's 256 characters", len(note) <= 256, f"{len(note)} chars\n{note}")
-check("same lines, plain text, no order-id line",
-      "*" not in note and "114-5760875-7672210" not in note
-      and "SKU: Hath_G1606970" in note and "Zoro Code: K1606970 (Qty: 1)" in note
-      and "Zoro_Cost: $29.30 | Amz_Earnings: $44.62 (Shipping: $13.00)" in note
-      and "Profit: $15.32 (52.3%) | Coupon: None" in note
-      and "Amazon: [Ship by Oct 15 | Deliver by Oct 17 ] {Second Day}" in note
-      and note.endswith("Zoro_Delivery: Oct 19"), note)
-long = format_seller_note(dict(ORDER, coupon_code="EMZMPWFDFWLT", coupon_off=17.0, sku="Imran-G8179537-LONG-SKU-NAME"))
-check("a longer note still fits, every data line kept", len(long) <= 256 and long.endswith("Zoro_Delivery: Oct 19")
-      and "Coupon: EMZMPWFDFWLT (-$17.00)" in long,
-      f"{len(long)}\n{long}")
+print("\nseller note — stays the OLD format (owner, 15 Oct 2026: only the alerts change)")
+note = format_seller_note(dict(ORDER, tc=29.30, earnings=44.62, pm=15.32))
+check("seller note is the old line-per-field note, not the alert layout",
+      "Zoro_Cost" not in note and "Amz_Earnings" not in note and "ASIN: B0GD8Y19SD" in note and "TC: $29.30" in note, note)
+check("…within its own 230-character cap", len(note) <= 230, f"{len(note)}")
 
+sg = order_card(dict(ORDER, title="Simple Green, SMP13006, Industrial Cleaner/Degreaser, 1 / Each, Dark Green, 5 Gallons"), markup="wa")
+check("a title with commas is not cut at the first comma", "\nSimple Green, SMP13006, Industrial Cleaner/D\n" in sg, sg)
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
