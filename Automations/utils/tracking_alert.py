@@ -134,9 +134,8 @@ def format_alert(amazon_id, tracking_ids, message_state, f, uploaded=None):
              f"*Time Shipped:* {_span(f.get('placed'), f.get('shipped'))}",
              f"*Tracking IDs ({head}):*"]
     lines += [t + (f" ({lab})" if len(kinds) > 1 else "") for t, lab in zip(tids, labels)]
-    missing = [t for t in tids if uploaded is not None and t not in uploaded]
-    if missing:
-        lines.append(f"⚠️ Not on Amazon yet: {', '.join(missing)} — add by hand")
+    # No remarks about what the bot did or did not do — the owner's boss reads these groups
+    # (owner, 16 Oct 2026). Ids Amazon did not take are reported in the tracker's own log only.
     lines.append(f"*Tracking Message Sent:* {message_state}")
     return "\n".join(lines)
 
