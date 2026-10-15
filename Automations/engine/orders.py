@@ -3382,6 +3382,50 @@ def _delivery_gap_hold(amazon_deliver_by, zoro_estimate, limit, ships_fast):
 _DELIVERY_GAP_ALERTED = set()           # amazon_ids already alerted this run (one alert per order)
 
 
+def _notify_alt_main_oos(driver, main_skus, account=""):
+    """After an order placed with the ALT SKU: a screenshot of each out-of-stock MAIN SKU's Zoro page,
+    captioned '<code> OOS', to the store's orders group (WhatsApp) and Telegram (owner, 15 Oct 2026).
+    Sent a few seconds after the order alert so it lands right below it. Never raises."""
+    import threading
+    shots = []
+    for sku in [s for s in dict.fromkeys(main_skus or []) if s]:
+        png = None
+        try:
+            safe_get(driver, f"https://www.zoro.com/search?q={sku}")
+            time.sleep(4)
+            if "/i/" not in (driver.current_url or ""):
+                links = driver.find_elements(By.CSS_SELECTOR, "a[href*='/i/']")
+                if links:
+                    safe_get(driver, links[0].get_attribute("href"))
+                    time.sleep(4)
+            png = driver.get_screenshot_as_png()
+        except Exception as e:
+            print(f"  ⚠️ Zoro page screenshot for {sku} failed: {e}")
+        shots.append((sku, png))
+    if not shots:
+        return
+
+    def _send():
+        time.sleep(8)                       # after the order alert's own background send
+        for sku, png in shots:
+            cap = f"{sku} OOS"
+            try:
+                from utils.whatsapp import get_whatsapp_group, send_whatsapp_photo, send_whatsapp_message
+                to = get_whatsapp_group(account, kind="orders")
+                (send_whatsapp_photo(png, caption=cap, to=to, background=False) if png
+                 else send_whatsapp_message(cap, to=to, background=False))
+            except Exception as e:
+                print(f"  ⚠️ WhatsApp OOS photo error: {e}")
+            try:
+                from utils.telegram import send_telegram_photo, send_telegram_message
+                (send_telegram_photo(png, caption=cap, background=False) if png
+                 else send_telegram_message(cap, background=False))
+            except Exception as e:
+                print(f"  ⚠️ Telegram OOS photo error: {e}")
+    threading.Thread(target=_send, daemon=True, name="alt-main-oos").start()
+    print(f"  📸 ALT order: Zoro page of {', '.join(s for s, _ in shots)} → '<code> OOS' sent after the order alert")
+
+
 def _notify_delivery_gap(amazon_id, asin, sku, why, ship_by="", buyer="", city="", state=""):
     """One WhatsApp + Telegram alert per held order — the ship-by date keeps running while it waits."""
     if amazon_id in _DELIVERY_GAP_ALERTED:
@@ -5198,6 +5242,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 notify_order_placed(tg_data, driver=None if defer_amazon_writes else driver, account=PROFILE_NAME)
             except Exception as _tge:
                 print(f"   [Telegram] ⚠️ Notification error: {_tge}")
+            if alt_used_any:
+                _notify_alt_main_oos(driver, [it.get("main_sku") for it in resolved_items if it.get("alt_used")],
+                                     account=PROFILE_NAME)
 
             # Operational Insights & Anomaly Analysis
             try:
@@ -5328,6 +5375,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             notify_order_placed(tg_data, driver=None if defer_amazon_writes else driver, account=PROFILE_NAME)
         except Exception as _tge:
             print(f"   [Telegram] ⚠️ Notification error: {_tge}")
+        if alt_used_any:
+            _notify_alt_main_oos(driver, [it.get("main_sku") for it in resolved_items if it.get("alt_used")],
+                                 account=PROFILE_NAME)
 
         # Operational Insights & Anomaly Analysis
         try:
