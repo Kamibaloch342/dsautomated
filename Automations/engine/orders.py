@@ -2883,6 +2883,8 @@ def _extract_order_details(driver, amazon_order_id, fallback_qty=None):
         if (!result.deliver_by_date) {
             result.deliver_by_date = extractDate(/Deliver by[:\s]+([A-Za-z]+\s+\d{1,2},\s+\d{4})/i);
         }
+        // "Shipping service: Second Day" — the buyer's chosen speed (Standard / Expedited / Second Day …)
+        result.ship_service = extractDate(/Shipping service[:\s]*([A-Za-z][A-Za-z0-9 \-]{1,30})/i);
 
         return result;
     """)
@@ -2930,6 +2932,7 @@ def _extract_order_details(driver, amazon_order_id, fallback_qty=None):
         "purchase_date": info.get("purchase_date", ""),
         "ship_by_date": info.get("ship_by_date", ""),
         "deliver_by_date": info.get("deliver_by_date", ""),
+        "ship_service": (info.get("ship_service") or "").strip(),
     }
     
     return result
@@ -4075,6 +4078,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     addr["_purchase_date"] = order_detail.get("purchase_date", "")
     addr["_ship_by_date"] = order_detail.get("ship_by_date", "")
     addr["_deliver_by_date"] = order_detail.get("deliver_by_date", "")
+    addr["_ship_service"] = order_detail.get("ship_service", "")
+    # The checkout page re-checks delivery against Zoro's own "Delivery expected by" for THIS
+    # address and THIS cart (checkout/true_api.py). 0 = off; a Manual-C/-R tag turns it off.
+    addr["_delivery_gap_limit"] = 0 if manual_override else _delivery_gap_block_days()
     
     city = addr.get("city", "?")
     state = addr.get("state_abbr", "?")
@@ -5237,6 +5244,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 tg_data = dict(split_detail)
                 if 'note_data' in locals():
                     tg_data.update(note_data)
+                tg_data.update({"ship_by_date": sb, "deliver_by_date": db,
+                                "ship_service": order_detail.get("ship_service", ""),
+                                "zoro_deliver_by": (addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "") or "",
+                                "shipping_amt": shipping_amt})
                 # Rush (deferred Amazon writes): the driver is not on THIS order's page, so a screenshot
                 # would show another order (owner, 12 Oct 2026) — the alert goes as text only.
                 notify_order_placed(tg_data, driver=None if defer_amazon_writes else driver, account=PROFILE_NAME)
@@ -5371,6 +5382,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             tg_data = dict(normal_detail)
             if 'note_data' in locals():
                 tg_data.update(note_data)
+            tg_data.update({"ship_by_date": sb, "deliver_by_date": db,
+                            "ship_service": order_detail.get("ship_service", ""),
+                            "zoro_deliver_by": (addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "") or "",
+                            "shipping_amt": shipping_amt})
             # Rush: no screenshot — the driver is not on this order's page (text-only alert)
             notify_order_placed(tg_data, driver=None if defer_amazon_writes else driver, account=PROFILE_NAME)
         except Exception as _tge:
@@ -5505,6 +5520,20 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif result_status == "STATE_RESTRICTED":
         update_amazon_seller_id(driver, amazon_id, "SR", PROFILE_NAME)
         status_note = f"State restricted ({state})"
+    elif result_status == "DELIVERY_TIME_HIGH":
+        # Zoro's checkout page, for this address and cart, said "Delivery expected by" 4+ days after
+        # Amazon's deliver-by — Place Order was NOT clicked (owner, 15 Oct 2026).
+        _zd = addr.get("_zoro_deliver_by", "") if isinstance(addr, dict) else ""
+        if defer_amazon_writes:
+            _rush_defer_wb(amazon_id, DELIVERY_GAP_LABEL)
+        else:
+            update_amazon_seller_id(driver, amazon_id, DELIVERY_GAP_LABEL, PROFILE_NAME)
+        status_note = (f"Zoro checkout: delivery expected by {_zd}, past Amazon's deliver-by "
+                       f"{order_detail.get('deliver_by_date', '')} — labelled {DELIVERY_GAP_LABEL}, not placed")
+        _notify_delivery_gap(amazon_id, asin_field, sku_field,
+                             f"Zoro's checkout says delivery by {_zd}; Amazon's deliver-by is "
+                             f"{order_detail.get('deliver_by_date', '')}", order_detail.get("ship_by_date", ""),
+                             buyer, city, state)
     elif result_status == "PO_BOX_RESTRICTED":
         _po_box_park(driver, amazon_id, addr, "zoro_rejected", defer=defer_amazon_writes)
         status_note = f"PO Box not allowed by Zoro ({addr.get('city', '')}, {state}) — labelled {PO_BOX_LABEL}"
@@ -5602,7 +5631,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # ── Reconcile the local claim on failure ──────────────────────
     # These statuses are all detected BEFORE Zoro payment, so it is safe to release the
     # claim and let the order retry next cycle (matches the pre-existing retry intent).
-    _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED",
+    _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED", "DELIVERY_TIME_HIGH",
                         "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
     if _HAS_LOCK and not DRY_RUN:
         if result_status in _SAFE_PREPAYMENT:

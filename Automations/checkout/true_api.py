@@ -1596,6 +1596,8 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                     min_margin, return_details, zoro_code)
 
         _time("True API TOTAL checkout", t_start)
+        if zoro_id == "DELIVERY_TIME_HIGH":        # the checkout page's date — not placed
+            return _format_checkout_result("DELIVERY_TIME_HIGH", return_details=return_details)
         print(f"\n{'='*60}")
         if zoro_id:
             print(f"  🎉 ORDER RESULT: {zoro_id}")
@@ -1747,6 +1749,17 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
     if restricted:
         print("   DOM fallback: STATE_RESTRICTED detected")
         return _format_checkout_result("STATE_RESTRICTED", return_details=return_details)
+
+    # Zoro's own delivery date for THIS address and cart ("Delivery expected by October 19").
+    # 4+ days after Amazon's deliver-by → do not click Place Order (owner, 15 Oct 2026). Nothing
+    # has been bought, so the placer labels the order and releases its claim.
+    try:
+        from checkout.dom import checkout_delivery_gap
+        _gap = checkout_delivery_gap(driver, address)
+        if _gap:
+            return "DELIVERY_TIME_HIGH"
+    except Exception as _dg:
+        print(f"   ⚠️ delivery-date check skipped: {type(_dg).__name__}: {_dg}")
 
     if "COUPON" not in active_profile and po_number:
         from checkout.dom import _set_po_number

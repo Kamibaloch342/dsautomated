@@ -288,7 +288,7 @@ def notify_order_placed_wa(order_data: dict, screenshot_bytes: bytes = None, acc
 
     try:
         from utils.telegram import format_boss_note_text
-        boss_text = format_boss_note_text(order_data)
+        boss_text = format_boss_note_text(order_data, markup="wa")
     except Exception:
         asin_val = order_data.get("asin", "N/A")
         try:

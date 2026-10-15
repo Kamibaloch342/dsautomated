@@ -168,8 +168,25 @@ def _lookup_title_and_sku(asin: str) -> tuple:
     return ("", "")
 
 
-def format_boss_note_text(data: dict) -> str:
-    """Format the exact 'Copy for boss' template with guaranteed Title and SKU."""
+def _short_day(v):
+    """'Thu, Oct 15, 2026 PDT' / '2026-10-15' / 'Oct 15, 2026| ZoroDeliverBy:' → 'Oct 15' ('' if unreadable)."""
+    import re as _re
+    from datetime import date as _date
+    t = str(v or "").split("|")[0].strip()
+    m = _re.search(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)", t)
+    if m:
+        try:
+            return _date(int(m.group(1)), int(m.group(2)), int(m.group(3))).strftime("%b %-d")
+        except ValueError:
+            return ""
+    m = _re.search(r"([A-Z][a-z]{2})[a-z]*\.?\s+(\d{1,2})\b", t)
+    return f"{m.group(1)} {int(m.group(2))}" if m else ""
+
+
+def format_boss_note_text(data: dict, markup: str = "plain") -> str:
+    """The order alert body — short enough that WhatsApp does not fold it behind 'Read more'
+    (owner, 15 Oct 2026). markup='wa' bolds a fast ship service with *…*; Telegram shows it in
+    capitals (the text sits in a <pre> block, where bold is not possible)."""
     title = str(data.get("title") or "").strip()
     asin = str(data.get("asin") or "N/A").strip()
     sku = str(data.get("sku") or "N/A").strip()
@@ -234,18 +251,36 @@ def format_boss_note_text(data: dict) -> str:
     elif wb_id:
         lines.append(f"{{ {wb_id} }}")
 
+    short_title = (title or "Product Listing").split(",")[0].split(" - ")[0].strip()
+    if len(short_title) > 45:
+        short_title = short_title[:44].rstrip() + "…"
+    ship_amt = data.get("shipping_amt")
+    try:
+        ship_amt = float(ship_amt) if ship_amt not in (None, "") else 0.0
+    except (TypeError, ValueError):
+        ship_amt = 0.0
+    earn_full = earn_str + (f" (Shipping: ${ship_amt:.2f})" if ship_amt > 0 else "")
+
+    svc = str(data.get("ship_service") or "").strip()
+    if svc and "standard" not in svc.lower():          # Second Day / Expedited / Next Day → stands out
+        svc = f"*{svc}*" if markup == "wa" else f"{svc.upper()} ⚡"
+    when = " | ".join(x for x in (
+        f"Ship by {_short_day(data.get('ship_by_date'))}" if _short_day(data.get("ship_by_date")) else "",
+        f"Deliver by {_short_day(data.get('deliver_by_date'))}" if _short_day(data.get("deliver_by_date")) else "",
+        svc,
+        f"Zoro {_short_day(data.get('zoro_deliver_by'))}" if _short_day(data.get("zoro_deliver_by")) else "",
+    ) if x)
+
     lines.extend([
-        f"Title: {title[:80] if title else 'Product Listing'}",
+        short_title,
         f"SKU: {sku if sku else 'N/A'} | ASIN: {asin}",
-        f"Zoro Code Used: {code}",
-        f"Qty: {qty}",
-        "",
-        f"Total Zoro Cost: {tc_str} ( Tax: {tax_str} )",
-        f"Amazon Earnings: {earn_str}",
-        f"Profit Margin: {pm_str} ({pp_str})",
-        f"Coupon: {c_str}",
+        f"Zoro Code: {code} (Qty: {qty})",
+        f"Cost: {tc_str} (Tax {tax_str}) | Earnings: {earn_full}",
+        f"Profit: {pm_str} ({pp_str}) | Coupon: "
+        + (c_str.replace("Used - ", "").replace("( -$", "(-$").replace(" )", ")") if c_str != "Not Used" else "None"),
     ])
-    
+    if when:
+        lines.append(when)
     return "\n".join(lines)
 
 

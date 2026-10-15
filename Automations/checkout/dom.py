@@ -1920,6 +1920,56 @@ def _await_order_number(driver, timeout=25.0):
     return None
 
 
+def _short_date(text):
+    """'Fri, Oct 16, 2026 PDT' / '2026-10-16' / 'October 19' (no year → nearest future) → date or None."""
+    import datetime as _dt
+    t = str(text or "").split("|")[0].strip()
+    m = re.search(r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?!\d)", t)
+    if m:
+        return _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    m = re.search(r"([A-Z][a-z]{2})[a-z]*\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?", t)
+    if not m:
+        return None
+    today = _dt.date.today()
+    try:
+        d = _dt.datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3) or today.year}", "%b %d %Y").date()
+    except ValueError:
+        return None
+    if not m.group(3) and d < today - _dt.timedelta(days=60):
+        d = d.replace(year=today.year + 1)
+    return d
+
+
+def checkout_delivery_gap(driver, address):
+    """Read Zoro's "Delivery expected by <Month Day>" on the checkout page (the latest one if the
+    cart shows several) and compare it with Amazon's deliver-by (address['_deliver_by_date']).
+    Records the date in address['_zoro_deliver_by'] either way. Returns the gap in days when it
+    reaches address['_delivery_gap_limit'] (0/absent = off), else None. Never raises on a page
+    without the line — no date, no decision."""
+    if not isinstance(address, dict):
+        return None
+    texts = driver.execute_script(r"""
+        var out = [], re = /Delivery\s+expected\s+by\s+([A-Z][a-z]+\.?\s+\d{1,2})/gi, m;
+        var t = document.body.innerText || '';
+        while ((m = re.exec(t)) !== null) out.push(m[1]);
+        return out;""") or []
+    dates = [d for d in (_short_date(x) for x in texts) if d]
+    if not dates:
+        return None
+    zd = max(dates)
+    address["_zoro_deliver_by"] = zd.isoformat()
+    limit = int(address.get("_delivery_gap_limit") or 0)
+    amz = _short_date(address.get("_deliver_by_date"))
+    gap = (zd - amz).days if amz else None
+    print(f"   📅 Zoro checkout: delivery expected by {zd:%b %d} · Amazon deliver-by "
+          f"{amz:%b %d}" if amz else f"   📅 Zoro checkout: delivery expected by {zd:%b %d}", end="")
+    print(f" · gap {gap} d" if gap is not None else "")
+    if limit > 0 and gap is not None and gap >= limit:
+        print(f"   🐢 {gap} days past Amazon's date (limit {limit}) — NOT clicking Place Order")
+        return gap
+    return None
+
+
 def _report_checkout_refusal(driver, attempt):
     """The click registered, Zoro returned the page to an idle checkout and no order number came
     back — Zoro refused the submission and says why somewhere on the page. Print every visible
