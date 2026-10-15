@@ -1716,7 +1716,7 @@ class App(tk.Tk):
         ctrl.pack(fill="x", padx=14, pady=(8, 6))
         self._dim(ctrl, "Msg limit").pack(side="left")
         self.cls_msg_limit = self._combo(ctrl, ["100", "300", "500", "1000", "0"], 5)
-        self.cls_msg_limit.set("1000")           # per-run cap; 0 = unlimited
+        self.cls_msg_limit.set("0")              # per-run cap; 0 = unlimited
         self.cls_msg_limit.pack(side="left", padx=(4, 8))
         self.cls_msg_dry = tk.BooleanVar()
         ttk.Checkbutton(ctrl, text="Msg Dry Run", variable=self.cls_msg_dry).pack(side="left", padx=(8, 0))
@@ -1887,7 +1887,7 @@ class App(tk.Tk):
         extra_env = {"ACCOUNTS": "HOANK,Hathoro" if both else str(account), "SKIP_MESSAGES": "0" if chain else "1"}
         if chain:
             # daily_bulk's step 7 reads these; same knobs the ✉ button uses.
-            extra_env["MSG_LIMIT"] = (self.cls_msg_limit.get() or "1000").strip()
+            extra_env["MSG_LIMIT"] = (self.cls_msg_limit.get() or "0").strip()
             if self.cls_msg_dry.get():
                 extra_env["MSG_DRY"] = "1"
         self._filter.set("All")
@@ -1926,7 +1926,7 @@ class App(tk.Tk):
         if name in self._procs:
             messagebox.showinfo("Info", f"{account} messaging is already running.")
             return
-        limit = (self.cls_msg_limit.get() or "1000").strip()
+        limit = (self.cls_msg_limit.get() or "0").strip()
         cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "scripts", "send_delivery_messages.py")]
         extra_env = {"MSG_ACCOUNT": str(account), "MSG_LIMIT": limit}
         if self.cls_msg_dry.get():
