@@ -1780,6 +1780,27 @@ def _checkout_page_delivery_status(driver, address):
     on the checkout page AND none from the product page — never place blind) or None (go ahead)."""
     from checkout.dom import checkout_delivery_gap
     try:
+        _back = driver.current_url or ""
+    except Exception:
+        _back = ""
+    try:
+        return _read_checkout_delivery(driver, address, checkout_delivery_gap)
+    finally:
+        # Leave the checkout page before the order is paid through the API. Zoro's checkout page
+        # holds the account's cart while it is open: paying through the API underneath it got
+        # 409 "Conflict while modifying resource" / 422 "This cart is already being processed"
+        # and kept the cart busy for minutes — 0 such refusals in ~3,800 orders before this
+        # check was added (15 Oct 2026, 16:36), 24+ after. Back to the page the API ran on.
+        try:
+            if "zoro.com" not in _back or "/checkout" in _back:
+                _back = "https://www.zoro.com/"
+            driver.get(_back)
+        except Exception as _nav:
+            print(f"   ⚠️ could not leave the checkout page ({type(_nav).__name__})")
+
+
+def _read_checkout_delivery(driver, address, checkout_delivery_gap):
+    try:
         driver.get("https://www.zoro.com/checkout")
         deadline = time.time() + 30
         while time.time() < deadline:
