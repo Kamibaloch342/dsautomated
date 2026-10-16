@@ -3385,6 +3385,7 @@ def _delivery_gap_hold(amazon_deliver_by, zoro_estimate, limit, ships_fast):
 _DELIVERY_GAP_ALERTED = set()           # amazon_ids already alerted this run (one alert per order)
 _DELIVERY_UNKNOWN_TRIES = {}            # amazon_id -> tries with no Zoro delivery date (not placed)
 _PAYMENT_DECLINED_TRIES = {}            # amazon_id -> cycles Zoro declined the card (not placed)
+_CART_BUSY_TRIES = {}                   # amazon_id -> cycles Zoro said the cart was busy (not placed)
 
 
 def _notify_alt_main_oos(driver, main_skus, account=""):
@@ -5540,6 +5541,17 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif result_status == "STATE_RESTRICTED":
         update_amazon_seller_id(driver, amazon_id, "SR", PROFILE_NAME)
         status_note = f"State restricted ({state})"
+    elif result_status == "CART_BUSY":
+        # Zoro refused the order because the account's cart was still tied up with the previous
+        # order (409 RESOURCE_CONFLICT / 422 "already being processed"). Nothing was bought, so the
+        # order is released and retried next cycle instead of being locked (owner, 16 Oct 2026).
+        _CART_BUSY_TRIES[amazon_id] = _CART_BUSY_TRIES.get(amazon_id, 0) + 1
+        status_note = (f"Zoro cart busy with the previous order (try {_CART_BUSY_TRIES[amazon_id]}) — "
+                       f"NOT placed, retried next cycle")
+        if _CART_BUSY_TRIES[amazon_id] == 6:
+            _notify_delivery_gap(amazon_id, asin_field, sku_field,
+                                 f"Zoro kept refusing the {PROFILE_NAME} cart (busy) on 6 tries",
+                                 order_detail.get("ship_by_date", ""), buyer, city, state)
     elif result_status == "PAYMENT_DECLINED":
         # Zoro showed "unable to receive authorization for your payment method" on every try (with a
         # checkout refresh between) — no order exists. Released and retried next cycle; a person
@@ -5673,7 +5685,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # These statuses are all detected BEFORE Zoro payment, so it is safe to release the
     # claim and let the order retry next cycle (matches the pre-existing retry intent).
     _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED", "DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN", "PAYMENT_DECLINED",
-                        "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
+                        "CART_BUSY", "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
     if _HAS_LOCK and not DRY_RUN:
         if result_status in _SAFE_PREPAYMENT:
             plock.release(amazon_id, f"pre-payment failure: {result_status}")

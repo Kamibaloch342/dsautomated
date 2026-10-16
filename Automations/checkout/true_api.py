@@ -989,6 +989,17 @@ def _submit_order_api(driver, cart_id, payment_method, billing_addr, po_number="
     if not r["ok"]:
         _time("_submit_order_api", t0)
         print(f"   [DEBUG] Order submit FAILED ({r['status']}): {r['error']}")
+        # Zoro refused because the cart is still tied up with the previous order — 409
+        # "Conflict while modifying resource, try again" / 422 "This cart is already being
+        # processed". Zoro created nothing (no duplicate in any of the ~25 such refusals
+        # 15–16 Oct 2026, all later placed once); the placer releases the order and waits for
+        # the cart instead of locking it.
+        _err = str(r.get("error") or "")
+        try:
+            driver._zuhra_cart_busy = (r["status"] in (409, 422)
+                                       and ("RESOURCE_CONFLICT" in _err or "already being processed" in _err))
+        except Exception:
+            pass
         return None, None
 
     data = r["data"]
@@ -1292,6 +1303,16 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 return _format_checkout_result("FAILED", return_details=return_details)
 
         # ── 2. Clear cart & add via API ──
+        # After Zoro said "cart busy", give it time before the next order: 1, 2, 3 … up to 5
+        # minutes after consecutive refusals (a cart stayed busy for 4+ minutes on 16 Oct 2026).
+        try:
+            driver._zuhra_cart_busy = False
+            _wait = float(getattr(driver, "_zuhra_cart_busy_until", 0) or 0) - time.time()
+            if _wait > 0:
+                print(f"   ⏳ Zoro's cart was busy with the previous order — waiting {int(_wait)} s before this one")
+                time.sleep(_wait)
+        except Exception:
+            pass
         print(f"\n[3] _clear_cart_api()")
         if not _clear_cart_api(driver):
             return _format_checkout_result("FAILED", return_details=return_details)
@@ -1547,7 +1568,9 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                     driver, cart_id, payment, billing_payload,
                     po_number=po_number)
                 if not zoro_id:
-                    if zoro_response is None:
+                    if zoro_response is None and getattr(driver, "_zuhra_cart_busy", False):
+                        print("   Zoro: cart busy with the previous order — not retried on the page")
+                    elif zoro_response is None:
                         # HTTP-level rejection — the order definitively does NOT
                         # exist, so the proven DOM route (Net30 is the account
                         # default there) can safely retry in the same run.
@@ -1594,7 +1617,9 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
             else:
                 print("   No saved credit cards — DOM fallback")
 
-            if not zoro_id:
+            if not zoro_id and getattr(driver, "_zuhra_cart_busy", False):
+                print("\n   Zoro: cart busy with the previous order — not retried on the page")
+            elif not zoro_id:
                 print("\n   API order failed — DOM fallback")
                 zoro_id = _dom_place_order_fallback(
                     driver, sku, qty, address, po_number, active_profile,
@@ -1604,7 +1629,17 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                     min_margin, return_details, zoro_code)
 
         _time("True API TOTAL checkout", t_start)
-        if zoro_id in ("DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN", "PAYMENT_DECLINED"):   # nothing bought
+        if not zoro_id and getattr(driver, "_zuhra_cart_busy", False):
+            _n = int(getattr(driver, "_zuhra_cart_busy_streak", 0) or 0) + 1
+            driver._zuhra_cart_busy_streak = _n
+            driver._zuhra_cart_busy_until = time.time() + min(60 * _n, 300)
+            print(f"   🛒 Zoro: cart still busy with the previous order — nothing bought; "
+                  f"released, next order waits {min(60 * _n, 300)} s")
+            zoro_id = "CART_BUSY"
+        elif zoro_id and str(zoro_id).startswith(("WB", "SO")):
+            driver._zuhra_cart_busy_streak = 0
+            driver._zuhra_cart_busy_until = 0
+        if zoro_id in ("DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN", "PAYMENT_DECLINED", "CART_BUSY"):   # nothing bought
             return _format_checkout_result(zoro_id, return_details=return_details)
         print(f"\n{'='*60}")
         if zoro_id:
