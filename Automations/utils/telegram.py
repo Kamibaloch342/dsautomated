@@ -481,7 +481,9 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
     try:
         from utils.whatsapp import is_whatsapp_enabled, get_whatsapp_group, send_whatsapp_message
         if is_whatsapp_enabled():
-            target_wa_group = get_whatsapp_group(account, kind="orders")
+            # Insights, never Orders Alerts: the Orders Alerts groups carry placed orders only and
+            # the owner's boss reads them (owner, 16 Oct 2026).
+            target_wa_group = get_whatsapp_group(account, kind="insights")
             wa_msg = (
                 f"⛔ *ORDER REJECTED — LOW PROFIT*\n\n"
                 f"• Title: *{title[:80] if title else 'Product Listing'}*\n"
