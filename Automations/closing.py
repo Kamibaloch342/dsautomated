@@ -392,13 +392,47 @@ def _launch_chrome(port, profile_dir=None, headless=False):
 
 
 def _kill_stale_chrome(port):
-    """Kill ONLY a Chrome bound to this exact debugging port (never the user's main Chrome)."""
+    """Kill ONLY a Chrome bound to this exact debugging port (never the user's main Chrome), and
+    wait until it is really gone: a new Chrome started on the same profile while the old one is
+    still shutting down hands itself over to the dying one and never opens the port (17 Oct
+    2026, 21:34 — messaging for both stores: "would not start after 4 tries")."""
     try:
         subprocess.run(["pkill", "-f", f"--remote-debugging-port={port}"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            time.sleep(1)
+            if subprocess.run(["pgrep", "-f", f"--remote-debugging-port={port}"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+                break
         time.sleep(1)
     except Exception:
         pass
+
+
+def ensure_page_target(port):
+    """A Chrome whose pages were all closed stays up with NO page target — headless Chrome does
+    not exit when its last tab closes, and quitting an attached driver closes every tab. Then
+    chromedriver cannot attach ("unable to discover open pages") and burns ~2 minutes failing.
+    Open a blank tab through DevTools first. Returns True when Chrome answers on the port."""
+    import json as _json
+    import urllib.request
+    base = f"http://127.0.0.1:{port}"
+    try:
+        with urllib.request.urlopen(f"{base}/json/list", timeout=3) as r:
+            targets = _json.loads(r.read().decode() or "[]")
+    except Exception:
+        return False
+    if any(t.get("type") == "page" for t in targets):
+        return True
+    try:
+        req = urllib.request.Request(f"{base}/json/new?about:blank", method="PUT")
+        urllib.request.urlopen(req, timeout=5).read()
+        print(f"[CLOSING] Chrome on {port} had no open page — opened a blank tab to attach to")
+        time.sleep(1)
+    except Exception as e:
+        print(f"[CLOSING] ⚠️ could not open a tab in Chrome on {port}: {type(e).__name__}")
+    return True
 
 
 def _click_retry(driver, el, what, tries=6, pause=2.0):
@@ -423,7 +457,7 @@ def _click_retry(driver, el, what, tries=6, pause=2.0):
     return False
 
 
-def ensure_chrome(port, tries=4, headless=None):
+def ensure_chrome(port, tries=8, headless=None):
     """Connect to Chrome on `port`; if absent, kill any stale instance, launch a
     dedicated closing profile, and retry the connect several times (the first
     launch often isn't ready yet → 'unable to connect to renderer').
@@ -451,6 +485,8 @@ def ensure_chrome(port, tries=4, headless=None):
         occupied = port_open(port)
     except Exception:
         occupied = True                    # cannot tell — attempt the attach as before
+    if occupied:
+        ensure_page_target(port)
     d = _connect_chrome(port) if occupied else None
     if d:
         d._closing_launched = False        # attached to an existing (logged-in) Chrome

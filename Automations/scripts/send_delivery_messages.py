@@ -271,6 +271,12 @@ def _run(pd_cfg, sc_port):
         # the same windowless mode instead of demanding a browser someone left open. Messaging
         # is usually run on its own, long after the closing run that used to leave one behind.
         from utils.proc import port_open
+        if port_open(sc_port):
+            try:
+                import closing
+                closing.ensure_page_target(sc_port)   # a Chrome with no tab cannot be attached to
+            except Exception:
+                pass
         driver = _connect_chrome(sc_port) if port_open(sc_port) else None
         if not driver:
             try:
