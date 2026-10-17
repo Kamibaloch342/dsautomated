@@ -21,6 +21,17 @@ Idempotent, DB-only (no Gmail/network) → safe to run daily after sync+placer+c
 Scope (26 Sep 2026): orders purchased in the last RECONCILE_DAYS (default 120) — older rows
 practically never receive a new email — and the archives are loaded only for those orders'
 ids instead of all 216k rows with their bodies. --all processes every row of the account.
+Since 17 Oct 2026 the scope also takes every OLDER Shipped order that still has a hole in a
+coverage column (the daily_bulk COVERAGE list): those were never looked at again once they
+aged out, so the coverage report showed the same gaps run after run.
+
+Besides the archives, empty fields are also gap-filled from (17 Oct 2026):
+       order_placer_orders    → deliver_by_date, ship_by_date, shipped_email_time, tracking_ids,
+                                zoro_order_total/tax, earnings/fees/shipping, zoro_deliver_by
+                                (closing only takes these for orders it re-processes)
+       merchant_order_id      → wb_order_id (first WB/SO leg)
+       zoro_package_tracking  → tracking_ids + carrier (Zoro's own parcel list, from the
+                                delivery check) when no shipping e-mail was ever found
 
 Usage:
   ../.venv/bin/python scripts/reconcile_and_reenrich.py Hathoro          # preview
@@ -43,16 +54,38 @@ from engine import closing_signals as CS
 
 def empty(v): return v is None or str(v).strip() in ("", "None")
 
+
+# zoro_order_total defaults to 0.0 in closing_orders — a 0 cost is "not captured", not free.
+COST0 = {"zoro_order_total"}
+
+
+def missing(k, v):
+    if empty(v):
+        return True
+    if k in COST0:
+        try:
+            return float(v) == 0
+        except (TypeError, ValueError):
+            return False
+    return False
+
 con = sqlite3.connect(DB, timeout=120); con.execute("PRAGMA busy_timeout=120000")
 con.row_factory = sqlite3.Row
 
 # ---- the rows in scope, then the archive rows those need (id-scoped, latest wins) ----
+# The coverage columns daily_bulk reports — an older Shipped row with one of these empty is
+# still in scope. delivery_status is left out: only the delivery check can fill it.
+GAP_COLS = ("earnings", "zoro_order_total", "shipped_email_time", "zoro_ship_speed",
+            "placement_speed", "tracking_ids", "deliver_by_date", "profit_dollars", "wb_order_id")
+_gap_sql = " OR ".join(f"{c} IS NULL OR TRIM(CAST({c} AS TEXT)) IN ('','None')" for c in GAP_COLS)
 _where, _args = "account=?", [ACCT]
 if not ALL and DAYS > 0:
-    _where += " AND substr(purchase_date,1,10) >= date('now', ?)"
+    _where += (f" AND (substr(purchase_date,1,10) >= date('now', ?)"
+               f"      OR (order_status='Shipped' AND ({_gap_sql})))")
     _args.append(f"-{DAYS} day")
 rows = con.execute(f"SELECT * FROM closing_orders WHERE {_where}", _args).fetchall()
-print(f"[{ACCT}] orders in scope: {len(rows)}" + ("" if ALL else f" (last {DAYS} days; --all for every row)"))
+print(f"[{ACCT}] orders in scope: {len(rows)}" + ("" if ALL else f" (last {DAYS} days + older Shipped "
+                                                                 f"orders with gaps; --all for every row)"))
 _aids = sorted({r["amazon_order_id"] for r in rows if r["amazon_order_id"]})
 _wbs = set()
 for r in rows:
@@ -113,7 +146,35 @@ try:
                                             "tracking_upload_date": e.get("timestamp", "")}
 except Exception:
     pass
-print(f"  earnings={len(earn)} zoro_legs={len(zoro)} tracking_legs={len(trk)} return_orders={len(rets)} uploads={len(upload)}")
+# What the placer captured at placement (dates since 7 Sep 2026, cost, earnings, tracking).
+PLACER_FILL = ("deliver_by_date", "ship_by_date", "shipped_email_time", "tracking_ids",
+               "zoro_order_total", "zoro_tax", "earnings", "amazon_fees", "shipping_amt",
+               "zoro_deliver_by")
+placer = {}
+try:
+    _pcols = [c for c in PLACER_FILL
+              if c in {r[1] for r in con.execute("PRAGMA table_info(order_placer_orders)")}]
+    if _pcols:
+        for ch in _chunks(_aids):
+            ph = ",".join("?" * len(ch))
+            for r in con.execute(f"SELECT amazon_order_id, {', '.join(_pcols)} FROM order_placer_orders "
+                                 f"WHERE amazon_order_id IN ({ph})", ch):
+                placer[r["amazon_order_id"]] = dict(r)
+except sqlite3.OperationalError as e:
+    print(f"  placer table unavailable: {e}")
+# Zoro's own parcel list per WB leg (scripts/zoro_delivery_check.py) — the tracking numbers of
+# orders whose Zoro shipping e-mail never reached any inbox.
+parcels = {}
+try:
+    for ch in _chunks(_wbs):
+        ph = ",".join("?" * len(ch))
+        for r in con.execute(f"SELECT wb_order_id, tracking_number, carrier FROM zoro_package_tracking "
+                             f"WHERE wb_order_id IN ({ph}) AND COALESCE(tracking_number,'') != ''", ch):
+            parcels.setdefault(r["wb_order_id"], []).append(r)
+except sqlite3.OperationalError:
+    pass                                    # no delivery check has run on this DB yet
+print(f"  earnings={len(earn)} zoro_legs={len(zoro)} tracking_legs={len(trk)} return_orders={len(rets)} "
+      f"uploads={len(upload)} placer={len(placer)} parcel_legs={len(parcels)}")
 
 EARN_MAP = {"earnings": "total_your_earnings", "amazon_fees": "total_amazon_fees",
             "shipping_amt": "total_shipping", "sold_email_time": "email_timestamp",
@@ -136,7 +197,8 @@ FLOAT_COLS = {"profit_dollars", "profit_percent", "net_profit_after_refund", "ti
               "ship_margin_hrs", "placement_speed_hrs", "zoro_ship_speed_hrs"}
 
 w = sqlite3.connect(DB, timeout=120); w.execute("PRAGMA busy_timeout=120000")
-stats = {"earn": 0, "zoro": 0, "trk": 0, "ret": 0, "label": 0, "rows": 0}
+stats = {"earn": 0, "zoro": 0, "trk": 0, "ret": 0, "placer": 0, "wb": 0, "parcel": 0, "label": 0, "rows": 0}
+DATE_COLS = ("ship_by_date", "deliver_by_date")    # normalized by derive_fields before writing
 
 for row in rows:
     o = dict(row)
@@ -145,6 +207,7 @@ for row in rows:
     if not legs and o.get("wb_order_id"):
         legs = [o["wb_order_id"]]
     gap = {}                              # data fields to gap-fill
+    placer_hit = parcel_hit = False
 
     # --- archive_earnings (by amazon id) ---
     e = earn.get(o["amazon_order_id"])
@@ -157,7 +220,7 @@ for row in rows:
     leg_rows = [zoro[l] for l in legs if l in zoro]
     if leg_rows:
         for dest, src in ZORO_COST.items():
-            if empty(cur.get(dest)):
+            if missing(dest, cur.get(dest)):
                 tot = sum(float(z[src]) for z in leg_rows if not empty(z[src]))
                 if tot:
                     gap[dest] = round(tot, 2)
@@ -198,6 +261,33 @@ for row in rows:
             if eta:
                 gap["zoro_deliver_by"] = eta
 
+    # --- placer row: whatever is still empty after the archives ---
+    pl = placer.get(o["amazon_order_id"])
+    if pl:
+        for k in PLACER_FILL:
+            if k in pl and missing(k, cur.get(k)) and k not in gap and not missing(k, pl[k]):
+                gap[k] = pl[k]
+                placer_hit = True
+
+    # --- wb_order_id from the merchant order id (WW / manual rows have no leg → stay empty) ---
+    if empty(cur.get("wb_order_id")) and legs:
+        gap["wb_order_id"] = legs[0]
+
+    # --- tracking numbers from Zoro's parcel list when no e-mail or placer row had them ---
+    if empty(cur.get("tracking_ids")) and "tracking_ids" not in gap:
+        tids, pcar = [], ""
+        for l in legs:
+            for p in parcels.get(l, []):
+                t = str(p["tracking_number"]).strip()
+                if t and t not in tids:
+                    tids.append(t)
+                pcar = pcar or (p["carrier"] or "")
+        if tids:
+            gap["tracking_ids"] = ", ".join(tids)
+            parcel_hit = True
+            if empty(cur.get("carrier")) and "carrier" not in gap and pcar:
+                gap["carrier"] = pcar
+
     # --- tracking_id_uploaded from the tracker's record (no SC scrape) ---
     ul = upload.get(o["amazon_order_id"])
     if ul:
@@ -224,6 +314,9 @@ for row in rows:
 
     # --- recompute derived via closing's OWN functions ---
     C.derive_fields(o)
+    for k in DATE_COLS:                   # store gap-filled dates in closing's one format
+        if k in gap and not empty(o.get(k)):
+            gap[k] = o[k]
     o["profit_dollars"], o["profit_percent"] = C.calculate_profit(o)
     o.update(C.compute_timeliness(o))
     o.update(C.compute_ship_timeliness(o))
@@ -258,6 +351,9 @@ for row in rows:
     if any(k in gap for k in {**ZORO_BASE, **ZORO_COST}): stats["zoro"] += 1
     if any(k in gap for k in TRACK_MAP): stats["trk"] += 1
     if "return_requested" in gap or "refund_done" in gap: stats["ret"] += 1
+    if placer_hit: stats["placer"] += 1
+    if "wb_order_id" in gap: stats["wb"] += 1
+    if parcel_hit: stats["parcel"] += 1
     stats["rows"] += 1
     if GO:
         w.execute(f"UPDATE closing_orders SET {','.join(sets)} WHERE amazon_order_id=?", vals + [o["amazon_order_id"]])
@@ -265,6 +361,7 @@ if GO:
     w.commit()
 print(f"\n[{ACCT}] orders changed: {stats['rows']}  "
       f"(earnings gap +{stats['earn']}, zoro +{stats['zoro']}, tracking +{stats['trk']}, "
-      f"returns +{stats['ret']}, label changes {stats['label']})  [{'APPLIED' if GO else 'dry-run'}]")
+      f"returns +{stats['ret']}, placer +{stats['placer']}, wb id +{stats['wb']}, "
+      f"parcel tracking +{stats['parcel']}, label changes {stats['label']})  [{'APPLIED' if GO else 'dry-run'}]")
 if not GO: print("  re-run with --go to apply")
 con.close(); w.close()

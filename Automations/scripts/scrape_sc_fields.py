@@ -9,6 +9,12 @@ orders with NO upload record anywhere, never scraped or scraped more than SCRAPE
 ago, newest first, at most SCRAPE_LIMIT per run. Feedback is still read off the page while
 we are there (it exists on ~0.04 % of orders — not worth a pass of its own).
 
+Since 17 Oct 2026 the queue also takes Shipped orders with NO deliver_by_date, of ANY month
+(the placer only captures it since 7 Sep 2026 and nothing else re-reads it, so ~9,000 older
+orders stayed empty in the coverage report): after the upload-record gaps, newest first, at
+most SCRAPE_DELIVER_BY_LIMIT per run (default 200; 0 = off). A page that loaded but showed no
+deliver-by is re-read at most every 30 days, never every run.
+
 WHY THIS DESIGN
 ---------------
 Headless does NOT work for SC: the session lives only inside a live, logged-in,
@@ -40,7 +46,8 @@ USAGE
 2. Run this tool against that account:
      SCRAPE_ACCOUNT=HOANK ../.venv/bin/python scripts/scrape_sc_fields.py
    Env overrides: SCRAPE_ACCOUNT, SCRAPE_PORT, SCRAPE_TABS (default 4),
-   SCRAPE_LIMIT (0=all), SCRAPE_MONTHS ('2026-05,2026-06'), SCRAPE_DRYRUN=1.
+   SCRAPE_LIMIT (0=all), SCRAPE_MONTHS ('2026-05,2026-06' or 'all'), SCRAPE_DRYRUN=1,
+   SCRAPE_DELIVER_BY_LIMIT (deliver-by backfill per run, default 200, 0 = off).
 """
 import os, sys, time, sqlite3
 
@@ -59,6 +66,8 @@ RETRY_DAYS = int(os.environ.get("SCRAPE_RETRY_DAYS") or 7)  # re-read a page tha
 # excluded every new month's orders from the scrape.
 from utils.accounts_config import default_months
 MONTHS   = [m.strip() for m in os.environ.get("SCRAPE_MONTHS", default_months()).split(",") if m.strip()]
+ALL_MONTHS = [m.lower() for m in MONTHS] == ["all"]
+DELIVER_BY_LIMIT = int(os.environ.get("SCRAPE_DELIVER_BY_LIMIT") or 200)
 DRYRUN   = os.environ.get("SCRAPE_DRYRUN", "0").strip() in ("1", "true", "yes", "on")
 PAGE_WAIT = float(os.environ.get("SCRAPE_PAGE_WAIT") or 14)   # max seconds per round
 RECYCLE_EVERY = int(os.environ.get("SCRAPE_RECYCLE_EVERY") or 150)  # flush tab memory every N orders
@@ -234,19 +243,27 @@ def recycle_tabs(driver, n):
         raise BrowserGone
 
 
+def _months_sql():
+    """(SQL condition, args) for the scrape months; SCRAPE_MONTHS=all → every month."""
+    if ALL_MONTHS:
+        return "1=1", []
+    return f"substr(purchase_date,1,7) IN ({','.join('?' * len(MONTHS))})", list(MONTHS)
+
+
 def count_total(conn):
-    ph = ",".join("?" * len(MONTHS))
+    msql, margs = _months_sql()
     return conn.execute(
-        f"SELECT COUNT(*) FROM closing_orders WHERE account=? AND substr(purchase_date,1,7) IN ({ph})",
-        [ACCOUNT, *MONTHS]).fetchone()[0]
+        f"SELECT COUNT(*) FROM closing_orders WHERE account=? AND {msql}",
+        [ACCOUNT, *margs]).fetchone()[0]
 
 
 def build_queue(conn):
     """Shipped orders of the scrape months with no upload record in closing_orders, the placer
-    table or the tracker's action_log, not scraped in the last RETRY_DAYS, newest first."""
-    ph = ",".join("?" * len(MONTHS))
+    table or the tracker's action_log, not scraped in the last RETRY_DAYS, newest first —
+    then Shipped orders of any month with no deliver_by_date (see the module docstring)."""
+    msql, margs = _months_sql()
     q = (f"SELECT amazon_order_id FROM closing_orders "
-         f"WHERE account=? AND substr(purchase_date,1,7) IN ({ph}) "
+         f"WHERE account=? AND {msql} "
          f"AND order_status='Shipped' "
          f"AND COALESCE(enriched_from_scrape,0)=0 "
          f"AND ( tracking_id_uploaded IS NULL OR TRIM(CAST(tracking_id_uploaded AS TEXT)) IN ('','None') ) "
@@ -257,17 +274,28 @@ def build_queue(conn):
          f"      WHERE action_type='tracking_upload' AND status IN ('success','already_shipped')) "
          f"ORDER BY purchase_date DESC")
     try:
-        rows = [r[0] for r in conn.execute(q, [ACCOUNT, *MONTHS, f"-{RETRY_DAYS} days"]).fetchall()]
+        rows = [r[0] for r in conn.execute(q, [ACCOUNT, *margs, f"-{RETRY_DAYS} days"]).fetchall()]
     except sqlite3.OperationalError as e:
         # an older schema without the placer upload columns: fall back to the closing row only
         print(f"[queue] fallback ({e})")
-        q2 = (f"SELECT amazon_order_id FROM closing_orders WHERE account=? AND substr(purchase_date,1,7) IN ({ph}) "
+        q2 = (f"SELECT amazon_order_id FROM closing_orders WHERE account=? AND {msql} "
               f"AND order_status='Shipped' AND COALESCE(enriched_from_scrape,0)=0 "
               f"AND ( tracking_id_uploaded IS NULL OR TRIM(CAST(tracking_id_uploaded AS TEXT)) IN ('','None') ) "
               f"ORDER BY purchase_date DESC")
-        rows = [r[0] for r in conn.execute(q2, [ACCOUNT, *MONTHS]).fetchall()]
+        rows = [r[0] for r in conn.execute(q2, [ACCOUNT, *margs]).fetchall()]
     if LIMIT:
         rows = rows[:LIMIT]
+    if DELIVER_BY_LIMIT:
+        have = set(rows)
+        dq = ("SELECT amazon_order_id FROM closing_orders "
+              "WHERE account=? AND order_status='Shipped' "
+              "AND ( deliver_by_date IS NULL OR TRIM(CAST(deliver_by_date AS TEXT)) IN ('','None') ) "
+              "AND ( scraped_at IS NULL OR scraped_at='' OR scraped_at < datetime('now', 'localtime', '-30 days') ) "
+              "ORDER BY purchase_date DESC")
+        extra = [r[0] for r in conn.execute(dq, [ACCOUNT]).fetchall() if r[0] not in have]
+        rows += extra[:DELIVER_BY_LIMIT]
+        if extra:
+            print(f"[queue] + {min(len(extra), DELIVER_BY_LIMIT)} of {len(extra)} orders with no deliver-by date")
     return rows
 
 
@@ -299,7 +327,7 @@ def main():
     total = len(queue)
 
     # ── startup summary ──
-    print(f"Total orders in DB ({ACCOUNT}, {'+'.join(MONTHS)}) : {total_db}")
+    print(f"Total orders in DB ({ACCOUNT}, {'all months' if ALL_MONTHS else '+'.join(MONTHS)}) : {total_db}")
     print(f"Shipped orders with no upload record        : {total}" + (f"  (capped at {LIMIT} this run)" if LIMIT and total >= LIMIT else ""))
     if not total:
         print("Nothing to scrape — every shipped order has an upload record. ✅"); return
