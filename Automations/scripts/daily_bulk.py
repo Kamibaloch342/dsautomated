@@ -231,11 +231,13 @@ def main():
     # 4) SC scrape — exception-only since 26 Sep 2026: Shipped orders with no upload record
     #    from the tracker (dates come from the placer, tracking_id_uploaded from the tracker's
     #    own record), bounded per run by SCRAPE_LIMIT. Needs logged-in Chrome; best-effort.
+    #    Since 17 Oct 2026 also Shipped orders of any month with no deliver_by_date, at most
+    #    SCRAPE_DELIVER_BY_LIMIT (200) per run — the placer has only captured it since 7 Sep.
     if SKIP_SCRAPE:
         print("\n(SKIP_SCRAPE=1 → skipping SC scrape; deliver_by/feedback stay amber)")
     else:
         for a in ACCTS:
-            run(f"SC scrape {a} (upload-record gaps)", [PY, "scripts/scrape_sc_fields.py"],
+            run(f"SC scrape {a} (upload-record + deliver-by gaps)", [PY, "scripts/scrape_sc_fields.py"],
                 env={"SCRAPE_ACCOUNT": a, "SCRAPE_TABS": TABS, "SCRAPE_MONTHS": MONTHS,
                      "SCRAPE_LIMIT": os.environ.get("SCRAPE_LIMIT", "400")},
                 timeout=SCRAPE_TIMEOUT, critical=False)
@@ -330,19 +332,31 @@ def main():
     COLS = ("earnings", "zoro_order_total", "shipped_email_time", "zoro_ship_speed",
             "placement_speed", "tracking_ids", "delivery_status", "deliver_by_date",
             "profit_dollars", "purchase_date", "ship_by_date", "wb_order_id")
+    # Columns only a Zoro order can have (17 Oct 2026). A Shipped WW (Grainger) or manual
+    # order has no WB id, no Zoro e-mails and no Zoro tracking — counting it here made the
+    # report show ~100 "missing" Zoro fields that no step could ever fill.
+    ZORO_ONLY = {"wb_order_id", "zoro_order_total", "shipped_email_time", "zoro_ship_speed",
+                 "placement_speed", "tracking_ids", "delivery_status"}
+    IS_ZORO = ("(UPPER(COALESCE(merchant_order_id,'')) GLOB '*WB[0-9]*' "
+               "OR UPPER(COALESCE(merchant_order_id,'')) GLOB '*SO[0-9]*' "
+               "OR COALESCE(wb_order_id,'') != '')")
     try:
         c = sqlite3.connect(DB, timeout=30); c.execute("PRAGMA busy_timeout=30000")
         for a in ACCTS:
             tot = c.execute("SELECT COUNT(*) FROM closing_orders WHERE account=? AND order_status='Shipped'",
                             (a,)).fetchone()[0]
-            print(f"\n  {a} (Shipped n={tot}):")
+            non_zoro = c.execute(f"SELECT COUNT(*) FROM closing_orders WHERE account=? "
+                                 f"AND order_status='Shipped' AND NOT {IS_ZORO}", (a,)).fetchone()[0]
+            print(f"\n  {a} (Shipped n={tot}"
+                  + (f"; {non_zoro} WW/manual orders not counted for Zoro-only fields" if non_zoro else "") + "):")
             if not tot:
                 continue
             report_lines = []
             for col in COLS:
+                scope = f" AND {IS_ZORO}" if col in ZORO_ONLY else ""
                 ids = [r[0] for r in c.execute(
                     f"SELECT amazon_order_id FROM closing_orders WHERE account=? AND order_status='Shipped' "
-                    f"AND ({col} IS NULL OR {col}='')", (a,))]
+                    f"AND ({col} IS NULL OR {col}=''){scope}", (a,))]
                 pct = round(100.0 * len(ids) / tot, 1)
                 mark = "✅" if not ids else "❌"
                 print(f"     {mark} {col:20} {len(ids):4} missing ({pct}%)"

@@ -31,6 +31,9 @@ Env:  ZORO_TRACK_ACCOUNT (ALL) · ZORO_TRACK_DAYS (60) · ZORO_TRACK_LIMIT (0 = 
       ZORO_TRACK_TRANSPORT (auto|http|browser) · ZORO_TRACK_DRY=1 (fetch + parse, write nothing) ·
       ZORO_TRACK_ORDERS=WB…,WB… (only these, whatever their state) ·
       ZORO_TRACK_FULL=1 (always re-read the order, not just its known parcels) · ZORO_TRACK_DUMP_DIR
+      ZORO_TRACK_CATCHUP (300) — older than ZORO_TRACK_DAYS but never checked and with no
+      delivery_status at all: this many per run, newest first, after the normal list
+      (17 Oct 2026; 0 = off). They used to stay blank in the closing coverage forever.
 Exit codes: 0 ok · 2 Zoro refused the transport (nothing was marked) · 3 already running
 """
 import json
@@ -58,6 +61,7 @@ CFG = zoro_tracking_cfg()
 ACCOUNT = os.environ.get("ZORO_TRACK_ACCOUNT", "ALL").strip() or "ALL"
 DAYS = int(os.environ.get("ZORO_TRACK_DAYS") or CFG.get("days", 60))
 LIMIT = int(os.environ.get("ZORO_TRACK_LIMIT") or 0)
+CATCHUP = int(os.environ.get("ZORO_TRACK_CATCHUP") or 300)
 RECHECK_H = float(os.environ.get("ZORO_TRACK_RECHECK_HOURS") or CFG.get("recheck_hours", 20))
 DELAY = float(os.environ.get("ZORO_TRACK_DELAY") or CFG.get("delay_s", 0.4))
 WORKERS = max(1, int(os.environ.get("ZORO_TRACK_WORKERS") or CFG.get("workers", 4)))
@@ -191,6 +195,21 @@ def load_candidates(conn):
         f"purchase_date DESC", args)]
     if LIMIT:
         rows = rows[:LIMIT]
+    if CATCHUP and not ONLY:
+        # Catch-up: shipped orders that aged past DAYS before any delivery check read them.
+        have = {r["amazon_order_id"] for r in rows}
+        old = [dict(r) for r in conn.execute(
+            f"SELECT {_COLS} FROM closing_orders WHERE account IN ({ph}) "
+            f"AND COALESCE(wb_order_id,'') != '' AND COALESCE(delivery_status,'') = '' "
+            f"AND COALESCE(order_label,'') != 'Cancelled' AND COALESCE(order_status,'') != 'Cancelled' "
+            f"AND (order_status='Shipped' OR COALESCE(shipped_email_time,'') != '') "
+            f"AND substr(purchase_date,1,10) < date('now', ?) "
+            f"AND (delivery_checked_at IS NULL OR delivery_checked_at = '') "
+            f"ORDER BY purchase_date DESC LIMIT ?", [*accts, f"-{DAYS} day", CATCHUP])]
+        old = [r for r in old if r["amazon_order_id"] not in have]
+        if old:
+            print(f"[candidates] + {len(old)} older orders never checked (catch-up, max {CATCHUP}/run)")
+        rows += old
     return rows
 
 
