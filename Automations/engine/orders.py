@@ -1293,11 +1293,11 @@ def _supervise_coupon_decision(driver, resolved_items, raw_cart_cost, priority_w
         else:
             why = f"no coupon applied ({why_reg}) — waiting for the next coupon scrape"
         return _ret({"action": "wait", "coupon": None, "tier": None, "reason": why,
-                     "verdict": _v("NO_PRIORITY", col_by_price, "no priority coupon; sorted by unit price")})
+                     "verdict": _v("NO_PRIORITY", col_by_price, "no priority coupon; sorted by the price of one Amazon unit (Zoro price × pack)")})
     why = (f"no priority coupon applies; cart ${raw_cart_cost:.2f} < ${SUPERVISE_MIN_CART:.0f}"
            + (f"; reseller margin {reseller_est_margin:.1%} is fine" if reseller_est_margin is not None else ""))
     return _ret({"action": "reseller", "coupon": None, "tier": None, "reason": why,
-                 "verdict": _v("NO_PRIORITY", col_by_price, "no priority coupon; sorted by unit price")})
+                 "verdict": _v("NO_PRIORITY", col_by_price, "no priority coupon; sorted by the price of one Amazon unit (Zoro price × pack)")})
 
 
 def _record_asin_verdict(asin, verdict, cart_text="", coupon=""):
@@ -1347,9 +1347,39 @@ def _sweep_mark(active: bool, reason: str = "", pending: int = 0) -> None:
         print(f"  ⚠️ sweep flag not written: {e}")
 
 
+_SHEET_PRI = {"at": 0.0, "codes": None}
+
+
+def _sheet_priority_codes():
+    """The priority codes in the Coupons tab right now (read-only, cached 5 min; last good value
+    kept on a failed read). A reseller uses it only to notice codes its coupon placer has not
+    swept yet."""
+    if _SHEET_PRI["codes"] is not None and time.time() - _SHEET_PRI["at"] < 300:
+        return _SHEET_PRI["codes"]
+    codes = None
+    try:
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):
+            res = load_coupon_codes(force=True)
+        if isinstance(res, tuple):                      # a real read — an empty list means "no codes"
+            codes = sorted({str((c or {}).get("code") or "").strip() for c in (res[0] or [])} - {""})
+    except Exception:
+        codes = None
+    if codes is not None:
+        _SHEET_PRI.update(at=time.time(), codes=codes)
+        return codes
+    return _SHEET_PRI["codes"] or []
+
+
 def _sweep_active():
-    """Reason text if a fresh sweep flag is set for this store, else None (a flag older than
-    SWEEP_HOLD_MAX_MIN is ignored: a killed placer must never hold the reseller forever)."""
+    """Reason text when this store's reseller must hold its priority/deciding discovery, else None:
+      • the coupon placer's sweep flag is fresh (a flag older than SWEEP_HOLD_MAX_MIN is ignored), or
+      • the store's re-check queue still has ASINs — the sweep is unfinished, whatever the flag's
+        age (19 Oct 2026: the flag ran out after 90 min with 94 ASINs untested), or
+      • the Coupons tab has priority codes the store's coupon placer has not swept (19 Oct:
+        HS_COUPON was stopped from 10:30 to 19:05 after the new codes were added).
+    Labelled orders still run while it holds."""
     try:
         from utils.jsonstore import read_json
         d = read_json(_SWEEP_FLAG, None)
@@ -1357,6 +1387,11 @@ def _sweep_active():
             return f"{d.get('reason', 'coupon change')} ({d.get('pending', '?')} ASIN(s) pending, started {d.get('at_text', '')})"
     except Exception:
         pass
+    try:
+        from engine import priority_check as _pc
+        return _pc.sweep_hold_reason(_STORE, _sheet_priority_codes())
+    except Exception as e:
+        print(f"  ⚠️ sweep-hold check: {e}")
     return None
 
 
@@ -4590,7 +4625,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             driver, resolved_items, raw_cart_cost, priority_coupons_with_pct, regular_coupon_codes,
             asin_coupon_cache,
             all_zoro_select=all(it.get("is_zoro_select") for it in resolved_items),
-            reseller_est_margin=_res_margin, unit_price=primary_item.get("unit_price"),
+            reseller_est_margin=_res_margin,
+            # one AMAZON unit = the Zoro price × the pack size (owner, 20 Oct 2026: a $16 item sold
+            # as a 4-pack costs $64 an order and belongs in Coupon, not Deciding)
+            unit_price=float(primary_item.get("unit_price") or 0)
+                       * float(primary_item.get("qty_multiplier") or 1)
+                       * int(primary_item.get("zoro_multiple") or 1),
             pdp_ineligible=_pdp_bad)
         _cart_txt = f"${raw_cart_cost:.2f} ({sku_field})"
         _DLOG.log("supervisor", profile=PROFILE_NAME, amazon_id=amazon_id, asin=primary_item.get("asin"),
@@ -4983,6 +5023,16 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                                   f"(priority coupon {_late.get('coupon') or ''} works) — after this cycle's sheet load",
                                   dict(asin=asin_field, sku=sku_field, qty=qty_field, buyer=buyer,
                                        city=city, state=state, order_note=order_note))
+                return "skipped"
+            # Not properly tested with the CURRENT priority coupons (no answer from Zoro, or tested
+            # before the coupon change): queue it for the coupon placer and leave the order
+            # unlabelled — never bought at reseller price on a guess (owner, 20 Oct 2026).
+            _pasin = str(primary_item.get("asin") or "").strip().upper()
+            _wait = _pc_late.reseller_must_wait(_pasin, _STORE, sheet_priority_codes=_sheet_priority_codes())
+            if _wait:
+                _pc_late.enqueue_asins(f"{_STORE}_COUPON", [_pasin], f"reseller: {_wait}")
+                print(f"  ⏳ {_pasin}: not placed at reseller price — {_wait}. Queued for {_STORE}_COUPON's "
+                      f"priority-coupon test; the order stays unlabelled until then.")
                 return "skipped"
         except Exception as _e:
             print(f"  ⚠️ late column check skipped: {_e}")
@@ -5776,8 +5826,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 #  COUPON SHEET LOADER
 # ══════════════════════════════════════════════════════════════════
 
-def load_coupon_codes():
+def load_coupon_codes(force=False):
     """Load coupon codes with percentage/fixed-amount info from Google Sheets.
+    force=True: read it on a reseller profile too (only to see which priority codes exist —
+    resellers never apply a coupon).
 
     The Coupons tab has two columns:
       A: Coupon code
@@ -5796,7 +5848,7 @@ def load_coupon_codes():
       ]
       regular_coupons = ["EMZMXTFY8QR9", ...]
     """
-    if not IS_COUPON_PROFILE:
+    if not IS_COUPON_PROFILE and not force:
         return [], []
     print("\n🏷️  Loading coupon sheet...")
     metadata = None

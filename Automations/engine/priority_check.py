@@ -77,6 +77,9 @@ DATA = os.path.join(AUTO, "data")
 from utils.jsonstore import mutate_json, read_json, write_json_atomic, locked  # noqa: E402
 STATE_PATH = os.path.join(DATA, "priority_check_state.json")
 PERMANENT = ("PROMO_INELIGIBLE",)          # never re-queued automatically (PDP badge)
+NOT_A_VERDICT = ("TRANSIENT", "ERROR")     # Zoro did not answer — says nothing about the ASIN
+QUEUE_MAX_TRIES = 6                        # a queued ASIN Zoro will not answer for is dropped after this
+TRANSIENT_STOP = 3                         # this many "Zoro did not answer" in a row → pause the sweep
 
 
 # ── sheet helpers ─────────────────────────────────────────────────────────
@@ -222,74 +225,70 @@ def write_check_block(wsvc, headers, results: dict) -> None:
                                         valueInputOption="RAW", body={"values": rows}).execute()
 
 
+def _target_row(rows, ti: int, deleted_rows=()) -> int:
+    """Sheet row where an ASIN goes in column `ti`: the FIRST empty cell from row 2, judged after
+    the cells in `deleted_rows` (this column) were removed and the column shifted up."""
+    vals = []
+    for ri, r in enumerate(rows[1:], start=2):
+        if ri in deleted_rows:
+            continue
+        vals.append((r[ti] if ti < len(r) else "") or "")
+    for i, v in enumerate(vals):
+        if not str(v).strip():
+            return i + 2
+    return len(vals) + 2
+
+
 def move_asin(wsvc, headers, rows, asin: str, to_col: str, store: str, profile_name: str = "", note_reason: str = "") -> bool:
-    """Put the ASIN in `to_col` exactly once and blank it in every OTHER column of
-    this store, including duplicate rows (idempotent: nothing happens if it is
-    already only there, once).
-    Also writes a Google Sheets Cell Note: 'ZUHRA'
-    """
+    """Put the ASIN in `to_col` exactly once and take it out of every OTHER column of this store,
+    duplicate rows included (idempotent: nothing happens if it is already only there, once).
+
+    The columns stay compact (owner, 20 Oct 2026: "a lot of spaces — it deletes and adds at the
+    bottom"). Until then a move BLANKED the old cell and wrote the ASIN below the last one, so every
+    move left a hole, with its ZUHRA note, in the middle of a column. Now the old cell is DELETED
+    and the cells below it shift up (their notes travel with them), and the ASIN goes into the
+    first empty cell of the target column with its ZUHRA note — all in ONE atomic batchUpdate, so
+    a reader never sees the ASIN in two columns or in none. Only this store's columns move, and
+    only the cells at and below a removed ASIN within its own column."""
     if to_col not in headers:
         return False
+    a = asin.strip().upper()
     ti = headers.index(to_col)
-    data = []
-    target_cell = None
+    deletes = []                                   # (column index, sheet row)
     kept = False
     for h in headers:
         if not h.upper().startswith(store + "_"):
             continue
         ci = headers.index(h)
         for ri, r in enumerate(rows[1:], start=2):
-            if ci < len(r) and (r[ci] or "").strip().upper() == asin.upper():
+            if ci < len(r) and (r[ci] or "").strip().upper() == a:
                 if h == to_col and not kept:
-                    kept = True                      # first occurrence in the target stays
-                    target_cell = (ci, ri)
+                    kept = True                    # first occurrence in the target stays
                 else:
-                    data.append({"range": f"'{TAB}'!{_col_letter(ci)}{ri}", "values": [[""]]})
-    if not kept:
-        tr = 2
-        for ri, r in enumerate(rows[1:], start=2):
-            if ti < len(r) and (r[ti] or "").strip():
-                tr = ri + 1
-        ensure_grid(wsvc, min_cols=ti + 1, min_rows=tr)
-        data.append({"range": f"'{TAB}'!{_col_letter(ti)}{tr}", "values": [[asin.upper()]]})
-        target_cell = (ti, tr)
-    if not data:
+                    deletes.append((ci, ri))
+    if kept and not deletes:
         return False
-    wsvc.spreadsheets().values().batchUpdate(spreadsheetId=GOOGLE_SHEET_ID,
-                                             body={"valueInputOption": "RAW", "data": data}).execute()
-
-    # Attach ZUHRA attribution note to the target cell
-    if target_cell is not None and not kept:
-        try:
-            g = _sheet_grid(wsvc)
-            sheet_id = g.get("sheetId")
-            if sheet_id is not None:
-                ci, ri = target_cell
-                note_req = {
-                    "updateCells": {
-                        "range": {
-                            "sheetId": sheet_id,
-                            "startRowIndex": ri - 1,
-                            "endRowIndex": ri,
-                            "startColumnIndex": ci,
-                            "endColumnIndex": ci + 1
-                        },
-                        "rows": [{
-                            "values": [{
-                                "note": ("ZUHRA · " + _now() + (" · " + note_reason[:180] if note_reason else "")
-                                         + (" · by " + profile_name if profile_name else ""))
-                            }]
-                        }],
-                        "fields": "note"
-                    }
-                }
-                wsvc.spreadsheets().batchUpdate(
-                    spreadsheetId=GOOGLE_SHEET_ID,
-                    body={"requests": [note_req]}
-                ).execute()
-        except Exception:
-            pass  # Best effort note stamping
-
+    g = _sheet_grid(wsvc)
+    sid = g.get("sheetId")
+    if sid is None:
+        raise RuntimeError(f"tab '{TAB}' not found")
+    reqs = []
+    # bottom-up inside each column so the row numbers still to delete stay valid
+    for ci, ri in sorted(deletes, key=lambda d: (d[0], -d[1])):
+        reqs.append({"deleteRange": {"range": {"sheetId": sid, "startRowIndex": ri - 1, "endRowIndex": ri,
+                                               "startColumnIndex": ci, "endColumnIndex": ci + 1},
+                                     "shiftDimension": "ROWS"}})
+    if not kept:
+        tr = _target_row(rows, ti, {ri for ci, ri in deletes if ci == ti})
+        ensure_grid(wsvc, min_cols=ti + 1, min_rows=tr)
+        note = ("ZUHRA · " + _now() + (" · " + note_reason[:180] if note_reason else "")
+                + (" · by " + profile_name if profile_name else ""))
+        reqs.append({"updateCells": {
+            "range": {"sheetId": sid, "startRowIndex": tr - 1, "endRowIndex": tr,
+                      "startColumnIndex": ti, "endColumnIndex": ti + 1},
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": a}, "note": note}]}],
+            "fields": "userEnteredValue,note"}})
+    wsvc.spreadsheets().batchUpdate(spreadsheetId=GOOGLE_SHEET_ID, body={"requests": reqs}).execute()
     return True
 
 
@@ -448,7 +447,12 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
     if not code:
         row.update(Check_Status="UNMAPPED", Check_Suggest="Map it first", Check_Note="not in Verified_SKU_Dataset")
         return row
-    zoro_session_ready(driver)                      # never call Zoro's API from chrome://new-tab-page
+    if not zoro_session_ready(driver):             # never call Zoro's API from chrome://new-tab-page
+        # 19 Oct 2026: the sweep for the new coupons ran with the profile logged out of Zoro and
+        # filed "TRANSIENT" for ASIN after ASIN, 4 s each. Say plainly that nothing was tested.
+        row.update(Check_Status="TRANSIENT", Check_Suggest="Re-check later",
+                   Check_Note="Zoro session not ready (not logged in / no network) — not tested")
+        return row
     try:
         qty = max(1, int(float(m.get("qty_multiplier") or 1) * int(m.get("zoro_multiple") or 1)))
     except Exception:
@@ -568,12 +572,18 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
         #
         # Below the threshold the answer is still Deciding: whether such an order needs a coupon
         # depends on the quantity and on the reseller's margin, and only the order knows those.
+        #
+        # "Unit" is ONE AMAZON UNIT — the Zoro price times the pack size from the verified SKU sheet
+        # (zoro_multiple × qty_multiplier), i.e. this cart. Until 20 Oct 2026 it was the single Zoro
+        # unit, so a 4-pack of a $16 item ($64 an order, every order) or 12 × $5.85 ($70.20) was put
+        # in Deciding and the reseller kept being handed orders that always need a coupon (owner).
         _min = coupon_column_min()
-        _big = unit >= _min
+        _big = cart >= _min
+        _what = f"${cart:.2f} for one Amazon unit" + (f" ({qty} × ${unit:.2f})" if qty > 1 else "")
         row.update(Check_Status="NO_PRIORITY", Check_Suggest="Coupon" if _big else "Deciding",
-                   Check_Note=(f"no priority coupon; unit ${unit:.2f} ≥ ${_min:.0f} → regular coupon every time"
+                   Check_Note=(f"no priority coupon; {_what} ≥ ${_min:.0f} → regular coupon every time"
                                if _big else
-                               f"no priority coupon; unit ${unit:.2f} < ${_min:.0f} → per-order (qty / regular coupon / margin)")
+                               f"no priority coupon; {_what} < ${_min:.0f} → per-order (qty / regular coupon / margin)")
                               + (f"; a priority coupon applies from ${min_order:.0f}" if min_order else ""))
     if not tried:
         row["Check_Note"] = "no priority coupons loaded; " + row["Check_Note"]
@@ -588,7 +598,12 @@ def zoro_session_ready(driver) -> bool:
         from platforms.zoro import ensure_on_site, ensure_token
         if "zoro.com" not in (driver.current_url or ""):
             ensure_on_site(driver)
-        ensure_token(driver)
+        # ensure_token answers False when the profile has no Okta session (logged out). That
+        # answer used to be ignored — on 19 Oct 2026 the coupon sweep ran logged out and
+        # every ASIN it tried came back "no_token".
+        if ensure_token(driver) is False:
+            print("  ⚠️  Zoro session not ready: this profile is not logged in to zoro.com")
+            return False
         return True
     except Exception as e:
         print(f"  ⚠️  Zoro session not ready: {e}")
@@ -629,7 +644,7 @@ def _state_path(profile_name: str) -> str:
 
 
 def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, svc, wsvc, headers, rows, move,
-               mode: str = "new", on_done=None, current_cols=None):
+               mode: str = "new", on_done=None, current_cols=None, on_retry=None):
     """Test each ASIN and apply the move policy. Reliability rules:
       • one ASIN's failure never aborts the rest (per-ASIN try/except, on_done always called);
       • the column an ASIN is judged against is its column NOW (current_cols), not the
@@ -637,7 +652,11 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
       • rows are re-read under the write lock right before a move, so a cell filled by
         the supervisor thread meanwhile is never overwritten;
       • with NO priority coupons loaded nothing is moved — a bad coupon-sheet read must
-        never demote a store's Coupon column."""
+        never demote a store's Coupon column;
+      • "Zoro did not answer" (TRANSIENT / ERROR) is not a verdict: the ASIN stays queued
+        (on_retry, up to QUEUE_MAX_TRIES), its last real verdict is kept, and TRANSIENT_STOP of
+        them in a row pause the sweep — 19 Oct 2026: a logged-out sweep filed 33 ASINs as
+        "re-check later", dropped them from the queue, and the reseller placed them."""
     notes = _sheet_notes(mod)
     if notes:
         with _write_lock:
@@ -651,6 +670,7 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
         return []
     results = []
     cart_stuck = 0
+    no_answer = 0
     for i, (asin, col) in enumerate(asins_with_cols, 1):
         t0 = time.time()
         row = None
@@ -698,8 +718,12 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
                     except Exception as e:
                         print(f"    ⚠️ move failed: {e}")
                 try:
-                    save_verdict(asin, row, target if (moved or not move or target == col) else col,
-                                 "bot" if moved else ("human" if blocked else None))
+                    _real_prev = (prev.get("status") or "") not in ("",) + NOT_A_VERDICT
+                    if row.get("Check_Status") in NOT_A_VERDICT and _real_prev:
+                        pass                       # keep the last real verdict; the ASIN stays queued
+                    else:
+                        save_verdict(asin, row, target if (moved or not move or target == col) else col,
+                                     "bot" if moved else ("human" if blocked else None))
                 except Exception as e:
                     print(f"    ⚠️ verdict memory not written for {asin}: {e}")
                 if notes:
@@ -711,14 +735,23 @@ def _run_batch(driver, profile_name, asins_with_cols, sku_map, pri, cache, mod, 
         except Exception as e:
             print(f"    ⚠️ {asin}: {e} — skipped this time (it stays queued for the next run if it was queued)")
         finally:
-            # "cart add failed" is the session's fault, not a verdict on the ASIN: it stays queued
+            # "cart add failed" is the session's fault, not a verdict on the ASIN: it stays queued.
+            # So is any other "Zoro did not answer" (TRANSIENT / ERROR): retried, never dropped.
             stuck = str((row or {}).get("Check_Note", "")).endswith("cart add failed")
-            if on_done is not None and not stuck:
-                try:
+            unanswered = row is None or (row or {}).get("Check_Status") in NOT_A_VERDICT
+            try:
+                if unanswered and not stuck and on_retry is not None:
+                    on_retry(asin)
+                elif on_done is not None and not stuck and not unanswered:
                     on_done(asin)
-                except Exception as e:
-                    print(f"    ⚠️ queue bookkeeping failed for {asin}: {e}")
+            except Exception as e:
+                print(f"    ⚠️ queue bookkeeping failed for {asin}: {e}")
         cart_stuck = cart_stuck + 1 if stuck else 0
+        no_answer = no_answer + 1 if (unanswered and not stuck) else 0
+        if no_answer >= TRANSIENT_STOP and i < len(asins_with_cols):
+            print(f"  ⏸️  Zoro did not answer for {no_answer} ASINs in a row (logged out / network) — sweep paused, "
+                  f"{len(asins_with_cols) - i} more ASIN(s) stay queued for the next run")
+            break
         if cart_stuck >= CART_STUCK_STOP and i < len(asins_with_cols):
             # 12 Oct 2026: a leftover item the cart could not shed failed 57 re-checks at ~60 s
             # each — an hour with no order placed and nothing learned. Stop; orders go ahead.
@@ -882,6 +915,47 @@ def _queue_remove(p: str, asin: str) -> None:
         write_json_atomic(p, q, indent=1)
 
 
+def _queue_retry(p: str, asin: str, profile_name: str = "") -> None:
+    """Zoro did not answer for this queued ASIN: send it to the BACK of the queue with one more
+    try counted, so the rest of the store is tested first. After QUEUE_MAX_TRIES it leaves the
+    queue and is remembered as UNTESTABLE (its column is kept) so the reseller does not wait on
+    it for ever; every attempt is in the decision log."""
+    gave_up = None
+    with locked(p):
+        q = read_json(p, None)
+        if not isinstance(q, dict):
+            return
+        keep, mine = [], None
+        for x in (q.get("asins") or []):
+            a = x[0] if isinstance(x, list) else x
+            if a == asin and mine is None:
+                mine = list(x) if isinstance(x, list) else [x, ""]
+            else:
+                keep.append(x)
+        if mine is None:
+            return
+        while len(mine) < 3:
+            mine.append("" if len(mine) == 1 else 0)
+        mine[2] = int(mine[2] or 0) + 1
+        if mine[2] >= QUEUE_MAX_TRIES:
+            gave_up = mine
+        else:
+            keep.append(mine)
+        q["asins"] = keep
+        write_json_atomic(p, q, indent=1)
+    if gave_up:
+        print(f"    ✖ {asin}: Zoro did not answer {gave_up[2]}× — left in its column, marked UNTESTABLE")
+        try:
+            prev = load_verdicts().get(asin.upper()) or {}
+            save_verdict(asin, {"Check_Status": "UNTESTABLE", "Check_Suggest": "Keep column",
+                                "Check_At": _now(), "Check_Profile": profile_name,
+                                "Check_Note": f"Zoro did not answer {gave_up[2]} times — not tested with this "
+                                              f"week's priority coupons; left in {prev.get('column') or gave_up[1] or 'its column'}"},
+                         prev.get("column") or (gave_up[1] if len(gave_up) > 1 else ""), prev.get("owner"))
+        except Exception as e:
+            print(f"    ⚠️ verdict memory not written for {asin}: {e}")
+
+
 def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=None, mod=None, max_asins: int = 15) -> list:
     """Drain up to max_asins from the re-check queue (called between placer cycles)."""
     if mod is None:
@@ -915,9 +989,10 @@ def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
     if not pri:
         print("  ⏸️  no priority coupons loaded right now — the queue waits (nothing is tested or moved)")
         return []
-    results = _run_batch(driver, profile_name, [tuple(x) for x in batch], sku_map, pri, cache, mod, svc, wsvc,
+    results = _run_batch(driver, profile_name, [(x[0], x[1] if len(x) > 1 else "") if isinstance(x, list) else (x, "") for x in batch], sku_map, pri, cache, mod, svc, wsvc,
                          headers, rows, _auto_assign(mod), mode=q.get("mode") or "recheck",
-                         on_done=lambda a: _queue_remove(p, a), current_cols=current_cols)
+                         on_done=lambda a: _queue_remove(p, a), current_cols=current_cols,
+                         on_retry=lambda a: _queue_retry(p, a, profile_name))
     left = queue_size(profile_name)
     if left == 0:
         print(f"  ✅ re-check queue drained ({q.get('reason', '')})")
@@ -926,6 +1001,62 @@ def run_queue(driver, profile_name: str, sku_map=None, coupon_codes=None, cache=
         except OSError:
             pass
     return results
+
+
+# ── what the RESELLER must wait for (owner, 20 Oct 2026) ───────────────────
+def coupon_set_seen(store: str) -> dict:
+    """{"codes": [...], "at": "YYYY-MM-DD HH:MM"} — the priority coupon set the store's coupon placer
+    last saw (and queued a sweep for). Empty dict when it has never run."""
+    d = read_json(os.path.join(DATA, "dataset", f"priority_coupon_set_{store}_COUPON.json"), None)
+    return d if isinstance(d, dict) else {}
+
+
+def sweep_hold_reason(store: str, sheet_priority_codes=None):
+    """Why the <store> reseller must hold its priority/deciding discovery right now, or None.
+
+    19 Oct 2026, the week's new codes (ZSELECTJ1026 20 %, SUPPLIES11726 15 % …): the DM sweep was
+    interrupted for hours and its 90-minute flag ran out with 94 ASINs untested, and HS_COUPON was
+    not running at all from 10:30 to 19:05 — so nothing told the resellers to wait. Now they wait
+    while (a) the store's re-check queue still has ASINs, or (b) the Coupons tab holds priority
+    codes the store's coupon placer has not seen yet (it is stopped, or in labels-only mode).
+    Labelled orders are never held. With NO priority code in the Coupons tab there is nothing to
+    test with (the queue cannot drain), so nothing is held — Sunday mode keeps working."""
+    cur = {str(c).strip() for c in (sheet_priority_codes or []) if str(c).strip()}
+    if not cur:
+        return None
+    n = queue_size(f"{store}_COUPON")
+    if n:
+        return (f"{n} ASIN(s) of the {store} store still to be tested with the current priority coupons"
+                if n > 0 else f"the {store} re-check queue is unreadable (the coupon placer rebuilds it)")
+    seen = coupon_set_seen(store)
+    if cur and seen.get("codes") is not None and cur != set(seen.get("codes") or []):
+        new = sorted(cur - set(seen.get("codes") or []))
+        return (f"the Coupons tab has priority code(s) {', '.join(new) if new else '(a changed set)'} that "
+                f"{store}_COUPON has not swept yet — start {store}_COUPON (not labels-only) so it sorts the store")
+    return None
+
+
+def reseller_must_wait(asin: str, store: str, verdicts=None, sheet_priority_codes=None):
+    """For an UNLABELLED order the reseller found through its columns: a reason not to place it yet,
+    or None. The ASIN was tested by this store, but not properly with the CURRENT priority coupons:
+    its last test got no answer from Zoro, or it predates the coupon change. The reseller then
+    queues it for the coupon placer instead of buying it at reseller price (19 Oct 2026:
+    B0FM2YLY3V and five more, all "TRANSIENT", were bought by HS_RESELLER at 23:18–23:25).
+    No priority code in the Coupons tab → nothing to wait for."""
+    if not any(str(c).strip() for c in (sheet_priority_codes or [])):
+        return None
+    v = (verdicts if verdicts is not None else load_verdicts()).get(str(asin).strip().upper()) or {}
+    if not v or not str(v.get("profile") or "").upper().startswith(store.upper()):
+        return None                                    # never tested by this store: as before
+    st = v.get("status") or ""
+    if st in ("PROMO_INELIGIBLE", "UNTESTABLE"):
+        return None
+    if st in NOT_A_VERDICT:
+        return f"its last priority-coupon test got no answer from Zoro ({v.get('at', '')})"
+    set_at = coupon_set_seen(store).get("at") or ""
+    if set_at and (v.get("at") or "") < set_at:
+        return f"it was last tested {v.get('at', '')}, before the current priority coupons arrived ({set_at})"
+    return None
 
 
 def main():

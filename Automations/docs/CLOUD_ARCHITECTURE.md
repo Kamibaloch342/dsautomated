@@ -190,7 +190,7 @@ are enforced in code, not by convention:
   default 250): a code was **added** → every Reseller and Deciding ASIN is tested with the codes,
   highest percentage first (20 % before 15 %), and promoted to Coupon where one applies; a code
   **expired or was removed** → every Coupon-column ASIN is re-tested: another priority code works →
-  stays; Zoro Select or the page badge → Reseller; otherwise the unit price decides, as everywhere
+  stays; Zoro Select or the page badge → Reseller; otherwise the price of ONE AMAZON UNIT (Zoro price × the pack size in the verified SKU sheet — corrected 20 Oct 2026, it was the single Zoro unit, so a $16 4-pack sat in Deciding) decides, as everywhere
   else — unit ≥ `supervise_min_cart_for_regular` ($50) → Coupon (a regular 10 % code is worth
   spending on every order of it), below it → Deciding (quantity and the reseller's margin decide
   per order). **Corrected 29 Sep 2026**: from 14 to 29 Sep this branch answered Deciding whatever
@@ -254,6 +254,26 @@ are enforced in code, not by convention:
 * **Unmapped priority ASINs cost nothing.** Discovery skips orders whose priority/deciding ASIN
   has no Zoro code in the verified SKU sheet, flagging the ASIN once per cycle for the Unmapped
   panel instead of loading every order page (926 loads for one ASIN on 8 Sep).
+* **A sweep is finished before the reseller guesses (20 Oct 2026).** On 19 Oct the new codes
+  (ZSELECTJ1026 20 %, SUPPLIES11726 / MATERIAL81026 15 %, TOOLSG41026 10 %) were added at 10:42; the
+  DM sweep ran logged out of Zoro and was restarted for hours, its 90-minute flag ran out with 94 ASINs
+  untested, and HS_COUPON was not running at all until 19:05 — so DM_RESELLER (15:22) and HS_RESELLER
+  (23:18) bought Zoro Select ASINs a 20 % code covered. Now: the reseller holds its priority/deciding
+  discovery while the store's re-check queue is not empty (whatever the flag's age) or while the
+  Coupons tab has priority codes the store's coupon placer has not swept yet (stopped, or labels-only);
+  and it never buys an unlabelled order whose ASIN this store tested only before the current coupons,
+  or whose last test got no answer — it queues the ASIN for the coupon placer and leaves the order
+  unlabelled (`priority_check.sweep_hold_reason / reseller_must_wait`). With no priority code in the
+  tab nothing is held (Sunday mode works as before). Labelled orders are never held.
+* **"Zoro did not answer" is not a verdict.** The checker refuses to test when the profile is logged
+  out (`zoro_session_ready` now honours `ensure_token`); a TRANSIENT / ERROR result keeps the ASIN in
+  the queue (back of the line, try counted), never overwrites its last real verdict, and three in a
+  row pause the sweep. After 6 tries the ASIN leaves the queue as UNTESTABLE, column unchanged.
+* **The columns stay compact.** A move deletes the ASIN's old cell and shifts the column up (notes
+  travel with their cells) and writes the ASIN into the first empty cell of the target column, in
+  one atomic batchUpdate — it used to blank the old cell, leaving holes with orphan notes (256 of them
+  by 20 Oct). `scripts/compact_priority_sheet.py` (dry run; `--apply` with the coupon placers stopped,
+  backup of values + notes to `~/.zuhra/backups`) closes old gaps. Test: `scripts/test_priority_sheet.py`.
 * **Dashboard checks reach both stores.** `Priority check / Re-check all / Reset` write one
   request file per coupon profile (`priority_check.<PROFILE>.request`).
 
