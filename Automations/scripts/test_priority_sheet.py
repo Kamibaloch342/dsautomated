@@ -236,6 +236,26 @@ check("the reseller's late check queues untested ASINs instead of buying them",
 check("_sweep_active asks sweep_hold_reason with the Coupons tab's priority codes",
       "_pc.sweep_hold_reason(_STORE, _sheet_priority_codes())" in src)
 
+print("\n5. two profiles on one Zoro account never both place")
+for _m in ("platforms.zoro", "checkout.true_api"):
+    sys.modules.pop(_m, None)
+import checkout.true_api as TA  # noqa: E402
+TA._LIVE_ACCOUNTS = os.path.join(TMP, "zoro_accounts_live.json")
+acct = {"id": "cust-A"}
+TA._get_cart = lambda d: {"cartId": "c", "customerId": acct["id"]}
+check("first profile on the account → no clash", TA._shared_account_clash(None, "DM_COUPON") is None)
+check("second profile on the SAME account → clash names the other", TA._shared_account_clash(None, "HS_COUPON") == "DM_COUPON")
+acct["id"] = "cust-B"
+check("after it logs in to its own account → no clash", TA._shared_account_clash(None, "HS_COUPON") is None)
+acct["id"] = "cust-A"
+check("the first profile again, alone on its account → no clash", TA._shared_account_clash(None, "DM_COUPON") is None)
+ta_src = open(os.path.join(AUTO, "checkout", "true_api.py"), encoding="utf-8").read()
+check("the check runs before the cart is cleared and returns SHARED_ACCOUNT",
+      ta_src.index("_shared_account_clash(driver, active_profile)") < ta_src.index('print(f"\\n[3] _clear_cart_api()")')
+      and '_format_checkout_result("SHARED_ACCOUNT"' in ta_src)
+check("the placer releases a SHARED_ACCOUNT order (nothing bought, retried)",
+      '"CART_BUSY", "SHARED_ACCOUNT", "NO_COUPONS_SKIP"' in src)
+
 shutil.rmtree(TMP, ignore_errors=True)
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)

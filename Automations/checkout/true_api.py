@@ -114,6 +114,38 @@ def _get_cart(driver):
     return None
 
 
+_LIVE_ACCOUNTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                              "data", "dataset", "zoro_accounts_live.json")
+
+
+def _shared_account_clash(driver, profile):
+    """Name of ANOTHER running profile logged in to the same Zoro account as this one, else None.
+
+    One Zoro account has ONE cart. On 19 Oct 2026 HS_COUPON was logged in to DM_COUPON's account
+    (robstark771) and the two placers built their orders in the same cart: three Zoro orders went
+    out with the other placer's item and/or address (WB7699391166, WB7993433455, WB8529119739).
+    Each profile records its Zoro customerId here at every checkout; a clash with another profile
+    seen in the last 15 minutes stops the checkout before the cart is touched."""
+    try:
+        cart = _get_cart(driver) or {}
+        cust = str(cart.get("customerId") or "").strip()
+        if not cust or not profile:
+            return None
+        from utils.jsonstore import mutate_json
+        now = time.time()
+        clash = None
+        with mutate_json(_LIVE_ACCOUNTS, {}) as live:
+            for other, rec in list(live.items()):
+                if other != profile and isinstance(rec, dict) and rec.get("customer") == cust \
+                        and now - float(rec.get("at") or 0) < 900:
+                    clash = other
+            live[profile] = {"customer": cust, "at": now, "at_text": time.strftime("%Y-%m-%d %H:%M:%S")}
+        return clash
+    except Exception as e:
+        print(f"   ⚠️ shared-account check skipped: {e}")
+        return None
+
+
 def _get_cart_id(driver):
     """Get or create a cartId."""
     cart = _get_cart(driver)
@@ -1303,6 +1335,13 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 return _format_checkout_result("FAILED", return_details=return_details)
 
         # ── 2. Clear cart & add via API ──
+        # Never share a Zoro account (= one cart) with another running profile (19 Oct 2026).
+        _clash = _shared_account_clash(driver, active_profile)
+        if _clash:
+            print(f"   🛑 {active_profile} and {_clash} are logged in to the SAME Zoro account — they share one "
+                  f"cart, so one can buy the other's item for the other's address. NOT placing. Log this "
+                  f"profile's Chrome in to its own Zoro account.")
+            return _format_checkout_result("SHARED_ACCOUNT", return_details=return_details)
         # After Zoro said "cart busy", give it time before the next order: 1, 2, 3 … up to 5
         # minutes after consecutive refusals (a cart stayed busy for 4+ minutes on 16 Oct 2026).
         try:

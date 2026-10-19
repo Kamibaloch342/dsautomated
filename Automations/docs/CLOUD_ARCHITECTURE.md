@@ -274,6 +274,12 @@ are enforced in code, not by convention:
   one atomic batchUpdate — it used to blank the old cell, leaving holes with orphan notes (256 of them
   by 20 Oct). `scripts/compact_priority_sheet.py` (dry run; `--apply` with the coupon placers stopped,
   backup of values + notes to `~/.zuhra/backups`) closes old gaps. Test: `scripts/test_priority_sheet.py`.
+* **One Zoro account per profile (20 Oct 2026).** One account = one cart. On 19 Oct HS_COUPON was
+  logged in to DM_COUPON's account (robstark771) and 3 orders went out with the other placer's item
+  and/or address (WB7699391166, WB7993433455, WB8529119739). Every checkout now records its Zoro
+  customerId (`data/dataset/zoro_accounts_live.json`); a profile that finds another running profile
+  on the same account (last 15 min) stops before touching the cart — `SHARED_ACCOUNT`, nothing
+  bought, order retried, one alert an hour.
 * **Dashboard checks reach both stores.** `Priority check / Re-check all / Reset` write one
   request file per coupon profile (`priority_check.<PROFILE>.request`).
 

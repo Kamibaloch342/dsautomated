@@ -75,3 +75,5 @@ dashboard/.v2_disabled
 # WhatsApp pairing QR the gateway writes while linking (transient)
 whatsapp_gateway/latest_qr.png
 whatsapp_gateway/queue.json
+whatsapp_gateway/queue_media/
+whatsapp_gateway/backlog_*.json*

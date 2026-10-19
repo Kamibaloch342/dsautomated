@@ -271,20 +271,36 @@ app.get('/groups', async (req, res) => {
 });
 
 // Send Message / Photo API
-// ── One paced queue for every alert (owner, 15 Oct 2026) ─────────────────────────────────────
-// Placers, the tracker and closing/messaging are separate processes, and they all POST here.
-// Sending each the moment it arrives produced bursts that look automated in groups the owner's
-// boss reads. So /send only QUEUES; one message leaves every ALERT_GAP_S seconds (± jitter) across
-// ALL groups and both stores — a Hathoro alert and a HOANK alert never go out together.
+// ── One queue for every alert ─────────────────────────────────────────────────────────────────
+// Placers, the tracker and closing/messaging are separate processes, and they all POST here; the
+// queue sends one message at a time across ALL groups. Pacing (owner): 15 Oct 2026 one every ~20 s
+// so alerts looked manual — but at 180 an hour it could not keep up (20 Oct: 971 waiting, the oldest
+// 8 h, 321 of them order alerts), so on 20 Oct the owner asked for instant alerts: the gap is now
+// `bot_config.json → whatsapp.alert_gap_s` (default 1 s, re-read every 30 s, no restart needed).
+// Screenshots are kept as files in queue_media/ — they used to sit base64 inside queue.json, which
+// reached 139 MB and was rewritten on every alert, stalling the WhatsApp connection.
 //   priority  1 = order alerts (placers), 5 = everything else — order alerts are never stuck
 //             behind a backlog of review-request lines
 //   dedupe    the same text to the same group within DEDUPE_HOURS is dropped (retry loops)
 //   persist   queue.json survives a gateway restart
-const ALERT_GAP_S = Number(process.env.ALERT_GAP_S || 20);
-const ALERT_JITTER_S = Number(process.env.ALERT_JITTER_S || 4);
+let ALERT_GAP_S = Number(process.env.ALERT_GAP_S || 1);
+let ALERT_JITTER_S = Number(process.env.ALERT_JITTER_S || 0);
 const DEDUPE_HOURS = Number(process.env.ALERT_DEDUPE_HOURS || 6);
 const QUEUE_FILE = path.join(__dirname, 'queue.json');
+const MEDIA_DIR = path.join(__dirname, 'queue_media');
+const BOT_CONFIG = path.join(__dirname, '..', 'bot_config.json');
 const crypto = require('crypto');
+try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch (e) { /* exists */ }
+
+function readPacing() {
+    try {
+        const wa = (JSON.parse(fs.readFileSync(BOT_CONFIG, 'utf8')) || {}).whatsapp || {};
+        if (wa.alert_gap_s !== undefined && !isNaN(Number(wa.alert_gap_s))) ALERT_GAP_S = Math.max(0, Number(wa.alert_gap_s));
+        if (wa.alert_jitter_s !== undefined && !isNaN(Number(wa.alert_jitter_s))) ALERT_JITTER_S = Math.max(0, Number(wa.alert_jitter_s));
+    } catch (e) { /* keep the last values */ }
+}
+readPacing();
+setInterval(readPacing, 30000);
 
 let queue = [];            // [{id, to, text, caption, image_base64, priority, at}]
 let sentKeys = {};         // dedupe key -> epoch ms
@@ -316,25 +332,50 @@ setInterval(checkLauncher, 5000);
 let sending = false;
 let stats = { sent: 0, failed: 0, deduped: 0 };
 
+function mediaPath(id) { return path.join(MEDIA_DIR, `${id}.img`); }
+
+function stashImage(m) {
+    // keep the picture on disk, not in queue.json
+    if (m.image_base64) {
+        try {
+            fs.writeFileSync(mediaPath(m.id), Buffer.from(m.image_base64, 'base64'));
+            m.image_file = `${m.id}.img`;
+            delete m.image_base64;
+        } catch (e) { console.error('  [Queue] ⚠️ could not store a screenshot:', e.message); }
+    }
+    return m;
+}
+
+function dropImage(m) {
+    if (m && m.image_file) { try { fs.unlinkSync(path.join(MEDIA_DIR, m.image_file)); } catch (e) { /* gone */ } }
+}
+
 try {
     const saved = JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf8'));
-    queue = saved.queue || [];
+    queue = (saved.queue || []).map(m => stashImage(Object.assign({ id: m.id || crypto.randomUUID() }, m)));
     sentKeys = saved.sentKeys || {};
 } catch (e) { /* first run */ }
 
-function persist() {
+let persistTimer = null;
+function persistNow() {
+    persistTimer = null;
     try {
         fs.writeFileSync(QUEUE_FILE + '.tmp', JSON.stringify({ queue, sentKeys }));
         fs.renameSync(QUEUE_FILE + '.tmp', QUEUE_FILE);
     } catch (e) { console.error('  [Queue] ⚠️ could not save queue:', e.message); }
 }
+function persist() {
+    // at most one (small) write every 2 s
+    if (!persistTimer) persistTimer = setTimeout(persistNow, 2000);
+}
+persistNow();
 
 function dedupeKey(to, text, caption) {
     return crypto.createHash('sha1').update(`${to}\u0000${text || ''}\u0000${caption || ''}`).digest('hex');
 }
 
 function gapMs() {
-    return Math.max(5, ALERT_GAP_S + (Math.random() * 2 - 1) * ALERT_JITTER_S) * 1000;
+    return Math.max(0.5, ALERT_GAP_S + (Math.random() * 2 - 1) * ALERT_JITTER_S) * 1000;
 }
 
 async function drain() {
@@ -344,19 +385,22 @@ async function drain() {
     queue.sort((x, y) => (x.priority - y.priority) || (x.at - y.at));
     const m = queue[0];
     try {
-        if (m.image_base64) {
-            await sock.sendMessage(m.to, { image: Buffer.from(m.image_base64, 'base64'), caption: m.caption || m.text || '' });
+        const img = m.image_file ? fs.readFileSync(path.join(MEDIA_DIR, m.image_file))
+                  : (m.image_base64 ? Buffer.from(m.image_base64, 'base64') : null);
+        if (img) {
+            await sock.sendMessage(m.to, { image: img, caption: m.caption || m.text || '' });
         } else {
             await sock.sendMessage(m.to, { text: m.text });
         }
         stats.sent += 1;
         sentKeys[dedupeKey(m.to, m.text, m.caption)] = Date.now();
         queue.shift();
+        dropImage(m);
     } catch (err) {
         stats.failed += 1;
         m.tries = (m.tries || 0) + 1;
         console.error('  [Queue] ⚠️ send failed (try ' + m.tries + '):', err.message);
-        if (m.tries >= 5) queue.shift();     // give up on a message WhatsApp keeps refusing
+        if (m.tries >= 5) { queue.shift(); dropImage(m); }     // give up on a message WhatsApp keeps refusing
     }
     const cutoff = Date.now() - DEDUPE_HOURS * 3600 * 1000;
     for (const k of Object.keys(sentKeys)) if (sentKeys[k] < cutoff) delete sentKeys[k];
@@ -383,8 +427,8 @@ app.post('/send', async (req, res) => {
             stats.deduped += 1;
             return res.json({ success: true, queued: false, deduped: true });
         }
-        queue.push({ id: crypto.randomUUID(), to: targetJid, text: text || '', caption: caption || '',
-                     image_base64: image_base64 || null, priority, at: Date.now() });
+        queue.push(stashImage({ id: crypto.randomUUID(), to: targetJid, text: text || '', caption: caption || '',
+                                image_base64: image_base64 || null, priority, at: Date.now() }));
         persist();
         return res.json({ success: true, queued: true, position: queue.length });
     } catch (err) {

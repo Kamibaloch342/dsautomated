@@ -3421,6 +3421,7 @@ _DELIVERY_GAP_ALERTED = set()           # amazon_ids already alerted this run (o
 _DELIVERY_UNKNOWN_TRIES = {}            # amazon_id -> tries with no Zoro delivery date (not placed)
 _PAYMENT_DECLINED_TRIES = {}            # amazon_id -> cycles Zoro declined the card (not placed)
 _CART_BUSY_TRIES = {}                   # amazon_id -> cycles Zoro said the cart was busy (not placed)
+_SHARED_ACCOUNT_ALERTED = [0.0]         # last alert: this profile shares its Zoro account with another
 
 
 def _notify_alt_main_oos(driver, main_skus, account=""):
@@ -5592,6 +5593,16 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif result_status == "STATE_RESTRICTED":
         update_amazon_seller_id(driver, amazon_id, "SR", PROFILE_NAME)
         status_note = f"State restricted ({state})"
+    elif result_status == "SHARED_ACCOUNT":
+        # Another running profile is logged in to the same Zoro account — one cart for two placers.
+        # Nothing was touched; the order waits until each profile is on its own account (19 Oct 2026).
+        status_note = "Zoro account shared with another running profile — NOT placed, retried next cycle"
+        if time.time() - _SHARED_ACCOUNT_ALERTED[0] > 3600:
+            _SHARED_ACCOUNT_ALERTED[0] = time.time()
+            _notify_delivery_gap(amazon_id, asin_field, sku_field,
+                                 f"{PROFILE_NAME} is logged in to the same Zoro account as another running "
+                                 f"profile — orders stop until each is on its own account",
+                                 order_detail.get("ship_by_date", ""), buyer, city, state)
     elif result_status == "CART_BUSY":
         # Zoro refused the order because the account's cart was still tied up with the previous
         # order (409 RESOURCE_CONFLICT / 422 "already being processed"). Nothing was bought, so the
@@ -5736,7 +5747,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # These statuses are all detected BEFORE Zoro payment, so it is safe to release the
     # claim and let the order retry next cycle (matches the pre-existing retry intent).
     _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED", "DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN", "PAYMENT_DECLINED",
-                        "CART_BUSY", "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
+                        "CART_BUSY", "SHARED_ACCOUNT", "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
     if _HAS_LOCK and not DRY_RUN:
         if result_status in _SAFE_PREPAYMENT:
             plock.release(amazon_id, f"pre-payment failure: {result_status}")
