@@ -174,5 +174,32 @@ finally:
 check("one WhatsApp + one Telegram per held order, with the ship-by and how to override",
       [k for k, _ in sent] == ["wa", "tg"] and all("Manual-C/-R" in t and "Oct 15" in t for _, t in sent), str(sent))
 
+print("\nrush mode: place even when no delivery date is captured; non-rush never places blind")
+import checkout.true_api as TA  # noqa: E402
+
+
+class _NoDateDriver:
+    current_url = "https://www.zoro.com/checkout"
+
+    def get(self, url):
+        self.current_url = url
+
+    def execute_script(self, script, *args):
+        return True
+
+
+check("non-rush: no checkout date and no product-page date → DELIVERY_UNKNOWN (not placed)",
+      TA._read_checkout_delivery(_NoDateDriver(), {"_delivery_gap_limit": 4, "_rush_mode": False},
+                                 lambda d, a: None) == "DELIVERY_UNKNOWN")
+check("rush mode: no checkout date and no product-page date → None (proceeds to place)",
+      TA._read_checkout_delivery(_NoDateDriver(), {"_delivery_gap_limit": 4, "_rush_mode": True},
+                                 lambda d, a: None) is None)
+check("process_order stamps addr['_rush_mode'] from defer_amazon_writes",
+      'addr["_rush_mode"] = bool(defer_amazon_writes)' in body)
+ta_src = open(os.path.join(AUTO, "checkout", "true_api.py"), encoding="utf-8").read()
+check("API checkout skips _checkout_page_delivery_status in rush mode",
+      'not (address or {}).get("_rush_mode")' in ta_src)
+
 print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
 sys.exit(1 if FAIL else 0)
+

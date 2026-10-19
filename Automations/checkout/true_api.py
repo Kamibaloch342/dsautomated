@@ -1545,7 +1545,9 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
         # a mistake"). The page path reads it on the checkout page itself; the API path opens the
         # checkout page just to read "Delivery expected by" (cart, address and shipping are already
         # set), then pays through the API as before.
-        if not page_checkout_wanted() and int((address or {}).get("_delivery_gap_limit") or 0) > 0:
+        if (not page_checkout_wanted()
+                and int((address or {}).get("_delivery_gap_limit") or 0) > 0
+                and not (address or {}).get("_rush_mode")):
             _dstat = _checkout_page_delivery_status(driver, address)
             if _dstat:
                 return _format_checkout_result(_dstat, return_details=return_details)
@@ -1819,11 +1821,14 @@ def _read_checkout_delivery(driver, address, checkout_delivery_gap):
                 address["_zoro_deliver_by"] = had        # the product page's date (already checked)
                 print(f"   📅 checkout page showed no date — using the product page's {had}")
                 return None
+            if (address or {}).get("_rush_mode"):
+                print("   ⚡ RUSH: no Zoro delivery date captured — placing anyway")
+                return None
             print("   ⏸️  No Zoro delivery date on the checkout page or the product page — NOT placing")
             return "DELIVERY_UNKNOWN"
         return None
     except Exception as e:
-        if (address or {}).get("_zoro_deliver_by"):
+        if (address or {}).get("_zoro_deliver_by") or (address or {}).get("_rush_mode"):
             return None
         print(f"   ⏸️  Could not read Zoro's delivery date ({type(e).__name__}) — NOT placing")
         return "DELIVERY_UNKNOWN"
@@ -1875,6 +1880,8 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
         if isinstance(address, dict) and not address.get("_zoro_deliver_by"):
             if _had:
                 address["_zoro_deliver_by"] = _had
+            elif address.get("_rush_mode"):
+                print("   ⚡ RUSH: no Zoro delivery date captured — placing anyway")
             elif int(address.get("_delivery_gap_limit") or 0) > 0:
                 print("   ⏸️  No Zoro delivery date on the checkout page or the product page — NOT placing")
                 return "DELIVERY_UNKNOWN"

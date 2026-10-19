@@ -4085,6 +4085,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # The checkout page re-checks delivery against Zoro's own "Delivery expected by" for THIS
     # address and THIS cart (checkout/true_api.py). 0 = off; a Manual-C/-R tag turns it off.
     addr["_delivery_gap_limit"] = 0 if manual_override else _delivery_gap_block_days()
+    addr["_rush_mode"] = bool(defer_amazon_writes)
     
     city = addr.get("city", "?")
     state = addr.get("state_abbr", "?")
