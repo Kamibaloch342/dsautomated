@@ -444,7 +444,30 @@ app.get('/queue', (req, res) => {
                launcher_running: launcherUp, paused: !launcherUp, launcher_check: launcherErr, ...stats });
 });
 
-app.listen(PORT, '127.0.0.1', () => {
+// ── Exactly ONE gateway (20 Oct 2026) ─────────────────────────────────────────────────────────
+// Two placers can start a gateway at the same moment. A second copy that did not get the port
+// still logged in to WhatsApp with the same session: from 19 Oct 13:53 two clients kept knocking
+// each other offline ("connected: false", failed sends) and the stray one sent from its own stale
+// queue. Now a copy that does not own the port, or finds another live gateway, exits before it
+// touches WhatsApp.
+const PID_FILE = path.join(__dirname, 'gateway.pid');
+try {
+    const other = parseInt(fs.readFileSync(PID_FILE, 'utf8'), 10);
+    if (other && other !== process.pid) {
+        try { process.kill(other, 0); console.log(`  [Gateway] another gateway (pid ${other}) is running — exiting`); process.exit(0); }
+        catch (e) { /* stale pid file */ }
+    }
+} catch (e) { /* no pid file */ }
+
+const server = app.listen(PORT, '127.0.0.1', () => {
+    fs.writeFileSync(PID_FILE, String(process.pid));
     console.log(`\n🚀 ZUHRA WhatsApp Gateway listening on http://127.0.0.1:${PORT}`);
     startWhatsApp();
+});
+server.on('error', (e) => {
+    console.error(`  [Gateway] cannot listen on ${PORT} (${e.code}) — another gateway owns it; exiting`);
+    process.exit(0);
+});
+process.on('exit', () => {
+    try { if (parseInt(fs.readFileSync(PID_FILE, 'utf8'), 10) === process.pid) fs.unlinkSync(PID_FILE); } catch (e) { /* gone */ }
 });

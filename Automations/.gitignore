@@ -77,3 +77,4 @@ whatsapp_gateway/latest_qr.png
 whatsapp_gateway/queue.json
 whatsapp_gateway/queue_media/
 whatsapp_gateway/backlog_*.json*
+whatsapp_gateway/gateway.pid
