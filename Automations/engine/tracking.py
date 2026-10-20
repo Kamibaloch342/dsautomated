@@ -627,25 +627,33 @@ def fill_multi_package_tracking(driver, tracking_ids, total_qty, carrier=None, s
     tracking input. Units are split across packages by
     split_qty_across_packages().
 
-    Returns True only when every package was fully populated. On ANY mismatch it
-    returns False WITHOUT clicking Confirm, so the caller falls back to the
-    existing single-tracking path — a half-filled form must never be submitted
-    against a real customer order.
+    Returns the tracking IDs put on the form (one per package) when every package was fully
+    populated, else [] — on ANY mismatch WITHOUT clicking Confirm, so the caller falls back to the
+    existing single-tracking path; a half-filled form must never be submitted against a real
+    customer order.
+
+    Amazon needs at least one unit per package. With fewer units than Zoro boxes (2 units shipped
+    in 4 boxes) the form takes one package per unit: the first `qty` IDs go on it (20 Oct 2026 —
+    it used to give up and upload a single ID; 35 such orders since 30 Sep). A 1-unit order can
+    only ever carry one tracking ID; that is Amazon's rule, not a failure.
     """
     tids = [t.strip() for t in tracking_ids if t and t.strip()]
     n = len(tids)
     if n < 2:
-        return False
+        return []
 
     try:
         total_qty = int(total_qty or 0)
     except (TypeError, ValueError):
         total_qty = 0
     if total_qty < n:
-        # Amazon can only split when there's at least one unit per package.
-        print(f"     ⏭️  Cannot split: qty {total_qty} < {n} tracking IDs "
-              f"(Amazon needs ≥1 unit per package)")
-        return False
+        # Amazon needs ≥1 unit per package: one package per unit, the first `total_qty` IDs.
+        if total_qty < 2:
+            return []
+        print(f"     📦  {n} boxes but {total_qty} units — Amazon takes one package per unit: "
+              f"uploading {total_qty} of the {n} tracking IDs")
+        tids = tids[:total_qty]
+        n = len(tids)
 
     shares = split_qty_across_packages(total_qty, n)
     print(f"     📦  Multi-package: {n} packages, qty split {shares}")
@@ -672,7 +680,7 @@ def fill_multi_package_tracking(driver, tracking_ids, total_qty, carrier=None, s
     if not carrier:
         print("     ⚠️  No carrier selected on package 1 — refusing to guess one; "
               "falling back to single tracking")
-        return False
+        return []
     print(f"     🚚  Carrier '{carrier}'"
           + (f" / service '{service}'" if service else " (no service set)")
           + " will be applied to every package")
@@ -696,20 +704,20 @@ def fill_multi_package_tracking(driver, tracking_ids, total_qty, carrier=None, s
             if len(tid_inputs) <= i or len(qty_sels) <= i:
                 print(f"     ⚠️  Package {i+1}: form did not render "
                       f"({len(tid_inputs)} tracking inputs, {len(qty_sels)} qty selects)")
-                return False
+                return []
 
             # Quantity for this package
             if not _select_by_value_or_text(qty_sels[i], shares[i]):
                 avail = [o.text for o in Select(qty_sels[i]).options]
                 print(f"     ⚠️  Package {i+1}: qty {shares[i]} not selectable (options: {avail})")
-                return False
+                return []
 
             # Carrier/service: only the packages we just added need setting —
             # package 1 already carries whatever the page defaulted to.
             if i > 0:
                 if len(car_sels) > i and not _select_by_value_or_text(car_sels[i], carrier):
                     print(f"     ⚠️  Package {i+1}: carrier '{carrier}' not selectable")
-                    return False
+                    return []
                 if service and len(svc_sels) > i:
                     _select_by_value_or_text(svc_sels[i], service)
 
@@ -720,10 +728,10 @@ def fill_multi_package_tracking(driver, tracking_ids, total_qty, carrier=None, s
             print(f"     ✅  Package {i+1}: qty {shares[i]}  tracking {tid}")
             time.sleep(1)
 
-        return True
+        return list(tids)
     except Exception as e:
         print(f"     ⚠️  Multi-package fill failed ({e}) — falling back to single tracking")
-        return False
+        return []
 
 
 def capture_confirm_shipment_structure(driver, amazon_id):
@@ -2444,11 +2452,11 @@ def main_workflow(account_config, passed_driver=None):
                                 # Returns False (form untouched or abandoned before
                                 # Confirm) if anything doesn't line up, so the proven
                                 # single-tracking path below still runs.
-                                _multi_ok = False
+                                _multi_ids = []
+                                _units = remaining_qty_on_form(driver) if len(_all_tids) > 1 else 0
                                 if len(_all_tids) > 1:
-                                    _multi_ok = fill_multi_package_tracking(
-                                        driver, _all_tids,
-                                        remaining_qty_on_form(driver))
+                                    _multi_ids = fill_multi_package_tracking(driver, _all_tids, _units) or []
+                                _multi_ok = bool(_multi_ids)
 
                                 if not _multi_ok:
                                     tracking_field = driver.find_element(
@@ -2459,9 +2467,15 @@ def main_workflow(account_config, passed_driver=None):
                                     tracking_field.send_keys(primary_tracking_id)
                                     time.sleep(2)
 
+                                    # A 1-unit order takes ONE tracking ID on Amazon (≥1 unit per
+                                    # package) — nothing to add by hand; every ID stays in our
+                                    # records (order_log / DB) for delivery tracking.
+                                    if len(_all_tids) > 1 and _units == 1:
+                                        print(f"     📦  {len(_all_tids)} boxes for a 1-unit order — Amazon takes one "
+                                              f"tracking ID: {primary_tracking_id} (all {len(_all_tids)} kept in our records)")
                                     # Extra tracking IDs could not be placed — say so loudly
                                     # rather than dropping them silently.
-                                    if len(_all_tids) > 1:
+                                    elif len(_all_tids) > 1:
                                         _unsent = _all_tids[1:]
                                         print(f"     ⚠️  MULTI-PACKAGE: Zoro shipped {len(_all_tids)} tracking IDs "
                                               f"but Amazon only got {primary_tracking_id}.")
@@ -2515,7 +2529,7 @@ def main_workflow(account_config, passed_driver=None):
                                 # Exactly what Amazon received: every id on a multi-package
                                 # form, otherwise only the primary one.
                                 _record_upload_db(amazon_id, order_wb_ids,
-                                                  list(_all_tids) if _multi_ok else list(_all_tids[:1]),
+                                                  list(_multi_ids) if _multi_ok else list(_all_tids[:1]),
                                                   "success", note="multi-package" if _multi_ok else "")
                                 if _msg_sent:
                                     _mstate = "Yes" + (" (cancellation reply)" if _msg_type == "cancellation_denial" else "")
@@ -2528,7 +2542,7 @@ def main_workflow(account_config, passed_driver=None):
                                 else:
                                     _mstate = "No"
                                 if _alert_tracking_uploaded(driver, store_name, amazon_id, order_wb_ids, list(_all_tids),
-                                                            list(_all_tids) if _multi_ok else list(_all_tids[:1]), _mstate):
+                                                            list(_multi_ids) if _multi_ok else list(_all_tids[:1]), _mstate):
                                     # Amazon shows it shipped: never process it again from a stale report row
                                     _shipped_recent.add(amazon_id)
                                     _mark_upload_confirmed(amazon_id)
