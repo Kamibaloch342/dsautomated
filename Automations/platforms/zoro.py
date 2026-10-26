@@ -206,7 +206,22 @@ def check_inventory(driver, sku, qty):
             print(f"   [ZORO INV RAW] {sku}: {__import__('json').dumps(avail, default=str)}")
         except Exception:
             print(f"   [ZORO INV RAW] {sku}: {avail}")
-    return avail.get('isCartable', False), avail.get('availabilityStatus', 'Unknown')
+    status = avail.get('availabilityStatus', 'Unknown')
+    # A backordered item is cartable — Zoro takes the order and promises only that "an estimated
+    # ship date will be emailed to you within 2 business days" (isCartable true, canBackOrder true,
+    # availabilityType 'backOrder'). Buying it means buying blind, so it counts as NOT in stock:
+    # the placer tries the ALT and otherwise labels it OOS (owner, 27 Oct 2026 — G7467735 pink hard
+    # hat, the ALT for 10+ orders of B0G14ZRRNH, sat in DELIVERY_UNKNOWN for two days instead).
+    if is_backordered(avail):
+        return False, status or 'Backordered'
+    return avail.get('isCartable', False), status
+
+
+def is_backordered(avail):
+    """True for Zoro's backorder state in an availability record (any of its three markers)."""
+    avail = avail or {}
+    return (str(avail.get('availabilityStatus') or '').strip().lower() == 'backordered'
+            or str(avail.get('availabilityType') or '').strip().lower() == 'backorder')
 
 
 def last_inventory_qty(sku):
@@ -242,6 +257,38 @@ def _parse_deliv(s):
         except ValueError:
             continue
     return ""
+
+
+def get_expected_delivery(driver, items, zip_code):
+    """Zoro's own delivery estimate for [(sku, qty), …] shipped to *zip_code* — the call behind the
+    product page's "Delivery expected tomorrow, October 27" line (POST
+    /scm/v1/expected-date/bulk-expected-dates), so no page load and no rendering to wait for. Unlike the
+    product page, which dates the Chrome's own saved ZIP, this is the buyer's ZIP and the real quantity.
+    Returns {sku: 'YYYY-MM-DD'}; {} on any failure. Driver must be on zoro.com.
+
+    It answers for ANY SKU, in stock or not (27 Oct 2026: 'tomorrow' for the backordered G7467735 and the
+    out-of-stock G7467787), so only ask it about SKUs check_inventory() said are in stock."""
+    import datetime
+    zip5 = re.sub(r"\D", "", str(zip_code or ""))[:5]
+    items = [(s, max(1, int(q or 1))) for s, q in (items or []) if s]
+    if len(zip5) != 5 or not items:
+        return {}
+    local = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")      # the page sends local time with a Z
+    try:
+        r = zoro_api(driver, "POST", "/scm/v1/expected-date/bulk-expected-dates",
+                     [{"zoroNo": s, "quantity": q, "zipCode": zip5, "localTime": local, "featureFlag": None}
+                      for s, q in items])
+        if r.get("s") != 200 or not isinstance(r.get("d"), dict):
+            return {}
+        out = {}
+        for p in r["d"].get("payload") or []:
+            d = str((p or {}).get("deliveryDate") or "")[:10]
+            if p.get("zoroNo") and re.match(r"^\d{4}-\d{2}-\d{2}$", d):
+                out[p["zoroNo"]] = d
+        return out
+    except Exception as e:
+        print(f"  ⚠️ Zoro expected-date API failed: {type(e).__name__}: {e}")
+        return {}
 
 
 def get_zoro_delivery_date(driver, sku):

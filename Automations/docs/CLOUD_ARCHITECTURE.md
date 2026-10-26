@@ -282,6 +282,24 @@ are enforced in code, not by convention:
   bought, order retried, one alert an hour.
 * **Dashboard checks reach both stores.** `Priority check / Re-check all / Reset` write one
   request file per coupon profile (`priority_check.<PROFILE>.request`).
+* **The checker tests the SKU an order would buy (27 Oct 2026).** When the main Zoro code is out of
+  stock or backordered and the sheet has an `alternative_SKU` in stock, the ALT is tested (its own
+  PDP badge, brand and priority coupons) and the note starts `main G… Out of Stock → tested ALT G…`.
+  It used to stop at "main OOS / Wait": B0HH6Q9FF3 stayed in DM_Deciding while every order shipped the
+  ALT G310877337, which VEHICLE10926 covers. Main back in stock → the next check tests the main again.
+* **Backordered = not in stock; the delivery date is Zoro's estimate for the buyer's ZIP
+  (27 Oct 2026).** Zoro's availability API marks a backordered item `isCartable: true` with
+  `availabilityStatus: "Backordered"` — the page only promises that a ship date will be e-mailed
+  within 2 business days. `check_inventory` now returns it as not cartable, so the placer tries the
+  ALT and otherwise labels the order OOS (G7467735, the pink hard hat for B0G14ZRRNH). For an in-stock
+  SKU the delivery date comes from `POST /scm/v1/expected-date/bulk-expected-dates` (SKU, quantity,
+  buyer ZIP — the call behind the page's "Delivery expected …" line; `platforms.zoro.get_expected_delivery`),
+  falling back to the product page. An ALT swap reads the ALT's own date and is held under the same
+  4-day "Delivery time high" rule before the cart is built; it used to drop the main's date and then
+  sit in DELIVERY_UNKNOWN every cycle (27 orders, 218 tries, 24–26 Oct). The API dates out-of-stock
+  items too, so it is only asked about SKUs the stock check passed. DM_COUPON's checkout page has never
+  shown a date the pattern reads (0 since 19 Oct; 20 s wait per order) — `checkout.dom` now prints that
+  page's delivery wording once per run so the pattern can learn it.
 
 ## 6. Automation & memory
 

@@ -36,6 +36,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
+from utils.net_errors import is_network_error, NetSkipGuard
 from selenium.webdriver.chrome.options import Options
 from platforms.auth import auto_login, is_login_page, ensure_logged_in
 from platforms.amazon import write_seller_note
@@ -169,7 +170,9 @@ _ORDER_LOG_PENDING = {}     # wb_id -> (tracking_ids, shipped_email_time) — fl
 
 account_names = [
     "qurtdis", "abecomllc26", "asad_amazon_us", "salesmercentile", "salesmercentile1",
-    "toolzsolutionsllc220", "inhur_llc", "wrenchlyllc", "robstark771"
+    "toolzsolutionsllc220", "inhur_llc", "wrenchlyllc", "robstark771",
+    # Zoro accounts the owner places orders from by hand (20 Oct 2026)
+    "mkamrankhan342", "hifzasultan342",
 ]
 
 ACCOUNTS = []
@@ -1373,9 +1376,10 @@ Kind regards,
 Customer Support Team
 {store_name}"""
 
-        # Cancellation: prefer "Notify of a problem" → fallback "Other"
+        # Cancellation reply: "Other" first — it answers the buyer, it is not a shipping problem (27 Oct
+        # 2026). "Notify of a problem" stays as the fallback because the buyer asked and must hear back.
         success = _click_radio_and_type(driver, wait, order_id, message_text,
-                                        radio_priority=['unexpectedProblem', 'contactBuyer'])
+                                        radio_priority=['contactBuyer', 'unexpectedProblem'])
         if success:
             print(f"     ✅  Cancellation denial message sent for: {order_id}")
         return success
@@ -1825,9 +1829,14 @@ The {store_name} Team"""
         # to sympathy. Use Amazon's own "Request a Review" button instead — it
         # sends their neutral, policy-compliant template. Do not re-add it.
 
-        # Tracking confirmation: prefer "Notify of a problem" → fallback "Other"
+        # Tracking confirmation goes under "Other" ('contactBuyer') only — the same reason the delivery
+        # check-ins use (post_delivery.py). Until 27 Oct 2026 it asked for "Notify of a problem with
+        # shipping your order" ('unexpectedProblem') first, so ~830 "your order has shipped" messages
+        # a day were filed with Amazon as a shipping PROBLEM (owner: "why selecting an unexpected
+        # problem?"). No fallback to it: if Amazon does not offer "Other", this message is skipped
+        # rather than sent under a heading that tells the buyer something untrue.
         success = _click_radio_and_type(driver, wait, order_id, message_template,
-                                        radio_priority=['unexpectedProblem', 'contactBuyer'])
+                                        radio_priority=['contactBuyer'])
         if success:
             print(f"     ✅  Tracking confirmation message sent for: {order_id}")
         return success
@@ -2021,6 +2030,9 @@ def main_workflow(account_config, passed_driver=None):
     # Per-account download directory to avoid collisions when running side-by-side
     acct_download_dir = os.path.join(script_directory, f"_dl_{account_config['key']}")
     os.makedirs(acct_download_dir, exist_ok=True)
+    # A network fault on one order skips that order (retried next cycle) instead of ending the
+    # cycle; several in a row still end it and back off (utils/net_errors.py, 21 Oct 2026).
+    net_guard = NetSkipGuard(limit=int(os.environ.get("TRACKING_NET_SKIP_LIMIT", "3") or 3))
     try:
         if not driver:
             print(f"\n  🌐  Launching Chrome for '{account_config['name']}'...")
@@ -2149,10 +2161,17 @@ def main_workflow(account_config, passed_driver=None):
                         else:
                             # Check for cancellation request first
                             has_cancellation_request = False
-                            for account_name, service in gmail_services.items():
-                                if check_for_cancellation_request(service, amazon_id):
-                                    has_cancellation_request = True
-                                    break
+                            try:
+                                for account_name, service in gmail_services.items():
+                                    if check_for_cancellation_request(service, amazon_id):
+                                        has_cancellation_request = True
+                                        break
+                            except Exception as _net_err:
+                                if not is_network_error(_net_err):
+                                    raise
+                                net_guard.skip(amazon_id, _net_err, "the Gmail cancellation check")
+                                continue      # never message without the check; retried next cycle
+                            net_guard.ok()
 
                             if has_cancellation_request:
                                 # SR/Loss orders: customer wants to cancel + we can't fulfill = let them cancel
@@ -2237,6 +2256,7 @@ def main_workflow(account_config, passed_driver=None):
                         wb_ids = re.findall(r'WB\d+', merchant_id)
                         found_tracking_ids_list = []
                         found_shipped_time = None
+                        _net_failed = False
 
                         for wb_id in wb_ids:
                             _pre = _pref_found.get(wb_id)
@@ -2251,13 +2271,26 @@ def main_workflow(account_config, passed_driver=None):
                                 # per-account search would find nothing either.
                                 continue
                             for account_name, service in gmail_services.items():
-                                tracking_ids, shipped_time = find_all_tracking_in_emails(service, wb_id)
+                                try:
+                                    tracking_ids, shipped_time = find_all_tracking_in_emails(service, wb_id)
+                                except Exception as _net_err:
+                                    if not is_network_error(_net_err):
+                                        raise
+                                    net_guard.skip(amazon_order_id, _net_err, f"the Gmail search in [{account_name}]")
+                                    _net_failed = True
+                                    break
                                 if tracking_ids:
                                     found_tracking_ids_list.extend(tracking_ids)
                                     if found_shipped_time is None:
                                         found_shipped_time = shipped_time
                                     print(f"     ✅  Found {len(tracking_ids)} tracking ID(s) for {wb_id} in [{account_name}]: {tracking_ids}")
                                     break
+                            if _net_failed:
+                                break
+
+                        if _net_failed:
+                            continue          # retried next cycle — never logged as "no tracking"
+                        net_guard.ok()
 
                         # Deduplicate tracking IDs while preserving order
                         seen = set()
@@ -2355,10 +2388,17 @@ def main_workflow(account_config, passed_driver=None):
                                     print(f"     ⏩  Already messaged ({existing_msg.get('message_type')}). Skipping.")
                                 else:
                                     has_cancellation_request = False
-                                    for account_name, service in gmail_services.items():
-                                        if check_for_cancellation_request(service, amazon_id):
-                                            has_cancellation_request = True
-                                            break
+                                    try:
+                                        for account_name, service in gmail_services.items():
+                                            if check_for_cancellation_request(service, amazon_id):
+                                                has_cancellation_request = True
+                                                break
+                                    except Exception as _net_err:
+                                        if not is_network_error(_net_err):
+                                            raise
+                                        net_guard.skip(amazon_id, _net_err, "the Gmail cancellation check")
+                                        continue  # no message, no upload this cycle; retried next cycle
+                                    net_guard.ok()
 
                                     if has_cancellation_request:
                                         print(f"     ⚠️  Cancellation request detected — sending denial message.")

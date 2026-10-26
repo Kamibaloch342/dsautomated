@@ -136,8 +136,11 @@ check("only when the primary SKU itself is in stock (an out-of-stock main goes t
       "_pcart, _ = check_inventory(driver, _psku" in body and "and resolved_items and _pcart:" in gate)
 check("the decision is the tested pure function", "_delivery_gap_hold(order_detail.get(\"deliver_by_date\", \"\"), _zest" in gate)
 check("a held order sends one alert", "_notify_delivery_gap(" in gate)
-alt = body[body.index('item["alt_used"] = True'):][:300]
+alt = body[body.index('item["alt_used"] = True'):][:1400]
 check("an ALT swap drops the main's backorder date from the order record", 'addr.pop("_zoro_deliver_by", None)' in alt)
+check("…reads the ALT's own date and holds it under the same rule (27 Oct 2026)",
+      '_zoro_api_delivery(driver, item["sku"], item["final_qty"], addr)' in alt
+      and "_delivery_gate_holds(" in alt and 'return "skipped"' in alt)
 check("a Manual-C/-R order is never held", "not manual_override" in gate.split("\n")[5] or
       "if _gap_limit > 0 and not manual_override" in gate)
 check("a late date on a SKU that just shipped fast is placed, with the reason printed",

@@ -438,8 +438,7 @@ def record_verdict(profile_name: str, asin: str, status: str, coupon: str, cart:
 # ── one ASIN ──────────────────────────────────────────────────────────────
 def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None, mod=None) -> dict:
     """Test ONE ASIN on the live Zoro session (no order involved)."""
-    from platforms.zoro import check_inventory, clear_cart_and_add, clear_cart_selenium, check_pdp_promo, get_product_brand
-    from checkout.true_api import _get_cart_id, _apply_coupon_api, classify_promo_error
+    from platforms.zoro import check_inventory
 
     row = {"Check_ASIN": asin, "Check_At": _now(), "Check_Coupon": "", "Check_Cart": "", "Check_Note": ""}
     m = sku_map.get(asin) or {}
@@ -457,6 +456,36 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
         qty = max(1, int(float(m.get("qty_multiplier") or 1) * int(m.get("zoro_multiple") or 1)))
     except Exception:
         qty = 1
+    # Test the SKU an order would actually buy. With the main out of stock (or backordered) the placer
+    # buys the sheet's alternative_SKU, so that is the one whose coupons decide the column — until
+    # 27 Oct 2026 the check stopped at "main OOS" and left B0HH6Q9FF3 in DM_Deciding while every order
+    # shipped the ALT G310877337, which the priority code VEHICLE10926 covers.
+    alt = (m.get("alt_sku") or "").strip()
+    alt_note = ""
+    if alt:
+        main_ok, main_status = check_inventory(driver, code, qty)
+        if not main_ok and main_status not in ("API_ERROR", "NO_DATA"):
+            alt_ok, alt_status = check_inventory(driver, alt, qty)
+            if alt_ok:
+                alt_note = f"main {code} {main_status} → tested ALT {alt}"
+                code = alt
+            else:
+                row.update(Check_Status="OOS", Check_Suggest="Wait / alt code",
+                           Check_Note=f"{code}: {main_status}; ALT {alt}: {alt_status}")
+                return row
+    return _with_alt_note(_check_code(driver, asin, code, qty, m, alt_note, priority_codes, cache, mod, row), alt_note)
+
+
+def _with_alt_note(row, alt_note):
+    if alt_note:
+        row["Check_Note"] = f"{alt_note}; {row.get('Check_Note', '')}".rstrip("; ")
+    return row
+
+
+def _check_code(driver, asin, code, qty, m, alt_note, priority_codes, cache, mod, row):
+    """check_one's test of one Zoro code: PDP badge → brand → stock → priority coupons on a real cart."""
+    from platforms.zoro import check_inventory, clear_cart_and_add, clear_cart_selenium, check_pdp_promo, get_product_brand
+    from checkout.true_api import _get_cart_id, _apply_coupon_api, classify_promo_error
     # 0) PDP badge — permanent, no coupon test needed
     badge = check_pdp_promo(driver, code)
     if badge:
@@ -468,8 +497,8 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
         row.update(Check_Status="PROMO_INELIGIBLE", Check_Suggest="Reseller",
                    Check_Note=f"{code}: Zoro's best price — not eligible for any offers or promotions")
         return row
-    # 1) brand (sheet first, PDP microdata second)
-    brand = (m.get("brand") or "").strip()
+    # 1) brand (sheet first, PDP microdata second; the sheet's brand is the main's, not the ALT's)
+    brand = "" if alt_note else (m.get("brand") or "").strip()
     if not brand:
         try:
             brand = get_product_brand(driver, code) or ""

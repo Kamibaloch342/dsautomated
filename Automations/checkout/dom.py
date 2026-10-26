@@ -1965,6 +1965,7 @@ def checkout_delivery_gap(driver, address):
         time.sleep(0.5)
     dates = [d for d in (_short_date(x) for x in texts) if d]
     if not dates:
+        _note_dateless_checkout(driver)
         return None
     zd = max(dates)
     address["_zoro_deliver_by"] = zd.isoformat()
@@ -1978,6 +1979,33 @@ def checkout_delivery_gap(driver, address):
         print(f"   🐢 {gap} days past Amazon's date (limit {limit}) — NOT clicking Place Order")
         return gap
     return None
+
+
+_DATELESS_NOTED = []
+
+
+def _note_dateless_checkout(driver):
+    """Once per process: what the checkout page DOES say about delivery when the pattern above found
+    nothing. DM_COUPON's checkout matched on 0 of its orders 19–26 Oct 2026 (HS_COUPON: 390 on 26 Oct
+    alone), so every DM_COUPON order waited the full 20 s and leaned on the date read before the cart.
+    This prints the wording, so the pattern can learn it. Never raises."""
+    if _DATELESS_NOTED:
+        return
+    _DATELESS_NOTED.append(1)
+    try:
+        r = driver.execute_script(r"""
+            var out = [], t = document.body.innerText || '', c = document.body.textContent || '';
+            t.split(/\n+/).forEach(function (l) {
+                l = l.trim();
+                if (l.length < 160 && /deliver|arriv|expected|business day|backorder|ships? (by|on|in|within)/i.test(l)) out.push(l);
+            });
+            var i = c.search(/Delivery\s*expected/i);
+            return {lines: out.slice(0, 8), hidden: i >= 0 ? c.substr(i, 80) : ''};""") or {}
+        print("   🔎 no 'Delivery expected <date>' on this checkout page — its delivery lines: "
+              + (" | ".join(r.get("lines") or []) or "none")
+              + (f" · in hidden text: {r['hidden']!r}" if r.get("hidden") else ""))
+    except Exception:
+        pass
 
 
 def _report_checkout_refusal(driver, attempt):

@@ -3495,6 +3495,24 @@ def _delivery_gap_days(amazon_deliver_by, zoro_deliver_by):
     return (z - a).days if (a and z) else None
 
 
+def _zip5(addr):
+    return re.sub(r"\D", "", str((addr or {}).get("zip_code") or ""))[:5]
+
+
+def _zoro_api_delivery(driver, sku, qty, addr):
+    """Zoro's delivery estimate for *sku* × *qty* to the buyer's ZIP ('YYYY-MM-DD', '' when unknown).
+    Only for a SKU check_inventory() just called in stock — the API dates out-of-stock items too."""
+    try:
+        from platforms.zoro import get_expected_delivery
+        d = get_expected_delivery(driver, [(sku, qty)], _zip5(addr)).get(sku, "")
+        if d:
+            print(f"  📅 Zoro's estimate for {sku} x{qty} to {_zip5(addr)}: delivery {d}")
+        return d
+    except Exception as e:
+        print(f"  ⚠️ Zoro delivery estimate for {sku} skipped: {e}")
+        return ""
+
+
 def _recent_zoro_estimate(sku, max_age_days=3, db_path=None):
     """Rush mode skips the product page, so Zoro's estimate is unknown there. Reuse the lead time this
     SKU showed on a placement in the last few days (today + those days) — '' when there is none."""
@@ -4310,6 +4328,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     #    state (the cart is built fresh by clear_cart_and_add below). Values ride along in
     #    addr → order_log (ZoroDeliverBy / ZoroStock), like the Amazon ship/deliver dates.
     _pcart = False      # is the primary SKU itself in stock for this quantity? (the delivery check needs it)
+    _zsrc0 = "Zoro product page"
     try:
         if resolved_items:
             from platforms.zoro import get_zoro_delivery_date, last_inventory_qty
@@ -4325,6 +4344,14 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 _zdel = get_zoro_delivery_date(driver, _psku)               # navigates PDP + scrapes
                 if _zdel:
                     addr["_zoro_deliver_by"] = _zdel
+            # Zoro's own estimate for the buyer's ZIP and quantity (the call behind the page's line) —
+            # preferred over the page, which dates the Chrome's saved ZIP and is sometimes not rendered
+            # in time. One API call, no page, so rush mode gets a date too. Only for an in-stock SKU:
+            # the API dates anything, backordered or not.
+            if _pcart:
+                _api = _zoro_api_delivery(driver, _psku, resolved_items[0]["final_qty"], addr)
+                if _api:
+                    addr["_zoro_deliver_by"], _zsrc0 = _api, f"Zoro's estimate for ZIP {_zip5(addr)}"
     except Exception as _e:
         print(f"  ⚠️ Zoro estimate capture skipped: {_e}")
 
@@ -4335,11 +4362,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # for G105340985 → G1967707 would otherwise have been held, all delivered on time). Rush mode has no
     # page estimate; it reuses this SKU's lead time from the last 3 days if there is one. No estimate at
     # all → the order goes ahead as before. A SKU that just shipped fast is placed whatever the page says.
-    # A Manual-C/-R tag places it anyway.
+    # A Manual-C/-R tag places it anyway. The same check runs again on an ALT swap (in the cart loop below),
+    # with the ALT's own date — until 27 Oct 2026 the swap only dropped the main's date and the order then
+    # sat in DELIVERY_UNKNOWN on every cycle (27 orders, 218 tries, 24–26 Oct).
     _gap_limit = _delivery_gap_block_days()
-    if _gap_limit > 0 and not manual_override and resolved_items and _pcart:
-        _gsku = resolved_items[0]["sku"]
-        _zest, _zsrc = addr.get("_zoro_deliver_by") or "", "Zoro product page"
+
+    def _delivery_gate_holds(_gsku, _zest, _zsrc, _sku_text):
+        """True when the order was held (labelled, logged, alerted) — the caller returns 'skipped'."""
         if not _zest and defer_amazon_writes:
             _zest, _zsrc = _recent_zoro_estimate(_gsku), "this SKU's lead time in the last 3 days"
         _hold, _gap, _hist = _delivery_gap_hold(order_detail.get("deliver_by_date", ""), _zest, _gap_limit,
@@ -4347,28 +4376,33 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         if not _hold and _hist:
             print(f"  🐇 Zoro's date {_zest} is {_gap} days past Amazon's deliver-by, but {_hist} — "
                   f"Zoro's estimate is not believed, placing")
-        if _hold:
-            _why = (f"Zoro delivers by {_zest} ({_zsrc}) — {_gap} days after Amazon's deliver-by "
-                    f"{order_detail.get('deliver_by_date', '')}; {_hist}")
-            if defer_amazon_writes:
-                _rush_defer_wb(amazon_id, DELIVERY_GAP_LABEL)
-                _ok = True
-            else:
-                try:
-                    _ok = bool(update_amazon_seller_id(driver, amazon_id, DELIVERY_GAP_LABEL, PROFILE_NAME))
-                except Exception as _e:
-                    _ok = False
-                    print(f"  ⚠️  could not write '{DELIVERY_GAP_LABEL}' on {amazon_id}: {_e}")
-            print(f"  🐢 DELIVERY TIME HIGH: {_why} — NOT placed; "
-                  + (f"labelled '{DELIVERY_GAP_LABEL}' on Amazon" if _ok else f"'{DELIVERY_GAP_LABEL}' write NOT confirmed — set it by hand")
-                  + " (write Manual-C/-R to place it anyway)")
-            _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
-                        "buyer": buyer, "city": city, "state": state, "status": "DELIVERY_TIME_HIGH",
-                        "notes": "; ".join(filter(None, [_why + f" — labelled {DELIVERY_GAP_LABEL}, not placed", order_note]))})
-            _notify_delivery_gap(amazon_id, asin_field, sku_field,
-                                 f"Zoro delivers by {_zest}, {_gap} days after Amazon's deliver-by "
-                                 f"{order_detail.get('deliver_by_date', '')}", order_detail.get("ship_by_date", ""),
-                                 buyer, city, state)
+        if not _hold:
+            return False
+        _why = (f"Zoro delivers by {_zest} ({_zsrc}) — {_gap} days after Amazon's deliver-by "
+                f"{order_detail.get('deliver_by_date', '')}; {_hist}")
+        if defer_amazon_writes:
+            _rush_defer_wb(amazon_id, DELIVERY_GAP_LABEL)
+            _ok = True
+        else:
+            try:
+                _ok = bool(update_amazon_seller_id(driver, amazon_id, DELIVERY_GAP_LABEL, PROFILE_NAME))
+            except Exception as _e:
+                _ok = False
+                print(f"  ⚠️  could not write '{DELIVERY_GAP_LABEL}' on {amazon_id}: {_e}")
+        print(f"  🐢 DELIVERY TIME HIGH: {_why} — NOT placed; "
+              + (f"labelled '{DELIVERY_GAP_LABEL}' on Amazon" if _ok else f"'{DELIVERY_GAP_LABEL}' write NOT confirmed — set it by hand")
+              + " (write Manual-C/-R to place it anyway)")
+        _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": _sku_text, "qty": qty_field,
+                    "buyer": buyer, "city": city, "state": state, "status": "DELIVERY_TIME_HIGH",
+                    "notes": "; ".join(filter(None, [_why + f" — labelled {DELIVERY_GAP_LABEL}, not placed", order_note]))})
+        _notify_delivery_gap(amazon_id, asin_field, _sku_text,
+                             f"Zoro delivers by {_zest}, {_gap} days after Amazon's deliver-by "
+                             f"{order_detail.get('deliver_by_date', '')}", order_detail.get("ship_by_date", ""),
+                             buyer, city, state)
+        return True
+
+    if _gap_limit > 0 and not manual_override and resolved_items and _pcart:
+        if _delivery_gate_holds(resolved_items[0]["sku"], addr.get("_zoro_deliver_by") or "", _zsrc0, sku_field):
             return "skipped"
 
     # ── PDP promo badge: "Zoro's best price — not eligible for any other offers or
@@ -4415,10 +4449,22 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 item["main_sku"] = item["sku"]
                 item["sku"] = item["alt_sku"]
                 item["alt_used"] = True
-                if item is resolved_items[0] and isinstance(addr, dict):
-                    addr.pop("_zoro_deliver_by", None)   # it was the out-of-stock main's backorder date
                 cartable, inv_status = alt_cartable, alt_status
                 print(f"  ✅ ALT SUBSTITUTION: placing {item['sku']} instead of {item['main_sku']} (main OOS)")
+                if item is resolved_items[0] and isinstance(addr, dict):
+                    # The date read so far was the out-of-stock main's backorder date. Read the ALT's own
+                    # (Zoro's estimate for this ZIP) and hold it under the same rule — before the cart is built.
+                    addr.pop("_zoro_deliver_by", None)
+                    _alt_date, _alt_src = (_zoro_api_delivery(driver, item["sku"], item["final_qty"], addr),
+                                           f"Zoro's estimate for ZIP {_zip5(addr)}")
+                    if not _alt_date and not defer_amazon_writes:
+                        from platforms.zoro import get_zoro_delivery_date
+                        _alt_date, _alt_src = get_zoro_delivery_date(driver, item["sku"]), "Zoro product page"
+                    if _alt_date:
+                        addr["_zoro_deliver_by"] = _alt_date
+                    if (_gap_limit > 0 and not manual_override and _delivery_gate_holds(
+                            item["sku"], _alt_date, _alt_src, f"{item['sku']} (ALT for {item['main_sku']})")):
+                        return "skipped"
             else:
                 if alt_status not in ("API_ERROR", "NO_DATA"):
                     log_price_or_status(item["alt_sku"], current_price=0.0, status="OOS")

@@ -524,10 +524,11 @@ During order checkout and cart testing:
    - Click "Add a Shipment" for each additional tracking ID
    - Set quantity per package
    - Select carrier (FedEx) and service class
-7. Send customer messages:
-   - **Tracking confirmation** — order shipped with tracking link
-   - **Stock delay** — item backordered, expected ship date
-   - **Cancel denial** — order already shipped
+7. Send customer messages (Amazon's contact reason in brackets — 27 Oct 2026):
+   - **Tracking confirmation** — order shipped with tracking link [**Other** only; never "Notify of a
+     problem", which filed every shipped message as a shipping problem until then]
+   - **Stock delay** — item backordered, expected ship date [Notify of a problem → Other]
+   - **Cancel denial** — order already shipped [Other → Notify of a problem]
 8. Persist to `message_log.json` and `tracking_upload_log.json`
 
 #### Multi-Package Tracking Support
@@ -824,6 +825,17 @@ margin% = (profit / zoro_order_total) × 100
 2. Then try all available coupons from the Coupons tab
 3. Auto-detect UI layout (old text-input vs new dropdown)
 4. Track coupon success/failure in `coupon_metadata.json`
+
+### Stock and Delivery Date (27 Oct 2026)
+
+- **Backordered is not in stock.** Zoro lets a backordered item into the cart (`isCartable: true`,
+  `availabilityStatus: "Backordered"`) and only promises to e-mail a ship date. `check_inventory`
+  returns it as not cartable → ALT, else labelled OOS. Never placed blind.
+- **Delivery date** = Zoro's estimate for the buyer's ZIP and quantity
+  (`POST /scm/v1/expected-date/bulk-expected-dates`), else the product page; only asked for a SKU the
+  stock check passed (the API dates out-of-stock items too). 4+ days past Amazon's deliver-by →
+  "Delivery time high", not placed — for the main SKU and, since 27 Oct, for an ALT swap.
+  Details: `docs/CLOUD_ARCHITECTURE.md` §5.
 
 ### State Restrictions
 

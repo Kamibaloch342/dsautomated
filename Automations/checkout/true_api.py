@@ -1857,8 +1857,8 @@ def _read_checkout_delivery(driver, address, checkout_delivery_gap):
             return "DELIVERY_TIME_HIGH"
         if not address.get("_zoro_deliver_by"):
             if had:
-                address["_zoro_deliver_by"] = had        # the product page's date (already checked)
-                print(f"   📅 checkout page showed no date — using the product page's {had}")
+                address["_zoro_deliver_by"] = had        # read before the cart (already checked there)
+                print(f"   📅 checkout page showed no date — using the one read before the cart, {had}")
                 return None
             if (address or {}).get("_rush_mode"):
                 print("   ⚡ RUSH: no Zoro delivery date captured — placing anyway")
