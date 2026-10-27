@@ -450,12 +450,26 @@ app.get('/queue', (req, res) => {
 // each other offline ("connected: false", failed sends) and the stray one sent from its own stale
 // queue. Now a copy that does not own the port, or finds another live gateway, exits before it
 // touches WhatsApp.
+//
+// "Alive" is not enough: after a reboot the old pid belongs to some other process. On 27 Oct 2026
+// pid 1467 (the gateway of 26 Oct) was macOS's SetStoreUpdateService, so every gateway the placers
+// started exited at once and no WhatsApp alert left from 23:45. The pid must be a gateway — a
+// process whose command line runs this server.js.
+function isGateway(pid) {
+    try {
+        const cmd = require('child_process').execFileSync('ps', ['-p', String(pid), '-o', 'command='],
+                                                         { encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'] });
+        return /server\.js/.test(cmd) && /node/i.test(cmd);
+    } catch (e) {
+        return false;                                  // no such process
+    }
+}
 const PID_FILE = path.join(__dirname, 'gateway.pid');
 try {
     const other = parseInt(fs.readFileSync(PID_FILE, 'utf8'), 10);
-    if (other && other !== process.pid) {
-        try { process.kill(other, 0); console.log(`  [Gateway] another gateway (pid ${other}) is running — exiting`); process.exit(0); }
-        catch (e) { /* stale pid file */ }
+    if (other && other !== process.pid && isGateway(other)) {
+        console.log(`  [Gateway] another gateway (pid ${other}) is running — exiting`);
+        process.exit(0);
     }
 } catch (e) { /* no pid file */ }
 
