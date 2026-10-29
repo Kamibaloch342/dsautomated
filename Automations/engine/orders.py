@@ -2704,6 +2704,59 @@ def scrape_order_details(driver, amazon_order_id, fallback_qty=None):
     return _extract_order_details(driver, amazon_order_id, fallback_qty=fallback_qty)
 
 
+# Seller Central's "Buyer requested cancel" banner: "The buyer has requested that this order be canceled."
+# The order is still Unshipped, so nothing else on the page says so — the status check below only knew
+# 'order cancelled' / 'buyer cancellation' / 'cancellation reason', and such orders were bought (owner,
+# 30 Oct 2026, 112-4663939-9265025). The banner is a Katal alert whose text can live in attributes or a
+# shadow root, outside body.innerText, so those are read too.
+_CANCEL_REQUESTED_JS = r"""
+    var re = /buyer requested cancel|requested that this order be cancel/i;
+    if (re.test((document.body && document.body.innerText) || '')) return true;
+    var els = document.querySelectorAll('kat-alert, [role="alert"], .a-alert, [class*="alert" i]');
+    for (var i = 0; i < els.length; i++) {
+        var e = els[i];
+        var s = (e.getAttribute('header') || '') + ' ' + (e.getAttribute('description') || '') + ' '
+              + (e.textContent || '') + ' ' + (e.shadowRoot ? (e.shadowRoot.textContent || '') : '');
+        if (re.test(s)) return true;
+    }
+    return false;
+"""
+
+
+def _buyer_requested_cancel(driver):
+    """True when the order page shows Amazon's 'Buyer requested cancel' banner. Never raises."""
+    try:
+        return bool(driver.execute_script(_CANCEL_REQUESTED_JS))
+    except Exception:
+        return False
+
+
+_CANCEL_REQ_ALERTED = set()             # amazon_ids already alerted this run
+
+
+def _cancel_requested_skip(amazon_id, asin="", sku=""):
+    """A buyer asked to cancel: never bought. Logged, and one WhatsApp/Telegram alert per order per run so
+    someone cancels it on Amazon (the placer itself never cancels an order)."""
+    print(f"  🛑 {amazon_id}: the BUYER REQUESTED CANCELLATION — NOT placed. Cancel it on Amazon.")
+    _log_order({"amazon_id": amazon_id, "asin": asin, "sku": sku, "status": "CANCEL_REQUESTED",
+                "notes": "Amazon shows 'Buyer requested cancel' — not placed"})
+    if amazon_id in _CANCEL_REQ_ALERTED:
+        return
+    _CANCEL_REQ_ALERTED.add(amazon_id)
+    text = (f"Order {amazon_id} ({asin} {sku}) NOT placed — the buyer requested cancellation. "
+            f"Cancel it in Seller Central (it does not count against the cancellation rate).")
+    try:
+        from utils.whatsapp import send_whatsapp_message
+        send_whatsapp_message("🛑 *BUYER REQUESTED CANCEL*\n" + text)
+    except Exception as e:
+        print(f"  ⚠️ WhatsApp alert error: {e}")
+    try:
+        from utils.telegram import send_telegram_message
+        send_telegram_message("🛑 <b>BUYER REQUESTED CANCEL</b>\n" + html.escape(text))
+    except Exception as e:
+        print(f"  ⚠️ Telegram alert error: {e}")
+
+
 def _extract_order_details(driver, amazon_order_id, fallback_qty=None):
     """Extract order info from the CURRENT page (already on the order-detail
     URL). Shared by the classic per-order scrape and the RUSH parallel-tab
@@ -2724,6 +2777,8 @@ def _extract_order_details(driver, amazon_order_id, fallback_qty=None):
     """)
     if status_hint:
         return {"amazon_id": amazon_order_id, "status": status_hint}
+    if _buyer_requested_cancel(driver):
+        return {"amazon_id": amazon_order_id, "status": "cancel_requested"}
 
     # Check for pending
     try:
@@ -2958,7 +3013,11 @@ def _extract_order_details(driver, amazon_order_id, fallback_qty=None):
     
     # Scrape address using existing proven function (already on the page)
     addr = scrape_amazon_address(driver, amazon_order_id, PROFILE_NAME, skip_navigate=True)
-    
+
+    # Again, now the page has had time to draw its banners (the alert can render after the order data).
+    if _buyer_requested_cancel(driver):
+        return {"amazon_id": amazon_order_id, "status": "cancel_requested"}
+
     result = {
         "amazon_id": amazon_order_id,
         "items": parsed_items,
@@ -6743,6 +6802,10 @@ def main():
                             continue
 
                         detail_status = (detail.get("status") or "").strip().lower()
+                        if detail_status == "cancel_requested":
+                            _cancel_requested_skip(amazon_id, asin, sku)
+                            _run_log["skipped"] += 1
+                            continue
                         if detail_status in ("pending", "cancelled", "canceled", "shipped"):
                             print(f"  ⏭️  Order status is {detail_status.title()} — skipping")
                             _run_log["skipped"] += 1
@@ -6923,6 +6986,10 @@ def main():
                     continue
 
                 detail_status = (detail.get("status") or "").strip().lower()
+                if detail_status == "cancel_requested":
+                    _cancel_requested_skip(amazon_id, asin, sku)
+                    _run_log["skipped"] += 1
+                    continue
                 if detail_status in ("pending", "cancelled", "canceled", "shipped"):
                     print(f"  ⏭️  Order status is {detail_status.title()} — skipping")
                     _run_log["skipped"] += 1

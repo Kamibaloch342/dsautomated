@@ -300,6 +300,14 @@ are enforced in code, not by convention:
   items too, so it is only asked about SKUs the stock check passed. DM_COUPON's checkout page has never
   shown a date the pattern reads (0 since 19 Oct; 20 s wait per order) — `checkout.dom` now prints that
   page's delivery wording once per run so the pattern can learn it.
+* **Buyer requested cancel → never placed (30 Oct 2026).** An order the buyer asked to cancel stays
+  Unshipped; only Seller Central's banner ("Buyer requested cancel — The buyer has requested that this
+  order be canceled") says so, and the order-page status check did not know that wording
+  (112-4663939-9265025 was bought). `_extract_order_details` now looks for it on arrival and again after
+  the address is read — in the page text, the Katal alert's attributes and its shadow root — and
+  returns status `cancel_requested`: both placer loops skip it, log `CANCEL_REQUESTED`, and send one
+  WhatsApp/Telegram alert per order per run to cancel it in Seller Central. The placer never cancels an
+  order itself, and no tag places it. Test: `scripts/test_cancel_requested.py`.
 * **Manual tags, three upgrades (30 Oct 2026, owner).**
   1. *Coupon line on a duplicate.* When the Gmail duplicate check writes `<WB> - D`, the order's Seller
      Notes get one line per item from the store's last priority check, believed only if made with the
