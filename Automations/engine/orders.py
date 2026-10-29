@@ -3656,11 +3656,21 @@ def _parse_manual_tag(merchant_id):
     "manual-c", "Manual C", "MANUAL_R ", "manual  -  R" all count. Anything else
     (including "Manual" with no suffix) is NOT a tag and is ignored, so a partial
     or mistyped label can never silently place an order.
+
+    A Zoro code may follow the tag — "Manual-C G7467735" — to place that code instead of the
+    sheet's (a colour / size the buyer agreed to; owner, 30 Oct 2026). _parse_manual_code reads it.
     """
-    if not merchant_id:
-        return None
-    m = re.match(r"^\s*manual\s*[-_ ]?\s*([cr])\s*$", str(merchant_id), re.I)
+    m = _MANUAL_TAG_RE.match(str(merchant_id or ""))
     return m.group(1).upper() if m else None
+
+
+_MANUAL_TAG_RE = re.compile(r"^\s*manual\s*[-_ ]?\s*([cr])(?:\s*[-_:,/]?\s*(G\d{5,12}))?\s*$", re.I)
+
+
+def _parse_manual_code(merchant_id):
+    """The Zoro code written after a Manual-C/-R tag ('Manual-R G7467735' → 'G7467735'), else ''."""
+    m = _MANUAL_TAG_RE.match(str(merchant_id or ""))
+    return (m.group(2) or "").upper() if m else ""
 
 
 def _big_order_regular_codes(regular_codes, raw_cart_cost, big_threshold, manual_override):
@@ -3700,6 +3710,112 @@ def _notify_manual_no_coupon(amazon_id, asin, sku, cart_cost, why, buyer="", cit
         send_telegram_message("🖐️ <b>MANUAL-C — NO COUPON</b>\n" + html.escape(text))
     except Exception as e:
         print(f"  ⚠️ Telegram alert error: {e}")
+
+
+_INV_UNKNOWN = ("API_ERROR", "NO_DATA")
+
+
+def _swap_manual_code(item, code):
+    """Buy *code* for this item instead of the sheet's Zoro code ('Manual-C/-R G…' tag). The sheet's
+    pack size stays; the sheet's ALT is dropped — a person chose this code."""
+    item["sheet_sku"] = item["sku"]
+    item["sku"] = code
+    item["alt_sku"] = ""
+    item["manual_code"] = True
+
+
+def _manual_code_notes(items):
+    return [f"MANUAL CODE: placed {it['sku']} for {it['asin']} (sheet {it.get('sheet_sku', '')})"
+            for it in items if it.get("manual_code")]
+
+
+def _order_fields(items):
+    """asin_field, sku_field, qty_field for the order log — one item plain, several joined."""
+    if len(items) == 1:
+        return items[0]["asin"], items[0]["sku"], items[0]["final_qty"]
+    return (", ".join(it["asin"] for it in items),
+            ", ".join(f"{it['sku']} x{it['final_qty']}" for it in items),
+            ", ".join(str(it["final_qty"]) for it in items))
+
+
+def _manual_multi_item_plan(items, code, in_stock):
+    """A Manual-C/-R multi-item order: what to buy. *in_stock(sku, qty)* → (cartable, status).
+    Returns (keep, dropped, problem); dropped = [(item, status)].
+      • Zoro code in the tag: it replaces the ONE item that is out (main and ALT both out). None or
+        several out → *problem*: not placed, a person must say which item the code is for.
+      • No code: buy what is in stock, drop the rest — the buyer was told and agreed to get the other
+        item later (owner, 30 Oct 2026). All in stock or all out → unchanged; the normal flow decides.
+    An inventory API error on any item → unchanged: never split an order on a failed check."""
+    out = []
+    for it in items:
+        ok, st = in_stock(it["sku"], it["final_qty"])
+        if not ok and st not in _INV_UNKNOWN and it.get("alt_sku"):
+            ok, st = in_stock(it["alt_sku"], it["final_qty"])
+        if not ok and st in _INV_UNKNOWN:
+            return list(items), [], None
+        if not ok:
+            out.append((it, st))
+    if code:
+        if len(out) == 1:
+            _swap_manual_code(out[0][0], code)
+            return list(items), [], None
+        names = ", ".join(f"{it['asin']} {it['sku']}" for it, _ in out)
+        why = f"{len(out)} items are out ({names})" if out else "every item is in stock"
+        return list(items), [], f"cannot tell which item {code} replaces — {why}"
+    if out and len(out) < len(items):
+        gone = {id(it) for it, _ in out}
+        return [it for it in items if id(it) not in gone], out, None
+    return list(items), [], None
+
+
+_MANUAL_CODE_ALERTED = set()            # amazon_ids already alerted this run
+
+
+def _notify_manual_code_unclear(amazon_id, why):
+    """One alert per order: a 'Manual-C/-R G…' multi-item order the placer cannot map the code onto."""
+    if amazon_id in _MANUAL_CODE_ALERTED:
+        return
+    _MANUAL_CODE_ALERTED.add(amazon_id)
+    text = (f"Order {amazon_id} NOT placed — {why}. It keeps its tag and is tried again every cycle; "
+            f"remove the code to place only the items in stock, or place it by hand.")
+    try:
+        from utils.whatsapp import send_whatsapp_message
+        send_whatsapp_message("🖐️ *MANUAL CODE — WHICH ITEM?*\n" + text)
+    except Exception as e:
+        print(f"  ⚠️ WhatsApp alert error: {e}")
+    try:
+        from utils.telegram import send_telegram_message
+        send_telegram_message("🖐️ <b>MANUAL CODE — WHICH ITEM?</b>\n" + html.escape(text))
+    except Exception as e:
+        print(f"  ⚠️ Telegram alert error: {e}")
+
+
+def _dup_coupon_lines(asins, store, sheet_codes, verdicts=None):
+    """The Seller Notes text for a '<WB> - D' order: one 'C active / C none / C untested' line per item."""
+    from engine import priority_check as _pc
+    asins = [a for a in dict.fromkeys(asins or []) if a]
+    if sheet_codes is None:
+        lines = ["C unknown - the Coupons tab could not be read"] * len(asins)
+    else:
+        verdicts = _pc.load_verdicts() if verdicts is None else verdicts
+        lines = [_pc.coupon_status_note(a, store, sheet_codes, verdicts) for a in asins]
+    if len(asins) > 1:
+        lines = [f"{a}: {l}" for a, l in zip(asins, lines)]
+    return "\n".join(lines)
+
+
+def _dup_coupon_note(driver, amazon_id, asins):
+    """After '<WB> - D': say in the order's Seller Notes whether a priority coupon works on the item, so
+    whoever reviews the duplicate can write Manual-C or Manual-R straight away (owner, 30 Oct 2026).
+    Added below any note already there. Never raises — the duplicate label is what matters."""
+    try:
+        codes = _sheet_priority_codes()
+        text = _dup_coupon_lines(asins, _STORE, None if _SHEET_PRI["codes"] is None else codes)
+        if text:
+            ok = write_seller_note(driver, amazon_id, note_text=text, skip_navigate=True, append=True)
+            print(f"  🏷️  Seller Notes: {text.replace(chr(10), ' | ')}" + ("" if ok else "  ⚠️ not written"))
+    except Exception as e:
+        print(f"  ⚠️ coupon status note for {amazon_id} skipped: {e}")
 
 
 def _manual_tag_is_for_profile(kind, profile_name):
@@ -4001,6 +4117,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         print(f"  🖐️  MANUAL OVERRIDE (Manual-{_manual_kind}) — a human approved this order; "
               f"the Gmail duplicate search will be SKIPPED for it. "
               f"The placement lock still applies, so it can only be placed once.")
+    _manual_code = _parse_manual_code(merchant_id) if manual_override else ""
+    if _manual_code:
+        print(f"  🖐️  Zoro code in the tag: {_manual_code} — placed instead of the sheet's code")
 
     # ── SUNDAY MODE: an order already held is not re-priced (a Manual tag always goes through) ──
     if not manual_override and _sunday_parked(amazon_id, coupon_codes):
@@ -4045,22 +4164,21 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         print(f"  ❌ No mapped items found for {amazon_id}")
         return "failed"
 
+    # "Manual-C G7467735": the buyer agreed to another colour / size — buy that Zoro code, with the
+    # sheet's pack size, and no ALT (the human chose the code). A multi-item order is resolved once
+    # Zoro's stock is known (_manual_multi_item_plan, below): the code replaces the item that is out.
+    if _manual_code and len(resolved_items) == 1:
+        _swap_manual_code(resolved_items[0], _manual_code)
+
     primary_item = resolved_items[0]
     is_multi_item = len(resolved_items) > 1
-    asin_field = primary_item["asin"] if not is_multi_item else ", ".join(
-        item["asin"] for item in resolved_items
-    )
-    sku_field = primary_item["sku"] if not is_multi_item else ", ".join(
-        f"{item['sku']} x{item['final_qty']}" for item in resolved_items
-    )
-    qty_field = primary_item["final_qty"] if not is_multi_item else ", ".join(
-        str(item["final_qty"]) for item in resolved_items
-    )
+    asin_field, sku_field, qty_field = _order_fields(resolved_items)
     order_notes = []
     if is_multi_item:
         order_notes.append(f"Multi-item order ({len(resolved_items)} items)")
+    order_notes += _manual_code_notes(resolved_items)
     order_note = "; ".join(order_notes)
-    
+
     _print_section("ORDER DETAILS")
     _print_kv("Amazon ID", amazon_id)
     for index, item in enumerate(resolved_items, start=1):
@@ -4240,6 +4358,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             print(f"  🔁 DUPLICATE — already ordered: {existing_wb}")
             update_amazon_seller_id(driver, amazon_id, dup_label, PROFILE_NAME,
                                     skip_navigate=True)
+            _dup_coupon_note(driver, amazon_id, [it["asin"] for it in resolved_items])
             _log_order({
                 "amazon_id": amazon_id,
                 "asin": asin_field,
@@ -4314,6 +4433,33 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # so the token (and Vue app) are only accessible while on zoro.com.
     ensure_on_site(driver)
     ensure_token(driver)
+
+    # ── Manual-C/-R on a multi-item order: buy what is in stock / put the tag's code on the item
+    #    that is out (owner, 30 Oct 2026). Decided here, on Zoro's stock, before anything is carted.
+    _partial = False
+    if manual_override and len(resolved_items) > 1:
+        _keep, _dropped, _problem = _manual_multi_item_plan(
+            resolved_items, _manual_code, lambda s, q: check_inventory(driver, s, q))
+        if _problem:
+            print(f"  ⏸️  MANUAL CODE: {_problem} — NOT placed (tag kept, tried again next cycle)")
+            _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                        "buyer": buyer, "city": city, "state": state, "status": "MANUAL_CODE_UNCLEAR",
+                        "notes": "; ".join(filter(None, [_problem, order_note]))})
+            _notify_manual_code_unclear(amazon_id, _problem)
+            return "skipped"
+        for _it, _st in _dropped:
+            log_price_or_status(_it["sku"], current_price=0.0, status="OOS")
+            order_notes.append(f"PARTIAL: {_it['asin']} not placed ({_it['sku']}: {_st}) — buyer agreed")
+            print(f"  ✂️  PARTIAL (Manual-{_manual_kind}): {_it['asin']} {_it['sku']} is {_st} — "
+                  f"left out; buying the other item(s)")
+        order_notes += [n for n in _manual_code_notes(_keep) if n not in order_notes]
+        _partial = bool(_dropped)
+        resolved_items = _keep
+        primary_item = resolved_items[0]
+        is_multi_item = len(resolved_items) > 1
+        asin_field, sku_field, qty_field = _order_fields(resolved_items)
+        order_note = "; ".join(order_notes)
+        note_amazon_sku = (primary_item.get("seller_sku") or "").strip() or (original_sku or "")
 
     real_cost = 0.0
     # Undiscounted cart total (pre-Zoro-Select). Deciding-ASIN routing must be
@@ -4570,6 +4716,11 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # alternative Zoro code must show the code actually placed, everywhere.)
     alt_used_any = any(it.get("alt_used") for it in resolved_items)
     alt_main_sku = next((it["main_sku"] for it in resolved_items if it.get("alt_used")), None)
+    # Seller Notes marks on the Code line: ALT (sheet's alternative), MANUAL (the tag's code),
+    # PARTIAL (Manual-C/-R multi-item order, an item left out)
+    _code_suffix = "".join(t for t, on in ((" - ALT", alt_used_any),
+                                           (" - MANUAL", any(it.get("manual_code") for it in resolved_items)),
+                                           (" - PARTIAL", _partial)) if on)
     if alt_used_any:
         sku_field = primary_item["sku"] if not is_multi_item else ", ".join(
             f"{it['sku']} x{it['final_qty']}" for it in resolved_items)
@@ -5314,7 +5465,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     "title": primary_item.get("title", ""),
                     "asin": asin_field,
                     "sku": note_amazon_sku,
-                    "code": (primary_item["sku"].replace("G", "K", 1) if primary_item["sku"].startswith("G") else primary_item["sku"]) + (" - ALT" if alt_used_any else ""),
+                    "code": (primary_item["sku"].replace("G", "K", 1) if primary_item["sku"].startswith("G") else primary_item["sku"]) + _code_suffix,
                     "qty": qty_field,
                     "tracking_sent": "No",
                     "tc": logged_cost,
@@ -5457,7 +5608,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 "title": primary_item.get("title", ""),
                 "asin": asin_field,
                 "sku": note_amazon_sku,
-                "code": (primary_sku.replace("G", "K", 1) if primary_sku.startswith("G") else primary_sku) + (" - ALT" if alt_used_any else ""),
+                "code": (primary_sku.replace("G", "K", 1) if primary_sku.startswith("G") else primary_sku) + _code_suffix,
                 "qty": qty_field,
                 "tracking_sent": "No",
                 "tc": logged_cost,
@@ -5607,7 +5758,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 "title": primary_item.get("title", ""),
                 "asin": asin_field,
                 "sku": note_amazon_sku,
-                "code": (sku_field.replace("G", "K", 1) if sku_field.startswith("G") else sku_field) + (" - ALT" if alt_used_any else ""),
+                "code": (sku_field.replace("G", "K", 1) if sku_field.startswith("G") else sku_field) + _code_suffix,
                 "qty": qty_field,
                 "tracking_sent": "No",
                 "tc": logged_cost,
@@ -6284,6 +6435,18 @@ def main():
                     _supervise_ok = SUPERVISE_UNLABELLED and bool(STORE_SORTED_ASINS)
                     for fo in fav_orders:
                         if fo["amazon_id"] in seen_ids:
+                            continue
+                        # A Manual tag the 'Manual-C/-R' search did not return — "Manual-C G7467735"
+                        # carries a Zoro code after it (30 Oct 2026), and whether Amazon's search
+                        # matches the tag inside a longer Seller order ID is not something we control.
+                        _fk = _parse_manual_tag((fo.get("seller_order_id") or "").strip())
+                        if _fk:
+                            if _manual_tag_is_for_profile(_fk, PROFILE_NAME):
+                                fo["_label_matched"] = fo.get("seller_order_id", "").strip()
+                                fo["_margin_thresh"] = MIN_MARGIN
+                                scraped_orders.append(fo)
+                                seen_ids.add(fo["amazon_id"])
+                                print(f"    🖐️  {fo['amazon_id']}: '{fo['_label_matched']}' found in the buyer-action view")
                             continue
                         _fo_asin = (fo.get("asin") or "").strip().upper()
                         is_deciding = _fo_asin in deciding_set

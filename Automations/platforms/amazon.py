@@ -464,12 +464,14 @@ def update_amazon_seller_id(driver, amazon_order_id, new_seller_id, account_prof
 
 
 def write_seller_note(driver, amazon_order_id, note_text=None, account_profile=None,
-                       skip_navigate=False, skip_login=False):
+                       skip_navigate=False, skip_login=False, append=False):
     """
     Write a private seller note to the Amazon SC order detail page.
 
     If note_text is None, auto-extracts from order_log.txt + message_log.json.
     Amazon auto-saves seller notes on blur — we type and click a neutral element.
+    append=True keeps whatever the note already says and adds note_text below it
+    (nothing is typed when the note already contains it).
 
     Returns True if the textarea was found and text was injected, False otherwise.
     """
@@ -532,6 +534,14 @@ def write_seller_note(driver, amazon_order_id, note_text=None, account_profile=N
     if not textarea:
         print(f"   [SellerNote] Textarea not found for {amazon_order_id}")
         return False
+
+    if append:
+        existing = (textarea.get_attribute("value") or "").strip()
+        if note_text.strip() in existing:
+            print(f"   [SellerNote] already says it — left unchanged for {amazon_order_id}")
+            return True
+        if existing:
+            note_text = existing + "\n" + note_text
 
     try:
         # Scroll into view

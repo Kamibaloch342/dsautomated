@@ -300,6 +300,24 @@ are enforced in code, not by convention:
   items too, so it is only asked about SKUs the stock check passed. DM_COUPON's checkout page has never
   shown a date the pattern reads (0 since 19 Oct; 20 s wait per order) — `checkout.dom` now prints that
   page's delivery wording once per run so the pattern can learn it.
+* **Manual tags, three upgrades (30 Oct 2026, owner).**
+  1. *Coupon line on a duplicate.* When the Gmail duplicate check writes `<WB> - D`, the order's Seller
+     Notes get one line per item from the store's last priority check, believed only if made with the
+     current priority codes: `C active - VEHICLE10926 (checked 28 Oct 14:05)`, `C none …` (no priority
+     code / Zoro Select / Zoro's best price), `C untested …` (never checked, checked before the current
+     codes, or Zoro did not answer). It is added below any note already there
+     (`priority_check.coupon_status_note`, `orders._dup_coupon_note`, `write_seller_note(append=True)`).
+  2. *Partial multi-item.* Manual-C/-R on a multi-item order: after checking Zoro's stock (main, then
+     ALT), the items that are out are left out and the rest is bought — the buyer was told and agreed.
+     Order log note `PARTIAL: <ASIN> not placed (<code>: <status>)`, Seller Notes code line `- PARTIAL`.
+     All out → OOS as before; an inventory API error → no split. The tracker later confirms the whole
+     Amazon order (owner's choice).
+  3. *Zoro code in the tag.* `Manual-C G7467735` / `Manual-R G7467735` buys that code instead of the
+     sheet's (another colour / size the buyer accepted) with the sheet's pack size and no ALT; the tag
+     still picks the profile and its waivers. Multi-item: the code replaces the ONE item that is out; none
+     or several out → not placed, `MANUAL_CODE_UNCLEAR`, one alert, tag kept. A bare `G7467735` is not a
+     tag and places nothing. Tagged orders are found by the `Manual-C/-R` search and, as a backstop, in the
+     buyer-action view. Test: `scripts/test_manual_upgrades.py`.
 
 ## 6. Automation & memory
 

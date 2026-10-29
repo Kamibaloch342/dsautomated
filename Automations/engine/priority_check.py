@@ -1088,6 +1088,47 @@ def reseller_must_wait(asin: str, store: str, verdicts=None, sheet_priority_code
     return None
 
 
+def coupon_status_note(asin: str, store: str, sheet_priority_codes=None, verdicts=None) -> str:
+    """One line for the Seller Notes of an order marked '<WB> - D': does a priority coupon work on
+    this item right now? The person reviewing the duplicate then knows at a glance whether to write
+    Manual-C or Manual-R (owner, 30 Oct 2026). Read from this store's last check of the ASIN, and
+    only believed when it was made with the CURRENT priority coupons:
+        C active - VEHICLE10926 (checked 28 Oct 14:05)
+        C none - Zoro Select, the reseller gets 10 %
+        C untested - checked before the current priority coupons"""
+    cur = {str(c).strip().upper() for c in (sheet_priority_codes or []) if str(c).strip()}
+    if not cur:
+        return "C none - no priority coupons in the Coupons tab"
+    v = (verdicts if verdicts is not None else load_verdicts()).get(str(asin or "").strip().upper()) or {}
+    if not v or not str(v.get("profile") or "").upper().startswith(str(store or "").upper()):
+        return "C untested - this item has not been checked yet"
+    st = v.get("status") or ""
+    at = v.get("at") or ""
+    try:
+        when = f" (checked {datetime.strptime(at[:16], '%Y-%m-%d %H:%M').strftime('%d %b %H:%M')})"
+    except Exception:
+        when = ""
+    if st in NOT_A_VERDICT:
+        return "C untested - Zoro did not answer the last check"
+    set_at = coupon_set_seen(store).get("at") or ""
+    if set_at and at < set_at:
+        return "C untested - checked before the current priority coupons"
+    if st == "COUPON_OK":
+        code = (str(v.get("coupon") or "").split() or [""])[0].upper()
+        if code in cur:
+            return f"C active - {code}{when}"
+        return "C untested - its coupon is no longer in the Coupons tab"
+    if st == "SELECT":
+        return f"C none - Zoro Select, the reseller gets 10 %{when}"
+    if st == "PROMO_INELIGIBLE":
+        return "C none - Zoro's best price, no coupon applies"
+    if st in ("NO_PRIORITY", "REGULAR_OK"):
+        return f"C none{when}"
+    if st == "OOS":
+        return f"C unknown - out of stock at the last check{when}"
+    return f"C unknown - last check: {st or 'none'}"
+
+
 def main():
     argv = [a for a in sys.argv[1:] if not a.startswith("--")]
     if not argv or argv[0].upper() not in ("DM_COUPON", "HS_COUPON"):
