@@ -21,7 +21,7 @@
 
 ## Working rules
 - Inspect the DB read-only; back up before any purge/VACUUM; placers stopped for VACUUM.
-- Never run `scripts/test_pipeline_orders.py`; never touch a running placer's Chrome (ports 9221–9224).
+- Never touch a running placer's Chrome (ports 9221–9224).
 - Do not weaken the placement lock, the fail-closed duplicate check, the Sheets loads, the
   coupon/priority rules, the label criteria or the messaging guards.
 - Prefer incremental work: closing processes only new/changed orders, syncs are incremental —

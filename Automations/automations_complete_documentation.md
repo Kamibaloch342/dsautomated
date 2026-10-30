@@ -230,7 +230,7 @@ Key scripts (grouped by function):
 **Sync & Backfill:**
 - `sync_order_placer_logs.py` — order_log.txt → DB (every 5 min)
 - `sync_gmail_archive.py` — gmail_archive.db → archive_* tables (nightly)
-- `backfill_2026.py`, `backfill_from_archive.py`, `backfill_closing_from_archive.py` — historical gap-fill
+- `backfill_closing_from_archive.py` — historical gap-fill (`backfill_2026.py`, `backfill_from_archive.py` are in `scripts/archive/`)
 - `auto_sync_10min.py` — 10-minute auto-sync daemon
 
 **FedEx & Delivery:**
@@ -244,8 +244,8 @@ Key scripts (grouped by function):
 
 **Maintenance:**
 - `migrate_unified_db.py` — DB schema migrations
-- `repair_mislabeled_wb.py` — fix mis-labelled WB orders
-- `repair_multibox_tracking.py` — fix multi-package tracking
+- `archive/repair_mislabeled_wb.py`, `archive/repair_multibox_tracking.py` — one-off fixes for mis-labelled WB orders
+  and multi-package tracking (archived; see `scripts/archive/README.md`)
 - `recompute_split_costs.py` — recalculate split order costs
 
 **Infrastructure:**

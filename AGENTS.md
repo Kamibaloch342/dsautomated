@@ -22,6 +22,7 @@ around it.
 | `DS_Closing/` | legacy monthly P&L scripts (Excel) | historical |
 | `Listings_Hunting/`, `Auto_Lister.py`, `Complete_Daily_Listing_Automation.py` | older listing tools | dormant |
 | `ZORO Clone/`, `Hathoro Website/` | web projects | unrelated to the order flow |
+| `reports/`, `docs/archive/`, `Automations/scripts/archive/` | one-off reports, superseded audits, one-off backfill/repair scripts | reference only |
 
 ---
 
@@ -88,8 +89,8 @@ scan for 3 days (all in `bot_config.json → messaging`). Late (2 d past deliver
 
 * Inspect the DB read-only: `sqlite3 "file:Automations/data/automations_unified.db?mode=ro"`.
   Any purge / VACUUM: backup first (`scripts/slim_database.py --apply` does), placers stopped.
-* Never run `scripts/test_pipeline_orders.py` (it drives a live placer Chrome). Never open a tab in
-  a running placer's Chrome (9221–9224). Tests are run by explicit name; there is no full suite.
+* Never open a tab in a running placer's Chrome (9221–9224). There are no test scripts: the
+  AI-written `scripts/test_*.py` were removed on 31 Oct 2026 — don't add new ones to `scripts/`.
 * Never weaken: the placement lock, the fail-closed duplicate check, the Google Sheets loads, the
   coupon / priority logic (owner's rule: reliability over speed), the label criteria, the messaging
   guards (no "presumed delivered" messaging), the `order_log.txt` line format (keys may only be

@@ -144,8 +144,6 @@ Promo Code"* retires the coupon; token and transient errors are retried and neve
 | **Supervisor** (coupon profiles): unlabelled orders whose ASIN is mapped but not in Priority ASIN Control are queued **last** and decided on the live cart: a priority coupon applies → place; else cart ≥ `supervise_min_cart_for_regular` and a regular coupon applies → place with it; else → labelled for the reseller profile. Unmapped ASINs are never placed (unchanged rule). At most `supervise_max_per_cycle` (20) such orders per cycle so the backlog drains gradually and can be watched in the dashboard's *Bot decisions* feed. | `_supervise_coupon_decision`, `SUPERVISED` / `ROUTED_TO_RESELLER` run-log statuses | `supervise_unlabelled`, `supervise_min_cart_for_regular`, `supervise_max_per_cycle` |
 | **Priority ASIN auto-check**: coupon placers verify new sheet ASINs between cycles (mapped? in stock? which coupon applies on a real cart? cart ≥ $50?) and write `Check_*` verdict columns into *Priority_ASIN_Control*; `auto_assign` can move the ASIN into the suggested column. Also on demand from the dashboard. | `engine/priority_check.py` | `automation.priority_check` |
 
-Unit tests: `python scripts/test_routing_rules.py` (43 cases) and `python scripts/test_priority_sheet.py`
-(sheet writer + move policy against a fake Sheets service) — no network.
 
 ### 5a. Reliability rules for priority coupons (8 Sep 2026)
 
@@ -234,8 +232,7 @@ are enforced in code, not by convention:
   are filtered out before the detail scrape and not re-priced until the numbers change, the
   PRIORITY pool changes (a regular scrape does not wake them), or 6 h pass. Manual-C/-R orders
   bypass it. Placers re-read the setting every order (15 s cache, last good value kept on a read
-  error) — no restart. `engine/orders.py: _sunday_mode / _sunday_gate / _sunday_parked`;
-  test `scripts/test_sunday_mode.py`.
+  error) — no restart. `engine/orders.py: _sunday_mode / _sunday_gate / _sunday_parked`.
 * **Dead codes are not verdicts.** The checkout's failure summary is per tier; an expired code says
   nothing about the item. A priority code that three different carts report as expired is retired
   (marked INVALID) and should be removed from the tab. When no LIVE regular code is left and no
@@ -273,7 +270,7 @@ are enforced in code, not by convention:
   travel with their cells) and writes the ASIN into the first empty cell of the target column, in
   one atomic batchUpdate — it used to blank the old cell, leaving holes with orphan notes (256 of them
   by 20 Oct). `scripts/compact_priority_sheet.py` (dry run; `--apply` with the coupon placers stopped,
-  backup of values + notes to `~/.zuhra/backups`) closes old gaps. Test: `scripts/test_priority_sheet.py`.
+  backup of values + notes to `~/.zuhra/backups`) closes old gaps.
 * **One Zoro account per profile (20 Oct 2026).** One account = one cart. On 19 Oct HS_COUPON was
   logged in to DM_COUPON's account (robstark771) and 3 orders went out with the other placer's item
   and/or address (WB7699391166, WB7993433455, WB8529119739). Every checkout now records its Zoro
@@ -307,7 +304,7 @@ are enforced in code, not by convention:
   the address is read — in the page text, the Katal alert's attributes and its shadow root — and
   returns status `cancel_requested`: both placer loops skip it, log `CANCEL_REQUESTED`, and send one
   WhatsApp/Telegram alert per order per run to cancel it in Seller Central. The placer never cancels an
-  order itself, and no tag places it. Test: `scripts/test_cancel_requested.py`.
+  order itself, and no tag places it.
 * **Manual tags, three upgrades (30 Oct 2026, owner).**
   1. *Coupon line on a duplicate.* When the Gmail duplicate check writes `<WB> - D`, the order's Seller
      Notes get one line per item from the store's last priority check, believed only if made with the
@@ -325,7 +322,7 @@ are enforced in code, not by convention:
      still picks the profile and its waivers. Multi-item: the code replaces the ONE item that is out; none
      or several out → not placed, `MANUAL_CODE_UNCLEAR`, one alert, tag kept. A bare `G7467735` is not a
      tag and places nothing. Tagged orders are found by the `Manual-C/-R` search and, as a backstop, in the
-     buyer-action view. Test: `scripts/test_manual_upgrades.py`.
+     buyer-action view.
 
 ## 6. Automation & memory
 
