@@ -166,6 +166,26 @@ def main():
             raise RuntimeError(f"exit {r.returncode}: {(r.stderr or r.stdout or '')[-200:]}")
     step("zoro_delivery", zd)
 
+    # 5) Gmail organizer (31 Oct 2026): ZUHRA/... labels on every inbox, routine mail out of the
+    #    inbox; only inboxes with a gmail.modify token (scripts/gmail_organizer.py --authorize).
+    #    No reader searches by inbox or label, so this never hides mail from the stack.
+    def go():
+        try:
+            cfg = json.load(open(os.path.join(AUTO, "bot_config.json"))).get("gmail_organizer", {})
+        except Exception:
+            cfg = {}
+        if cfg.get("enabled") is False:
+            raise SystemExit("off in bot_config.json")
+        py = PYBIN if os.path.exists(PYBIN) else sys.executable
+        r = subprocess.run([py, os.path.join(AUTO, "scripts", "gmail_organizer.py"), "--apply", "--days", "3"],
+                           cwd=AUTO, capture_output=True, text=True, timeout=1800)
+        for ln in (r.stdout or "").splitlines():
+            if ln.startswith("[gmail-org]") and ("labelled" in ln or "✗" in ln or "no inbox" in ln):
+                print(f"[auto-sync] {ln}", flush=True)
+        if r.returncode != 0:
+            raise RuntimeError(f"exit {r.returncode}: {(r.stderr or '')[-200:]}")
+    step("gmail_organizer", go)
+
 
 if __name__ == "__main__":
     main()

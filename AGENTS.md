@@ -21,7 +21,7 @@ around it.
 | `TSV Files/` | Zoro catalog feed → `combined_reports.db` | used by the hunter and listing tools |
 | `DS_Closing/` | legacy monthly P&L scripts (Excel) | historical |
 | `Listings_Hunting/`, `Auto_Lister.py`, `Complete_Daily_Listing_Automation.py` | older listing tools | dormant |
-| `ZORO Clone/`, `Hathoro Website/` | web projects | unrelated to the order flow |
+| `Hathoro Website/` | web project (EKUIPT storefront moved to `~/Developer/EKUIPT`, 31 Oct 2026) | unrelated to the order flow |
 | `reports/`, `docs/archive/`, `Automations/scripts/archive/` | one-off reports, superseded audits, one-off backfill/repair scripts | reference only |
 
 ---
@@ -71,7 +71,11 @@ agent and the dashboard run as macOS LaunchAgents.
   tracker and closing download (closing itself keeps only WB orders). **Cloud agent**
   `scripts/cloud_agent.py` (heartbeat, slim DB export to R2, remote commands, WAL checkpoint every
   30 min); **hourly** `scripts/auto_sync_10min.py` (Gmail fetch, incremental archive sync, placer
-  sync, WhatsApp insights, log rotation, Amazon report capture, the daily Zoro delivery sweep).
+  sync, WhatsApp insights, log rotation, Amazon report capture, the daily Zoro delivery sweep,
+  the Gmail organizer). **Gmail organizer** `scripts/gmail_organizer.py` (31 Oct 2026): ZUHRA/…
+  labels on every inbox from `config/gmail_rules.json`, routine mail archived; in the forwarding hub
+  mkamrankhan342 one folder per source Gmail. Acts only on inboxes with a
+  `<inbox>_modify_token.json` (`--authorize`); never deletes; no reader searches by inbox or label.
 * **Data** — `data/automations_unified.db` (master, WAL), `data/gmail_archive.db` (email archive),
   the Google Sheet (SKU map / coupons / priority — team-edited, sacred), `config/accounts.json`
   (accounts, inboxes, carrier API keys), `bot_config.json` (runtime knobs).
