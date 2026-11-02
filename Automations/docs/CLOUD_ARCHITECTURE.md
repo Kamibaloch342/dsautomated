@@ -13,7 +13,8 @@
 | Key | Written by | Read by | Purpose |
 |---|---|---|---|
 | `db/dashboard.db.gz` + `db/manifest.json` | cloud agent (every 5 min, only when data changed) | cloud dashboard (Render) | slim DB: 22 tables the dashboard needs, no raw email bodies |
-| `db/master_backup.db.gz` | cloud agent (hourly, once the master DB ≤ 600 MB) | you, when a machine dies | consistent snapshot of the whole master DB |
+| `db/master_backup.db.gz` | cloud agent (hourly; `quick_check` first; local copy `~/.zuhra/backups/master_latest.db.gz`) | you, when a machine dies | consistent snapshot of the whole master DB |
+| `db/daily/master_<yyyymmdd>.db.gz` | cloud agent (server-side copy of the first backup each day, `backup_keep_days` 7) | you, when the latest backup is already damaged | one master snapshot per day |
 | `state/machines/<host>.json` | cloud agent (every 15 s) | dashboard Ops page | launcher up? placers? memory, git version, last placement, dashboard URLs |
 | `state/active.json` | cloud agent while placers run | launcher on every machine | **placement lease** — a second machine refuses to start placers while another holds it |
 | `logs/live/<host>.json` | cloud agent (every 10 s) | dashboard live console | last 400 launcher console lines (`data/console_log.txt` tail) |

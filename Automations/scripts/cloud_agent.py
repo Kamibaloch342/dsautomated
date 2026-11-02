@@ -18,7 +18,9 @@ see and control the launcher from anywhere:
   LEASE        every 15 s   → state/active.json            "placers run HERE" —
                                 other machines refuse to start placers meanwhile
   BACKUP       hourly       → db/master_backup.db.gz       consistent snapshot of
-                                the master DB (skipped while it is still huge)
+                                the master DB, quick_check'ed, also kept as
+                                ~/.zuhra/backups/master_latest.db.gz; one copy per
+                                day under db/daily/ (7 kept)
   DASHBOARD    every 30 s   keeps dashboard/server.py up on :8000 (adopts a server
                                 that is already running — never crash-loops)
   TUNNEL       optional     supervises localtunnel / cloudflared and publishes
@@ -41,10 +43,12 @@ Usage:
 Config (optional): data/agent_config.json
     {"dashboard_port": 8000, "keep_dashboard_up": true,
      "localtunnel_subdomain": "", "cloudflared": false,
-     "slim_interval_s": 300, "backup_max_mb": 600, "backup_interval_s": 3600}
+     "slim_interval_s": 300, "backup_max_mb": 4000, "backup_interval_s": 3600,
+     "backup_keep_days": 7}
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
@@ -84,6 +88,9 @@ CONTROL_DIR = os.path.join(DATA, "control")
 CONTROL_QUEUE = os.path.join(CONTROL_DIR, "queue")
 CONTROL_DONE = os.path.join(CONTROL_DIR, "done")
 AGENT_CFG = os.path.join(DATA, "agent_config.json")
+BACKUP_DIR = os.path.expanduser("~/.zuhra/backups")      # outside the project folder
+LOCAL_BACKUP = os.path.join(BACKUP_DIR, "master_latest.db.gz")
+PREFIX_MASTER_DAILY = "db/daily/"
 AGENT_STATE = os.path.join(DATA, "agent_state.json")
 KEY_SLIM_GZ = "db/dashboard.db.gz"
 
@@ -111,8 +118,9 @@ _DEFAULT_CFG = {
     "localtunnel_subdomain": "",
     "cloudflared": False,
     "slim_interval_s": 300,
-    "backup_max_mb": 600,
+    "backup_max_mb": 4000,
     "backup_interval_s": 3600,
+    "backup_keep_days": 7,
     "heartbeat_s": 15,
     "livelog_s": 10,
     "command_s": 10,
@@ -362,6 +370,8 @@ class Agent:
                    "slim_mb": round(os.path.getsize(SLIM_DB) / 1048576, 1) if os.path.exists(SLIM_DB) else None,
                    "last_slim_upload": self.state.get("last_slim_upload"),
                    "last_backup": self.state.get("last_backup"),
+                   "last_backup_mb": self.state.get("last_backup_mb"),
+                   "backup_error": self.state.get("last_backup_error"),
                    "last_checkpoint": self.state.get("last_checkpoint")},
             "last_placement": last_placement(),
             "lease_holder": None,
@@ -707,32 +717,66 @@ class Agent:
 
     # ── 6. master DB backup ───────────────────────────────────────────────
     def backup(self, force: bool = False) -> tuple[bool, str]:
+        """Snapshot → integrity check → gzip into ~/.zuhra/backups → R2 (latest + one copy per
+        day, 7 days kept). Every failure is logged and published in the heartbeat: from 7 Sep to
+        31 Oct 2026 the old 600 MB cap skipped every run without a word and the master DB had
+        no backup at all."""
+        try:
+            ok, msg = self._backup(force)
+        except Exception as e:
+            ok, msg = False, f"{type(e).__name__}: {e}"
+        if ok:
+            if self.state.pop("last_backup_error", None):
+                self._save_state()
+        else:
+            self.state["last_backup_error"] = {"at": utcnow(), "error": msg}
+            self._save_state()
+            log("🚨 master DB backup FAILED: " + msg)
+        return ok, msg
+
+    def _backup(self, force: bool) -> tuple[bool, str]:
         if not os.path.exists(MASTER_DB):
             return False, "no master DB"
         mb = os.path.getsize(MASTER_DB) / 1048576
-        limit = float(self.cfg.get("backup_max_mb", 600))
+        limit = float(self.cfg.get("backup_max_mb", 4000))
         if mb > limit and not force:
-            return False, f"master DB is {mb:.0f} MB > backup_max_mb {limit:.0f} — run scripts/slim_database.py first"
+            return False, f"master DB is {mb:.0f} MB > backup_max_mb {limit:.0f} (data/agent_config.json)"
         last = self.state.get("last_backup")
         if not force and last and (_age_s(last) or 0) < float(self.cfg.get("backup_interval_s", 3600)):
             return True, "backup is fresh"
-        snap = os.path.join(DATA, "master_snapshot.db")
-        src = sqlite3.connect(f"file:{MASTER_DB}?mode=ro", uri=True, timeout=60)
-        dst = sqlite3.connect(snap)
-        src.backup(dst)                        # consistent snapshot even with writers active (WAL)
-        dst.close()
-        src.close()
+        t0 = time.time()
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        snap = os.path.join(BACKUP_DIR, "master_snapshot.db")
+        part = LOCAL_BACKUP + ".part"
         try:
-            sent = self.r2.put_file(KEY_MASTER_BACKUP, snap, "application/gzip", gzip_it=True,
-                                    metadata={"host": self.host, "git": self.git_sha, "db_mb": f"{mb:.0f}"})
+            src = sqlite3.connect(f"file:{MASTER_DB}?mode=ro", uri=True, timeout=60)
+            dst = sqlite3.connect(snap)
+            src.backup(dst)                    # consistent snapshot even with writers active (WAL)
+            src.close()
+            check = dst.execute("PRAGMA quick_check").fetchone()[0]
+            dst.close()
+            if check != "ok":                  # never replace a good backup with a damaged one
+                return False, f"snapshot failed quick_check ({check}) — kept the previous backup"
+            with open(snap, "rb") as fin, gzip.open(part, "wb", compresslevel=6) as gz:
+                shutil.copyfileobj(fin, gz, 1 << 20)
+            os.replace(part, LOCAL_BACKUP)     # local copy survives an R2 outage
         finally:
-            try:
-                os.remove(snap)
-            except OSError:
-                pass
+            for junk in (snap, part):
+                try:
+                    os.remove(junk)
+                except OSError:
+                    pass
+        gz_mb = os.path.getsize(LOCAL_BACKUP) / 1048576
+        self.r2.put_file(KEY_MASTER_BACKUP, LOCAL_BACKUP, "application/gzip",
+                         metadata={"host": self.host, "git": self.git_sha, "db_mb": f"{mb:.0f}"})
+        daily = f"{PREFIX_MASTER_DAILY}master_{datetime.now().strftime('%Y%m%d')}.db.gz"
+        if not self.r2.head(daily):            # server-side copy, no second upload
+            self.r2.copy(KEY_MASTER_BACKUP, daily)
+            self.r2.prune(PREFIX_MASTER_DAILY, int(self.cfg.get("backup_keep_days", 7)))
         self.state["last_backup"] = utcnow()
+        self.state["last_backup_mb"] = round(gz_mb, 1)
         self._save_state()
-        msg = f"master DB backup uploaded ({round(sent / 1048576, 1)} MB gz of {mb:.0f} MB)"
+        msg = f"master DB backup uploaded ({gz_mb:.1f} MB gz of {mb:.0f} MB, {time.time() - t0:.0f}s)"
         log("💾 " + msg)
         return True, msg
 

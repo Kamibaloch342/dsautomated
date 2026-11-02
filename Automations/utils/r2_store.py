@@ -13,7 +13,8 @@ Key layout (all under the bucket root):
 
   dashboard.db                  slim DB snapshot, every 5 min  (legacy key kept
                                 so the Render deployment keeps working)
-  db/master_backup.db.gz        gzip of the master DB (hourly, once slimmed)
+  db/master_backup.db.gz        gzip of the master DB (hourly)
+  db/daily/master_<ymd>.db.gz   one copy of it per day, 7 kept
   db/manifest.json              {size, sha1, uploaded_at, host, git_sha}
 
   state/machines/<host>.json    heartbeat every 15 s: launcher up?, placers,
@@ -43,7 +44,6 @@ from __future__ import annotations
 
 import gzip
 import hashlib
-import io
 import json
 import os
 import re
@@ -266,14 +266,21 @@ class R2Store:
         if metadata:
             extra["Metadata"] = {k: str(v) for k, v in metadata.items()}
         if gzip_it:
-            buf = io.BytesIO()
-            with open(path, "rb") as src, gzip.GzipFile(fileobj=buf, mode="wb", compresslevel=6) as gz:
-                for chunk in iter(lambda: src.read(1 << 20), b""):
-                    gz.write(chunk)
-            buf.seek(0)
-            self._c().upload_fileobj(buf, self.bucket, key, ExtraArgs=extra)
-            return buf.getbuffer().nbytes
-        self._c().upload_file(path, self.bucket, key, ExtraArgs=extra)
+            # Compress to a file next to the source, not to an io.BytesIO: the whole gzip used
+            # to sit in memory for the upload (70 MB every 5 min for the slim DB).
+            gz_path = path + ".gz.part"
+            try:
+                with open(path, "rb") as src, gzip.open(gz_path, "wb", compresslevel=6) as gz:
+                    for chunk in iter(lambda: src.read(1 << 20), b""):
+                        gz.write(chunk)
+                self._c().upload_file(gz_path, self.bucket, key, ExtraArgs=extra, Config=self._transfer_cfg())
+                return os.path.getsize(gz_path)
+            finally:
+                try:
+                    os.remove(gz_path)
+                except OSError:
+                    pass
+        self._c().upload_file(path, self.bucket, key, ExtraArgs=extra, Config=self._transfer_cfg())
         return os.path.getsize(path)
 
     def get_file(self, key: str, path: str, gunzip: bool = False) -> bool:
