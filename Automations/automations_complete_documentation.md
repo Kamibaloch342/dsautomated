@@ -1424,6 +1424,7 @@ The duplicate check searches ALL 15+ Gmail inboxes. If the search fails (network
 
 **NEVER:**
 - Make a Gmail search error return "no duplicate found"
+- Treat a Gmail match as "not a duplicate" without proof. Since 2 Nov 2026 a match is skipped only when `utils.dup_check_local.gmail_match_is_other_product` proves that WB bought a different product (owner's decision: 17 real orders had been stamped "- D" and never bought). A WB with no record, a shared item or any error keeps the verdict, and the loop keeps looking so a real duplicate behind that match is still found.
 - Skip the duplicate check on any error condition
 - Reduce the number of Gmail accounts searched (currently 15+)
 - Remove the `DUP_CHECK_FAILED` sentinel handling

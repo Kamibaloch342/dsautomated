@@ -51,6 +51,8 @@ agent and the dashboard run as macOS LaunchAgents.
   Amazon, log to `data/rajar_logs/order_log.txt`, `order_placer_orders` and the legacy `orders`
   table. **Placement captures purchase / ship-by / deliver-by dates** — closing takes them from
   there. Routing/coupon rules: `docs/CLOUD_ARCHITECTURE.md` §5.
+  **Ultra mode** (per profile, launcher 🚀Ultra, 2 Nov 2026): the Amazon scraping and WB write-backs run
+  on two extra Chrome windows beside the placing (`engine/ultra_crew.py`, `docs/ULTRA_MODE.md`).
 * **Tracking uploaders** — `engine/tracking.py`, HOANK on 9331, Hathoro on 9333. All-orders report
   (reused for 30 min), `archive_tracking` → one batched Gmail sweep → PDF, upload on Confirm
   Shipment, "shipped" buyer message. Since 26 Sep 2026 it records what it uploaded in

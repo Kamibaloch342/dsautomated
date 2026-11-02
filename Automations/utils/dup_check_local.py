@@ -79,6 +79,60 @@ def archive_is_fresh(max_minutes=30):
         return False
 
 
+_ZORO_CODE = re.compile(r"\bG\d{5,12}\b")
+
+
+def _code_overlap(a, b):
+    """Do these two Zoro-code sets share an item? A seller SKU can carry a cut-off code (G569554-D for
+    G5695541), so one being the start of the other counts as the same item."""
+    return any(x == y or x.startswith(y) or y.startswith(x) for x in a for y in b)
+
+
+def gmail_match_is_other_product(wb, current_asin=None, current_sku=None, current_amazon_id=None):
+    """Did this WB, found in Gmail by name/address and ZIP, provably buy a DIFFERENT product?
+
+    The Gmail check knows nothing about products, so a buyer's second order for something else was stamped
+    "<WB> - D" and never bought: 17 orders from 1 to 2 Nov 2026, while the local check above already allowed
+    them. This asks the same question of the WB's own records. True only with proof: the WB is on record for
+    another Amazon order, and neither its ASINs nor its Zoro codes overlap this order's. A WB we have no record
+    of, a shared item, a missing ASIN, a database error: all False, and the duplicate verdict stands."""
+    wbs = _WB.findall(str(wb or ""))
+    cur_asins = {a.upper() for a in re.findall(r"\bB0[A-Z0-9]{8}\b", str(current_asin or "").upper())}
+    cur_codes = set(_ZORO_CODE.findall(str(current_sku or "").upper()))
+    cur_aid = (current_amazon_id or "").strip()
+    if len(wbs) != 1 or not (cur_asins or cur_codes):
+        return False
+    try:
+        c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)
+        c.row_factory = sqlite3.Row
+        try:
+            placed = [r for r in c.execute(
+                "SELECT wb_order_id, amazon_order_id, asin, sku FROM order_placer_orders WHERE wb_order_id LIKE ?",
+                (f"%{wbs[0]}%",)) if wbs[0] in _WB.findall(r["wb_order_id"] or "")]
+            receipts = [] if placed else [r for r in c.execute(
+                "SELECT wb_order_id, sku FROM archive_zoro WHERE wb_order_id LIKE ?",
+                (f"%{wbs[0]}%",)) if wbs[0] in _WB.findall(r["wb_order_id"] or "")]
+        finally:
+            c.close()
+    except Exception as e:
+        print(f"   [DUP_CHECK] could not look up {wbs[0]} ({e}) — the duplicate verdict stands")
+        return False
+    if placed:
+        if cur_aid and any((r["amazon_order_id"] or "").strip() == cur_aid for r in placed):
+            return False                      # this very order: an absolute duplicate
+        rec_asins = {a for r in placed for a in re.findall(r"\bB0[A-Z0-9]{8}\b", (r["asin"] or "").upper())}
+        rec_codes = {x for r in placed for x in _ZORO_CODE.findall((r["sku"] or "").upper())}
+    elif receipts:
+        rec_asins, rec_codes = set(), {x for r in receipts for x in _ZORO_CODE.findall((r["sku"] or "").upper())}
+    else:
+        return False                          # no record of this WB: nothing proves anything
+    if not rec_asins and not rec_codes:
+        return False
+    if cur_asins & rec_asins or (cur_codes and rec_codes and _code_overlap(cur_codes, rec_codes)):
+        return False
+    return bool((cur_asins and rec_asins) or (cur_codes and rec_codes))
+
+
 def check_address_local(street, zip_code, days=7, current_asin=None, current_sku=None,
                         current_amazon_id=None, repeat_threshold_hours=72.0):
     """Exact-match duplicate lookup with smart repeat-customer & multi-item filtering.

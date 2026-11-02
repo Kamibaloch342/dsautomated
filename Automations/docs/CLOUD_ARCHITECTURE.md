@@ -322,8 +322,10 @@ are enforced in code, not by convention:
      sheet's (another colour / size the buyer accepted) with the sheet's pack size and no ALT; the tag
      still picks the profile and its waivers. Multi-item: the code replaces the ONE item that is out; none
      or several out → not placed, `MANUAL_CODE_UNCLEAR`, one alert, tag kept. A bare `G7467735` is not a
-     tag and places nothing. Tagged orders are found by the `Manual-C/-R` search and, as a backstop, in the
-     buyer-action view.
+     tag and places nothing. Amazon's `Manual-C/-R` search does not return a tag with a code after it, so
+     these orders are found only in the buyer-action view (all 183 up to 3 Nov 2026). Priority discovery
+     reads that view; under Labels Only a separate pass reads it for Manual tags and takes nothing else,
+     which adds one scan of the view (about 2 min at 1,800 orders) to every cycle.
 
 ## 6. Automation & memory
 

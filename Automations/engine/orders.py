@@ -26,6 +26,7 @@ _AUTOMATIONS_DIR = os.path.dirname(_SCRIPT_DIR)
 if _AUTOMATIONS_DIR not in sys.path:
     sys.path.insert(0, _AUTOMATIONS_DIR)
 import html          # _notify_big_order_20 escapes the title for Telegram
+import threading
 import json
 import time
 import signal
@@ -111,6 +112,7 @@ from utils.helpers import (
     print_rich_summary,
 )
 from utils.pricing import log_price_or_status
+from engine.ultra_crew import UltraCrew, LoginWall
 from platforms.auth import is_login_page, auto_login
 
 try:
@@ -210,9 +212,12 @@ PRIORITY_COUPONS = get_priority_coupons(gui_cfg)
 IS_COUPON_PROFILE = "COUPON" in PROFILE_NAME
 IS_RESELLER_PROFILE = "RESELLER" in PROFILE_NAME
 # Labels-only mode (launcher checkbox): process ONLY already-labelled orders.
-# Priority-ASIN discovery and Deciding-ASIN routing are fully disabled.
+# Priority-ASIN discovery and Deciding-ASIN routing are fully disabled. A Manual-C/-R tag is a label,
+# with or without a Zoro code after it.
 LABELS_ONLY = bool(CONFIG.get("labels_only", False))
-RUSH_MODE = bool(CONFIG.get("rush_mode", False))
+# Ultra is rush with the Amazon work moved off the placing thread (engine/ultra_crew.py).
+ULTRA_MODE = bool(CONFIG.get("ultra_mode", False))
+RUSH_MODE = bool(CONFIG.get("rush_mode", False)) or ULTRA_MODE
 RUSH_BATCH = max(1, int(CONFIG.get("rush_batch", 10) or 10))
 # Deciding-ASIN routing: refreshed from the sheet each cycle (reseller profiles
 # only). An order for one of these ASINs is routed per-order by Zoro cart total:
@@ -288,12 +293,18 @@ for _arg in sys.argv:
 # ── Lock file & cleanup ───────────────────────────────────────────
 _active_chrome_process = None
 _active_driver = None
+_ultra_crew = None
 _lockfile_path = os.path.join(SCRIPT_DIR, f".script_{PROFILE_NAME}.lock")
 
 
 def _cleanup():
     global _active_driver, _active_chrome_process
     print("\n🧹 [CLEANUP] Shutting down...")
+    try:
+        if _ultra_crew:
+            _ultra_crew.kill()
+    except Exception:
+        pass
     try:
         if _active_driver:
             _active_driver.quit()
@@ -657,8 +668,18 @@ def _is_stall_error(e):
 
 def _recycle_browser(reason):
     """Tear down the profile Chrome + driver and bring up a fresh pair."""
-    global _active_driver, _active_chrome_process
     print(f"\n♻️  BROWSER RECYCLE ({reason}) — relaunching Chrome for a fresh session...")
+    if _ultra_crew:
+        _ultra_crew.pause()
+    try:
+        return _recycle_browser_now()
+    finally:
+        if _ultra_crew:
+            _ultra_crew.resume()
+
+
+def _recycle_browser_now():
+    global _active_driver, _active_chrome_process
     try:
         if _active_driver:
             _active_driver.quit()
@@ -695,15 +716,17 @@ def _recycle_browser(reason):
 _RUSH_PENDING_PATH = os.path.join(os.path.dirname(SCRIPT_DIR), "data",
                                   f"rush_pending_{PROFILE_NAME}.json")
 _rush_pending = {}   # amazon_id -> {"amazon_id", "label", "notes": [...]}
+_rush_lock = threading.RLock()   # in ultra mode the writer window shares this journal
 
 
 def _rush_journal_save():
     try:
-        os.makedirs(os.path.dirname(_RUSH_PENDING_PATH), exist_ok=True)
-        tmp = _RUSH_PENDING_PATH + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(list(_rush_pending.values()), f, indent=1)
-        os.replace(tmp, _RUSH_PENDING_PATH)
+        with _rush_lock:
+            os.makedirs(os.path.dirname(_RUSH_PENDING_PATH), exist_ok=True)
+            tmp = _RUSH_PENDING_PATH + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(list(_rush_pending.values()), f, indent=1)
+            os.replace(tmp, _RUSH_PENDING_PATH)
     except Exception as e:
         print(f"  ⚠️  rush journal save failed: {e}")
 
@@ -719,18 +742,65 @@ def _rush_journal_load():
 
 
 def _rush_defer_wb(amazon_id, label):
-    entry = _rush_pending.setdefault(
-        amazon_id, {"amazon_id": amazon_id, "label": "", "notes": []})
-    entry["label"] = label
-    _rush_journal_save()
+    with _rush_lock:
+        entry = _rush_pending.setdefault(
+            amazon_id, {"amazon_id": amazon_id, "label": "", "notes": []})
+        entry["label"] = label
+        _rush_journal_save()
     print(f"  ⚡ RUSH: {label} for {amazon_id} journaled — written back after the batch")
 
 
 def _rush_defer_note(amazon_id, note_text):
-    entry = _rush_pending.setdefault(
-        amazon_id, {"amazon_id": amazon_id, "label": "", "notes": []})
-    entry["notes"].append(note_text)
-    _rush_journal_save()
+    with _rush_lock:
+        entry = _rush_pending.setdefault(
+            amazon_id, {"amazon_id": amazon_id, "label": "", "notes": []})
+        entry["notes"].append(note_text)
+        _rush_journal_save()
+
+
+_RUSH_CANCELLED_JS = (
+    "return !document.querySelector(arguments[0]) && "
+    "/order cancelled|this order has been cancel+ed/i.test((document.body && document.body.innerText) || '')")
+
+
+def _rush_order_cancelled(drv):
+    """Is this order page a cancelled order? Then there is no Edit button and a label can never be
+    written: 3 orders placed 31 Oct and cancelled afterwards stayed journaled for days, each costing
+    ~42 s of doomed retries at every flush. Both signs are required, so a live order that merely
+    mentions a cancellation is never taken for one. Never raises."""
+    try:
+        return bool(drv.execute_script(_RUSH_CANCELLED_JS, AMAZON_EDIT_BUTTON_SELECTOR))
+    except Exception:
+        return False
+
+
+def _rush_drop_cancelled(amazon_id, label):
+    """Off the journal, and if money was spent on it a person is told once: the Zoro order may still
+    be cancellable."""
+    with _rush_lock:
+        _rush_pending.pop(amazon_id, None)
+        _rush_journal_save()
+    if not str(label or "").startswith("WB"):
+        print(f"  ⏭️  {amazon_id}: cancelled on Amazon — '{label or 'note'}' not written")
+        return
+    text = (f"Amazon order {amazon_id} is CANCELLED, but Zoro order {label} was placed for it. "
+            f"Cancel {label} on Zoro if it has not shipped.")
+    print(f"  🛑 {text}")
+    try:
+        _DLOG.log("outcome", profile=PROFILE_NAME, amazon_id=amazon_id, action="placed_then_cancelled",
+                  reason=f"Amazon cancelled after {label} was placed")
+    except Exception:
+        pass
+    try:
+        from utils.whatsapp import send_whatsapp_message
+        send_whatsapp_message("🛑 *PLACED, THEN CANCELLED*\n" + text)
+    except Exception as e:
+        print(f"  ⚠️ WhatsApp alert error: {e}")
+    try:
+        from utils.telegram import send_telegram_message
+        send_telegram_message("🛑 <b>PLACED, THEN CANCELLED</b>\n" + html.escape(text))
+    except Exception as e:
+        print(f"  ⚠️ Telegram alert error: {e}")
 
 
 def _rush_flush_amazon_writes(driver):
@@ -740,7 +810,7 @@ def _rush_flush_amazon_writes(driver):
     written with skip_navigate. Both WB and seller note are written on the
     same loaded tab without page reloads. Entries that fail stay journaled
     and retry on the next flush or the next run."""
-    if not _rush_pending:
+    if not _rush_pending or _ultra_writer_alive():     # the writer window owns the journal
         return driver
     entries = [dict(e) for e in _rush_pending.values()]
     print(f"\n⚡ RUSH FLUSH: {len(entries)} deferred order(s) — loading order pages in parallel tabs...")
@@ -790,6 +860,9 @@ def _rush_flush_amazon_writes(driver):
                     on_page = (aid in (driver.current_url or "")) and not is_login_page(driver)
                     if not e.get("label") and not on_page:
                         continue                      # notes-only + wrong page → retry later
+                    if on_page and _rush_order_cancelled(driver):
+                        _rush_drop_cancelled(aid, e.get("label"))
+                        continue
                     ok = True
                     if e.get("label"):
                         ok = update_amazon_seller_id(driver, aid, e["label"], PROFILE_NAME,
@@ -839,6 +912,422 @@ def _rush_flush_amazon_writes(driver):
             except Exception:
                 pass
     return driver
+
+
+# ── ULTRA MODE: the Amazon work on windows of its own (engine/ultra_crew.py) ──
+# The crew does the same page work as phases A and C above; only WHERE changes. The functions below
+# run on its threads, so they touch nothing but their own driver and the locked journal.
+ULTRA_SCRAPE_AHEAD = 12
+_ultra_retry_at = {}       # amazon_id -> no write attempt before this time
+_ultra_write_fails = {}    # amazon_id -> failed write attempts
+
+
+def _ultra_writer_alive():
+    return bool(_ultra_crew and _ultra_crew.writer_alive())
+
+
+def _ultra_release(drv, close=True):
+    """End a crew session. It closes only the window it opened: a fresh session starts out attached
+    to an EXISTING window, which may be the placing one, so anything else is left alone. Killing
+    its chromedriver never affects Chrome (a session attached by debuggerAddress doesn't own it)."""
+    own = getattr(drv, "_zuhra_own_window", None)
+    if close and own:
+        try:
+            if drv.current_window_handle == own:
+                drv.close()
+        except Exception:
+            pass
+    try:
+        drv.service.process.kill()
+        drv.service.process.wait(timeout=3)
+    except Exception:
+        pass
+
+
+def _ultra_attach():
+    """A chromedriver session of its own on this placer's Chrome, in a new window, dressed like
+    connect_chrome's attach path. No Zoro identity: this window only ever sees Seller Central."""
+    from utils.helpers import page_load_strategy, _build_stealth_js, _apply_stealth_now
+    opts = Options()
+    opts.add_experimental_option("debuggerAddress", f"localhost:{PORT}")
+    opts.page_load_strategy = page_load_strategy("orders")
+    drv = webdriver.Chrome(service=ChromeService(ensure_chromedriver()), options=opts)
+    try:
+        harden_driver(drv)
+        drv.switch_to.new_window("window")
+        drv._zuhra_own_window = drv.current_window_handle
+        # Seller notes save on blur, and a window without focus gets no blur event.
+        drv.execute_cdp_cmd("Emulation.setFocusEmulationEnabled", {"enabled": True})
+        drv.execute_cdp_cmd("Emulation.setTimezoneOverride", {"timezoneId": "America/New_York"})
+        drv.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": _build_stealth_js()})
+        _apply_stealth_now(drv)
+    except Exception:
+        _ultra_release(drv)
+        raise
+    return drv
+
+
+def _ultra_settle(drv):
+    """Wait for the order page like phases A and C do. The crew never signs in: only the main
+    thread does (scrape_order_details), and only one thread may."""
+    end = time.time() + 12
+    while time.time() < end:
+        if is_login_page(drv):
+            raise LoginWall()
+        if drv.execute_script("return document.readyState") == "complete":
+            return
+        time.sleep(0.3)
+    if is_login_page(drv):
+        raise LoginWall()
+
+
+def _ultra_scrape_one(drv, order):
+    """scrape_order_details on the scrape window. A page with no items or no address is read once
+    more; if it stays that way the main thread scrapes it, as for any failed batch tab."""
+    aid = order["amazon_id"]
+    for _ in range(2):
+        safe_get(drv, f"{AMAZON_BASE_ORDER_URL}{aid}")
+        _ultra_settle(drv)
+        time.sleep(2)
+        if aid not in (drv.current_url or ""):
+            continue
+        d = _extract_order_details(drv, aid, fallback_qty=order.get("qty", 1))
+        if d and (d.get("status") or (d.get("items") and (d.get("address") or {}).get("street_address"))):
+            return d
+    return None
+
+
+def _ultra_next_write(skip_id=None):
+    """Orders not yet tried come first, so one that keeps failing can never hold up the rest
+    (2 Nov 2026: 3 stuck entries at the head of the journal, 0 written back while 30 waited)."""
+    now = time.time()
+    with _rush_lock:
+        retry = None
+        for aid, e in _rush_pending.items():
+            if aid == skip_id:
+                continue
+            if aid not in _ultra_write_fails:
+                retry = aid
+                break
+            if retry is None and _ultra_retry_at.get(aid, 0) <= now:
+                retry = aid
+        if retry is None:
+            return None
+        e = _rush_pending[retry]
+        return {"amazon_id": retry, "label": e.get("label") or "", "notes": list(e.get("notes") or [])}
+
+
+def _rush_forget(amazon_id, label=None, note=None):
+    """Take what Amazon now shows off the journal — only that: the placer may have added to this
+    order's entry since it was read."""
+    with _rush_lock:
+        e = _rush_pending.get(amazon_id)
+        if not e:
+            return
+        if label and e.get("label") == label:
+            e["label"] = ""
+        if note is not None and note in (e.get("notes") or []):
+            e["notes"].remove(note)
+        if not e.get("label") and not e.get("notes"):
+            _rush_pending.pop(amazon_id, None)
+        _rush_journal_save()
+
+
+def _ultra_write_later(aid, why):
+    n = _ultra_write_fails[aid] = _ultra_write_fails.get(aid, 0) + 1
+    _ultra_retry_at[aid] = time.time() + min(600, 30 * n)
+    print(f"  ⚠️  {aid}: {why} — kept journaled, try {n + 1} in {min(600, 30 * n)} s")
+    return False
+
+
+def _ultra_write_one(drv, e):
+    """One journaled order on the write window: the same two calls as a rush flush. A label stays
+    journaled until Amazon's page reads it back. A note that still won't save after 3 visits is
+    dropped with a warning: the order is safe, and the note is rebuilt from order_log.txt anyway."""
+    aid, label, notes = e["amazon_id"], e["label"], e["notes"]
+    try:
+        if label or notes:
+            safe_get(drv, f"{AMAZON_BASE_ORDER_URL}{aid}")
+            _ultra_settle(drv)
+            if aid not in (drv.current_url or ""):
+                return _ultra_write_later(aid, "order page did not open")
+            if _rush_order_cancelled(drv):
+                _rush_drop_cancelled(aid, label)
+                _ultra_write_fails.pop(aid, None)
+                _ultra_retry_at.pop(aid, None)
+                return True
+            if label:
+                if not update_amazon_seller_id(drv, aid, label, PROFILE_NAME, skip_navigate=True):
+                    if _rush_order_cancelled(drv):       # the banner came late
+                        _rush_drop_cancelled(aid, label)
+                        _ultra_write_fails.pop(aid, None)
+                        _ultra_retry_at.pop(aid, None)
+                        return True
+                    return _ultra_write_later(aid, f"{label} did not save")
+                _rush_forget(aid, label=label)
+            for note in notes:
+                if write_seller_note(drv, aid, note_text=note, skip_navigate=True):
+                    _rush_forget(aid, note=note)
+                elif _ultra_write_fails.get(aid, 0) >= 2:
+                    print(f"  ⚠️  {aid}: seller note would not save after 3 visits — dropped, add it by hand")
+                    _rush_forget(aid, note=note)
+                else:
+                    return _ultra_write_later(aid, "seller note did not save")
+        else:
+            _rush_forget(aid)
+    except Exception as err:
+        _ultra_write_later(aid, f"{type(err).__name__}")
+        raise
+    _ultra_write_fails.pop(aid, None)
+    _ultra_retry_at.pop(aid, None)
+    print(f"  ✅ {aid}: {label or '(notes only)'} written back")
+    return True
+
+
+def _ultra_install_print():
+    """One line at a time from three threads, and each worker's lines say whose they are. An RLock:
+    the signal handler prints on the main thread, possibly while that thread is inside a print."""
+    import builtins
+    if getattr(builtins.print, "_ultra", False):
+        return
+    raw, lock = builtins.print, threading.RLock()
+
+    def _print(*a, **k):
+        name = threading.current_thread().name
+        with lock:
+            if name.startswith("AMZ-") and a:
+                raw(f"{name}:", *a, **k)
+            else:
+                raw(*a, **k)
+    _print._ultra = True
+    builtins.print = _print
+    # Most modules keep their own print = functools.partial(print, flush=True), bound at import to the
+    # builtin. Those copies have to change too, or the lock and the tags miss nearly every line.
+    for mod in list(sys.modules.values()):
+        try:
+            p = vars(mod).get("print")
+        except TypeError:
+            continue
+        if isinstance(p, functools.partial) and p.func is raw:
+            mod.print = functools.partial(_print, *p.args, **p.keywords)
+
+
+def _ultra_start(orders):
+    """The crew for this cycle, or None if Chrome won't take a second session: rush then runs as usual."""
+    global _ultra_crew
+    _ultra_install_print()
+    crew = UltraCrew(_ultra_attach, _ultra_release, _ultra_scrape_one, _ultra_write_one,
+                     _ultra_next_write, ahead=ULTRA_SCRAPE_AHEAD)
+    if not crew.start(orders):
+        print("  ⚠️  ULTRA could not open its windows — this cycle runs as plain RUSH")
+        return None
+    _ultra_crew = crew
+    return crew
+
+
+def _ultra_stop():
+    global _ultra_crew
+    if _ultra_crew:
+        _ultra_crew.stop()
+        print(f"⚡⚡ ULTRA windows closed: {_ultra_crew.status_line()} | {len(_rush_pending)} still journaled")
+        _ultra_crew = None
+
+
+ULTRA_STOCK_CHECK_BUDGET_S = 90
+_ultra_oos_asins = set()     # this cycle: listings out of stock, so their orders are left alone
+_ultra_oos_told = set()      # SKUs a person has been told are out; cleared when they come back
+
+
+def _ultra_is_held(order):
+    """Left alone this cycle: its listing is out of stock. A Manual-C/-R order never is, since a person
+    decided it and it may buy another code."""
+    return (str(order.get("asin") or "").strip() in _ultra_oos_asins
+            and not _parse_manual_tag(str(order.get("seller_order_id") or "")))
+
+
+def _ultra_tell(text, html_text):
+    """One message when a listing runs out and one when it is back. Replaces one alert per order, which
+    would be hundreds for a single listing. Never raises."""
+    print(f"  📣 {text}")
+    try:
+        from utils.whatsapp import send_whatsapp_message
+        send_whatsapp_message(text)
+    except Exception as e:
+        print(f"  ⚠️ WhatsApp alert error: {e}")
+    try:
+        from utils.telegram import send_telegram_message
+        send_telegram_message(html_text)
+    except Exception as e:
+        print(f"  ⚠️ Telegram alert error: {e}")
+
+
+def _ultra_tell_out(sku, asin, n=None):
+    if sku in _ultra_oos_told:
+        return
+    _ultra_oos_told.add(sku)
+    held = f"{n} order(s) held" if n else "its orders held"
+    _ultra_tell(f"⏸️ {sku} ({asin}) is out of stock on Zoro — {PROFILE_NAME}: {held}, nothing marked on Amazon. "
+                f"Checked again every cycle.",
+                f"⏸️ <b>{sku}</b> ({asin}) is out of stock on Zoro — {PROFILE_NAME}: {held}, nothing marked on "
+                f"Amazon. Checked again every cycle.")
+
+
+def _ultra_hold_oos(driver, orders, sku_map):
+    """Ask Zoro about each listing ONCE per cycle and leave the orders of an out-of-stock one alone.
+
+    Owner, 2 Nov 2026: G5695541 ran out at 20:51 with 366 orders queued ahead of ~208 others. For an hour
+    nothing could be placed while each one was opened and stamped OOS, and nothing puts an OOS order back
+    when stock returns. Now those orders cost no time and get no label; the next cycle asks again, and
+    when the listing is back they go through the normal way, every per-order check included.
+
+    Stock is asked once per SKU, biggest listing first. Only a clear "not in stock" holds an order: an API
+    error, an ALT that is in stock or unknown, or a listing not reached in the time allowed all stay in
+    the queue. Any failure returns the queue as it came. Returns the orders to work on this cycle."""
+    _ultra_oos_asins.clear()
+    counts = Counter(str(o.get("asin") or "").strip() for o in orders)
+    counts.pop("", None)
+    if not counts:
+        return orders
+    t0 = time.time()
+    try:
+        driver._zuhra_ultra = True
+        ensure_on_site(driver)
+        ensure_token(driver)
+    except Exception as e:
+        print(f"  ⚠️  Stock check skipped, queue unchanged ({type(e).__name__})")
+        return orders
+
+    stock = {}          # sku -> True out of stock / False buyable / None unknown
+
+    def _is_out(sku):
+        if sku not in stock:
+            cartable, status = check_inventory(driver, sku, 1)
+            stock[sku] = None if status in ("API_ERROR", "NO_DATA") else (not cartable)
+        return stock[sku]
+
+    out_asins, unknown = {}, 0
+    for asin, _n in counts.most_common():
+        if time.time() - t0 > ULTRA_STOCK_CHECK_BUDGET_S or unknown >= 3:
+            print("  ⚠️  Stock check stopped early; the listings not reached stay in the queue")
+            break
+        info = sku_map.get(asin) or {}
+        main, alt = str(info.get("zoro_code") or "").strip(), str(info.get("alt_sku") or "").strip()
+        if not main:
+            continue
+        try:
+            out = _is_out(main)
+            if out and alt:
+                out = _is_out(alt)
+        except Exception as e:
+            print(f"  ⚠️  Stock check stopped ({type(e).__name__}); the listings not reached stay in the queue")
+            break
+        if out is None:
+            unknown += 1
+        elif out:
+            out_asins[asin] = main
+
+    for sku in sorted(_ultra_oos_told):
+        if stock.get(sku) is False:
+            _ultra_oos_told.discard(sku)
+            _ultra_tell(f"✅ {sku} is back in stock on Zoro — {PROFILE_NAME}: its held orders go through from this cycle.",
+                        f"✅ <b>{sku}</b> is back in stock on Zoro — {PROFILE_NAME}: its held orders go through from "
+                        f"this cycle.")
+
+    _ultra_oos_asins.update(out_asins)
+    keep = [o for o in orders if not _ultra_is_held(o)]
+    if len(keep) == len(orders):
+        print(f"⚡⚡ Stock check: nothing out of stock ({len(stock)} SKU(s) asked, {time.time() - t0:.0f} s)")
+        return orders
+    held = Counter(str(o.get("asin") or "").strip() for o in orders if _ultra_is_held(o))
+    for asin, n in held.items():
+        log_price_or_status(out_asins[asin], current_price=0.0, status="OOS")
+        _ultra_tell_out(out_asins[asin], asin, n)
+    print(f"⚡⚡ Out of stock right now: {sum(held.values())} order(s) held, not marked — "
+          + ", ".join(f"{a} x{n} ({out_asins[a]})" for a, n in held.most_common(8))
+          + f". {len(keep)} order(s) to work on. Checked again next cycle. ({time.time() - t0:.0f} s)")
+    return keep
+
+
+def _ultra_hold_listing(driver, item):
+    """A listing that ran out mid-cycle: leave the rest of its orders alone until the next check. Only if
+    it is out even for one unit, since an order for 3 can fail where an order for 1 goes through."""
+    sku, asin = item["sku"], str(item.get("asin") or "").strip()
+    try:
+        if int(item.get("final_qty") or 1) > 1:
+            cartable, status = check_inventory(driver, sku, 1)
+            if cartable or status in ("API_ERROR", "NO_DATA"):
+                return
+    except Exception:
+        return
+    if asin:
+        _ultra_oos_asins.add(asin)
+    _ultra_tell_out(sku, asin)
+
+
+def _ultra_dup_prefill(crew, order, detail, dup_map, tried, duplicate_services):
+    """The batched duplicate check, on the main thread only (Gmail clients are not thread-safe): one
+    pass over this order and whatever is scraped ahead of it. A key it can't vouch for stays out of
+    dup_map, so process_order runs the per-order fail-closed check as always. An order cleared a few
+    orders ago is asked again against the placer's own records, which have no lag: it may have
+    been placed to this address since."""
+    aid = order["amazon_id"]
+    if not duplicate_services:
+        return
+    if aid in tried:
+        if dup_map.get(aid) == "":
+            try:
+                from utils.dup_check_local import check_address_local
+                a = detail.get("address") or {}
+                hit = check_address_local(a.get("street_address", ""), a.get("zip_code", ""),
+                                          current_asin=order.get("asin"), current_sku=order.get("sku"),
+                                          current_amazon_id=aid)
+                if hit:
+                    dup_map[aid] = hit["wb"]
+            except Exception:
+                dup_map.pop(aid, None)
+        return
+    spec = []
+    for o, d in [(order, detail)] + crew.ahead_details():
+        a = d.get("address") or {}
+        if o["amazon_id"] not in tried and a.get("street_address"):
+            tried.add(o["amazon_id"])
+            spec.append({"key": o["amazon_id"], "name": o.get("buyer", ""),
+                         "address": a.get("street_address", ""), "zip": a.get("zip_code", ""),
+                         "asin": o.get("asin", ""), "sku": o.get("sku", "")})
+    if spec:
+        try:
+            from platforms.gmail import batch_check_addresses_gmail
+            dup_map.update(batch_check_addresses_gmail(duplicate_services, spec))
+        except Exception as e:
+            print(f"  ⚠️  Batched dup check failed ({e}) — per-order checks will run")
+
+
+def _ultra_wait_for_zoro(driver):
+    """Zoro went quiet. Running on would release order after order, so hold here until a cart read
+    comes back quickly. The Amazon windows keep working meanwhile."""
+    try:
+        driver._zuhra_net_stall = False
+    except Exception:
+        pass
+    from platforms.zoro import _zoro_api_once, ensure_on_site
+    print("  🌐 Waiting for Zoro to answer again before the next order...")
+    start = time.time()
+    while time.time() - start < 300:
+        t0 = time.time()
+        try:
+            ensure_on_site(driver)
+            r = _zoro_api_once(driver, "GET", "/v1/cart", abort_ms=5000)
+            # Any HTTP answer will do, and so will no_token: the connection is fine, and the
+            # normal checkout path deals with those.
+            if r.get("d") == "no_token" or (r.get("s", -1) != -1 and time.time() - t0 < 5):
+                print(f"  🌐 Zoro answers again after {int(time.time() - start)} s — placing resumes")
+                return driver
+        except ZoroAccountRestricted:
+            return driver            # the order loop's own handling takes it from here
+        except Exception:
+            pass
+        time.sleep(10)
+    return _recycle_browser("Zoro not answering for 5 minutes")
 
 
 # ── Cross-run coupon intelligence ──────────────────────────────────
@@ -3316,6 +3805,35 @@ def load_store_sorted_asins(profile_name):
         return None
 
 
+def _oos_released_asins():
+    """ASINs a person has written in OOS_Release_HS / OOS_Release_DM on Priority_ASIN_Control: "it is back,
+    place the orders stamped OOS" (owner, 2 Nov 2026). The name must not start with HS_ or DM_:
+    load_store_sorted_asins reads every such column as "this ASIN is sorted", which would change routing.
+    A missing column or a failed read releases nothing."""
+    return {a.strip().upper() for a in (_load_asin_column_from_sheet(f"OOS_Release_{_STORE}", "OOS release") or [])}
+
+
+def _oos_release_mark(order, released):
+    """An order stamped OOS whose ASIN was released is treated from here on exactly as if it had never been
+    stamped, so routing and every check apply as for any unlabelled order. Any other label stays."""
+    if (str(order.get("asin") or "").strip().upper() in released
+            and _normalize_merchant_order_id(order.get("seller_order_id")).upper() == "OOS"):
+        order["seller_order_id"] = ""
+        order["_oos_released"] = True
+        return True
+    return False
+
+
+def _oos_release_open(order, detail):
+    """The label of a scraped order page. A released order's OOS reads as no label; if the page now shows
+    anything else (someone changed it since the list was read), that stands."""
+    mid = str(detail.get("merchant_order_id") or "").strip()
+    if order.get("_oos_released") and _normalize_merchant_order_id(mid).upper() == "OOS":
+        detail["merchant_order_id"] = ""
+        return ""
+    return mid
+
+
 def load_deciding_asins_from_sheet(profile_name):
     """Load Deciding ASINs (per-order coupon/reseller routing) for a reseller
     profile from the 'DM_Deciding' / 'HS_Deciding' sheet columns."""
@@ -3883,6 +4401,21 @@ def _manual_tag_is_for_profile(kind, profile_name):
     return bool(want) and (profile_name or "").upper().endswith(want)
 
 
+def _queue_manual_from_view(order, scraped_orders, seen_ids):
+    """A buyer-action-view order carrying a Manual-C/-R tag: queue it if the tag is this profile's.
+    True when it carries a tag at all, since the caller has nothing else to do with such an order."""
+    kind = _parse_manual_tag((order.get("seller_order_id") or "").strip())
+    if not kind:
+        return False
+    if _manual_tag_is_for_profile(kind, PROFILE_NAME):
+        order["_label_matched"] = order.get("seller_order_id", "").strip()
+        order["_margin_thresh"] = MIN_MARGIN
+        scraped_orders.append(order)
+        seen_ids.add(order["amazon_id"])
+        print(f"    🖐️  {order['amazon_id']}: '{order['_label_matched']}' found in the buyer-action view")
+    return True
+
+
 def _build_resolved_order_items(items, sku_map):
     resolved_items = []
     missing_items = []
@@ -4317,6 +4850,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # address and THIS cart (checkout/true_api.py). 0 = off; a Manual-C/-R tag turns it off.
     addr["_delivery_gap_limit"] = 0 if manual_override else _delivery_gap_block_days()
     addr["_rush_mode"] = bool(defer_amazon_writes)
+    addr["_ultra_mode"] = ULTRA_MODE
+    if ULTRA_MODE:
+        driver._zuhra_ultra = True           # read by platforms.zoro.zoro_api and the checkout
     
     city = addr.get("city", "?")
     state = addr.get("state_abbr", "?")
@@ -4685,6 +5221,16 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             label = "OOS" if is_genuine_oos else None
             status_tag = "OOS" if is_genuine_oos else "INVENTORY_CHECK_FAIL"
             print(f"  ❌ {'OUT OF STOCK' if is_genuine_oos else 'INVENTORY CHECK FAILED'}: {item['sku']} ({inv_status})")
+            if label and ULTRA_MODE:
+                # Held, not marked: no label on Amazon, and it comes back next cycle (owner, 2 Nov 2026).
+                _ultra_hold_listing(driver, item)
+                _log_order({
+                    "amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                    "buyer": buyer, "city": city, "state": state, "status": "OOS_HELD",
+                    "notes": "; ".join(filter(None, [f"{item['sku']}: {inv_status} — held, not marked",
+                                                     alt_fail_note, order_note])),
+                })
+                return "skipped"
             if label:
                 update_amazon_seller_id(driver, amazon_id, label, PROFILE_NAME)
                 try:
@@ -5870,6 +6416,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             _notify_delivery_gap(amazon_id, asin_field, sku_field,
                                  f"Zoro kept refusing the {PROFILE_NAME} cart (busy) on 6 tries",
                                  order_detail.get("ship_by_date", ""), buyer, city, state)
+    elif result_status == "ZORO_NET":
+        # Ultra mode: Zoro stopped answering before the order was sent (checkout/true_api.py). Nothing
+        # was bought, so it is released and comes back next cycle instead of being locked.
+        status_note = "Zoro stopped answering before the order was sent — NOT placed, retried next cycle"
     elif result_status == "PAYMENT_DECLINED":
         # Zoro showed "unable to receive authorization for your payment method" on every try (with a
         # checkout refresh between) — no order exists. Released and retried next cycle; a person
@@ -6003,7 +6553,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # These statuses are all detected BEFORE Zoro payment, so it is safe to release the
     # claim and let the order retry next cycle (matches the pre-existing retry intent).
     _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED", "DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN", "PAYMENT_DECLINED",
-                        "CART_BUSY", "SHARED_ACCOUNT", "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
+                        "CART_BUSY", "ZORO_NET", "SHARED_ACCOUNT", "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
     if _HAS_LOCK and not DRY_RUN:
         if result_status in _SAFE_PREPAYMENT:
             plock.release(amazon_id, f"pre-payment failure: {result_status}")
@@ -6249,7 +6799,10 @@ def main():
     # flush — those placements are already locked against re-buy; this just
     # completes the Amazon paper trail.
     if _rush_journal_load():
-        driver = _rush_flush_amazon_writes(driver)
+        if ULTRA_MODE:      # the writer window finishes them while placing; the queue skips them
+            print(f"⚡⚡ {len(_rush_pending)} journaled write-back(s) from the last run — the write window takes them")
+        else:
+            driver = _rush_flush_amazon_writes(driver)
 
     # ── 2. Gmail auth ─────────────────────────────────────────────
     print("\n🔐 Authenticating Gmail...")
@@ -6461,6 +7014,23 @@ def main():
                           f"— duplicate search AND profit gate waived for these")
                 else:
                     print(f"    (none)")
+                # Amazon's search does not return a tag with a Zoro code after it ("Manual-R G7467735":
+                # all 183 such orders up to 3 Nov 2026 came from the buyer-action view). Priority discovery
+                # reads that view, but Labels Only turns it off, so read it here for the tags and nothing
+                # else: every other order on it stays out of a labels-only run.
+                if LABELS_ONLY and USE_FAVORITES_DISCOVERY:
+                    print("\n🖐️  Labels only: looking for Manual tags with a Zoro code in the buyer-action view…")
+                    try:
+                        _view_orders = scrape_order_ids(driver, favorites=True)
+                    except Exception as _me:
+                        _view_orders = []
+                        print(f"    ⚠️  buyer-action view failed ({_me}) — those tags wait for the next cycle")
+                    _queued_before = len(scraped_orders)
+                    for _fo in _view_orders:
+                        if _fo["amazon_id"] not in _seen_so_far:
+                            _queue_manual_from_view(_fo, scraped_orders, _seen_so_far)
+                    print(f"    🖐️  {len(scraped_orders) - _queued_before} coded manual-override order(s) queued "
+                          f"from {len(_view_orders)} in the view")
 
             # ── Discover priority-ASIN orders (pending/unlabelled) ──────────────
             _hold_reason = _sweep_active() if IS_RESELLER_PROFILE else None
@@ -6482,6 +7052,8 @@ def main():
                           f"matching {len(priority_set)} priority + "
                           f"{len(deciding_set)} deciding ASIN(s)…")
                     fav_orders = scrape_order_ids(driver, favorites=True)
+                    _released_asins = _oos_released_asins()
+                    _released_n = Counter()
                     matched = skipped_label = skipped_asin = 0
                     deciding_matched = 0
                     needs_priority_flagged = 0   # unlabelled + non-priority → Needs Priority panel
@@ -6496,18 +7068,13 @@ def main():
                         if fo["amazon_id"] in seen_ids:
                             continue
                         # A Manual tag the 'Manual-C/-R' search did not return — "Manual-C G7467735"
-                        # carries a Zoro code after it (30 Oct 2026), and whether Amazon's search
-                        # matches the tag inside a longer Seller order ID is not something we control.
-                        _fk = _parse_manual_tag((fo.get("seller_order_id") or "").strip())
-                        if _fk:
-                            if _manual_tag_is_for_profile(_fk, PROFILE_NAME):
-                                fo["_label_matched"] = fo.get("seller_order_id", "").strip()
-                                fo["_margin_thresh"] = MIN_MARGIN
-                                scraped_orders.append(fo)
-                                seen_ids.add(fo["amazon_id"])
-                                print(f"    🖐️  {fo['amazon_id']}: '{fo['_label_matched']}' found in the buyer-action view")
+                        # carries a Zoro code after it (30 Oct 2026), and Amazon's search does not
+                        # match the tag inside a longer Seller order ID.
+                        if _queue_manual_from_view(fo, scraped_orders, seen_ids):
                             continue
                         _fo_asin = (fo.get("asin") or "").strip().upper()
+                        if _oos_release_mark(fo, _released_asins):
+                            _released_n[_fo_asin] += 1
                         is_deciding = _fo_asin in deciding_set
                         if _fo_asin not in priority_set and not is_deciding:
                             skipped_asin += 1
@@ -6575,6 +7142,10 @@ def main():
                         scraped_orders.append(fo)
                         seen_ids.add(fo["amazon_id"])
                         matched += 1
+                    if _released_n:
+                        print(f"    🔓 Released from OOS by the sheet: {sum(_released_n.values())} order(s) — "
+                              + ", ".join(f"{a} x{n}" for a, n in _released_n.most_common(8))
+                              + ". Handled as unlabelled orders from here.")
                     print(f"    ✅ {matched} priority order(s) added "
                           f"[{deciding_matched} deciding] "
                           f"+ {supervised_added} unlabelled → supervisor "
@@ -6710,6 +7281,23 @@ def main():
                 _rn = 0
                 _rbi = 0
                 _stop_cycle = False
+                _crew = None
+                _ultra_dups, _ultra_dup_tried = {}, set()
+                if ULTRA_MODE:
+                    # An order still journaled with a label was already dealt with; Amazon just
+                    # hasn't been told yet, so its old label brought it back into the queue.
+                    with _rush_lock:
+                        _held = {a for a, e in _rush_pending.items() if e.get("label")}
+                    if _held:
+                        _before = len(_rq)
+                        _rq = [o for o in _rq if o["amazon_id"] not in _held]
+                        if len(_rq) != _before:
+                            print(f"⚡⚡ {_before - len(_rq)} order(s) skipped: already dealt with, label still journaled")
+                    _rq = _ultra_hold_oos(driver, _rq, sku_map)
+                    _crew = _ultra_start(_rq)
+                    if _crew:
+                        print(f"\n⚡⚡ ULTRA: placing {len(_rq)} orders here; Amazon pages and write-backs "
+                              f"run on their own windows")
                 while _rbi < len(_rq) and not _stop_cycle:
                     if ORDER_LIMIT > 0 and success_count >= ORDER_LIMIT:
                         print(f"   -> ORDER_LIMIT ({ORDER_LIMIT}) reached. Stopping.")
@@ -6720,20 +7308,23 @@ def main():
                         break
                     batch = _rq[_rbi:_rbi + RUSH_BATCH]
                     _rbi += RUSH_BATCH
-                    print(f"\n⚡ RUSH BATCH ({len(batch)} orders) — Phase A: parallel Amazon scrape…")
-                    try:
-                        details_map = _rush_scrape_batch(driver, batch)
-                    except Exception as e:
-                        print(f"  ⚠️  Batch scrape error ({e}) — falling back to serial")
+                    if _crew:
                         details_map = {}
-                        if _is_stall_error(e):
-                            driver = _recycle_browser("stalled in batch scrape")
-                    print(f"⚡ Phase A done: {len(details_map)}/{len(batch)} scraped in "
-                          f"parallel — Phase B: placing…")
+                    else:
+                        print(f"\n⚡ RUSH BATCH ({len(batch)} orders) — Phase A: parallel Amazon scrape…")
+                        try:
+                            details_map = _rush_scrape_batch(driver, batch)
+                        except Exception as e:
+                            print(f"  ⚠️  Batch scrape error ({e}) — falling back to serial")
+                            details_map = {}
+                            if _is_stall_error(e):
+                                driver = _recycle_browser("stalled in batch scrape")
+                        print(f"⚡ Phase A done: {len(details_map)}/{len(batch)} scraped in "
+                              f"parallel — Phase B: placing…")
                     # Batched Gmail duplicate check: one query covers the whole
                     # batch. Orders it can't confidently resolve simply run the
                     # classic per-order (fail-closed) check inside process_order.
-                    dup_map = {}
+                    dup_map = _ultra_dups if _crew else {}
                     if duplicate_services and details_map:
                         try:
                             from platforms.gmail import batch_check_addresses_gmail
@@ -6767,6 +7358,10 @@ def main():
                         asin = order.get("asin", "")
                         sku = order.get("sku", "")
                         qty = order.get("qty", 1)
+                        if ULTRA_MODE and _ultra_is_held(order):
+                            # Its listing ran out earlier in this cycle: no page, no check, no label.
+                            print(f"  ⏸️  {amazon_id}: {asin} is out of stock — held, not marked")
+                            continue
                         print_rich_summary(PROFILE_NAME, total_orders, processed_count,
                                            success_count, failed_count, low_profit_count,
                                            f"Processing {amazon_id}")
@@ -6776,7 +7371,7 @@ def main():
                             print(f"  List ASIN: {asin}  Qty: {qty}")
                         print(f"{'─'*60}")
 
-                        detail = details_map.get(amazon_id)
+                        detail = _crew.get_detail(amazon_id) if _crew else details_map.get(amazon_id)
                         if detail is None:
                             try:
                                 detail = scrape_order_details(driver, amazon_id, fallback_qty=qty)
@@ -6810,7 +7405,7 @@ def main():
                             print(f"  ⏭️  Order status is {detail_status.title()} — skipping")
                             _run_log["skipped"] += 1
                             continue
-                        mid = detail.get("merchant_order_id", "").strip()
+                        mid = _oos_release_open(order, detail)
                         if mid.startswith("WB"):
                             print(f"  ⏭️  Already processed ({mid})")
                             _run_log["skipped"] += 1
@@ -6839,6 +7434,12 @@ def main():
                             detail["_deciding"] = True
                         if order.get("_supervised"):
                             detail["_supervised"] = True
+
+                        if _crew:
+                            _ultra_dup_prefill(_crew, order, detail, dup_map, _ultra_dup_tried, duplicate_services)
+                            _crew.busy_id = amazon_id      # its journal entry may still grow
+                            if _rn % 10 == 0:
+                                print(f"  ⚡⚡ ULTRA: {_crew.status_line()} | {len(_rush_pending)} write-back(s) queued")
 
                         try:
                             status = process_order(
@@ -6901,13 +7502,20 @@ def main():
                             failed_count += 1
                             if _is_stall_error(e):
                                 driver = _recycle_browser(f"stalled processing {amazon_id}")
+                                if _crew:
+                                    driver = _ultra_wait_for_zoro(driver)
+
+                        if _crew:
+                            _crew.busy_id = None
+                            if getattr(driver, "_zuhra_net_stall", False):
+                                driver = _ultra_wait_for_zoro(driver)
 
                         processed_count += 1
                         cycle_order_count += 1
                         _save_log()
 
                     # Phase C: write this batch's WBs + notes back to Amazon
-                    if _rush_pending:
+                    if _rush_pending and not _ultra_writer_alive():
                         print(f"⚡ Phase C: flushing {len(_rush_pending)} write-back(s) to Amazon…")
                         driver = _rush_flush_amazon_writes(driver)
                     if (processed_count > 0) and (processed_count % BROWSER_RECYCLE_INTERVAL == 0):
@@ -6995,7 +7603,7 @@ def main():
                     _run_log["skipped"] += 1
                     continue
 
-                mid = detail.get("merchant_order_id", "").strip()
+                mid = _oos_release_open(order, detail)
                 if mid.startswith("WB"):
                     print(f"  ⏭️  Already processed ({mid})")
                     _run_log["skipped"] += 1
@@ -7112,6 +7720,8 @@ def main():
 
         except Exception as e:
             print(f"❌ Loop Error: {e}")
+
+        _ultra_stop()
 
         # Rush: whatever is still journaled at cycle end gets written back now
         # (partial batches, error exits). Failures stay journaled for next cycle.

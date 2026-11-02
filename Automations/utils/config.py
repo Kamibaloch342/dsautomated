@@ -372,6 +372,11 @@ def apply_gui_overrides(gui_cfg):
                 # back-to-back. All checks stay per-order.
                 PROFILES[pname]["rush_mode"] = bool(pvals["rush_mode"])
 
+            if "ultra_mode" in pvals:
+                # Ultra mode: rush, with the Amazon scraping and write-backs running on windows of
+                # their own beside the placing (engine/ultra_crew.py).
+                PROFILES[pname]["ultra_mode"] = bool(pvals["ultra_mode"])
+
             if "rush_batch" in pvals:
                 try:
                     PROFILES[pname]["rush_batch"] = max(1, int(pvals["rush_batch"]))

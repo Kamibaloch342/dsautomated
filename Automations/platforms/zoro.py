@@ -10,6 +10,7 @@ import random
 import functools
 
 from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException
 
 from utils.config import RESTRICTION_QUICK_WAITS
 from utils.helpers import reapply_stealth, safe_get, simulate_human
@@ -30,10 +31,45 @@ class ZoroAccountRestricted(Exception):
 #  CORE API
 # ==============================================================================
 
+# ULTRA MODE: a read that hangs is given up on after 12 s and asked again, instead of holding the
+# placer for the 30 s script timeout and then sending the order down the 60 s page checkout
+# (2 Nov 2026, Wi-Fi dropping out: 2.5 minutes lost per hung GET, and the order locked FAILED_KEPT).
+_RETRY_ABORT_MS = 12000
+_RETRY_TRIES = 3
+
+
+def _retry_safe(method, endpoint):
+    """Asking again changes nothing at Zoro. Never a POST (an order, a cart add) and never the coupon
+    PUT (single-use codes)."""
+    return method == "GET" or (method == "PUT" and "/promo" not in endpoint)
+
+
 def zoro_api(driver, method, endpoint, body=None, content_type='application/json'):
     """Execute Zoro API call via in-browser fetch(). Driver must be on zoro.com."""
+    if getattr(driver, "_zuhra_ultra", False) and _retry_safe(method, endpoint):
+        return _zoro_api_retrying(driver, method, endpoint, body, content_type)
+    return _zoro_api_once(driver, method, endpoint, body, content_type)
+
+
+def _zoro_api_retrying(driver, method, endpoint, body, content_type):
+    """Raises TimeoutException when Zoro never answers, as a hung fetch always has — so no caller
+    is handed a silent 'no data' where it expects a cart."""
+    for attempt in range(1, _RETRY_TRIES + 1):
+        try:
+            r = _zoro_api_once(driver, method, endpoint, body, content_type, abort_ms=_RETRY_ABORT_MS)
+        except TimeoutException:
+            r = {"s": -1, "d": "script timeout"}
+        if not (isinstance(r, dict) and r.get("s") == -1 and r.get("d") != "no_token"):
+            return r
+        if attempt < _RETRY_TRIES:
+            print(f"   🌐 Zoro did not answer {method} {endpoint[:40]} (try {attempt}/{_RETRY_TRIES}) — asking again")
+            time.sleep(attempt)
+    raise TimeoutException(f"Zoro did not answer {method} {endpoint} in {_RETRY_TRIES} tries")
+
+
+def _zoro_api_once(driver, method, endpoint, body=None, content_type='application/json', abort_ms=None):
     result = driver.execute_script("""
-        var url=arguments[0],method=arguments[1],bodyStr=arguments[2],ct=arguments[3];
+        var url=arguments[0],method=arguments[1],bodyStr=arguments[2],ct=arguments[3],abortMs=arguments[4];
         var token;
         try{token=JSON.parse(localStorage.getItem('okta-token-storage')).accessToken.accessToken;}
         catch(e){return{s:-1,d:'no_token'};}
@@ -43,6 +79,7 @@ def zoro_api(driver, method, endpoint, body=None, content_type='application/json
             if(ct)h['Content-Type']=ct;
             var opts={method:method,headers:h};
             if(bodyStr)opts.body=bodyStr;
+            if(abortMs)opts.signal=AbortSignal.timeout(abortMs);
             fetch(url,opts).then(function(r){
                 var st=r.status;
                 return r.text().then(function(t){
@@ -51,7 +88,7 @@ def zoro_api(driver, method, endpoint, body=None, content_type='application/json
             }).then(resolve).catch(function(e){resolve({s:-1,d:e.message});});
         });
     """, f"https://api.prod.zoro.com{endpoint}", method,
-         json.dumps(body) if body else None, content_type)
+         json.dumps(body) if body else None, content_type, abort_ms)
     status = result.get('s', -1) if isinstance(result, dict) else -1
     # DEBUG: log non-200 responses so we can diagnose API failures
     if status != 200:

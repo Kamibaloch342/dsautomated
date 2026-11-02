@@ -33,7 +33,7 @@ from utils.sheet_sync import sync_order_log_async
 
 import platforms.zoro as zoro
 from checkout.dom import _format_checkout_result, _click_place_order
-from utils.helpers import update_coupon_status
+from utils.helpers import update_coupon_status, ASYNC_SCRIPT_TIMEOUT_S
 from utils.logger import bot_log
 
 print = functools.partial(print, flush=True)
@@ -78,7 +78,37 @@ def _time(label, start):
 #  LOW-LEVEL API HELPERS  (with heavy debug)
 # ==============================================================================
 
+# Zoro's 409 "Conflict while modifying resource, try again" while the cart is still settling from the step
+# before. On these calls nothing is bought and repeating changes nothing, so it is asked again; if the cart stays
+# busy the order is released like any other busy cart, not locked for review (112-5694362-7936256, 2 Nov 2026).
+_CONFLICT_RETRY_ENDS = ("/shippingaddress", "/shippingmethods", "/shippingmethod")
+_CONFLICT_TRIES = 3
+
+
 def _api(driver, method, endpoint, body=None):
+    """_api_once, asked again when a checkout step says the cart is busy. Never an order, a cart add or a coupon."""
+    for attempt in range(1, _CONFLICT_TRIES + 1):
+        r = _api_once(driver, method, endpoint, body)
+        if not (r["status"] == 409 and "RESOURCE_CONFLICT" in str(r["error"])
+                and endpoint.endswith(_CONFLICT_RETRY_ENDS)):
+            return r
+        if attempt < _CONFLICT_TRIES:
+            print(f"   🛒 Zoro: cart busy on {endpoint.rsplit('/', 1)[-1]} (try {attempt}/{_CONFLICT_TRIES}) — asking again")
+            time.sleep(1.5 * attempt)
+    try:
+        driver._zuhra_cart_busy = True
+    except Exception:
+        pass
+    return r
+
+
+def _busy_or_failed(driver, return_details):
+    """A step before the order is sent could not finish: a busy cart is released, anything else is as before."""
+    status = "CART_BUSY" if getattr(driver, "_zuhra_cart_busy", False) else "FAILED"
+    return _format_checkout_result(status, return_details=return_details)
+
+
+def _api_once(driver, method, endpoint, body=None):
     """Execute Zoro API via in-browser fetch. Same as zoro.zoro_api but
     returns a cleaner dict: {ok, status, data, error}."""
     t0 = time.perf_counter()
@@ -269,6 +299,40 @@ def _add_item_api(driver, sku, qty):
     _time("_add_item_api", t0)
     print("   [DEBUG] Added item not found in cart verify")
     return False, 0.0
+
+
+def _cart_holds_exactly(driver, sku, qty):
+    """ULTRA MODE: does the cart already hold this one item and nothing else? The price check just
+    before checkout built it, and rebuilding it is 5 of the ~24 s an order takes (2 Nov 2026: GET,
+    DELETE, wait, GET, GET, GET, POST, wait, GET, for the cart it started with). Anything but an
+    exact match, a coupon on the cart or an invalid item → (None, 0.0) and the cart is rebuilt.
+    Returns (cart_id, unit_price)."""
+    cart = _get_cart(driver)
+    if not cart or not cart.get("cartId"):
+        return None, 0.0
+    if str(cart.get("promoCode") or "").strip() or cart.get("invalidItems"):
+        return None, 0.0
+    items = cart.get("items") or []
+    if len(items) != 1 or (items[0].get("zoroNo") or items[0].get("sku")) != sku:
+        return None, 0.0
+    held = None
+    for k in ("qty", "quantity", "requestedQuantity", "cartQuantity"):
+        if k in items[0]:
+            try:
+                held = int(float(items[0][k]))
+                break
+            except (TypeError, ValueError):
+                pass
+    if held != qty:
+        return None, 0.0
+    nested = items[0].get("item", items[0])
+    try:
+        price = float(nested.get("price", nested.get("unitPrice", 0)) or 0)
+    except (TypeError, ValueError):
+        return None, 0.0
+    if price <= 0:
+        return None, 0.0
+    return cart["cartId"], price
 
 
 # ==============================================================================
@@ -990,6 +1054,24 @@ def _build_credit_card_payment(cards):
     return payment
 
 
+SUBMIT_SCRIPT_TIMEOUT_S = 90
+
+
+def _set_script_timeout(driver, seconds):
+    try:
+        driver.set_script_timeout(seconds)
+    except Exception:
+        pass
+
+
+def _mark_submit_started(driver):
+    """From here on an exception says nothing about whether the order exists."""
+    try:
+        driver._zuhra_submit_started = True
+    except Exception:
+        pass
+
+
 def _submit_order_api(driver, cart_id, payment_method, billing_addr, po_number=""):
     """Submit order via API. Returns (wb_order_id, response_data) or (None, None).
     billing_addr is the hardcoded account default billing address."""
@@ -1011,7 +1093,17 @@ def _submit_order_api(driver, cart_id, payment_method, billing_addr, po_number="
     _write_raw_api_log("ORDER SUBMISSION PAYLOAD", payload)
     print(f"   [DEBUG] Full payload written to raw_api_log.txt")
 
-    r = _api(driver, "POST", f"/v1/cart/{cart_id}/order", payload)
+    _mark_submit_started(driver)
+    # ULTRA MODE: no answer to THIS call is an order we know nothing about, so wait for it far
+    # longer than for a read. It is never aborted and never repeated.
+    _patient = getattr(driver, "_zuhra_ultra", False)
+    if _patient:
+        _set_script_timeout(driver, SUBMIT_SCRIPT_TIMEOUT_S)
+    try:
+        r = _api(driver, "POST", f"/v1/cart/{cart_id}/order", payload)
+    finally:
+        if _patient:
+            _set_script_timeout(driver, ASYNC_SCRIPT_TIMEOUT_S)
     print(f"\n   [DEBUG] Order submit response status: {r['status']}")
     if isinstance(r['data'], dict):
         print(f"   [DEBUG] Order response keys: {list(r['data'].keys())}")
@@ -1312,6 +1404,10 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
     bot_log("info", "True API checkout started", sku=sku, qty=qty)
     priority_coupons = priority_coupons or []
     coupon_meta_by_code = coupon_meta_by_code or {}
+    try:
+        driver._zuhra_submit_started = False
+    except Exception:
+        pass
 
     try:
         print("\n[1] ensure_on_site + ensure_token")
@@ -1352,14 +1448,22 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 time.sleep(_wait)
         except Exception:
             pass
-        print(f"\n[3] _clear_cart_api()")
-        if not _clear_cart_api(driver):
-            return _format_checkout_result("FAILED", return_details=return_details)
+        _held_cart_id = None
+        if ((address or {}).get("_ultra_mode")
+                and not (coupon_list or priority_coupons or preferred_coupon or second_sku or extra_skus)):
+            _held_cart_id, _held_price = _cart_holds_exactly(driver, sku, qty)
+        if _held_cart_id:
+            price = _held_price
+            print(f"\n[3-4] ⚡ cart already holds exactly {sku} x{qty} @ ${price} — not rebuilt")
+        else:
+            print(f"\n[3] _clear_cart_api()")
+            if not _clear_cart_api(driver):
+                return _format_checkout_result("FAILED", return_details=return_details)
 
-        print(f"\n[4] _add_item_api({sku}, {qty})")
-        ok, price = _add_item_api(driver, sku, qty)
-        if not ok:
-            return _format_checkout_result("FAILED", return_details=return_details)
+            print(f"\n[4] _add_item_api({sku}, {qty})")
+            ok, price = _add_item_api(driver, sku, qty)
+            if not ok:
+                return _format_checkout_result("FAILED", return_details=return_details)
 
         if second_sku:
             print(f"\n[4b] _add_item_api(second_sku={second_sku}, {qty})")
@@ -1380,7 +1484,7 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 else:
                     print(f"   ⚠️ extra item failed to add, continuing")
 
-        cart_id = _get_cart_id(driver)
+        cart_id = _held_cart_id or _get_cart_id(driver)
         print(f"\n[5] Cart ID = {cart_id}")
         if not cart_id:
             return _format_checkout_result("FAILED", return_details=return_details)
@@ -1402,11 +1506,13 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
         if ship_result == "PO_BOX":
             return _format_checkout_result("PO_BOX_RESTRICTED", return_details=return_details)
         if not ship_result:
-            return _format_checkout_result("FAILED", return_details=return_details)
+            return _busy_or_failed(driver, return_details)
 
         # ── 4. Shipping ──
         print(f"\n[8] _get_shipping_methods()")
         methods = _get_shipping_methods(driver, cart_id, addr_dict)
+        if getattr(driver, "_zuhra_cart_busy", False):
+            return _busy_or_failed(driver, return_details)
         if methods is None:
             state = address.get("state", address.get("state_abbr", "?"))
             print(f"   [DEBUG] restrictedSkus detected for state {state}")
@@ -1417,7 +1523,7 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
 
         print(f"\n[9] _select_shipping_method_api()")
         if not _select_shipping_method_api(driver, cart_id, methods):
-            return _format_checkout_result("FAILED", return_details=return_details)
+            return _busy_or_failed(driver, return_details)
 
         # ── 5. Coupon ──
         used_coupon_code = None
@@ -1795,6 +1901,23 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
         print(f"\n  ❌ True API checkout error: {e}")
         import traceback
         traceback.print_exc()
+        # The order was sent and never answered: it may exist, and may still be processing at Zoro
+        # with the item still in the cart. A page checkout now is how an order gets bought twice.
+        if getattr(driver, "_zuhra_submit_started", False):
+            print("  🛑 The order submit never answered — an order MAY exist at Zoro. FAILING CLOSED: "
+                  "no second attempt, held for review.")
+            return _format_checkout_result("FAILED", return_details=return_details)
+        # ULTRA MODE: Zoro went quiet BEFORE the order was sent, so nothing was bought. Release it
+        # for the next cycle; the page checkout would meet the same dead connection for a minute
+        # and then lock an order that was never at risk.
+        if (address or {}).get("_ultra_mode") and ("timeout" in str(e).lower() or "timed out" in str(e).lower()):
+            print("  🌐 Zoro stopped answering before the order was sent — nothing bought. "
+                  "Released; it comes back next cycle.")
+            try:
+                driver._zuhra_net_stall = True
+            except Exception:
+                pass
+            return _format_checkout_result("ZORO_NET", return_details=return_details)
         print(f"  ↪️  Falling back to legacy checkout...")
         try:
             from checkout.dom import place_order_fast
@@ -1881,6 +2004,7 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
                                payment_method="CREDIT_CARD"):
     """Minimal DOM fallback: navigate to checkout and click Place Order.
     Assumes cart/address/shipping/coupon are already set via API."""
+    _mark_submit_started(driver)
     print("  🌐 DOM fallback: navigating to checkout for Place Order...")
 
     driver.get("https://www.zoro.com/checkout")

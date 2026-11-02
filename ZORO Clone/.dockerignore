@@ -1,8 +1,0 @@
-node_modules
-.venv
-__pycache__
-*.pyc
-.git
-.DS_Store
-img_cache
-*.log

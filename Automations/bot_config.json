@@ -12,7 +12,8 @@
             "est_margin_only": true,
             "labels_only": false,
             "rush_mode": false,
-            "rush_batch": 25
+            "rush_batch": 100,
+            "ultra_mode": false
         },
         "DM_RESELLER": {
             "target_label": "AB ECOM",
@@ -21,7 +22,8 @@
             "est_margin_only": true,
             "labels_only": false,
             "rush_mode": false,
-            "rush_batch": 50
+            "rush_batch": 50,
+            "ultra_mode": false
         },
         "HS_COUPON": {
             "target_label": "MR",
@@ -35,17 +37,19 @@
             "est_margin_only": true,
             "labels_only": false,
             "rush_mode": false,
-            "rush_batch": 100
+            "rush_batch": 100,
+            "ultra_mode": false
         },
         "HS_RESELLER": {
-            "target_label": "Rajar",
+            "target_label": "Checking",
             "min_margin": 0,
             "order_limit": 0,
             "est_margin_only": true,
-            "labels_only": false,
+            "labels_only": true,
             "rush_mode": false,
             "rush_batch": 100,
-            "payment_method": "CREDIT_CARD"
+            "payment_method": "CREDIT_CARD",
+            "ultra_mode": true
         }
     },
     "velocity": {
@@ -94,7 +98,7 @@
         "sync_order_log_to_sheet": false
     },
     "telegram": {
-        "enabled": true,
+        "enabled": false,
         "bot_token": "8710557088:AAHZMFQaQI2sr5bQsDyqbr9W3I1tLJOMMD8",
         "chat_id": "8968500979",
         "worker_url": "https://dark-meadow-74d3.kamibaloch342.workers.dev"
@@ -111,14 +115,14 @@
         }
     },
     "checkout": {
-        "page_checkout": true
+        "page_checkout": false
     },
     "closing": {
         "message_after_closing": true
     },
     "sunday_mode": {
         "enabled": false,
-        "max_cart": 50.0,
+        "max_cart": 40.0,
         "min_margin_pct": 15.0
     }
 }

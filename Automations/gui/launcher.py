@@ -1285,6 +1285,7 @@ class App(tk.Tk):
         self._pest_margin_only = {}
         self._plabels_only = {}
         self._prush = {}
+        self._pultra = {}
         self._prush_batch = {}
         self._ppayment = {}  # HS_RESELLER only: "Credit Card" | "Net 30"
         self._pfocus_priority_enabled = {}
@@ -1338,6 +1339,18 @@ class App(tk.Tk):
                                "lock all stay per-order. Crash-safe: pending "
                                "write-backs replay automatically on the next run.")
             self._prush[pk] = rush_var
+            ultra_var = tk.BooleanVar()
+            ultra_cb = ttk.Checkbutton(ch, text="🚀Ultra", variable=ultra_var)
+            ultra_cb.pack(side="right", padx=(8, 0))
+            self._tip(ultra_cb, "ULTRA MODE: Rush, but placing never stops for Amazon. Two extra "
+                                "Chrome windows work beside it: one reads the next orders' pages, "
+                                "one writes the WB labels and seller notes back.\n"
+                                "Every check stays on the placing side, one order at a time. If a "
+                                "window fails, the placer falls back to Rush by itself.\n"
+                                "Out-of-stock listings are held, not marked OOS: Zoro is asked again "
+                                "every cycle and their orders go through when it is back.\n"
+                                "Takes effect when the placer next starts.")
+            self._pultra[pk] = ultra_var
             if "COUPON" in pk:
                 spv = tk.BooleanVar()
                 # Named "…Coupons" deliberately: plain "Skip Priority" reads as
@@ -4250,6 +4263,8 @@ class App(tk.Tk):
                 self._plabels_only[pk].set(pd_.get("labels_only", False))
             if pk in self._prush:
                 self._prush[pk].set(pd_.get("rush_mode", False))
+            if pk in self._pultra:
+                self._pultra[pk].set(pd_.get("ultra_mode", False))
             if pk in self._prush_batch:
                 self._prush_batch[pk].set(str(pd_.get("rush_batch", 10)))
             self._pest_margin_only[pk].set(pd_.get("est_margin_only", False))
@@ -4296,6 +4311,7 @@ class App(tk.Tk):
             pdata["est_margin_only"] = self._pest_margin_only[pk].get()
             pdata["labels_only"] = self._plabels_only[pk].get()
             pdata["rush_mode"] = self._prush[pk].get()
+            pdata["ultra_mode"] = self._pultra[pk].get()
             try:
                 pdata["rush_batch"] = max(1, int(self._prush_batch[pk].get() or 10))
             except ValueError:

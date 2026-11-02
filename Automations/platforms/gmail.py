@@ -282,11 +282,15 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
                     # Extract WB or WW order number from subject or body
                     order_match = re.search(r'#?((?:WB|WW)\S+)', subject)
                     if order_match:
+                        if _other_product(order_match.group(1), current_asin, current_sku, current_amazon_id):
+                            continue      # this buyer's other order: keep looking, a real one may follow
                         print(f"   [DUP_CHECK] MATCH in subject: {order_match.group(1)}")
                         return order_match.group(1)
 
                     order_match = re.search(r'#?((?:WB|WW)\S+)', body_clean)
                     if order_match:
+                        if _other_product(order_match.group(1), current_asin, current_sku, current_amazon_id):
+                            continue      # this buyer's other order: keep looking, a real one may follow
                         print(f"   [DUP_CHECK] MATCH in body: {order_match.group(1)}")
                         return order_match.group(1)
                     else:
@@ -304,6 +308,19 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
         return DUP_CHECK_FAILED
     print(f"   [DUP_CHECK] no match across all accounts")
     return None
+
+
+def _other_product(wb, asin, sku, amazon_id):
+    """A Gmail hit on name/address + ZIP that is provably this buyer's order for something else is no
+    duplicate. Any trouble answering keeps the hit, so the check stays fail-closed."""
+    try:
+        from utils.dup_check_local import gmail_match_is_other_product
+        if gmail_match_is_other_product(wb, asin, sku, amazon_id):
+            print(f"   [DUP_CHECK] {wb} is this buyer's order for a DIFFERENT product — not a duplicate, keep looking")
+            return True
+    except Exception as e:
+        print(f"   [DUP_CHECK] product check failed ({e}) — the match stands")
+    return False
 
 
 def batch_check_addresses_gmail(services_list, orders):
@@ -358,7 +375,8 @@ def batch_check_addresses_gmail(services_list, orders):
         if ad:
             terms.append(ad)
         if terms:
-            specs[o["key"]] = {"terms": terms, "zip": (o.get("zip") or "").strip()}
+            specs[o["key"]] = {"terms": terms, "zip": (o.get("zip") or "").strip(),
+                               "asin": o.get("asin"), "sku": o.get("sku")}
     if not specs:
         return resolved          # keep the locally-resolved answers
 
@@ -429,6 +447,8 @@ def batch_check_addresses_gmail(services_list, orders):
             if zip_clean and zip_clean not in body_clean and zip_nh not in body_clean:
                 continue
             m = re.search(r'#?((?:WB|WW)\S+)', subject) or re.search(r'#?((?:WB|WW)\S+)', body_clean)
+            if m and _other_product(m.group(1), spec.get("asin"), spec.get("sku"), key):
+                continue                  # this buyer's other order: keep looking, a real one may follow
             verdict = m.group(1) if m else "Duplicate"
             print(f"   [DUP_BATCH] MATCH for {key}: {verdict}")
             break
