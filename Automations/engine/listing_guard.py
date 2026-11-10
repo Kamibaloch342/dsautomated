@@ -16,17 +16,22 @@ How it runs, in two steps so that an order is never held up:
   1. note_out()        — called by the placer at the moment it stamps an order OOS. One small row in
                          listing_oos (unified DB). No browser, never raises.
   2. handle_pending()  — called by the placer at the END of a cycle, when its Chrome is idle. For each
-                         new row: decide PL / DS, tell the Orders Alerts group, and put the Zoro code on
-                         the dashboard's Restock Watch so the team hears when it is back.
+                         new row: decide PL / DS, make the change on Seller Central
+                         (change_on_amazon → engine/offer_edit.py), tell the Orders Alerts group what
+                         was done, and put the Zoro code on the dashboard's Restock Watch so the team
+                         hears when it is back.
 
-The change on Seller Central itself (quantity 0 / handling time) is step 3 and is NOT built yet: it
-needs one look at the live inventory pages, which asked for a sign-in on 10 Nov. Until then the alert
-carries the link to the listing and says what to change. See change_on_amazon().
+Nothing puts a listing back when Zoro restocks: the Restock Watch alert is the cue, and the value
+the listing had before (listing_oos.prev_value, also in the alert) is what to restore by hand.
+A handling time is only ever raised here, never lowered; a quantity is only ever set to 0.
 
 Settings — bot_config.json → "listing_guard" (all optional):
   enabled            true   false = the placer notes nothing and alerts nothing
+  armed              true   false = alert only: nothing is changed on Seller Central
+  pl_handling_days   7      handling time for an own-brand listing whose Zoro item is out (owner, 10 Nov 2026)
   realert_hours      24     a listing still taking OOS orders is announced again after this long
-  max_per_cycle      5      listings handled at the end of one placer cycle
+                            (2 hours when it was changed on Amazon — then something did not stick)
+  max_per_cycle      3      listings handled at the end of one placer cycle (each takes about a minute)
 """
 from __future__ import annotations
 
@@ -58,10 +63,12 @@ CREATE TABLE IF NOT EXISTS listing_oos (
     action        TEXT,            -- qty0 | handling
     action_at     TEXT,
     note          TEXT,
+    prev_value    TEXT,            -- what the field held before the change (to put back after the restock)
     PRIMARY KEY (store, asin)
 )"""
 
-_DEFAULTS = {"enabled": True, "realert_hours": 24, "max_per_cycle": 5}
+_DEFAULTS = {"enabled": True, "armed": True, "pl_handling_days": 7, "realert_hours": 24, "max_per_cycle": 3}
+REALERT_AFTER_CHANGE_HOURS = 2      # orders still arriving this long after the change: it did not stick
 _MISSED: List[Dict[str, Any]] = []        # notes the database refused (busy) — written at the next chance
 
 
@@ -85,6 +92,8 @@ def _conn(timeout: float = 10.0) -> sqlite3.Connection:
     c.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
     c.row_factory = sqlite3.Row
     c.execute(_DDL)
+    if "prev_value" not in {r[1] for r in c.execute("PRAGMA table_info(listing_oos)")}:
+        c.execute("ALTER TABLE listing_oos ADD COLUMN prev_value TEXT")
     return c
 
 
@@ -115,7 +124,8 @@ def _write_note(ev: Dict[str, Any], realert_hours: int) -> None:
                 return
             # Known listing: count the order. Announce it again only after realert_hours — a listing
             # that still takes orders a day later has not been dealt with.
-            again = row["status"] != "new" and _hours_since(row["action_at"]) >= realert_hours
+            wait_h = REALERT_AFTER_CHANGE_HOURS if row["status"] == "changed" else realert_hours
+            again = row["status"] != "new" and _hours_since(row["action_at"]) >= wait_h
             c.execute("UPDATE listing_oos SET orders = " + ("MAX(orders, ?)" if held else "orders + ?")
                       + ", last_order = COALESCE(NULLIF(?, ''), last_order), last_seen=?, "
                       "seller_sku = COALESCE(NULLIF(?, ''), seller_sku), title = COALESCE(NULLIF(?, ''), title), "
@@ -196,12 +206,26 @@ def listing_url(asin: str) -> str:
             f"&searchField=all&searchTerm={urllib.parse.quote(asin)}&sort=date_created_desc&status=all")
 
 
-def change_on_amazon(driver, store: str, row: Dict[str, Any], action: str) -> Tuple[bool, str]:
-    """Step 3 — set the quantity to 0 (action 'qty0') or raise the handling time ('handling') on Seller
-    Central. NOT BUILT YET: it has to be written against the live inventory / edit-offer pages and tried
-    once with a person watching, and Seller Central asked for a sign-in when that was attempted on
-    10 Nov 2026. Returns (False, why) so the alert tells the team to make the change by hand."""
-    return False, "the automatic change on Seller Central is not built yet"
+def change_on_amazon(driver, store: str, row: Dict[str, Any], action: str, profile: str = "") -> Tuple[bool, str, str]:
+    """Set the quantity to 0 (action 'qty0') or raise the handling time ('handling') on Seller Central,
+    in the placer's own Chrome. Returns (done, what happened, previous value). done is True when Amazon
+    now holds the wanted value — changed just now, or already there. See engine/offer_edit.py for how
+    the page is driven and what was tried on the live page on 10 Nov 2026."""
+    cfg = settings()
+    if not cfg["armed"]:
+        return False, "the automatic change is switched off (listing_guard.armed)", ""
+    if driver is None:
+        return False, "no browser to make the change with", ""
+    from engine import offer_edit
+    if action == "qty0":
+        res = offer_edit.set_offer_field(driver, row["asin"], row.get("seller_sku") or "", "quantity", 0,
+                                         login_profile=profile or None)
+    else:
+        res = offer_edit.set_offer_field(driver, row["asin"], row.get("seller_sku") or "", "handling_days",
+                                         int(cfg["pl_handling_days"]), login_profile=profile or None)
+    # the previous value is kept only when something was really changed — "it was already 0" must not
+    # overwrite the number the listing had before an earlier change
+    return bool(res.get("ok")), str(res.get("note") or ""), (str(res.get("previous") or "") if res.get("changed") else "")
 
 
 def _watch_restock(row: Dict[str, Any]) -> bool:
@@ -245,9 +269,12 @@ def _message(row: Dict[str, Any], kind: str, brand: str, src: str, action: str, 
                  + (f" — brand “{brand}”" if brand else "") + (f" ({src})" if src else ""))
     lines.append(f"• Orders stamped OOS so far: {row.get('orders') or 1}")
     if changed:
-        lines.append(f"• ✅ Done on Amazon: {why}")
+        lines.append(f"• ✅ On Amazon: {why}")
+        lines.append("• When Zoro has it again: put the " + ("quantity" if action == "qty0" else "handling time")
+                     + " back by hand — nothing does that automatically")
     elif action:
-        lines.append(f"• ⚠️ To do by hand: {want[action]} — {why}")
+        lines.append(f"• ⚠️ NOT changed on Amazon — {why}")
+        lines.append(f"• To do by hand: {want[action]}")
         lines.append(f"  {listing_url(row['asin'])}")
     else:
         lines.append(f"• ⚠️ Check it by hand: {listing_url(row['asin'])}")
@@ -279,12 +306,12 @@ def handle_pending(driver, store: str, profile: str = ""):
         for row in rows:
             kind, brand, src = classify(driver, store, row["asin"], row.get("seller_sku") or "")
             action = {"PL": "handling", "DS": "qty0"}.get(kind, "")
-            changed, why = (False, "PL or DS could not be decided")
+            changed, why, prev = False, "PL or DS could not be decided", ""
             if action:
                 try:
-                    changed, why = change_on_amazon(driver, store, row, action)
+                    changed, why, prev = change_on_amazon(driver, store, row, action, profile)
                 except Exception as e:
-                    changed, why = False, f"{type(e).__name__}: {str(e)[:120]}"
+                    changed, why, prev = False, f"{type(e).__name__}: {str(e)[:120]}", ""
             watching = _watch_restock(row)
             text = _message(row, kind, brand, src, action, changed, why, watching)
             print(f"  🛑 LISTING OUT AT ZORO: {row['asin']} ({row.get('seller_sku') or '?'}) — "
@@ -299,9 +326,9 @@ def handle_pending(driver, store: str, profile: str = ""):
             try:
                 with c:
                     c.execute("UPDATE listing_oos SET kind=?, brand=?, kind_from=?, action=?, status=?, action_at=?, "
-                              "note=? WHERE store=? AND asin=?",
+                              "note=?, prev_value = COALESCE(NULLIF(?, ''), prev_value) WHERE store=? AND asin=?",
                               (kind, brand, src, action, "changed" if changed else "alerted", _now(), why[:300],
-                               store, row["asin"]))
+                               prev, store, row["asin"]))
             finally:
                 c.close()
     except Exception as e:                               # never in the way of the next cycle
@@ -312,7 +339,7 @@ def handle_pending(driver, store: str, profile: str = ""):
 if __name__ == "__main__":      # python -m engine.listing_guard  → the list, newest first (read-only)
     con = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
     try:
-        for r in con.execute("SELECT store, asin, seller_sku, kind, brand, orders, status, action, first_seen, last_seen, note "
+        for r in con.execute("SELECT store, asin, seller_sku, kind, brand, orders, status, action, prev_value, first_seen, last_seen, note "
                              "FROM listing_oos ORDER BY last_seen DESC LIMIT 50"):
             print(" | ".join(str(x if x is not None else "") for x in r))
     except sqlite3.OperationalError:

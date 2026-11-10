@@ -61,9 +61,12 @@ agent and the dashboard run as macOS LaunchAgents.
   (`platforms.amazon.rename_po_box`); label BB only when the address has no street at all or Zoro
   still refuses it. **Listing guard** (`engine/listing_guard.py`, 10 Nov 2026): when the Zoro code
   and every alternative are out, the placer notes the listing (`listing_oos`) and at the end of the
-  cycle decides PL / DS from the product's brand, alerts Orders Alerts and adds the code to Restock
-  Watch. The change on Seller Central (DS → quantity 0, PL → longer handling time, never 0) is
-  `change_on_amazon()` — read its docstring for whether it is built yet.
+  cycle decides PL / DS from the product's brand, makes the change on Seller Central in its own
+  Chrome (DS → quantity 0; PL → handling time 7 days, never 0 — `engine/offer_edit.py`, driven and
+  tried on the live Edit Listing → Offer page on 10 Nov 2026), alerts Orders Alerts with what was
+  done and adds the code to Restock Watch. Nothing restores a listing when Zoro restocks: the
+  previous value is in `listing_oos.prev_value` and in the alert. `listing_guard.armed: false` in
+  `bot_config.json` makes it alert only.
 * **Tracking uploaders** — `engine/tracking.py`, HOANK on 9335, Hathoro on 9336, Wrenchly on 9339 (their own Chrome
   since 3 Nov 2026; 9331 / 9333 / 9337 are the closing chain's, and closing never waits for a tracker). All-orders report
   (reused for 30 min), `archive_tracking` → one batched Gmail sweep → PDF, upload on Confirm
@@ -153,5 +156,6 @@ scan for 3 days (all in `bot_config.json → messaging`). Late (2 d past deliver
 | How many orders Amazon took on a day, placed or not | `amazon_report_orders` (US/Pacific `purchase_day`), `/api/month_report` |
 | Alerts | hourly: `dashboard/insights.py` + `scripts/send_insights_alerts.py` (rules at the top of `docs/ALERTS_AND_INSIGHTS_SPEC.md`); at placement: `utils/insights_engine.py`; sending: `utils/whatsapp.py`, `utils/telegram.py` |
 | A listing still selling with Zoro out of stock | `listing_oos` table, `python -m engine.listing_guard` (the list), `engine/listing_guard.py` |
+| Change one listing's quantity or handling time by hand, the way the placer does | `python -m engine.offer_edit --port 9331 --asin … --sku … --field quantity|handling_days --value N` (`--dry-run` saves nothing); its docstring has the page's ids and what the live runs showed |
 | Other sellers / rating / reviews / category on our own-brand listings | `utils/listing_watch.py`, `data/pl_watch_state.json`, the line `[listing watch]` in `data/repricer_live.log` |
 | What the 10 Nov 2026 audit found and what was fixed | `Automations/data/audit/AUDIT_2026-11-10.md` (§9 = applied; kept out of git on purpose) |
