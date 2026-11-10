@@ -360,6 +360,23 @@ are enforced in code, not by convention:
      order, whatever Amazon's quantity, the SKU's `Npk` or the sheet's pack size say, on a mapped or unmapped
      ASIN. Only after a code, 1 to 999. `x0`, `x1000`, `Manual-C x25` or `G5522807 25` are not tags, so the
      order is left alone. Multi-item: the quantity goes on the same line as the code (`orders._parse_manual_qty`).
+  4. *Coupon in the tag (11 Nov 2026, owner).* `Manual-C SAVE20NOW` places the order with that coupon and
+     no other: the sheet's priority and regular coupons, the focus coupon and the profile's
+     "skip priority coupons" switch are all out of it. Made for the 20 % code Zoro gives by phone for an
+     order the placer labelled `20`: replace `20` with `Manual-C <code>`. If Zoro does not accept the code
+     nothing is bought: the order keeps its tag, is tried again after `coupon_wait_cooldown_min` (45 min) or
+     at once when another code is written, and the Manual-C "no coupon" alert goes out once per order and
+     code, naming the code and Zoro's reason (a reply that is only an API error sends nothing and is retried).
+     The code is tried as typed, then in capitals. It may stand with a Zoro code and a quantity, in either
+     order (`Manual-C G7467735 x25 SAVE20NOW`). 4–24 letters / digits with at least one letter; a word that
+     looks like a Zoro code (`G123`) or a quantity (`x1000`), two words, or a code after `Manual-R` (a
+     reseller applies no coupon) make the label not a tag, so the order is left alone. The profit gate stays
+     waived as for every tagged order: whatever the code takes off, the order is placed. Nothing is learned
+     from it (the checkout gets a cache of its own: no working pair, no promo strike set or cleared), and
+     the page-checkout fallbacks are not used for such an order, because they keep whatever promo is already
+     on the cart (`true_api … only_coupon`); a checkout that breaks before the order is sent is retried next
+     cycle. Found like every coded tag: in the buyer-action view. `orders._parse_manual`,
+     `_tag_coupon_codes`, `_tag_coupon_refusal`.
 * **A WB on the buyer's other order is not a duplicate (4 Nov 2026, owner).** The duplicate check matches by
   address, so a real repeat purchase matched the WB of the buyer's earlier order and was stamped `<WB> - D`
   and never bought (112-7422969-0994666 got `WB5917587551 - D`, the WB of 112-9339236-7538642). Shrinking the

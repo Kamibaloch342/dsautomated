@@ -4269,6 +4269,15 @@ def _normalize_second_part_sku(value):
 #      Amazon's deliver-by → "Delivery time high", not placed — a tag places it anyway)
 #   5. an unmapped ASIN, ONLY when a Zoro code follows the tag (owner, 9 Nov 2026: "Manual-C G5522807";
 #      a tag with no code still stops at UNMAPPED_ASIN). _fill_unmapped_from_tag.
+#
+# "Manual-C <coupon>" (owner, 11 Nov 2026: the 20 % code Zoro gives by phone for a '20' order):
+# the coupon profile tries THAT code and no other — not the sheet's priority or regular coupons, not
+# the focus coupon. If Zoro does not accept it nothing is bought: the order keeps its tag, waits
+# (COUPON_WAIT_MIN, or until another code is written) and the one Manual-C alert names the code.
+# The code may stand with a Zoro code and a quantity, in either order: "Manual-C G7467735 x25 SAVE20NOW".
+# Nothing is learned from it (no working pair, no promo strike cleared): it is one person's choice for
+# one order. The profit gate stays waived as for every tagged order, so whatever the code takes off,
+# the order is placed. Manual-R never carries a coupon. _parse_manual / _tag_coupon_codes.
 # and, as a consequence of (1), the post-failure duplicate re-check before keep_failed(); a
 # human's tag also skips the routing helpers (supervisor, Deciding hand-off, Sunday mode).
 # It does NOT bypass the placement lock
@@ -4592,27 +4601,90 @@ def _parse_manual_tag(merchant_id):
 
     A Zoro code may follow the tag — "Manual-C G7467735" — to place that code instead of the
     sheet's (a colour / size the buyer agreed to; owner, 30 Oct 2026). _parse_manual_code reads it.
+    A coupon code may follow "Manual-C" — "Manual-C SAVE20NOW" — to place the order with that
+    coupon and no other (owner, 11 Nov 2026). _parse_manual_coupon reads it.
     """
-    m = _MANUAL_TAG_RE.match(str(merchant_id or ""))
-    return m.group(1).upper() if m else None
+    t = _parse_manual(merchant_id)
+    return t["kind"] if t else None
 
 
+_MT_HEAD = r"^\s*manual\s*[-_ ]?\s*([cr])"
+_MT_ZORO = r"(G\d{5,12})(?:\s*[-_:,/]?\s*[x×*]\s*([1-9]\d{0,2}))?"
+# A coupon needs a real gap before it: "Manual-Cancel" must never read as Manual-C + coupon "ancel".
+_MT_GAP = r"(?:\s+|\s*[-_:,/=]\s*)"
+_MT_COUPON = r"(?:coupon\s*[-_:,/=]?\s*)?([A-Za-z0-9]{4,24})"
 _MANUAL_TAG_RE = re.compile(
-    r"^\s*manual\s*[-_ ]?\s*([cr])(?:\s*[-_:,/]?\s*(G\d{5,12})(?:\s*[-_:,/]?\s*[x×*]\s*([1-9]\d{0,2}))?)?\s*$", re.I)
+    _MT_HEAD + rf"(?:\s*[-_:,/]?\s*{_MT_ZORO})?(?:{_MT_GAP}{_MT_COUPON})?\s*$", re.I)
+_MANUAL_TAG_COUPON_FIRST_RE = re.compile(                      # "Manual-C SAVE20NOW G7467735 x25"
+    _MT_HEAD + rf"{_MT_GAP}{_MT_COUPON}{_MT_GAP}{_MT_ZORO}\s*$", re.I)
+
+
+def _parse_manual(merchant_id):
+    """Everything a manual-override tag says, or None when the text is not a tag:
+    {'kind': 'C' | 'R', 'code': Zoro code or '', 'qty': total quantity or 0, 'coupon': coupon or ''}.
+
+    The coupon is kept as it was typed. It must hold a letter and be 4–24 letters / digits; a word
+    that looks like a Zoro code ('G123'), a quantity ('x1000') or the word 'coupon' alone is not one,
+    and Manual-R never carries one (a reseller profile applies no coupon). Any of those makes the
+    whole label not a tag, so a mistyped label leaves the order alone."""
+    s = str(merchant_id or "")
+    m = _MANUAL_TAG_RE.match(s)
+    if m:
+        kind, code, qty, coupon = m.group(1), m.group(2), m.group(3), m.group(4)
+    else:
+        m = _MANUAL_TAG_COUPON_FIRST_RE.match(s)
+        if not m:
+            return None
+        kind, coupon, code, qty = m.group(1), m.group(2), m.group(3), m.group(4)
+    kind, coupon = kind.upper(), (coupon or "").strip()
+    if coupon and (kind != "C" or not re.search(r"[A-Za-z]", coupon)
+                   or re.fullmatch(r"[GgXx]\d+", coupon) or coupon.upper() == "COUPON"):
+        return None
+    return {"kind": kind, "code": (code or "").upper(), "qty": int(qty) if qty else 0, "coupon": coupon}
 
 
 def _parse_manual_code(merchant_id):
     """The Zoro code written after a Manual-C/-R tag ('Manual-R G7467735' → 'G7467735'), else ''."""
-    m = _MANUAL_TAG_RE.match(str(merchant_id or ""))
-    return (m.group(2) or "").upper() if m else ""
+    t = _parse_manual(merchant_id)
+    return t["code"] if t else ""
 
 
 def _parse_manual_qty(merchant_id):
     """The quantity written after a coded tag ('Manual-C G7467735 x25' → 25), else 0. It is only read
     after a code, 1–999: 'Manual-C x25', 'x0' or 'x1000' make the whole label not a tag, so a mistyped
     quantity leaves the order alone instead of buying the wrong amount (owner, 9 Nov 2026)."""
-    m = _MANUAL_TAG_RE.match(str(merchant_id or ""))
-    return int(m.group(3)) if m and m.group(3) else 0
+    t = _parse_manual(merchant_id)
+    return t["qty"] if t else 0
+
+
+def _parse_manual_coupon(merchant_id):
+    """The coupon code written after a Manual-C tag ('Manual-C SAVE20NOW' → 'SAVE20NOW'), else ''."""
+    t = _parse_manual(merchant_id)
+    return t["coupon"] if t else ""
+
+
+def _tag_coupon_codes(coupon):
+    """What the checkout tries for a coupon written in the tag: the code as typed, then in capitals
+    when that differs (Zoro's own codes are all capitals; the field is typed by hand)."""
+    c = str(coupon or "").strip()
+    return ([c] + ([c.upper()] if c.upper() != c else [])) if c else []
+
+
+def _tag_coupon_refusal(last_fail, cache=None):
+    """(why, transient) for a coupon written in the tag that did not apply, from the checkout's own
+    counters. transient = Zoro's coupon service did not answer, which says nothing about the code."""
+    lf = last_fail or {}
+    g = lambda k: int(lf.get(k) or 0)
+    if g("transient") or g("priority_transient"):
+        return "Zoro's coupon service did not answer", True
+    if g("item"):
+        return "Zoro says it is not valid for this item", False
+    if g("min_order"):
+        mins = [float(v) for v in ((cache or {}).get("coupon_min_order") or {}).values() if v]
+        return (f"the cart is under its ${max(mins):.2f} minimum" if mins else "the cart is under its minimum"), False
+    if g("dead"):
+        return "Zoro says the code does not exist or has expired", False
+    return "Zoro did not accept it", False
 
 
 def _big_order_regular_codes(regular_codes, raw_cart_cost, big_threshold, manual_override):
@@ -4633,15 +4705,23 @@ def _big_order_marks_20(raw_cart_cost, big_threshold, manual_override):
 _MANUAL_NO_COUPON_ALERTED = set()       # amazon_ids already alerted this run (one alert per order)
 
 
-def _notify_manual_no_coupon(amazon_id, asin, sku, cart_cost, why, buyer="", city="", state=""):
-    """One alert per order: a Manual-C order no coupon worked on waits — say so, and how to place it."""
-    if amazon_id in _MANUAL_NO_COUPON_ALERTED:
+def _notify_manual_no_coupon(amazon_id, asin, sku, cart_cost, why, buyer="", city="", state="", tag_coupon=""):
+    """One alert per order: a Manual-C order no coupon worked on waits — say so, and how to place it.
+    tag_coupon: the coupon written in the tag (the only one tried) — one alert per order AND code, so a
+    second code that is refused too is reported as well."""
+    _key = f"{amazon_id}|{tag_coupon}" if tag_coupon else amazon_id
+    if _key in _MANUAL_NO_COUPON_ALERTED:
         return
-    _MANUAL_NO_COUPON_ALERTED.add(amazon_id)
+    _MANUAL_NO_COUPON_ALERTED.add(_key)
     loc = f"{city}, {state}".strip(", ")
-    text = (f"Manual-C order {amazon_id} NOT placed — no coupon worked (${cart_cost:.2f}, {asin} {sku}"
-            f"{', ' + buyer if buyer else ''}{' (' + loc + ')' if loc else ''}). {why}. It keeps its Manual-C tag and "
-            f"is tried again when the coupons change. Write Manual-R to place it now without a coupon.")
+    _who = f"(${cart_cost:.2f}, {asin} {sku}{', ' + buyer if buyer else ''}{' (' + loc + ')' if loc else ''})"
+    if tag_coupon:
+        text = (f"Manual-C order {amazon_id} NOT placed — the coupon {tag_coupon} written in its tag did not apply "
+                f"{_who}. {why}. It keeps its tag. Write another code after Manual-C, plain Manual-C to use the "
+                f"sheet's coupons, or Manual-R to place it without a coupon.")
+    else:
+        text = (f"Manual-C order {amazon_id} NOT placed — no coupon worked {_who}. {why}. It keeps its Manual-C tag and "
+                f"is tried again when the coupons change. Write Manual-R to place it now without a coupon.")
     try:
         from utils.whatsapp import send_whatsapp_message
         send_whatsapp_message("🖐️ *MANUAL-C — NO COUPON*\n" + text)
@@ -5064,9 +5144,11 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # ── Coupon-wait parking: an order waiting for a coupon is NOT rebuilt every cycle ──
     # (one order was carted and coupon-tested 66 times in a night). It is retried when the
     # cooldown passes OR as soon as the coupon pool changes (new scrape / new priority code).
+    # A coupon written in the tag since ("Manual-C SAVE20NOW"), or a different one, is tried now.
     _cw = _COUPON_WAITS.get(amazon_id)
     if _cw and COUPON_WAIT_MIN > 0:
-        if _coupon_pool_sig(coupon_codes) == _cw.get("pool") and time.time() - _cw["last"] < COUPON_WAIT_MIN * 60:
+        if (_coupon_pool_sig(coupon_codes) == _cw.get("pool") and time.time() - _cw["last"] < COUPON_WAIT_MIN * 60
+                and _cw.get("tag_coupon", "") == _parse_manual_coupon(merchant_id)):
             if not _cw.get("announced"):
                 _cw["announced"] = True
                 print(f"  ⏸️  {amazon_id}: {_cw.get('reason', 'waiting for a coupon')} — parked "
@@ -5123,9 +5205,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
               f"The placement lock still applies, so it can only be placed once.")
     _manual_code = _parse_manual_code(merchant_id) if manual_override else ""
     _manual_qty = _parse_manual_qty(merchant_id) if manual_override else 0
+    _manual_coupon = _parse_manual_coupon(merchant_id) if manual_override else ""
     if _manual_code:
         print(f"  🖐️  Zoro code in the tag: {_manual_code} — placed instead of the sheet's code"
               + (f", quantity {_manual_qty} as written" if _manual_qty else ""))
+    if _manual_coupon:
+        print(f"  🖐️  Coupon in the tag: {_manual_coupon} — the only coupon tried on this order; "
+              f"if Zoro does not accept it, the order is NOT placed")
 
     # ── SUNDAY MODE: an order already held is not re-priced (a Manual tag always goes through) ──
     if not manual_override and _sunday_parked(amazon_id, coupon_codes):
@@ -5185,6 +5271,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     if is_multi_item:
         order_notes.append(f"Multi-item order ({len(resolved_items)} items)")
     order_notes += _manual_code_notes(resolved_items)
+    if _manual_coupon:
+        order_notes.append(f"Coupon from the tag: {_manual_coupon}")
     order_note = "; ".join(order_notes)
 
     _print_section("ORDER DETAILS")
@@ -5838,6 +5926,16 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     elif isinstance(coupon_codes, list):
         regular_coupon_codes = coupon_codes  # legacy fallback
 
+    # ── "Manual-C <coupon>": the code in the tag is the only coupon this order may use ──
+    # (owner, 11 Nov 2026: the 20 % code Zoro gives by phone for a '20' order.) The sheet's coupons are
+    # taken out here, before the strategy, the estimate, the focus mode and the big-order rule look at
+    # them; the tag's code goes into the checkout list further down. The checkout gets a cache of its
+    # own: one hand-picked code says nothing about the item, so nothing is learned from it either way.
+    _tag_cache = {}
+    _sheet_regular_codes = {str(c) for c in (regular_coupon_codes or [])}
+    if _manual_coupon:
+        priority_coupons_with_pct, regular_coupon_codes = [], []
+
     # ── SUNDAY MODE (coupon profiles): priority coupons only ──
     # A regular code spent today may be on an item Monday's priority code would have covered.
     # Stripped here, before the supervisor and the checkout see the list, so neither can use one.
@@ -6052,9 +6150,11 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                                  state=state, earnings=earnings, cart=round(estimated_total_cost, 2)))
 
     # ── Coupon strategy ─────────────────────────────────────────
-    skip_coupons = not IS_COUPON_PROFILE or (TARGET_LABEL == 'Rajar 1')
+    # A coupon written in the tag is always tried: neither the 'Rajar 1' label nor the profile's
+    # "skip priority coupons" switch may turn it into a purchase without it.
+    skip_coupons = not IS_COUPON_PROFILE or (TARGET_LABEL == 'Rajar 1' and not _manual_coupon)
     _pcfg = gui_cfg.get("profiles", {}).get(PROFILE_NAME, {})
-    skip_priority = _pcfg.get("skip_priority_coupons", False)
+    skip_priority = _pcfg.get("skip_priority_coupons", False) and not _manual_coupon
 
     # Build the flat coupon list for the checkout function
     _foc_codes = []
@@ -6091,6 +6191,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         regular_coupon_codes = _big_order_regular_codes(regular_coupon_codes, raw_cart_cost, big_threshold, manual_override)
 
         coupon_arg = priority_codes_for_checkout + regular_coupon_codes
+        if _manual_coupon:
+            # the checkout tries its "priority" list first and stops at the first code that applies
+            priority_codes_for_checkout = _tag_coupon_codes(_manual_coupon)
+            regular_coupon_codes = []
+            coupon_arg = list(priority_codes_for_checkout)
+            print(f"  🖐️  Coupon from the tag: trying ONLY {_manual_coupon} — the sheet's coupons are not used")
 
     # Build coupon metadata map for checkout-time ratio-split detection
     coupon_meta_by_code = {}
@@ -6125,6 +6231,15 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     "buyer": buyer, "city": city, "state": state, "status": "NO_COUPONS_WAIT",
                     "notes": "; ".join(filter(None, ["no priority or regular coupons loaded — waiting", order_note]))})
         _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes), "reason": "no coupons in the pool"}
+        return "failed"
+    if _manual_coupon and list(coupon_arg or []) != _tag_coupon_codes(_manual_coupon):
+        # Fail closed: the tag names a coupon, so the checkout list must hold that code and nothing
+        # else. Anything different would buy without it, or with another coupon.
+        print(f"  🛑 {amazon_id}: the tag's coupon {_manual_coupon} did not reach the checkout list — NOT placed")
+        _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                    "buyer": buyer, "city": city, "state": state, "status": "TAG_COUPON_NOT_USED",
+                    "notes": "; ".join(filter(None, [f"coupon {_manual_coupon} from the tag was not in the checkout "
+                                                      f"list — not placed", order_note]))})
         return "failed"
 
     # ── Checkout ──────────────────────────────────────────────────
@@ -6173,7 +6288,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         amazon_fees=amazon_fees,
         coupon_list=coupon_arg, asin=primary_item["asin"],
         zoro_code=primary_item["sku"],
-        asin_coupon_cache=asin_coupon_cache,
+        asin_coupon_cache=_tag_cache if _manual_coupon else asin_coupon_cache,
         skip_priority_coupons=skip_priority,
         priority_coupons=priority_codes_for_checkout,
         min_margin=checkout_min_margin,
@@ -6222,11 +6337,18 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     split_coupon_only=split_coupon,
                     # Zoro Select brand detection: True if the item is Zoro Select
                     zoro_select=bool(all(it.get("is_zoro_select") for it in resolved_items)),
+                    only_coupon=_manual_coupon or None,
                     **filter_kwargs_for_callee(place_order_fast_true_api,
                                                checkout_kwargs, warn_label="ENGINE"))
             except Exception as true_api_err:
                 print(f"   [ENGINE] True API failed: {true_api_err}")
                 result = None
+        if result is None and _manual_coupon:
+            # The two page checkouts below keep whatever promo is already on the cart when the code
+            # they try fails. An order with a coupon in its tag may only be bought with that coupon.
+            print(f"   [ENGINE] no page-checkout fallback for a coupon written in the tag ({_manual_coupon}) "
+                  f"— nothing bought, tried again next cycle")
+            return {"status": "COUPON_RETRY"}
         # 2. Vuex fast path
         if result is None:
             try:
@@ -6755,9 +6877,14 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         # Priority coupons are reusable and stay in the sheet.
         used_coupon = last_checkout_result.get("used_coupon_code") if last_checkout_result else None
         _all_priority_codes = {c["code"] for c in (priority_coupons_with_pct or [])} | set(priority_codes_for_checkout or [])
+        if _manual_coupon:
+            # a single-use sheet code written in the tag is used up like any other (its row goes);
+            # a code that is not in the sheet stays in this set and has no row to delete
+            _all_priority_codes -= _sheet_regular_codes
         if used_coupon and used_coupon != "AUTO_APPLIED" and used_coupon not in _all_priority_codes:
             _delete_coupon_from_sheet(used_coupon)
-        if used_coupon and IS_COUPON_PROFILE:
+        # a code a person picked for one order says nothing about the item: no strikes are cleared
+        if used_coupon and IS_COUPON_PROFILE and not _manual_coupon:
             _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), True,
                                  cache=asin_coupon_cache)
         _CART_FAILS.pop(amazon_id, None)
@@ -6911,7 +7038,27 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         # Do NOT relabel as "MR Profit Margin" or "Rajar" — that blocks retries.
         status_note = (f"Coupon API / session trouble on every priority coupon — retry next cycle"
                        if result_status == "COUPON_RETRY" else f"No coupon worked — skipping (will retry next cycle)")
-        if result_status == "COUPON FAIL" and IS_COUPON_PROFILE and not skip_coupons:
+        if result_status == "COUPON_RETRY" and _manual_coupon:
+            status_note = (f"Manual-C: Zoro's checkout or coupon service did not answer — nothing bought; "
+                           f"the tag's coupon {_manual_coupon} is tried again next cycle")
+        if result_status == "COUPON FAIL" and _manual_coupon:
+            # The coupon a person wrote in the tag did not apply: nothing is bought, no other coupon is
+            # tried and the order is never marked '20'. It keeps its tag and is tried again after the
+            # cooldown, or at once when another code is written.
+            _lf = _tag_cache.get("last_fail") or {}
+            _why, _blip = _tag_coupon_refusal(_lf, _tag_cache)
+            status_note = (f"Manual-C: coupon {_manual_coupon} from the tag did not apply — {_why} — NOT placed; "
+                           f"keeps its tag (write another code, plain Manual-C for the sheet's coupons, or "
+                           f"Manual-R to place it without a coupon)")
+            _DLOG.log("coupon_fail", profile=PROFILE_NAME, amazon_id=amazon_id, asin=asin_field, sku=sku_field,
+                      qty=qty_field, cart=raw_cart_cost, earnings=earnings, action="wait",
+                      reason=f"tag coupon {_manual_coupon}: {_why}", definitive=False, last_fail=_lf)
+            _COUPON_WAITS[amazon_id] = {"last": time.time(), "pool": _coupon_pool_sig(coupon_codes),
+                                        "reason": status_note, "tag_coupon": _manual_coupon}
+            if not _blip:                   # an API blip says nothing about the code: the next try decides
+                _notify_manual_no_coupon(amazon_id, asin_field, sku_field, raw_cart_cost, _why[0].upper() + _why[1:],
+                                         buyer, city, state, tag_coupon=_manual_coupon)
+        elif result_status == "COUPON FAIL" and IS_COUPON_PROFILE and not skip_coupons:
             if _big_order_marks_20(raw_cart_cost, big_threshold, manual_override):
                 _cf_action_20 = True
                 status_note = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) — no priority coupon worked at checkout"

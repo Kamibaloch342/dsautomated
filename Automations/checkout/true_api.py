@@ -1440,12 +1440,17 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                                amazon_fees=None, preferred_coupon=None,
                                coupon_meta_by_code=None, alt_of=None,
                                payment_method="CREDIT_CARD",
-                               split_coupon_only=None, zoro_select=None):
+                               split_coupon_only=None, zoro_select=None,
+                               only_coupon=None):
     """Fast checkout using true REST APIs for all steps.
-    
+
     Splitting is decided AT CHECKOUT TIME: after a ratio/fixed-amount coupon
     is applied, we compute whether splitting the order would increase the
     total discount.  Percentage coupons never trigger splits.
+
+    only_coupon: the coupon a person wrote in the order's tag ("Manual-C SAVE20NOW"). The caller
+    passes it as the whole coupon list; here it only stops the page-checkout fallback, which keeps
+    whatever promo it finds on the cart.
     """
     t_start = time.perf_counter()
     print(f"\n{'='*60}")
@@ -1974,6 +1979,13 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
             except Exception:
                 pass
             return _format_checkout_result("ZORO_NET", return_details=return_details)
+        # An order with a coupon in its tag may only be bought with that coupon. The page checkout
+        # counts any promo already on the cart as "coupon applied", so it is not used: the order was
+        # never sent (checked above), the placer releases it and tries again next cycle.
+        if only_coupon:
+            print(f"  ↪️  No page-checkout fallback: this order may only be bought with the coupon from "
+                  f"its tag ({only_coupon}). Nothing was bought; it is tried again next cycle.")
+            return _format_checkout_result("COUPON_RETRY", return_details=return_details)
         print(f"  ↪️  Falling back to legacy checkout...")
         try:
             from checkout.dom import place_order_fast
