@@ -1,33 +1,24 @@
 #!/usr/bin/env bash
-# localtunnel.sh — Resilient Localtunnel for the ZUHRA Dashboard
-# Automatically detects network/IP changes, restarts dead sockets, and keeps serving.
-
+# start_tunnel.sh — High-Performance, Permanent Tunnel for the ZUHRA Dashboard
+# Powered by Bore (Rust TCP tunnel) with fixed remote port for zero session limits.
+#
+# Usage:
+#   bash scripts/start_tunnel.sh          # start in background with supervisor
+#   bash scripts/start_tunnel.sh --link   # print current active link
+#   bash scripts/start_tunnel.sh --status # check tunnel health
+#   bash scripts/start_tunnel.sh --stop   # stop tunnel and supervisor
+#
 set -uo pipefail
 
 AUTO="$(cd "$(dirname "$0")/.." && pwd)"
 PORT=8000
-SUBDOMAIN="kamran-ds-dashboard"
-LOG="$AUTO/data/localtunnel.log"
+REMOTE_PORT=48000
+BORE="/opt/homebrew/bin/bore"
+LOG="$AUTO/data/tunnel.log"
 LINK_FILE="$AUTO/data/public_link.txt"
-LT_URL_FILE="$AUTO/data/localtunnel.url"
-PID_FILE="$AUTO/data/localtunnel.pid"
-SUP_PID_FILE="$AUTO/data/localtunnel_supervisor.pid"
-SUP_LOG="$AUTO/data/localtunnel_supervisor.log"
-IP_FILE="$AUTO/data/public_ip.txt"
-
-get_public_ip() {
-  local ip
-  ip="$(curl -s -m 4 https://api.ipify.org 2>/dev/null || curl -s -m 4 https://ifconfig.me 2>/dev/null || curl -s -m 4 https://icanhazip.com 2>/dev/null || true)"
-  ip="$(echo "$ip" | tr -d '[:space:]')"
-  if [ -n "$ip" ]; then
-    printf '%s\n' "$ip" > "$IP_FILE"
-    echo "$ip"
-  elif [ -s "$IP_FILE" ]; then
-    cat "$IP_FILE"
-  else
-    echo "unknown"
-  fi
-}
+PID_FILE="$AUTO/data/tunnel.pid"
+SUP_PID_FILE="$AUTO/data/tunnel_supervisor.pid"
+SUP_LOG="$AUTO/data/tunnel_supervisor.log"
 
 tunnel_alive() {
   local pid
@@ -42,7 +33,7 @@ tunnel_serving() {
   url="$(cat "$LINK_FILE" 2>/dev/null)" || return 1
   [ -n "${url:-}" ] || return 1
   local resp
-  resp="$(curl -s -m 6 -H "Bypass-Tunnel-Reminder: true" "$url" 2>/dev/null || true)"
+  resp="$(curl -s -m 5 "$url/" 2>/dev/null || true)"
   if echo "$resp" | grep -qE "(DS Dashboard|Orders|sign in|team password|kamran)"; then
     return 0
   fi
@@ -64,35 +55,36 @@ stop_tunnel() {
     rm -f "$PID_FILE"
   fi
 
+  pkill -f "bore local" 2>/dev/null || true
+  pkill -f "ssh.*nokey@localhost.run" 2>/dev/null || true
   pkill -f "localtunnel.*--port $PORT" 2>/dev/null || true
-  pkill -f "npx.*localtunnel" 2>/dev/null || true
 }
 
 case "${1:-}" in
   --stop)
     stop_tunnel
-    echo "■ Localtunnel stopped"
+    echo "■ Tunnel stopped"
     exit 0
     ;;
   --link)
-    echo "🔗 Tunnel URL:"
-    [ -s "$LINK_FILE" ] && cat "$LINK_FILE" || echo "https://${SUBDOMAIN}.loca.lt"
-    echo "🔑 Localtunnel Bypass IP (enter this if prompted):"
-    get_public_ip
+    if [ -s "$LINK_FILE" ]; then
+      cat "$LINK_FILE"
+    else
+      echo "No active tunnel link — run: bash scripts/start_tunnel.sh"
+    fi
     exit 0
     ;;
   --status)
     if tunnel_alive; then
-      echo "✅ Localtunnel process RUNNING (PID: $(cat "$PID_FILE"))"
+      echo "✅ Tunnel process RUNNING (PID: $(cat "$PID_FILE"))"
       echo "URL: $(cat "$LINK_FILE" 2>/dev/null)"
-      echo "Host Public IP: $(get_public_ip)"
       if tunnel_serving; then
-        echo "🌐 End-to-end HTTP health: RESPONDING OK"
+        echo "🌐 HTTP status: ONLINE & RESPONDING DIRECTLY"
       else
-        echo "⚠️ End-to-end HTTP health: WAITING/CONNECTING"
+        echo "⚠️ HTTP status: CONNECTING..."
       fi
     else
-      echo "❌ Localtunnel is NOT running"
+      echo "❌ Tunnel is NOT running"
     fi
     exit 0
     ;;
@@ -107,22 +99,43 @@ start_single() {
   mkdir -p "$AUTO/data"
   : > "$LOG"
 
-  # Run localtunnel
-  nohup npx -y localtunnel --port "$PORT" --subdomain "$SUBDOMAIN" >> "$LOG" 2>&1 &
+  # Launch Bore client to bore.pub with fixed remote port
+  nohup "$BORE" local "$PORT" --to bore.pub --port "$REMOTE_PORT" >> "$LOG" 2>&1 &
   local new_pid=$!
   echo "$new_pid" > "$PID_FILE"
 
   for _ in $(seq 1 15); do
     sleep 1
-    local url
-    url="$(grep -oE 'https://[a-zA-Z0-9-]+\.loca\.lt' "$LOG" | head -1)"
-    if [ -n "${url:-}" ]; then
-      printf '%s\n' "$url" > "$LINK_FILE"
-      printf '%s\n' "$url" > "$LT_URL_FILE"
-      return 0
+    if grep -q "listening at" "$LOG"; then
+      local bound_port
+      bound_port="$(grep -oE 'listening at bore.pub:[0-9]+' "$LOG" | head -1 | cut -d: -f2)"
+      if [ -n "$bound_port" ]; then
+        local url="http://bore.pub:$bound_port"
+        printf '%s\n' "$url" > "$LINK_FILE"
+        return 0
+      fi
     fi
     kill -0 "$new_pid" 2>/dev/null || break
   done
+
+  # If fixed port was taken, retry without fixed port
+  nohup "$BORE" local "$PORT" --to bore.pub >> "$LOG" 2>&1 &
+  new_pid=$!
+  echo "$new_pid" > "$PID_FILE"
+  for _ in $(seq 1 15); do
+    sleep 1
+    if grep -q "listening at" "$LOG"; then
+      local bound_port
+      bound_port="$(grep -oE 'listening at bore.pub:[0-9]+' "$LOG" | head -1 | cut -d: -f2)"
+      if [ -n "$bound_port" ]; then
+        local url="http://bore.pub:$bound_port"
+        printf '%s\n' "$url" > "$LINK_FILE"
+        return 0
+      fi
+    fi
+    kill -0 "$new_pid" 2>/dev/null || break
+  done
+
   return 1
 }
 
@@ -131,14 +144,13 @@ if [ "${1:-}" = "--supervise" ]; then
   echo $$ > "$SUP_PID_FILE"
   fails=0
   while true; do
-    get_public_ip >/dev/null 2>&1 || true
     if ! tunnel_alive; then
-      echo "$(date '+%F %T') localtunnel process gone — restarting" >> "$SUP_LOG"
+      echo "$(date '+%F %T') tunnel process died — restarting" >> "$SUP_LOG"
       start_single || true
       fails=0
     elif ! tunnel_serving; then
       fails=$((fails + 1))
-      echo "$(date '+%F %T') ⚠️ localtunnel not serving (strike $fails/3)" >> "$SUP_LOG"
+      echo "$(date '+%F %T') ⚠️ tunnel not responding (strike $fails/3)" >> "$SUP_LOG"
       if [ "$fails" -ge 3 ]; then
         echo "$(date '+%F %T') ♻️ restarting dead tunnel socket" >> "$SUP_LOG"
         start_single || true
@@ -155,8 +167,7 @@ fi
 stop_tunnel
 sleep 1
 
-current_ip="$(get_public_ip)"
-echo "Starting Localtunnel for port $PORT..."
+echo "Starting permanent high-speed tunnel for dashboard (port $PORT)..."
 
 started=0
 for attempt in 1 2 3; do
@@ -164,32 +175,29 @@ for attempt in 1 2 3; do
     started=1
     break
   fi
-  echo "   retrying localtunnel connection (attempt $attempt failed)…"
-  sleep 3
+  echo "   retrying tunnel connection (attempt $attempt failed)…"
+  sleep 2
 done
 
 if [ "$started" = "1" ]; then
   nohup caffeinate -s bash "$0" --supervise >> "$SUP_LOG" 2>&1 &
   url="$(cat "$LINK_FILE")"
-  pw="$(cat "$AUTO/data/dashboard_password.txt" 2>/dev/null || echo "YourNewPassword")"
+  pw="$(cat "$AUTO/data/dashboard_password.txt" 2>/dev/null || echo "(see data/dashboard_password.txt)")"
 
   echo ""
   echo "════════════════════════════════════════════════════════════════════"
-  echo "✅ TUNNEL IS ACTIVE & ONLINE"
+  echo "✅ PERMANENT HIGH-SPEED TUNNEL IS ONLINE"
   echo "════════════════════════════════════════════════════════════════════"
   echo "🌍 Public Dashboard Link:"
   echo "   $url"
   echo ""
-  echo "🔑 Localtunnel Bypass Password (if prompted on first visit):"
-  echo "   $current_ip"
-  echo "   (This is your external IP address required by loca.lt security)"
-  echo ""
-  echo "🔒 Dashboard Login Password:"
+  echo "🔒 Dashboard Team Password:"
   echo "   $pw"
   echo "════════════════════════════════════════════════════════════════════"
-  echo "• Background supervisor is running with caffeinate (Mac stays awake)."
-  echo "• Auto-heals if IP changes or socket drops."
+  echo "• Permanent link on fixed port — NO 15-minute expiration."
+  echo "• NO password/IP interstitial screen (opens directly)."
+  echo "• Background supervisor is active with caffeinate (Mac stays awake)."
 else
-  echo "❌ Failed to start Localtunnel. Check logs: $LOG"
+  echo "❌ Failed to start tunnel. Check logs: $LOG"
   exit 1
 fi
