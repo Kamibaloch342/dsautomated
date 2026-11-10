@@ -570,6 +570,13 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
 
     resolved = _resolved_keys(con)
     verified = load_verified()
+    # Listing events (CATEGORY 8) are read here, while the connection is open
+    listing_event_rows: List[Dict[str, Any]] = []
+    if _has_table(con, "listing_events"):
+        try:
+            listing_event_rows = [dict(r) for r in con.execute("SELECT * FROM listing_events ORDER BY at DESC LIMIT 2000")]
+        except sqlite3.Error:
+            listing_event_rows = []
     con.close()
 
     orders = list(orders_map.values())
@@ -589,7 +596,10 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
         "earnings_increase", "earnings_decrease", "shipping_change",
         "zoro_price_increase", "zoro_price_decrease", "zoro_ship_rule",
         "handling_time_tune", "handling_review", "oos_alert", "alt_sku_used", "low_margin",
-        "zip_mismatch", "undelivered", "refunded", "wrong_qty", "shipped_late", "wb_unmatched"
+        "zip_mismatch", "undelivered", "refunded", "wrong_qty", "shipped_late", "wb_unmatched",
+        # listings (10 Nov 2026) — rows of listing_events, see CATEGORY 8 below
+        "listing_off_sale", "listing_back_on_sale", "own_brand_other_seller", "own_brand_rating",
+        "own_brand_reviews", "own_brand_category",
     ]}
 
     def add(kind: str, ref_key: str, oid: str, msg: str, sev: str, extra: Optional[Dict[str, Any]] = None):
@@ -672,6 +682,23 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
         rk = f"{acct}:{asin}:alt_sku:{d_str}"
         msg = f"ASIN {asin}: Main Zoro SKU {e['main']} is out of stock, so {n} order{'s' if n > 1 else ''} went through on Alternative SKU {e['alt']}"
         add("alt_sku_used", rk, e["oids"][0], msg, "low", {"asin": asin, "account": acct, "main_sku": e["main"], "alt_sku": e["alt"], "orders": n, "date": d_str, "link": "order"})
+
+    # ═══════════════════════════════════════════════════════════════════════════
+    # CATEGORY 8: Listings — off sale / back on sale with Zoro's stock, and own-brand changes
+    # ═══════════════════════════════════════════════════════════════════════════
+    # One item per row of listing_events (utils/listing_events.py): written by the placer's listing
+    # guard when it changes a listing because Zoro ran out or restocked, and by the repricer scrape's
+    # listing watch (other sellers, rating, number of ratings, category on HOANK / Hathoro listings).
+    # Their WhatsApp messages are sent by the writers at once; this only shows them here.
+    for ev in listing_event_rows:
+        kind, day = ev.get("kind") or "", str(ev.get("at") or "")[:10]
+        if kind not in out or not in_window(day):
+            continue
+        if account and account not in ("All", "all", "") and ev.get("store") != account:
+            continue
+        add(kind, ev.get("ref_key") or "", "", ev.get("message") or "", ev.get("severity") or "med", {
+            "asin": ev.get("asin") or "", "account": ev.get("store") or "", "sku": ev.get("sku") or "",
+            "title": ev.get("title") or "", "date": day, "link": "asin"})
 
     # ═══════════════════════════════════════════════════════════════════════════
     # CATEGORY 7: Low Margin Split (Placed < 8% vs Unplaced Loss-Kamran)

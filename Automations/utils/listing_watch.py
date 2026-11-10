@@ -5,7 +5,8 @@ The repricer scrape (scripts/generate_hoank_offers_report.py / generate_hathoro_
 started every 12 h by the dashboard) already opens the Amazon page of every listing that sold in the
 last 30 days and reads its offers. While that page is open this module also reads the brand line,
 the star rating, the number of ratings and the category, remembers them, and reports the
-differences in ONE WhatsApp message per store and run (owner, 10 Nov 2026):
+differences in ONE WhatsApp message per store and run to the store's Insights group, and one by one
+on the dashboard's Insights tab (utils/listing_events.py) — owner, 10 Nov 2026:
 
   • a seller on one of our PL listings who is not one of our stores (new since the last look),
   • the star rating moved,
@@ -155,6 +156,7 @@ class ListingWatch:
         self.rating: List[str] = []
         self.reviews: List[str] = []
         self.category: List[str] = []
+        self.events: List[tuple] = []            # (kind, asin, sku, title, text) → the dashboard's Insights
 
     @staticmethod
     def _name(asin: str, sku: str, title: str) -> str:
@@ -189,25 +191,30 @@ class ListingWatch:
 
         if prev is None:
             if pl and others:
-                self.present_sellers.append(f"• {who} — " + ", ".join(n + price_of(n) for n in others[:4])
-                                            + (f" +{len(others) - 4}" if len(others) > 4 else ""))
+                names = ", ".join(n + price_of(n) for n in others[:4]) + (f" +{len(others) - 4}" if len(others) > 4 else "")
+                self.present_sellers.append(f"• {who} — {names}")
+                self.events.append(("own_brand_other_seller", asin, sku, title, f"Other seller on our own-brand listing: {names}"))
         elif pl:
             fresh = [n for n in others if n not in (prev.get("others") or [])]
             if fresh:
-                self.new_sellers.append(f"• {who} — " + ", ".join(n + price_of(n) for n in fresh[:4])
-                                        + (f" +{len(fresh) - 4}" if len(fresh) > 4 else ""))
+                names = ", ".join(n + price_of(n) for n in fresh[:4]) + (f" +{len(fresh) - 4}" if len(fresh) > 4 else "")
+                self.new_sellers.append(f"• {who} — {names}")
+                self.events.append(("own_brand_other_seller", asin, sku, title, f"NEW seller on our own-brand listing: {names}"))
             r0, r1 = prev.get("rating"), f["rating"]
             n0, n1 = prev.get("reviews"), f["reviews"]
             if r0 is not None and r1 is not None and abs(float(r0) - float(r1)) >= 0.05:
                 arrow = "📉" if r1 < r0 else "📈"
                 cnt = f" ({n0} → {n1} ratings)" if (n0 is not None and n1 is not None and n0 != n1) else ""
                 self.rating.append(f"• {arrow} {who} — {r0} → {r1} ★{cnt}")
+                self.events.append(("own_brand_rating", asin, sku, title, f"Star rating {r0} → {r1}{cnt}"))
             elif n0 is not None and n1 is not None and n0 != n1:
                 star = f" ({r1} ★)" if r1 is not None else ""
                 self.reviews.append(f"• {who} — {n0} → {n1} ratings{star}")
+                self.events.append(("own_brand_reviews", asin, sku, title, f"Number of ratings {n0} → {n1}{star}"))
             c0, c1 = prev.get("category"), f["category"]
             if c0 and c1 and c0 != c1:
                 self.category.append(f"• {who} — “{c0}” → “{c1}”")
+                self.events.append(("own_brand_category", asin, sku, title, f"Category “{c0}” → “{c1}”"))
 
         keep = dict(prev or {})
         keep.update({"pl": pl, "seen": time.strftime("%Y-%m-%dT%H:%M")})
@@ -255,6 +262,10 @@ class ListingWatch:
             if text and send:
                 from utils.whatsapp import get_whatsapp_group, send_whatsapp_message
                 send_whatsapp_message(text, to=get_whatsapp_group(self.store, kind="insights"), background=False)
+            if send:                                 # the same changes, one by one, on the dashboard's Insights tab
+                from utils.listing_events import record
+                for kind, asin, sku, title, msg in self.events:
+                    record(self.store, asin, kind, msg, sku=sku, title=title)
         except Exception as e:
             print(f"[listing watch] {self.store}: could not finish ({type(e).__name__}: {e})")
         return text

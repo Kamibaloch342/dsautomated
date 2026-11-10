@@ -283,13 +283,17 @@ def find_listing(driver, asin: str, sku: str = "", login_profile: Optional[str] 
 
 def set_offer_field(driver, asin: str, sku: str, field: str, value: int, login_profile: Optional[str] = None,
                     dry_run: bool = False, trace: Optional[List] = None, force: bool = False,
-                    submit: bool = True) -> Dict[str, Any]:
+                    submit: bool = True, lower_ok: bool = False, only_if: Optional[str] = None) -> Dict[str, Any]:
     """Set the quantity or the handling time of one offer. Returns
-    {'ok': bool, 'changed': bool, 'previous': str, 'note': str}.
+    {'ok': bool, 'changed': bool, 'skipped': bool, 'previous': str, 'note': str}.
     ok=True/changed=False means the value was already there (or a dry run). force=True types and
     submits even then (a supervised check, or putting a longer handling time back). submit=False goes
-    through everything up to the Submit button and stops there — nothing is saved."""
-    out = {"ok": False, "changed": False, "previous": "", "note": ""}
+    through everything up to the Submit button and stops there — nothing is saved.
+    lower_ok=True lets a handling time go DOWN (putting a listing back after a restock); without it
+    a handling time that is already as long or longer is left alone. only_if="7": change the field
+    only while it still holds that value — otherwise a person has changed it since, and the result
+    is ok=False, skipped=True with nothing typed."""
+    out = {"ok": False, "changed": False, "skipped": False, "previous": "", "note": ""}
     fid = FIELDS.get(field)
     if not fid:
         out["note"] = f"unknown field {field!r}"
@@ -308,6 +312,10 @@ def set_offer_field(driver, asin: str, sku: str, field: str, value: int, login_p
             out["note"] = found["note"]
             return out
         sku = found["sku"]
+        if field == "quantity" and only_if is not None and found["qty"].strip() != str(only_if):
+            out.update(skipped=True, previous=found["qty"],
+                       note=f"the quantity is {found['qty'] or 'empty'}, not {only_if} — changed by hand since, left alone")
+            return out
         if field == "quantity" and found["qty"].isdigit() and int(found["qty"]) == int(want) and not force:
             out.update(ok=True, previous=found["qty"], note=f"quantity was already {want}")
             return out
@@ -357,10 +365,16 @@ def set_offer_field(driver, asin: str, sku: str, field: str, value: int, login_p
 
         prev = str(f.get("value") or "").strip()
         out["previous"] = prev
+        if only_if is not None and prev != str(only_if):
+            out.update(skipped=True, note=f"the {'handling time' if field == 'handling_days' else field} is "
+                                          f"{prev or 'empty'}, not {only_if} — "
+                                          f"changed by hand since, left alone")
+            return out
         if field == "quantity" and prev.isdigit() and int(prev) == int(want) and not force:
             out.update(ok=True, note=f"quantity was already {want}")
             return out
-        if field == "handling_days" and prev.isdigit() and int(prev) >= int(want) and not force:
+        if field == "handling_days" and prev.isdigit() and not force and (
+                int(prev) == int(want) or (int(prev) > int(want) and not lower_ok)):
             out.update(ok=True, note=f"handling time was already {prev} days")
             return out
 
@@ -415,6 +429,26 @@ def set_offer_field(driver, asin: str, sku: str, field: str, value: int, login_p
                 pass
 
 
+def account_default_handling_days(driver) -> Optional[int]:
+    """The store's own default handling time — what a listing with an EMPTY handling time gets — read
+    from Seller Central → Shipping settings → General ("Default handling time 1 day"). None when the
+    page does not say. Needed to put back a listing whose handling time was empty before: emptying
+    the field again changes nothing on Amazon, so the number itself has to be set."""
+    import re
+    try:
+        driver.get("https://sellercentral.amazon.com/fbm/general-setting")
+        end = time.time() + 20
+        while time.time() < end:
+            time.sleep(1)
+            txt = driver.execute_script("return (document.body.innerText || '').replace(/\\s+/g, ' ');") or ""
+            m = re.search(r"Default handling time\s+(\d+)\s+day", txt, re.I)
+            if m:
+                return int(m.group(1))
+    except Exception:
+        pass
+    return None
+
+
 def _await_submitted(driver, fid: str, trace: Optional[List] = None):
     """After Submit: (True, its words) once Seller Central shows "All done. Thanks for submitting your
     changes. If approved, changes will be reflected within 24 hours." — else (False, what it showed)."""
@@ -451,6 +485,8 @@ if __name__ == "__main__":
     ap.add_argument("--no-submit", action="store_true", help="everything up to the Submit button, save nothing")
     ap.add_argument("--trace", action="store_true")
     ap.add_argument("--force", action="store_true", help="type and submit even when the value is already there")
+    ap.add_argument("--lower-ok", action="store_true", help="let a handling time go down")
+    ap.add_argument("--only-if", default=None, help="change the field only while it still holds this value")
     a = ap.parse_args()
     import closing
     from utils.sc_chrome import sc_turn
@@ -459,7 +495,7 @@ if __name__ == "__main__":
         d = closing.ensure_chrome(a.port, headless=False)
         try:
             res = set_offer_field(d, a.asin, a.sku, a.field, a.value, dry_run=a.dry_run, trace=tr if a.trace else None,
-                                  force=a.force, submit=not a.no_submit)
+                                  force=a.force, submit=not a.no_submit, lower_ok=a.lower_ok, only_if=a.only_if)
         finally:
             try:
                 d.service.stop()          # never quit(): that would close the signed-in tabs

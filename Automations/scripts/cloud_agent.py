@@ -109,6 +109,7 @@ SLIM_TABLES = [
     "amazon_report_orders", "amazon_report_files",     # the daily report's day counts (28 Sep 2026)
     "pl_candidates",                                   # private-label pipeline (30 Sep 2026)
     "archive_returns", "po_box_orders",                                 # Auto Refunds tab: Refund Initiated e-mails (11 Oct 2026)
+    "listing_events", "listing_oos",                   # Insights: listings off sale / back on sale, own-brand changes (10 Nov 2026)
 ]
 SLIM_VIEWS = ("v_orders_all", "v_closing")
 

@@ -73,6 +73,15 @@ DAILY_SUMMARY = (
 WEEKLY_SUMMARY = (("handling_review", "⏱️ Handling days that can be cut"),)
 _SUMMARY_CATEGORIES = {c for c, _ in DAILY_SUMMARY + WEEKLY_SUMMARY}
 
+# Listing events (off sale / back on sale with Zoro's stock, own-brand listing changes) are sent to
+# the Insights group by whoever notices them, at once — the placer's listing guard and the repricer
+# scrape's listing watch. They show on the Insights tab through insights.compute(); sending them
+# from here as well would deliver every one twice.
+try:
+    from utils.listing_events import SENT_AT_SOURCE as _SENT_AT_SOURCE
+except Exception:
+    _SENT_AT_SOURCE = frozenset()
+
 # The daily summary waits for the morning's closing run. Local time.
 SUMMARY_HOUR = int(os.environ.get("ZUHRA_SUMMARY_HOUR", "12") or 12)
 SUMMARY_LOOKBACK_DAYS = 30
@@ -276,7 +285,7 @@ def dispatch_account_insights(
     categories = [category_filter] if category_filter else list(all_insights.keys())
 
     for cat in categories:
-        if cat in _SUMMARY_CATEGORIES:
+        if cat in _SUMMARY_CATEGORIES or cat in _SENT_AT_SOURCE:
             continue
         items = all_insights.get(cat, [])
         if not items:

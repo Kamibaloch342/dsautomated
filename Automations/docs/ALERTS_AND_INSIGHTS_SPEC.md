@@ -32,11 +32,16 @@ Rules:
 | Buyer shipping | Buyer paid on a listing that ships free (70%+ of its last 10 orders), or a paid listing went free. |
 | Refunded, Undelivered, Shipped late, WB unmatched | One daily summary per store, from 12:00 local (`ZUHRA_SUMMARY_HOUR`). |
 
-Two more senders, added 10 Nov 2026, each with its own once-only memory:
+Two more senders, added 10 Nov 2026, each with its own once-only memory. Both message the Insights
+group themselves, at once, and write one row per event to `listing_events`, which
+`insights.compute()` turns into six Insights categories (`listing_off_sale`, `listing_back_on_sale`,
+`own_brand_other_seller`, `own_brand_rating`, `own_brand_reviews`, `own_brand_category`). The
+hourly sender skips those categories (`utils.listing_events.SENT_AT_SOURCE`) — do not add them to
+its headers, or each arrives twice.
 
 | Alert | Where | Rule |
 |---|---|---|
-| Listing still selling, Zoro out | `engine/listing_guard.py` → Orders group | The placer found the main Zoro code and every alternative out of stock (for one unit of the listing; an alternative that did not answer does not count as out). The placer then makes the change on Seller Central itself (`engine/offer_edit.py`: DS quantity 0; PL handling time 7 days, never 0) and sends one message per listing saying PL or DS — from the brand on the product page — and what was done, or what to do by hand if it could not. Repeated after 24 h if orders keep coming (after 2 h when the listing was changed: then the change did not stick). The Zoro code goes on Restock Watch. Table `listing_oos`. |
+| Listing still selling, Zoro out; listing back when Zoro restocks | `engine/listing_guard.py` → Orders group and Insights group | The placer found the main Zoro code and every alternative out of stock (for one unit of the listing; an alternative that did not answer does not count as out). The placer then makes the change on Seller Central itself (`engine/offer_edit.py`: DS quantity 0; PL handling time 7 days, never 0) and sends one message per listing saying PL or DS — from the brand on the product page — and what was done, or what to do by hand if it could not. Repeated after 24 h if orders keep coming (after 2 h when the listing was changed: then the change did not stick). Every 30 min the placer asks Zoro again; when the main code or an alternative is buyable for 3 units of the listing it puts back what it changed (and only that), and says so. The Zoro code goes on Restock Watch. Table `listing_oos`. |
 | Own-brand listings: what changed | `utils/listing_watch.py` → Insights group | During the 12-hourly repricer scrape, for listings whose brand is HOANK / Hathoro: a seller who is none of our stores and was not there last time, the star rating moved, the number of ratings changed, the category changed. One message per store and run. The first look at a listing only records it. A value the page did not show keeps the remembered one. `data/pl_watch_state.json`. |
 
 Things that bit us, do not reintroduce:

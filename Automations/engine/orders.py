@@ -1271,10 +1271,12 @@ def _ultra_hold_oos(driver, orders, sku_map):
         try:        # main and every alternative out for one unit: the Amazon listing must stop selling
             from engine import listing_guard
             _o = next((o for o in orders if str(o.get("asin") or "").strip() == asin), {})
+            _m = sku_map.get(asin) or {}
             listing_guard.note_out(STORE_ACCOUNT, asin, str(_o.get("seller_sku") or ""), out_asins[asin],
-                                   (sku_map.get(asin) or {}).get("alt_skus") or [],
+                                   _m.get("alt_skus") or [],
                                    str(_o.get("order_id") or _o.get("amazon_order_id") or ""),
-                                   str(_o.get("title") or ""), held_now=n)
+                                   str(_o.get("title") or ""), held_now=n,
+                                   unit_qty=max(1, int(float(_m.get("qty_multiplier") or 1) * int(_m.get("zoro_multiple") or 1))))
         except Exception as e:
             print(f"  ⚠️  listing guard note skipped: {type(e).__name__}: {e}")
     print(f"⚡⚡ Out of stock right now: {sum(held.values())} order(s) held, not marked — "
@@ -1299,9 +1301,9 @@ def _listing_out_note(driver, item, amazon_id, alt_tried=None):
         main = str(item.get("main_sku") or item.get("sku") or "").strip()
         if not asin or not main:
             return
-        order_qty = int(item.get("order_qty") or 1)
+        order_qty = max(1, int(item.get("order_qty") or 1))
+        one = max(1, int(item.get("final_qty") or 1) // order_qty)      # Zoro units behind ONE unit of the listing
         if order_qty > 1:
-            one = max(1, int(item.get("final_qty") or 1) // order_qty)
             cartable, status = check_inventory(driver, main, one)
             if cartable or status in _INV_UNKNOWN:
                 return
@@ -1311,7 +1313,7 @@ def _listing_out_note(driver, item, amazon_id, alt_tried=None):
                     return
         from engine import listing_guard
         listing_guard.note_out(STORE_ACCOUNT, asin, item.get("seller_sku") or "", main,
-                               item.get("alt_skus") or [], amazon_id, item.get("title") or "")
+                               item.get("alt_skus") or [], amazon_id, item.get("title") or "", unit_qty=one)
     except Exception as e:
         print(f"  ⚠️  listing guard note skipped: {type(e).__name__}: {e}")
 
