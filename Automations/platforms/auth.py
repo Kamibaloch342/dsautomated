@@ -37,6 +37,10 @@ _SEL_SIGNIN_OPTS  = ["#signInSubmit", "#auth-signin-button", "input[type='submit
 _SEL_OTP_FIELD    = "#auth-mfa-otpcode"
 _SEL_OTP_SUBMIT   = "#auth-signin-button"
 _SEL_REMEMBER_CB  = "#auth-mfa-remember-device"
+# Amazon's "Switch accounts" page (read from the live page, 10 Nov 2026): one link per remembered
+# account, an "Add account" link, and a "Sign out" link per account that must never be pressed.
+_SEL_SWITCH_TILES = 'a[data-name="switch_account_request"]'
+_SEL_SWITCH_ADD   = "#cvf-account-switcher-add-accounts-link"
 
 # ── keywords that identify a login / OTP page ────────────────────────
 _LOGIN_URL_MARKERS = ["ap/signin", "ap/mfa"]
@@ -187,6 +191,50 @@ def _submit_otp(driver, totp_secret):
     return True
 
 
+def _pick_remembered_account(driver, email):
+    """Amazon's "Switch accounts" page: choose the account to sign in with.
+
+    When a session has ended Amazon may show, instead of the e-mail box, a list of the accounts this
+    browser remembers ("Hifza Sultan — <e-mail>") with "Add account" under it. There is no e-mail
+    and no password field on it, so the sign-in below found nothing and gave up with "Password field
+    not found": on 10 Nov 2026 both Hathoro placers stood on this page, failed 11 times in 16 minutes
+    and placed nothing. Press the account whose e-mail is the store's saved login; if it is not in the
+    list, press "Add account", which leads to the usual e-mail page.
+
+    Returns "account", "add", or "" when this is not that page."""
+    try:
+        tiles = [t for t in driver.find_elements(By.CSS_SELECTOR, _SEL_SWITCH_TILES) if t.is_displayed()]
+    except Exception:
+        return ""
+    if not tiles:
+        return ""
+    want = (email or "").strip().lower()
+    for tile in tiles:
+        try:
+            if want and want in (tile.text or "").lower():
+                tile.click()
+                time.sleep(random.uniform(2.5, 4.0))
+                return "account"
+        except Exception:
+            continue
+    try:
+        driver.find_element(By.CSS_SELECTOR, _SEL_SWITCH_ADD).click()
+        time.sleep(random.uniform(2.5, 4.0))
+        return "add"
+    except Exception:
+        return ""
+
+
+def _page_says(driver):
+    """The page's own heading, for the log — so a sign-in page this code does not know names itself."""
+    try:
+        return (driver.execute_script(
+            "var h = document.querySelector('h1, h2'); "
+            "return ((h && h.innerText) || document.title || '').replace(/\\s+/g, ' ').trim().slice(0, 80);") or "")
+    except Exception:
+        return ""
+
+
 def auto_login(driver, account_identifier, max_attempts=2):
     """
     Detects and handles Amazon Seller Central login + OTP automatically.
@@ -240,8 +288,18 @@ def auto_login(driver, account_identifier, max_attempts=2):
                 print(f"  ⚠️  Still on a login page after the code (attempt {attempt}).")
                 continue
 
+            # ── Step 0b: "Switch accounts" — pick the store's own account ──
+            picked = _pick_remembered_account(driver, email)
+            if picked:
+                print("  🔐  Amazon showed its 'Switch accounts' page — "
+                      + ("chose this store's account." if picked == "account" else "pressed 'Add account'."))
+                if not is_login_page(driver):
+                    print(f"  ✅  Auto-login successful for '{account_key}'.")
+                    return True
+
             # ── Step 1: Email ─────────────────────────────────────
-            email_field = _find_with_fallbacks(driver, _SEL_EMAIL_OPTS, timeout=8)
+            # (not after choosing a remembered account: that page goes straight to the password)
+            email_field = None if picked == "account" else _find_with_fallbacks(driver, _SEL_EMAIL_OPTS, timeout=8)
             if email_field:
                 email_field.clear()
                 _type_slowly(email_field, email)
@@ -266,7 +324,7 @@ def auto_login(driver, account_identifier, max_attempts=2):
             # ── Step 2: Password ──────────────────────────────────
             pw_field = _find_with_fallbacks(driver, _SEL_PASSWORD_OPTS, timeout=10)
             if not pw_field:
-                print(f"  ⚠️  Password field not found. Page may have changed.")
+                print(f"  ⚠️  Password field not found. The page says: \"{_page_says(driver) or 'nothing readable'}\"")
                 continue
             pw_field.clear()
             _type_slowly(pw_field, password)

@@ -587,6 +587,43 @@ def _upsert_unified_db(amazon_id, detail, **extra):
             print(f"  ⚠️ dead-letter write also failed: {e2}")
 
 
+def _first_line(e):
+    """An error in one line. A Selenium error carries a 17-line chromedriver stack that says nothing
+    about the page; printed five times a cycle it buried the one line that mattered."""
+    s = str(e).strip()
+    return (s.splitlines()[0] if s else type(e).__name__)[:300]
+
+
+SIGNIN_RETRY_S = 300
+_signin_told_at = [0.0]
+
+
+def _signin_needed():
+    """Seller Central still shows a sign-in page after the automatic sign-in: nothing in this cycle can
+    work. Say it once and plainly, tell the Orders group at most once an hour, wait five minutes
+    rather than try Amazon's sign-in every 40 seconds, then end the cycle.
+
+    10 Nov 2026: both Hathoro placers stood on Amazon's "Switch accounts" page. Each cycle went on to
+    the order filters and printed five stack traces; the cause was one line among a hundred."""
+    print(f"  🛑 SELLER CENTRAL SIGN-IN NEEDED — {PROFILE_NAME} cannot read orders. The automatic sign-in did not "
+          f"get through (see the 🔐 lines above). Sign in in this profile's Chrome window (port {PORT}); "
+          f"trying again in {SIGNIN_RETRY_S // 60} minutes.")
+    if time.time() - _signin_told_at[0] > 3600:
+        _signin_told_at[0] = time.time()
+        try:
+            from utils.whatsapp import get_whatsapp_group, send_whatsapp_message
+            send_whatsapp_message(f"🔐 *Seller Central sign-in needed — {PROFILE_NAME}*\n"
+                                  f"• The placer cannot read {STORE_ACCOUNT}'s orders: Amazon asks to sign in and the "
+                                  f"automatic sign-in did not get through\n"
+                                  f"• Sign in once in this profile's Chrome window on the Mac; the placer tries again "
+                                  f"every {SIGNIN_RETRY_S // 60} minutes",
+                                  to=get_whatsapp_group(STORE_ACCOUNT, kind="orders"))
+        except Exception as e:
+            print(f"  ⚠️ WhatsApp alert error: {e}")
+    time.sleep(SIGNIN_RETRY_S)
+    raise RuntimeError(f"Seller Central sign-in needed for {PROFILE_NAME}")
+
+
 def _print_section(title):
     print(f"\n  {'─' * 14} {title} {'─' * 14}")
 
@@ -2574,6 +2611,8 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
         print("  🔐 Login required — auto-logging in...")
         auto_login(driver, PROFILE_NAME)
         driver.get(url)
+        if is_login_page(driver):
+            _signin_needed()             # says so once, waits, ends the cycle
     time.sleep(5)
     if on_account_switcher(driver):      # signed in, no store chosen yet
         choose_store_if_asked(driver, PROFILE_NAME, target_url=url)
@@ -2589,7 +2628,7 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
             print(f"  Set search type: {search_type}")
             time.sleep(1.5)
         except Exception as e:
-            print(f"  ⚠️  Could not set search type dropdown: {e}")
+            print(f"  ⚠️  Could not set search type dropdown: {_first_line(e)}")
 
     try:
         # Set date range to Last 30 days
@@ -2598,7 +2637,7 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
         print("  Set date range: Last 30 days")
         time.sleep(1.5)
     except Exception as e:
-        print(f"  ⚠️  Could not set date range: {e}")
+        print(f"  ⚠️  Could not set date range: {_first_line(e)}")
 
     try:
         # Set sort to Order date (descending)
@@ -2607,7 +2646,7 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
         print("  Set sort: Order date (descending)")
         time.sleep(1.5)
     except Exception as e:
-        print(f"  ⚠️  Could not set sort: {e}")
+        print(f"  ⚠️  Could not set sort: {_first_line(e)}")
 
     try:
         # Set 100 results per page
@@ -2616,7 +2655,7 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
         print("  Set 100 results per page")
         time.sleep(2)
     except Exception as e:
-        print(f"  ⚠️  Could not set results per page: {e}")
+        print(f"  ⚠️  Could not set results per page: {_first_line(e)}")
 
     # Validate filter settings (required) — skipped for the favorites saved view,
     # which keeps its own date filter and has no search-type dropdown.
@@ -2648,7 +2687,7 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
                 f"PerPage={current_filters['perpage']}, SearchType={current_filters['searchtype']}"
             )
       except Exception as e:
-        print(f"  ❌ Filter validation failed: {e}")
+        print(f"  ❌ Filter validation failed: {_first_line(e)}")
         raise
 
     # Get total order count
@@ -8157,7 +8196,7 @@ def main():
                 _save_log()
 
         except Exception as e:
-            print(f"❌ Loop Error: {e}")
+            print(f"❌ Loop Error: {_first_line(e)}")
 
         _ultra_stop()
 
