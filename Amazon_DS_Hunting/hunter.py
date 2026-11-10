@@ -1745,20 +1745,32 @@ def ensure_portal_running() -> None:
 PID_FILE = os.path.join(CURRENT_DIR, "hunter.pid")
 
 
+def _pid_is_hunter(pid: int) -> bool:
+    """True only when `pid` is alive AND is a hunter.py process.
+
+    A live pid is not proof: after a reboot the number in hunter.pid belongs to whatever started
+    next. On 9 Nov 2026 it was Adobe Creative Cloud (pid 850), and launchd restarted the hunter
+    more than a thousand times, each one refusing to run because "it is already running"."""
+    try:
+        out = subprocess.run(["ps", "-p", str(pid), "-o", "command="],
+                             capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return False                      # cannot tell → treat the pid file as stale
+    return "hunter.py" in out
+
+
 def acquire_instance_lock() -> bool:
     """Only one hunter may run — a second copy would double-spend Keepa tokens and scrapes."""
     try:
         with open(PID_FILE, encoding="utf-8") as fh:
             old = int(fh.read().strip() or 0)
-        if old and old != os.getpid():
-            os.kill(old, 0)  # raises if that process is gone
-            print(f"hunter.py is already running (pid {old}). Use the portal's Run now button, or stop it first.")
-            return False
-    except (OSError, ValueError, ProcessLookupError):
-        pass
-    except PermissionError:
-        print(f"hunter.py is already running (pid file {PID_FILE}).")
+    except (OSError, ValueError):
+        old = 0
+    if old and old != os.getpid() and _pid_is_hunter(old):
+        print(f"hunter.py is already running (pid {old}). Use the portal's Run now button, or stop it first.")
         return False
+    if old and old != os.getpid():
+        print(f"hunter.pid named pid {old}, which is not a hunter (stale after a restart) — taking over.")
     with open(PID_FILE, "w", encoding="utf-8") as fh:
         fh.write(str(os.getpid()))
     return True
