@@ -1,17 +1,19 @@
-"""One Seller Central Chrome per store, several users (28 Sep 2026).
+"""One Seller Central Chrome, several users (28 Sep 2026).
 
-The tracking uploader, closing's report download, the exception-only Seller Central scrape and
-messaging all drive the SAME Chrome per store (HOANK 9331, Hathoro 9333). Run at the same time
-they navigate each other's tab — 19 Sep: the HOANK tracker halted mid report-download on a review
-page — and closing's download folder captures the tracker's reports. With auto-closing at 04:00
-next to trackers that run all day, that became a daily event.
+Closing's report download, the exception-only Seller Central scrape, messaging and the hourly
+store reports all drive the SAME Chrome per store (HOANK 9331, Hathoro 9333). Run at the same time
+they navigate each other's tab and capture each other's downloads.
 
-`sc_turn(port, who)` gives one unit of work the Chrome to itself — one tracker cycle, one report
-download, one scrape pass, one buyer message — while the others wait for their turn. It is an
-exclusive lock on data/sc_chrome_<port>.lock (utils.jsonstore.locked: flock, released by the
-kernel even when a process dies, so it can never go stale). Units are short, so nobody waits
-long: messaging takes a turn per order, so tracking uploads never stop for the length of a
-messaging run (late shipments).
+The tracking uploader has its own Chrome since 3 Nov 2026 (HOANK 9335, Hathoro 9336). It used to
+share this one: one tracker cycle held the turn for 6 hours (30 Oct, 22:03 → 04:03), and closing
+waited 20 minutes and then drove the tracker's tab anyway. So the lock is per port, and nothing
+on 9331 / 9333 ever waits for a tracker.
+
+`sc_turn(port, who)` gives one unit of work the Chrome to itself — one report download, one scrape
+pass, one buyer message — while the others wait for their turn. It is an exclusive lock on
+data/sc_chrome_<port>.lock (utils.jsonstore.locked: flock, released by the kernel even when a
+process dies, so it can never go stale). Units are short, so nobody waits long: messaging takes a
+turn per order.
 
 Waiting is bounded. With on_timeout="skip" (the tracker) a turn that does not come within
 `max_wait` raises SCBusy and the caller skips that cycle; with "proceed" (closing, scrape,

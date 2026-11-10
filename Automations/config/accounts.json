@@ -15,7 +15,9 @@
         "abecomllc02"
       ],
       "sc_store_name": "HYPER SALE STORE",
-      "sc_marketplace": "United States"
+      "sc_marketplace": "United States",
+      "profile_prefix": "HS",
+      "tracker_port": 9335
     },
     "Hathoro": {
       "report_port": 9333,
@@ -29,7 +31,23 @@
         "salesmercentile"
       ],
       "sc_store_name": "Discounted Maal",
-      "sc_marketplace": "United States"
+      "sc_marketplace": "United States",
+      "profile_prefix": "DM",
+      "tracker_port": 9336
+    },
+    "Wrenchly": {
+      "report_port": 9337,
+      "fedex_port": 9338,
+      "sc_port": 9337,
+      "pd_key": "wrenchly",
+      "earnings_inbox": "wrenchlyllc",
+      "zoro_preferred": [
+        "abecomllc02"
+      ],
+      "sc_store_name": "Wrenchly Solutions LLC",
+      "sc_marketplace": "United States",
+      "profile_prefix": "WR",
+      "tracker_port": 9339
     }
   },
   "gmail_tokens": [
@@ -43,7 +61,9 @@
     "salesmercentile1",
     "toolzsolutionsllc220",
     "mkamrankhan342",
-    "hifzasultan342"
+    "hifzasultan342",
+    "abecomllc02",
+    "tempgithub"
   ],
   "gmail_accounts": [
     "qurtdis",
@@ -72,17 +92,20 @@
     "salestreendfitinc",
     "toolzsolutionsllc",
     "mkamrankhan342",
-    "hifzasultan342"
+    "hifzasultan342",
+    "tempgithub"
   ],
   "zoro_profile_inboxes": {
     "HS_COUPON": "toolzsolutionsllc220",
     "HS_RESELLER": "asad_amazon_us",
     "DM_RESELLER": "abecomllc26",
-    "DM_COUPON": "robstark771"
+    "DM_COUPON": "robstark771",
+    "WR_RESELLER": "abecomllc02"
   },
   "gmail_addresses": {
     "mkamrankhan342": "mkamrankhan342@gmail.com",
-    "hifzasultan342": "hifzasultan342@gmail.com"
+    "hifzasultan342": "hifzasultan342@gmail.com",
+    "tempgithub": "tempgithubhkhk@gmail.com"
   },
   "walmart": {
     "zoro_port": 9361,

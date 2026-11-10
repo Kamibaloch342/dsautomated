@@ -86,7 +86,7 @@ _PO_BOX_RE = re.compile(r'\bP\.?\s*O\.?\s*BOX\b')
 # claim and allow a retry. Mirrors engine/orders.py _SAFE_PREPAYMENT (plus
 # LOW_PROFIT / SPLIT_RETRY, which the engine also releases/aborts pre-payment).
 _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED",
-                    "NO_COUPONS_SKIP", "COUPON FAIL", "LOW_PROFIT", "SPLIT_RETRY")
+                    "SHARED_ACCOUNT", "NO_COUPONS_SKIP", "COUPON FAIL", "LOW_PROFIT", "SPLIT_RETRY")
 
 # Walmart referral fee (12%): earnings = (item_price + shipping_fee) * (1 - pct).
 # Named constant, env-overridable (WALMART_REFERRAL_PCT=0.12).
@@ -715,7 +715,7 @@ def _print_no_chrome_and_exit(port):
     print(f"           --remote-debugging-port={port} \\")
     print(f"           --user-data-dir=$HOME/.closing_chrome_profiles/{profile_dir} )")
     print("     2) Log into zoro.com with the dedicated Walmart Zoro account")
-    print("        (saved credit card required for checkout).")
+    print("        (Net 30 terms required for checkout).")
     print("     3) Re-run Walmart Orders.")
     print("   No queue row was touched.")
     print("═" * 66)
@@ -920,12 +920,15 @@ def _norm_street(s):
     return re.sub(r'[^A-Z0-9]', '', str(s or '').upper())
 
 
-def db_duplicate_check(po_number, street, zip_code, db_path=None):
+def db_duplicate_check(po_number, street, zip_code, db_path=None, product_codes=None):
     """Belt-and-braces LOCAL duplicate check against walmart_orders: has the
     same PO#, OR the same normalized street+zip, already been PLACED (wb set)?
+    The same address is no duplicate when that order provably bought another
+    product (Zoro codes on both sides, none shared).
     Returns ('dup', wb) / ('clear', None) / ('error', None) — callers treat
     'error' as FAIL-CLOSED (do not place)."""
     try:
+        from utils.dup_check_local import different_zoro_codes
         from utils.unified_db import get_conn
         with get_conn(db_path) as conn:
             po = str(po_number or "").strip()
@@ -940,12 +943,17 @@ def db_duplicate_check(po_number, street, zip_code, db_path=None):
             zip5 = str(zip_code or "")[:5]
             if street_n and zip5:
                 rows = conn.execute(
-                    "SELECT po_number, ship_street, ship_zip, wb_order_id "
+                    "SELECT po_number, ship_street, ship_zip, wb_order_id, walmart_sku, zoro_code "
                     "FROM walmart_orders WHERE IFNULL(wb_order_id,'')<>''"
                 ).fetchall()
                 for r in rows:
                     if (str(r["ship_zip"] or "")[:5] == zip5
                             and _norm_street(r["ship_street"]) == street_n):
+                        prev_codes = f"{r['zoro_code'] or ''},{r['walmart_sku'] or ''}"
+                        if different_zoro_codes(product_codes, prev_codes):
+                            print(f"   ℹ️ [DB_DUP] same address as {r['wb_order_id']} but a DIFFERENT "
+                                  f"product ({prev_codes}) — not a duplicate")
+                            continue
                         return "dup", r["wb_order_id"]
         return "clear", None
     except Exception as e:
@@ -1529,6 +1537,10 @@ def main():
         for extra in sku_list[1:]:
             extra_skus_list.append((extra, zoro_qty))
             
+        # Every Zoro code this row can mean: what the sheet buys plus the code in the Walmart SKU
+        # ('HO - G7611895' buys G7588305). The duplicate checks compare products with these.
+        product_codes = f"{raw_zoro_code},{wm_sku}"
+
         row["sku"] = raw_zoro_code
         row["zoro_qty"] = zoro_qty
         print(f"  Item: WALMART '{wm_sku}' → {raw_zoro_code} x{zoro_qty}  "
@@ -1551,7 +1563,8 @@ def main():
             dup_state, dup_wb = db_duplicate_check(
                 walmart_po,
                 parsed["street"] + (f", {parsed['unit']}" if parsed.get("unit") else ""),
-                parsed.get("zip", ""))
+                parsed.get("zip", ""),
+                product_codes=product_codes)
             if dup_state == "dup":
                 fail(f"DUPLICATE_DB — walmart_orders already has this "
                      f"PO/address placed ({dup_wb})")
@@ -1572,7 +1585,8 @@ def main():
                 existing_wb = check_if_address_already_ordered_gmail(
                     duplicate_services, addr["street_address"],
                     zip_code=addr.get("zip_code", ""),
-                    customer_name=addr.get("name", ""))
+                    customer_name=addr.get("name", ""),
+                    current_sku=product_codes)
             except Exception as e:
                 print(f"   [DUP_CHECK] exception: {e}")
                 existing_wb = DUP_CHECK_FAILED
@@ -1662,14 +1676,14 @@ def main():
             fail("LOCK_DB_UNREACHABLE — fail-closed, not placed")
             continue
 
-        # e. Checkout via the EXISTING engine — NO coupons, saved card payment.
+        # e. Checkout via the EXISTING engine — NO coupons, Net 30 terms (the account's default).
         t0 = time.perf_counter()
         try:
             _focus_tab(driver, "zoro.com", "https://www.zoro.com")   # checkout runs on the Zoro tab
             result = place_order_fast_true_api(
                 driver, sku, zoro_qty, addr,
                 "",                              # po_number — none for Walmart
-                "WALMART_RESELLER",              # reseller-style payment path: saved credit card
+                "WALMART_RESELLER",              # reseller path, Net 30 (utils.config.NET30_PROFILES)
                 earnings=earnings if isinstance(earnings, (int, float)) else None,
                 coupon_list=coupon_arg,
                 priority_coupons=priority_codes,
@@ -1686,7 +1700,7 @@ def main():
                 amazon_order_qty=wm_qty,
                 zoro_multiple=mult,
                 qty_multiplier=1,
-                payment_method="CREDIT_CARD",
+                payment_method="NET30",
                 extra_skus=extra_skus_list,
             )
         except Exception as e:

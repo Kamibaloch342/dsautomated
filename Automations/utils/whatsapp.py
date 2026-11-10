@@ -62,7 +62,11 @@ def get_whatsapp_group(account_or_profile: str = "", kind: str = "orders") -> st
     groups = cfg.get("groups") or DEFAULT_GROUPS
 
     acc = str(account_or_profile or "").strip().lower()
-    if any(k in acc for k in ("hathoro", "dm_", "dm-", "abecom", "abe")):
+    if "wrenchly" in acc or acc.startswith(("wr_", "wr-")):
+        # Third store (6 Nov 2026). Until a 'wrenchly_<kind>' group is set under whatsapp.groups
+        # its alerts go to recipient_phone — never into a HOANK group.
+        key = f"wrenchly_{kind}"
+    elif any(k in acc for k in ("hathoro", "dm_", "dm-", "abecom", "abe")):
         key = f"hathoro_{kind}"
     else:
         key = f"hoank_{kind}"
@@ -129,11 +133,26 @@ def _alert_priority(target: str) -> int:
     """1 for the stores' order-alert groups (they jump the gateway's queue), 5 for the rest."""
     try:
         groups = get_whatsapp_config().get("groups") or DEFAULT_GROUPS
-        orders = {groups.get("hoank_orders"), groups.get("hathoro_orders"),
-                  DEFAULT_GROUPS.get("hoank_orders"), DEFAULT_GROUPS.get("hathoro_orders")}
+        orders = {groups.get("hoank_orders"), groups.get("hathoro_orders"), groups.get("wrenchly_orders"),
+                  DEFAULT_GROUPS.get("hoank_orders"), DEFAULT_GROUPS.get("hathoro_orders")} - {None}
         return 1 if target in orders else 5
     except Exception:
         return 5
+
+
+_process_store = ""
+
+
+def set_alert_store(store: str) -> None:
+    """A placer says which store it works for at start-up. Its notices have no group of their own,
+    so this is what lets the gateway send DM notices from the number chosen for DM (9 Nov 2026)."""
+    global _process_store
+    _process_store = str(store or "").strip().lower()
+
+
+def _sender_lane(to: str = None) -> str:
+    """The gateway finds the sender from the target group; only a notice with no group needs a lane."""
+    return "hathoro_notices" if not to and _process_store == "hathoro" else ""
 
 
 def _do_send_message(text: str, to: str = None) -> bool:
@@ -148,6 +167,7 @@ def _do_send_message(text: str, to: str = None) -> bool:
         "to": target,
         "text": text,
         "priority": _alert_priority(target),   # the gateway paces everything (one per ~20 s)
+        "lane": _sender_lane(to),
     }
     try:
         resp = requests.post(f"{base_url}/send", json=payload, timeout=15)
@@ -190,6 +210,7 @@ def _do_send_photo(photo_bytes: bytes, caption: str = "", to: str = None) -> boo
             "image_base64": b64_str,
             "caption": caption,
             "priority": _alert_priority(target),
+            "lane": _sender_lane(to),
         }
         try:
             resp = requests.post(f"{base_url}/send", json=payload, timeout=25)

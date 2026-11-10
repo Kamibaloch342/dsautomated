@@ -8,9 +8,12 @@
 
 ## 1. What this repository is
 
-Two Amazon seller accounts — **HOANK STORE** ("HYPER SALE STORE" on Seller Central, earnings
-inbox `qurtdis`) and **Hathoro** ("Discounted Maal", earnings inbox `abecomllc26`) — dropship
-industrial supplies bought on **Zoro.com** and shipped by FedEx/UPS. `Automations/` ("ZUHRA
+Three Amazon seller accounts — **HOANK STORE** ("HYPER SALE STORE" on Seller Central, earnings
+inbox `qurtdis`), **Hathoro** ("Discounted Maal", earnings inbox `abecomllc26`) and, since
+6 Nov 2026, **Wrenchly** ("Wrenchly Solutions LLC", earnings inbox `wrenchlyllc`, reseller-only:
+`WR_RESELLER`) — dropship industrial supplies bought on **Zoro.com** and shipped by FedEx/UPS.
+The store of a profile comes from `utils.accounts_config.store_for_profile()`, never from
+"not DM → HOANK". `Automations/` ("ZUHRA
 Software") is the **live production stack that handles real money**; everything else is tooling
 around it.
 
@@ -45,19 +48,37 @@ around it.
 All worker processes are started from the Tk launcher `Automations/gui/launcher.py`; the cloud
 agent and the dashboard run as macOS LaunchAgents.
 
-* **Placers** — `engine/orders.py`, four profiles / Chrome ports: DM_COUPON 9221, DM_RESELLER 9222,
-  HS_COUPON 9223, HS_RESELLER 9224. Scrape Seller Central orders, Gmail earnings + duplicate check,
+* **Placers** — `engine/orders.py`, five profiles / Chrome ports: DM_COUPON 9221, DM_RESELLER 9222,
+  HS_COUPON 9223, HS_RESELLER 9224, WR_RESELLER 9226 (Wrenchly, reseller-only, places every mapped
+  unlabelled order — `docs/CLOUD_ARCHITECTURE.md` §5). Scrape Seller Central orders, Gmail earnings + duplicate check,
   Zoro cart / coupons / checkout via `checkout/true_api.py` (DOM fallback), write the WB id back to
   Amazon, log to `data/rajar_logs/order_log.txt`, `order_placer_orders` and the legacy `orders`
   table. **Placement captures purchase / ship-by / deliver-by dates** — closing takes them from
   there. Routing/coupon rules: `docs/CLOUD_ARCHITECTURE.md` §5.
   **Ultra mode** (per profile, launcher 🚀Ultra, 2 Nov 2026): the Amazon scraping and WB write-backs run
   on two extra Chrome windows beside the placing (`engine/ultra_crew.py`, `docs/ULTRA_MODE.md`).
-* **Tracking uploaders** — `engine/tracking.py`, HOANK on 9331, Hathoro on 9333. All-orders report
+  **PO boxes** (10 Nov 2026): placed with the box renamed "#number" behind the street
+  (`platforms.amazon.rename_po_box`); label BB only when the address has no street at all or Zoro
+  still refuses it. **Listing guard** (`engine/listing_guard.py`, 10 Nov 2026): when the Zoro code
+  and every alternative are out, the placer notes the listing (`listing_oos`) and at the end of the
+  cycle decides PL / DS from the product's brand, alerts Orders Alerts and adds the code to Restock
+  Watch. The change on Seller Central (DS → quantity 0, PL → longer handling time, never 0) is
+  `change_on_amazon()` — read its docstring for whether it is built yet.
+* **Tracking uploaders** — `engine/tracking.py`, HOANK on 9335, Hathoro on 9336, Wrenchly on 9339 (their own Chrome
+  since 3 Nov 2026; 9331 / 9333 / 9337 are the closing chain's, and closing never waits for a tracker). All-orders report
   (reused for 30 min), `archive_tracking` → one batched Gmail sweep → PDF, upload on Confirm
   Shipment, "shipped" buyer message. Since 26 Sep 2026 it records what it uploaded in
   `order_placer_orders.tracking_id_uploaded` and `action_log` (`action_type='tracking_upload'`).
-* **Closing chain** — `scripts/daily_bulk.py` (▶ Run Closing, or auto-closing from `bot_config.json`):
+  **Fast mode** (whenever Skip messages is ticked, 3 Nov 2026): one finder thread and two upload windows
+  run side by side (`engine/tracking_crew.py`); no buyer message, seller note or WhatsApp alert, no
+  1,000-order cap. `TRACKING_FAST=0` keeps the normal cycle.
+* **Closing chain** — `scripts/daily_bulk.py` (▶ Run Closing, or auto-closing from `bot_config.json`).
+  It keeps running when the launcher closes and the next launcher picks it up (since 3 Nov 2026,
+  `data/closing_runs.json`), so closing the launcher does NOT stop closing: use its Stop button.
+  Every other worker stops however the launcher is quit (window X, Cmd+Q, Dock Quit, closing the
+  Terminal, Ctrl+C), and placers, trackers and Walmart left by a launcher that died are stopped at
+  the next close (9 Nov 2026).
+  Steps:
   Gmail archive fetch + incremental sync → `closing.py` **report-diff ingest** (only new / changed /
   new-evidence orders get a pass) → placer sync → `scripts/reconcile_and_reenrich.py` →
   exception-only SC scrape (`scripts/scrape_sc_fields.py`) → **delivery check through Zoro's own
@@ -74,7 +95,11 @@ agent and the dashboard run as macOS LaunchAgents.
   `scripts/cloud_agent.py` (heartbeat, slim DB export to R2, remote commands, WAL checkpoint every
   30 min); **hourly** `scripts/auto_sync_10min.py` (Gmail fetch, incremental archive sync, placer
   sync, WhatsApp insights, log rotation, Amazon report capture, the daily Zoro delivery sweep,
-  the Gmail organizer). **Gmail organizer** `scripts/gmail_organizer.py` (31 Oct 2026): ZUHRA/…
+  the Gmail organizer). **Repricer scrape + listing watch**: every 12 h the dashboard runs
+  `scripts/generate_<store>_offers_report.py` over the listings that sold in 30 days; since 10 Nov
+  2026 `utils/listing_watch.py` reads brand, rating, number of ratings and category off the same
+  page and sends one WhatsApp message per store with what changed on the own-brand (PL) listings,
+  other sellers included (`data/pl_watch_state.json`). **Gmail organizer** `scripts/gmail_organizer.py` (31 Oct 2026): ZUHRA/…
   labels on every inbox from `config/gmail_rules.json`, routine mail archived; in the forwarding hub
   mkamrankhan342 one folder per source Gmail. Acts only on inboxes with a
   `<inbox>_modify_token.json` (`--authorize`); never deletes; no reader searches by inbox or label.
@@ -85,7 +110,10 @@ agent and the dashboard run as macOS LaunchAgents.
 Order lifecycle: Amazon sale → placer buys on Zoro (WB id) → Zoro "received" / "shipped" emails
 → tracker uploads tracking + messages the buyer → Zoro's tracking confirms delivery → closing labels
 the order (Completed / Loss / Refunded / Cancelled / Incomplete) → delivery check-in the day of
-delivery, review request 6 days later, and one delay notice when a shipment has had no carrier
+delivery, review request 7 days later and not before Amazon's deliver-by date + 6 days (Amazon
+counts its 5–30 day window from that date, not from the delivery; an early request is refused and
+is stored "Not Yet", never "Expired" — `engine.post_delivery.review_wait_days`, 10 Nov 2026), and
+one delay notice when a shipment has had no carrier
 scan for 3 days (all in `bot_config.json → messaging`). Late (2 d past deliver-by) and stalled
 (3 d) shipments, Zoro-cancelled orders and untrackable freight sit under Attention → Delivery.
 
@@ -120,6 +148,10 @@ scan for 3 days (all in `bot_config.json → messaging`). Late (2 d past deliver
 | Delivery status source | `engine/zoro_tracking.py` + `scripts/zoro_delivery_check.py` — Zoro's guest order tracking (`docs/ZORO_TRACKING.md`); `engine/fedex_api.py` (FedEx/UPS APIs) only with `DELIVERY_SOURCE=carrier` and keys |
 | Messaging guards | `engine/post_delivery.py` (`prefetch_guards`, `process_single_order`) |
 | DB size / WAL / backups | `scripts/slim_database.py`, agent `wal_checkpoint`, `~/.zuhra/backups` |
+| Which WhatsApp number sends an alert | page http://127.0.0.1:3005, `whatsapp_gateway/server.js` (`LANES`, `routes.json`), `docs/WHATSAPP_SENDERS.md` |
 | Run durations | `closing_run_log`, `/api/runs` |
 | How many orders Amazon took on a day, placed or not | `amazon_report_orders` (US/Pacific `purchase_day`), `/api/month_report` |
-| Alerts | `utils/insights_engine.py`, `utils/whatsapp.py`, `utils/telegram.py` |
+| Alerts | hourly: `dashboard/insights.py` + `scripts/send_insights_alerts.py` (rules at the top of `docs/ALERTS_AND_INSIGHTS_SPEC.md`); at placement: `utils/insights_engine.py`; sending: `utils/whatsapp.py`, `utils/telegram.py` |
+| A listing still selling with Zoro out of stock | `listing_oos` table, `python -m engine.listing_guard` (the list), `engine/listing_guard.py` |
+| Other sellers / rating / reviews / category on our own-brand listings | `utils/listing_watch.py`, `data/pl_watch_state.json`, the line `[listing watch]` in `data/repricer_live.log` |
+| What the 10 Nov 2026 audit found and what was fixed | `Automations/data/audit/AUDIT_2026-11-10.md` (§9 = applied; kept out of git on purpose) |

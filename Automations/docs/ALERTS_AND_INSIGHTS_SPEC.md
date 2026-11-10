@@ -6,6 +6,52 @@
 
 ---
 
+## How the alerts work now (9 Nov 2026) — read this first
+
+This section overrides anything below it. The original plan further down is kept for history.
+
+Two engines send alerts:
+
+* `dashboard/insights.py` + `scripts/send_insights_alerts.py`: hourly, one Insights group per store
+  (`auto_sync_10min.py`, HOANK / Hathoro / Wrenchly). Sent items are recorded in
+  `whatsapp_dispatched_insights`, so each goes out once. The dashboard's Analytics → Changes page
+  reads the same `compute()`.
+* `utils/insights_engine.py`: at placement, Orders group. Only `DELIVERY_MISMATCH_LATE` reaches WhatsApp.
+
+Rules:
+
+| Alert | Rule |
+|---|---|
+| Zoro price up / down | The Unit Price on Zoro's order e-mail differs from that code's previous e-mail, to the cent, either direction. One alert per change, to the store whose order showed it first, naming every listing on the code. |
+| Earnings up / down | Per (store, ASIN): unit earnings by day against the previous day with orders, over 60 days of history. Combined-ASIN orders are left out. closing's quantity wins over the placer's. |
+| Zoro late vs Amazon | Zoro's date is 2+ **business** days after Amazon's, on an order placed within 1 business day. One per listing per week. |
+| Handling review | Weekly summary. Listings with 5+ orders in 30 days, usually 2+ business days to ship-by, and Zoro not tight against Amazon's date. |
+| Out of stock / Alternative SKU | Separate categories, one per ASIN per day. |
+| Low margin | Placed under 8%: one per ASIN per day, showing the lowest. Rejected orders stay per order. |
+| Zoro shipping rule | List price × qty against the $50 line, and only when Zoro charged more than its rule. |
+| Buyer shipping | Buyer paid on a listing that ships free (70%+ of its last 10 orders), or a paid listing went free. |
+| Refunded, Undelivered, Shipped late, WB unmatched | One daily summary per store, from 12:00 local (`ZUHRA_SUMMARY_HOUR`). |
+
+Two more senders, added 10 Nov 2026, each with its own once-only memory:
+
+| Alert | Where | Rule |
+|---|---|---|
+| Listing still selling, Zoro out | `engine/listing_guard.py` → Orders group | The placer found the main Zoro code and every alternative out of stock (for one unit of the listing; an alternative that did not answer does not count as out). One message per listing saying PL or DS — from the brand on the product page — and what to change on Amazon (DS: quantity 0; PL: longer handling time, never 0). Repeated after 24 h if orders keep coming. The Zoro code goes on Restock Watch. Table `listing_oos`. |
+| Own-brand listings: what changed | `utils/listing_watch.py` → Insights group | During the 12-hourly repricer scrape, for listings whose brand is HOANK / Hathoro: a seller who is none of our stores and was not there last time, the star rating moved, the number of ratings changed, the category changed. One message per store and run. The first look at a listing only records it. A value the page did not show keeps the remembered one. `data/pl_watch_state.json`. |
+
+Things that bit us, do not reintroduce:
+
+* Compare dates with `_d()` / `_day()`, never as text: order tables hold ISO, `Sat, Nov 7, 2026`,
+  `Wed, May 20, 2026, 1:20 PM PDT`, and `date| ZoroDeliverBy:…`. As text, `Sat, Nov 7` sorts after
+  `2026-11-09`, so old orders passed the today-only check and were compared in the wrong order.
+* Never rebuild a Zoro price from order totals: coupons, promos and shipping all look like price changes.
+* Business days skip Sat/Sun only; US holidays are not modelled.
+* Low Zoro stock was removed: Zoro's availability call returned no quantity on any of 26,463 orders.
+* After changing how alerts are keyed, run `scripts/send_insights_alerts.py --baseline --days 30`
+  so old events are not announced again.
+
+---
+
 ## Executive Summary
 
 This specification outlines the comprehensive requirements for the next-generation **Alerts & Real-Time Business Insights Engine** for the dropshipping automation stack.

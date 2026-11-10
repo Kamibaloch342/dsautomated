@@ -248,7 +248,7 @@ def leakage(account=None, zoro_account=None, date_from=None, date_to=None):
 # ── HEALTH / SUSPENSION RISK ─────────────────────────────────────────────────
 def health(account=None, zoro_account=None, date_from=None, date_to=None):
     c = _ro()
-    accts = [account] if (account and account.lower() != "all") else ["HOANK", "Hathoro"]
+    accts = [account] if (account and account.lower() != "all") else ["HOANK", "Hathoro", "Wrenchly"]
     zw, za = ("", [])
     if zoro_account and zoro_account.lower() != "all":
         zw, za = " AND zoro_account_name=?", [zoro_account]
@@ -319,7 +319,7 @@ def data_health(account=None, zoro_account=None, date_from=None, date_to=None):
     fields, returns propagation, label sanity, FedEx/delivery, anomalies. Each check is
     a count of orders in a BAD state — green≈0. Mirrors the manual audits we ran."""
     c = _ro()
-    accts = [account] if (account and account.lower() != "all") else ["HOANK", "Hathoro"]
+    accts = [account] if (account and account.lower() != "all") else ["HOANK", "Hathoro", "Wrenchly"]
     dw, dp = "", []
     if date_from:
         dw += " AND purchase_date>=?"; dp.append(date_from)
@@ -383,7 +383,7 @@ def refund_issues(account=None, zoro_account=None, date_from=None, date_to=None)
     refund) because closing_orders.refund_date is not captured by the parser.
     case_status comes from order_crm so resolved tickets can be filtered out."""
     c = _ro()
-    accts = [account] if (account and account.lower() != "all") else ["HOANK", "Hathoro"]
+    accts = [account] if (account and account.lower() != "all") else ["HOANK", "Hathoro", "Wrenchly"]
     dw, dp = "", []
     if date_from:
         dw += " AND co.purchase_date>=?"; dp.append(date_from)
@@ -441,7 +441,8 @@ def refund_issues(account=None, zoro_account=None, date_from=None, date_to=None)
 
 # ── SEVERE ISSUES (action center — money-leak items needing a human) ──────────
 _SEV_INBOX = {"Hathoro": ("abecomllc26", "robstark771", "salesmercentile", "wrenchlyllc"),
-              "HOANK": ("asad_amazon_us", "inhur_llc", "salesmercentile1", "toolzsolutionsllc220")}
+              "HOANK": ("asad_amazon_us", "inhur_llc", "salesmercentile1", "toolzsolutionsllc220"),
+              "Wrenchly": ("abecomllc02", "wrenchlyllc")}
 
 def severe_issues(account=None, zoro_account=None, date_from=None, date_to=None):
     """The high-severity, money-leaking items consolidated for action:

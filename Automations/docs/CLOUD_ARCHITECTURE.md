@@ -55,6 +55,8 @@ Commands: `stop_all`, `stop_orders {profile}`, `start_orders {profile}`, `start_
 stop_closing / run_messages {account}`, `reload_config`, `set_headless {on}`,
 `shutdown_launcher`; agent-side: `start_launcher`, `sync_now`, `backup_now`,
 `restart_dashboard`, `run_priority_check {profile}`, `set_config {set:{path:value}}`, `ping`.
+`shutdown_launcher` leaves a running closing chain going (the next launcher picks it up); send
+`stop_closing` or `stop_all` first to stop it.
 
 ## 4. Dashboard (`dashboard/server.py` + `dashboard/ops.py` + `dashboard/v2.html`)
 
@@ -80,6 +82,16 @@ stop_closing / run_messages {account}`, `reload_config`, `set_headless {on}`,
   (who, what, old → new, when, from which machine). Team chat was removed.
 
 ## 5. Placement routing changes (`engine/orders.py`, `bot_config.json → routing`)
+
+**Wrenchly (third store, 6 Nov 2026) is outside these rules.** It has one placer, `WR_RESELLER`
+(port 9226, Zoro account whose mail lands in abecomllc02, Amazon mail in wrenchlyllc). There is no
+WR_COUPON, so nothing is routed: `utils.config.has_coupon_sibling()` is False, which switches off
+Deciding routing, the late Coupon-column hand-off, the coupon-sweep hold and the '- D' coupon note.
+`place_all_mapped`: every unlabelled Wrenchly order whose ASIN is in Verified_SKU_Dataset is placed
+(no Priority_ASIN_Control column); an unmapped one is logged UNMAPPED_ASIN. Every other gate
+(placement lock, duplicate check, margin, $800 '20', PO box, delivery time, OOS) is the same.
+Store of a profile: `utils.accounts_config.store_for_profile()` (prefix → `profile_prefix` in
+config/accounts.json) — never "not DM → HOANK".
 
 **The owner's rules (7 Sep 2026), in the order the bot applies them to an unlabelled order:**
 
@@ -234,6 +246,7 @@ are enforced in code, not by convention:
   PRIORITY pool changes (a regular scrape does not wake them), or 6 h pass. Manual-C/-R orders
   bypass it. Placers re-read the setting every order (15 s cache, last good value kept on a read
   error) — no restart. `engine/orders.py: _sunday_mode / _sunday_gate / _sunday_parked`.
+  Wrenchly is exempt whatever the checkbox says (owner, 9 Nov 2026): reseller-only, no coupons to wait for.
 * **Dead codes are not verdicts.** The checkout's failure summary is per tier; an expired code says
   nothing about the item. A priority code that three different carts report as expired is retired
   (marked INVALID) and should be removed from the tab. When no LIVE regular code is left and no
@@ -276,8 +289,12 @@ are enforced in code, not by convention:
   logged in to DM_COUPON's account (robstark771) and 3 orders went out with the other placer's item
   and/or address (WB7699391166, WB7993433455, WB8529119739). Every checkout now records its Zoro
   customerId (`data/dataset/zoro_accounts_live.json`); a profile that finds another running profile
-  on the same account (last 15 min) stops before touching the cart — `SHARED_ACCOUNT`, nothing
-  bought, order retried, one alert an hour.
+  on the same account stops before touching the cart — `SHARED_ACCOUNT`, nothing bought, order
+  retried, one alert an hour. "Running" is the recorded process itself, so a stopped placer never
+  blocks; with no process to check (older record, other computer) it means seen in the last 15 min.
+  **Exception by design:** Walmart and HS_RESELLER share `asad_amazon_us` and take turns. The
+  launcher refuses to start one while the other runs, because HS_RESELLER's first cart build comes
+  before this check (3 Nov 2026).
 * **Dashboard checks reach both stores.** `Priority check / Re-check all / Reset` write one
   request file per coupon profile (`priority_check.<PROFILE>.request`).
 * **The checker tests the SKU an order would buy (27 Oct 2026).** When the main Zoro code is out of
@@ -285,6 +302,12 @@ are enforced in code, not by convention:
   PDP badge, brand and priority coupons) and the note starts `main G… Out of Stock → tested ALT G…`.
   It used to stop at "main OOS / Wait": B0HH6Q9FF3 stayed in DM_Deciding while every order shipped the
   ALT G310877337, which VEHICLE10926 covers. Main back in stock → the next check tests the main again.
+* **Several alternatives in one cell (owner, 4 Nov 2026).** `alternative_SKU` holds one code or several
+  with commas (`G5803393,G5612117`). With the main out, they are asked left to right and the first one in
+  stock is placed, through every normal check (delivery date, coupons, the profile's profit gate). None in
+  stock → OOS. If Zoro does not answer about one, the walk stops: no label, the next cycle asks again. An
+  invalid code in the cell is skipped with a warning and the others still count (a comma used to void the
+  whole cell). The placer, Ultra's stock check, Manual tags and the priority checker all read the same list.
 * **Backordered = not in stock; the delivery date is Zoro's estimate for the buyer's ZIP
   (27 Oct 2026).** Zoro's availability API marks a backordered item `isCartable: true` with
   `availabilityStatus: "Backordered"` — the page only promises that a ship date will be e-mailed
@@ -326,6 +349,53 @@ are enforced in code, not by convention:
      these orders are found only in the buyer-action view (all 183 up to 3 Nov 2026). Priority discovery
      reads that view; under Labels Only a separate pass reads it for Manual tags and takes nothing else,
      which adds one scan of the view (about 2 min at 1,800 orders) to every cycle.
+     *Unmapped ASIN (9 Nov 2026, owner).* The code in the tag is enough: an order line with no row in the
+     SKU sheet is bought on that code instead of stopping at `UNMAPPED_ASIN` (some listings stay unmapped on
+     purpose, because the right Zoro code differs from order to order). With no sheet row there is no pack
+     size, so the quantity is Amazon qty × the `Npk` ending of the Amazon SKU (`Imran-G9084824-4pk` → 4 each),
+     or 1 each when the SKU has no such ending. No ALT, no 2nd part. Multi-item: the code goes on the one
+     unmapped line; two or more unmapped lines stay `UNMAPPED_ASIN`, since the code could be for any of them
+     (`orders._fill_unmapped_from_tag`).
+     *Quantity in the tag (9 Nov 2026, owner).* `Manual-C G5522807 x25` buys exactly 25 of that code for the
+     order, whatever Amazon's quantity, the SKU's `Npk` or the sheet's pack size say, on a mapped or unmapped
+     ASIN. Only after a code, 1 to 999. `x0`, `x1000`, `Manual-C x25` or `G5522807 25` are not tags, so the
+     order is left alone. Multi-item: the quantity goes on the same line as the code (`orders._parse_manual_qty`).
+* **A WB on the buyer's other order is not a duplicate (4 Nov 2026, owner).** The duplicate check matches by
+  address, so a real repeat purchase matched the WB of the buyer's earlier order and was stamped `<WB> - D`
+  and never bought (112-7422969-0994666 got `WB5917587551 - D`, the WB of 112-9339236-7538642). Shrinking the
+  lookback does not help, because customers do reorder within a day or two. Now, before `- D` is written, the
+  placer opens the order page's "See all N orders from this buyer" link and reads the list
+  (`orders._dup_is_buyers_other_order`, decision in `dup_check_local.wbs_on_other_orders`):
+  - **Every WB must be accounted for,** not only the one the check answered with
+    (`gmail.all_matched_wbs`: all local matches, plus all live-Gmail hits when the archive is stale). One WB
+    that is not on another order and `- D` is written: it may be this order's own purchase with the
+    write-back lost.
+  - **Attached means** a live order on the list, not this one, whose label is nothing but WB ids, or
+    whose `order_placer_orders` row has that WB (that covers a write-back still in the rush journal).
+    `<WB> - D` on a sibling proves nothing on its own, since it can be the WB of the order being checked. A
+    cancelled sibling or one the buyer asked to cancel proves nothing either: its WB may still be shipping
+    to this buyer, so buying again is a person's call.
+  - **Any doubt writes `- D`, as before:** no link, a page that won't load, a list that won't parse, this
+    order missing from the list, this order already carrying or recorded with a WB, a search or database
+    error, a Gmail hit with no WB id.
+  - **The page in use is never left.** The link is read while scraping the order page (`buyer_orders_link`
+    in the detail); the list opens in its own tab (Ultra: its own window, since a tab would hide the Zoro
+    one), on the main thread, and closes again, so the classic loop's order page and the rush and Ultra loops'
+    Zoro page are untouched. A link not drawn at scrape time gets one more look, 6 s at most.
+  - **It is a span, not a link (fixed 7 Nov 2026).** Seller Central draws
+    `<a><span data-test-id="shipping-section-buyer-history">See all N orders from this buyer</span></a>`
+    with no href; clicking it loads `orders-v3/search?qt=email&q=<buyer relay e-mail>&date-range=…` in the
+    same tab. The first reader looked only for `a[href]`, found nothing on any page, and all 17 orders it
+    checked from 5 to 7 Nov stayed `- D` (14 were real repeats the owner then placed with Manual-C). Now the
+    worker tab opens the order page and clicks the span (`orders._click_buyer_orders`; a new tab, should
+    Amazon ever open one, is followed and closed). Verified on real pages for both stores.
+  - **A failed checkout** is no longer "resolved" against the buyer's other order: instead of stamping that WB
+    and confirming the claim with it, the order goes to Locked Orders for a person.
+  - Unchanged: the placement lock (a claim on this Amazon id always wins, before and after this check), Manual
+    tags (no duplicate search at all), the Walmart check. The buyer's e-mail differs per store, so a WB
+    from the other store is not on the list and `- D` stands.
+  Logged: run log status `DUP_OTHER_ORDER`, decision log kind `dup_other_order` (`cleared` / `stands` with the
+  reason), console prefix `[DUP_OTHER]`.
 
 ## 6. Automation & memory
 

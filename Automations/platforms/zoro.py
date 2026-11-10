@@ -254,6 +254,22 @@ def check_inventory(driver, sku, qty):
     return avail.get('isCartable', False), status
 
 
+def first_alt_in_stock(driver, alts, qty):
+    """The sheet's alternative codes, left to right: the first one in stock for *qty*.
+    Returns (code, status, tried); code is '' when none is, tried = [(code, status)] for the ones
+    passed over. A check that errors stops the walk, so a code further right is never bought only
+    because Zoro did not answer about the one the sheet prefers."""
+    tried = []
+    for alt in alts or []:
+        cartable, status = check_inventory(driver, alt, qty)
+        if cartable:
+            return alt, status, tried
+        tried.append((alt, status))
+        if status in ("API_ERROR", "NO_DATA"):
+            break
+    return "", "", tried
+
+
 def is_backordered(avail):
     """True for Zoro's backorder state in an availability record (any of its three markers)."""
     avail = avail or {}

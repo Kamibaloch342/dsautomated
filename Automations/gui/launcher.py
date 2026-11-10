@@ -9,6 +9,11 @@ import sys, subprocess, os
 
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+# `python gui/launcher.py` puts gui/ on sys.path, not Automations/: every `from utils…` needs this.
+# _adopt_closing_runs runs 0.5 s after start, before anything else had added it, and failed with
+# "No module named 'utils'" (8 Nov 2026), which also made the launcher drop the closing run's record.
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
 # "Live" window for the Unmapped / Needs-Priority panels: only consider placer run logs written
 # (modified) within this many seconds — the currently-active runs. Must match LIVE_WINDOW_S in
 # dashboard/server.py so the GUI and dashboard always show the SAME live/current pending set.
@@ -104,6 +109,12 @@ CFG_PATH = os.path.join(SCRIPT_DIR, "bot_config.json")
 CONTROL_QUEUE = os.path.join(SCRIPT_DIR, "data", "control", "queue")
 CONTROL_DONE = os.path.join(SCRIPT_DIR, "data", "control", "done")
 LAUNCHER_STATE = os.path.join(SCRIPT_DIR, "data", "launcher_state.json")
+# Closing-side runs outlive the launcher (owner, 3 Nov 2026): a restart used to kill the chain, often
+# hours in. Their output goes to a file and they run in their own session, so they only have to be
+# left alone. This file tells the next launcher about them (_adopt_closing_runs). To stop one, use
+# its Stop button: closing the launcher does not stop it.
+CLOSING_RUNS = os.path.join(SCRIPT_DIR, "data", "closing_runs.json")
+SURVIVES_CLOSE = ("bulk_", "messages_", "delivery_")
 
 
 def _read_cfg_file():
@@ -142,14 +153,33 @@ def _git_sha():
         return ""
 
 
-PROFILES = ["DM_COUPON", "DM_RESELLER", "HS_COUPON", "HS_RESELLER"]
-PORTS    = {"DM_COUPON": 9221, "DM_RESELLER": 9222, "HS_COUPON": 9223, "HS_RESELLER": 9224, "HOANK_CLOSING": 9331, "HATHORO_CLOSING": 9333}
-ICONS    = {"DM_COUPON": "🏷️", "DM_RESELLER": "📦", "HS_COUPON": "🏷️", "HS_RESELLER": "📦", "HOANK_CLOSING": "💰", "HATHORO_CLOSING": "💰"}
+PROFILES = ["DM_COUPON", "DM_RESELLER", "HS_COUPON", "HS_RESELLER", "WR_RESELLER"]
+# The Amazon stores, in closing order (config/accounts.json). Wrenchly was added on 6 Nov 2026:
+# reseller-only (WR_RESELLER, no coupon profile), its own closing Chrome 9337 and tracker 9339.
+STORES = ("HOANK", "Hathoro", "Wrenchly")
+STORE_BY_KEY = {s.lower(): s for s in STORES}          # 'wrenchly' → 'Wrenchly'
+PORTS    = {"DM_COUPON": 9221, "DM_RESELLER": 9222, "HS_COUPON": 9223, "HS_RESELLER": 9224, "WR_RESELLER": 9226,
+            "HOANK_CLOSING": 9331, "HATHORO_CLOSING": 9333, "WRENCHLY_CLOSING": 9337,
+            "HOANK_TRACKER": 9335, "HATHORO_TRACKER": 9336, "WRENCHLY_TRACKER": 9339}
+ICONS    = {"DM_COUPON": "🏷️", "DM_RESELLER": "📦", "HS_COUPON": "🏷️", "HS_RESELLER": "📦", "WR_RESELLER": "📦",
+            "HOANK_CLOSING": "💰", "HATHORO_CLOSING": "💰", "WRENCHLY_CLOSING": "💰",
+            "HOANK_TRACKER": "🚚", "HATHORO_TRACKER": "🚚", "WRENCHLY_TRACKER": "🚚"}
+# The Chrome rows under the placers on the dashboard: every store's closing, then every tracker.
+STORE_PORT_KEYS = [f"{s.upper()}_CLOSING" for s in STORES] + [f"{s.upper()}_TRACKER" for s in STORES]
 PROFILE_CHOICES = {pk: f"{i} — {pk}" for i, pk in enumerate(PROFILES, 1)}
 PROFILE_LABELS = list(PROFILE_CHOICES.values())
-CONSOLE_VIEW_CHOICES = (["All", "Closing", "Closing HOANK", "Closing Hathoro", "Walmart",
-                         "Orders", "Tracking", "Tracking HOANK", "Tracking Hathoro",
-                         "Coupons", "Listings"] + PROFILES)
+CONSOLE_VIEW_CHOICES = (["All", "Closing"] + [f"Closing {s}" for s in STORES] + ["Walmart",
+                         "Orders", "Tracking"] + [f"Tracking {s}" for s in STORES] +
+                        ["Coupons", "Listings"] + PROFILES)
+
+
+def _bulk_accounts(name):
+    """The stores a closing process covers: 'bulk_all' → every store, 'bulk_wrenchly' / 'messages_hoank'
+    → that one. A multi-store chain started by the scheduler for some stores is still 'bulk_all'."""
+    n = str(name or "").lower()
+    if n == "bulk_all":
+        return STORES
+    return tuple(s for s in STORES if n.endswith("_" + s.lower()))
 # Full-height pages: the console pane is hidden while one of these is open (the Dashboard
 # needs the room for CURRENT RUN; Logs / Loss Orders have their own full views).
 NO_CONSOLE_PAGES = ("dashboard", "logs", "loss_orders")
@@ -177,7 +207,8 @@ DEFAULT_CFG = {
         "DM_COUPON":   {"target_label": "MR",      "priority_asins": [], "min_margin": -20, "order_limit": 0, "focus_priority_coupon": "FACILITY8M26", "focus_priority_coupon_enabled": False},
         "DM_RESELLER": {"target_label": "AB ECOM", "priority_asins": [], "min_margin": -20, "order_limit": 0},
         "HS_COUPON":   {"target_label": "MR",      "priority_asins": [], "min_margin": -20, "order_limit": 0, "focus_priority_coupon": "FACILITY8M26", "focus_priority_coupon_enabled": False},
-        "HS_RESELLER": {"target_label": "Rajar",   "priority_asins": [], "min_margin": -20, "order_limit": 0, "payment_method": "CREDIT_CARD"},
+        "HS_RESELLER": {"target_label": "Rajar",   "priority_asins": [], "min_margin": -20, "order_limit": 0, "payment_method": "NET30"},
+        "WR_RESELLER": {"target_label": "WR",      "priority_asins": [], "min_margin": 0,   "order_limit": 0},
     },
     "velocity": {"max_per_cycle": 0, "inter_order_delay": 0, "cycle_sleep": 120},
     "blocked_order_ids": [],
@@ -298,7 +329,9 @@ class App(tk.Tk):
         self._log_file_mtime = 0
         self._log_watch_id = None
 
+        self._closing_down = False
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._install_quit_hooks()
         self._build()
 
     def _resolve_mono(self):
@@ -465,6 +498,7 @@ class App(tk.Tk):
         self.after(20000, self._tick_fast_sync)  # lightweight placer-log sync every 60s
         self._watch_running = False
         self.after(30000, self._tick_watch)      # hourly Zoro restock/handling-time check
+        self.after(500, self._adopt_closing_runs)  # closing still running from before a restart
         self.after(1500, self._tick_state)       # publish running processes → data/launcher_state.json
         self.after(3000, self._tick_control)     # remote commands from the dashboard (via cloud agent)
         self.after(60000, self._tick_auto_closing)  # scheduled closing (bot_config automation.auto_closing)
@@ -476,6 +510,8 @@ class App(tk.Tk):
         """Every 5 s: publish what is running to data/launcher_state.json. The
         cloud agent heartbeats it to R2 so every colleague's dashboard shows this
         launcher live; a file older than 20 s means the launcher is closed."""
+        if self._closing_down:      # _on_close removed the file: don't announce us as open again
+            return
         try:
             if not hasattr(self, "_git_sha_cache"):
                 self._git_sha_cache = _git_sha()
@@ -501,10 +537,67 @@ class App(tk.Tk):
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(state, f)
             os.replace(tmp, LAUNCHER_STATE)
+            self._save_closing_runs()
         except Exception:
             pass
         finally:
             self._state_id = self.after(5000, self._tick_state)
+
+    def _save_closing_runs(self):
+        """Write what the next launcher needs to pick up the running closing-side runs. Every 5 s
+        (_tick_state) as well as on close, so a launcher crash repeats at most 5 s of log."""
+        runs = {}
+        for name, proc in list(self._procs.items()):
+            if name.startswith(SURVIVES_CLOSE) and name in self._readers:
+                st = self._start_times.get(name)
+                runs[name] = {"pid": proc.pid, "args": [str(a) for a in proc.args],
+                              "tag": self._tags.get(name, name), "log": self._readers[name][2],
+                              "offset": self._readers[name][1].tell(),
+                              "since": st.isoformat() if st else None}
+        if runs:
+            tmp = CLOSING_RUNS + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(runs, f)
+            os.replace(tmp, CLOSING_RUNS)
+        elif os.path.exists(CLOSING_RUNS):
+            os.remove(CLOSING_RUNS)
+
+    def _adopt_closing_runs(self):
+        """Pick up the closing-side runs the last launcher left: their log, their buttons, their
+        Stop. One that ended while no launcher was open takes the same path: _poll shows the rest
+        of its log, files it in data/logs and marks it finished."""
+        try:
+            with open(CLOSING_RUNS, encoding="utf-8") as f:
+                runs = json.load(f)
+        except (OSError, ValueError):
+            return
+        from utils.proc import AdoptedProcess
+        for name, r in runs.items():
+            if name in self._procs:
+                continue
+            try:
+                proc = AdoptedProcess(r["pid"], r.get("args") or [])
+                rfh = open(r["log"], "r", encoding="utf-8", errors="replace")
+                rfh.seek(r.get("offset") or 0)
+                tag = r.get("tag") or name
+                self._tags[name] = tag
+                self._start_times[name] = datetime.fromisoformat(r["since"]) if r.get("since") else datetime.now()
+                self._procs[name] = proc
+                self._readers[name] = (open(os.devnull, "w"), rfh, r["log"])
+            except Exception as e:
+                self._feed_line(f"Could not pick up {name}: {e}", "warn")
+                continue
+            if proc.poll() is None:
+                accts = _bulk_accounts(name)
+                for a in accts:
+                    self._set_cls_state(a, running=True)
+                self._log_line(f"▶  {tag.upper()} still running from before the launcher restart  |  PID {proc.pid}", source=name)
+                self._feed_line(f"{tag.upper()} still running from before the restart: picked up", "ok")
+        self._refresh_cls_lbl()
+        self._update_hdr()
+        if self._readers and not self._polling:
+            self._polling = True
+            self.after(250, self._poll)
 
     def _tick_control(self):
         """Every 2 s: execute commands the cloud agent dropped in data/control/queue/
@@ -563,7 +656,7 @@ class App(tk.Tk):
         args = cmd.get("args") or {}
         prof = _profile_key_from_choice(args["profile"]) if args.get("profile") else None
         acct = str(args.get("account") or "").strip()
-        acct_title = "HOANK" if acct.lower() == "hoank" else ("Hathoro" if acct.lower() == "hathoro" else acct)
+        acct_title = STORE_BY_KEY.get(acct.lower(), acct)
         if a == "stop_all":
             n = len(self._procs)
             self._stop_all()
@@ -596,7 +689,7 @@ class App(tk.Tk):
         if a == "start_tracking":
             key = acct.lower()
             if key not in self._trk_btns:
-                return False, f"unknown account '{acct}' (use hoank / hathoro)"
+                return False, f"unknown account '{acct}' (use {' / '.join(STORE_BY_KEY)})"
             if f"tracking_{key}" in self._procs:
                 return True, "tracking already running"
             self._start_tracking_acct(key)
@@ -613,27 +706,27 @@ class App(tk.Tk):
                 if any(p.startswith("bulk_") for p in self._procs):
                     return True, "a closing run is already active"
                 self._start_bulk("ALL")
-                return True, "closing started (HOANK + Hathoro, sequential)"
-            if acct_title not in ("HOANK", "Hathoro"):
-                return False, "account must be HOANK, Hathoro or ALL"
+                return True, f"closing started ({' + '.join(STORES)}, sequential)"
+            if acct_title not in STORES:
+                return False, f"account must be {', '.join(STORES)} or ALL"
             if f"bulk_{acct_title.lower()}" in self._procs or "bulk_all" in self._procs:
                 return True, f"{acct_title} closing already running"
             self._start_bulk(acct_title)
             return True, f"closing started ({acct_title})"
         if a == "stop_closing":
-            for t in ((acct_title,) if acct_title in ("HOANK", "Hathoro") else ("HOANK", "Hathoro")):
+            for t in ((acct_title,) if acct_title in STORES else STORES):
                 self._stop_closing_procs(t)
             return True, "stopping closing/messaging"
         if a == "run_messages":
-            if acct_title not in ("HOANK", "Hathoro"):
-                return False, "account must be HOANK or Hathoro"
+            if acct_title not in STORES:
+                return False, f"account must be {' or '.join(STORES)}"
             self._start_messaging(acct_title)
             return True, f"messaging started ({acct_title})"
         if a == "run_delivery_check":
             if "delivery_all" in self._procs:
                 return True, "a delivery check is already running"
             self._start_delivery_check("ALL")
-            return True, "delivery check started (Zoro tracking, both stores)"
+            return True, "delivery check started (Zoro tracking, every store)"
         if a == "stop_delivery_check":
             if "delivery_all" in self._procs:
                 self._stop("delivery_all")
@@ -651,7 +744,7 @@ class App(tk.Tk):
             return True, f"headless {'ON' if args.get('on') else 'OFF'} (applies to placers started from now)"
         if a == "shutdown_launcher":
             self.after(800, self._on_close)
-            return True, "launcher shutting down (all processes stopped)"
+            return True, "launcher shutting down (all processes stopped, a closing run keeps going)"
         return False, f"unknown action '{a}'"
 
     def _lease_blocks_start(self):
@@ -674,7 +767,7 @@ class App(tk.Tk):
     # ── scheduled closing ─────────────────────────────────────────────────
     def _tick_auto_closing(self):
         """Every 60 s: bot_config.json → automation.auto_closing =
-        {"enabled": true, "times": ["03:30"], "accounts": ["HOANK","Hathoro"],
+        {"enabled": true, "times": ["03:30"], "accounts": ["HOANK","Hathoro","Wrenchly"],
          "every_hours": 0}. At each listed HH:MM (or every N hours) start the same
         closing chain the ▶ Run Closing button runs — once per account per slot."""
         try:
@@ -683,7 +776,7 @@ class App(tk.Tk):
                 if not hasattr(self, "_auto_closing_last"):
                     self._auto_closing_last = {}      # account -> slot key last started
                 now = datetime.now()
-                accounts = [x for x in (ac.get("accounts") or ["HOANK", "Hathoro"]) if x in ("HOANK", "Hathoro")]
+                accounts = [x for x in (ac.get("accounts") or ["HOANK", "Hathoro"]) if x in STORES]
                 slot = None
                 hhmm = now.strftime("%H:%M")
                 if hhmm in [str(t).strip() for t in (ac.get("times") or [])]:
@@ -699,10 +792,12 @@ class App(tk.Tk):
                     for acct in due:
                         self._auto_closing_last[acct] = slot
                     if len(due) >= 2:
-                        # One chain for both stores, sequential: the Gmail fetch/sync runs once and
-                        # the two accounts no longer contend for the DB (26 Sep 2026).
-                        self._log_line(f"⏰ auto-closing: starting HOANK + Hathoro sequentially ({slot})", source="scheduler")
-                        self._start_bulk("ALL")
+                        # One chain for the due stores, sequential: the Gmail fetch/sync runs once and
+                        # the accounts no longer contend for the DB (26 Sep 2026). Only the stores in
+                        # automation.auto_closing.accounts, in STORES order.
+                        due = [s for s in STORES if s in due]
+                        self._log_line(f"⏰ auto-closing: starting {' + '.join(due)} sequentially ({slot})", source="scheduler")
+                        self._start_bulk(due)
                     elif due:
                         self._log_line(f"⏰ auto-closing: starting {due[0]} ({slot})", source="scheduler")
                         self._start_bulk(due[0])
@@ -839,6 +934,16 @@ class App(tk.Tk):
                          "• Out-of-Stock (OOS) & Low-profit skip alerts\n"
                          "Runs locally via Baileys gateway (http://127.0.0.1:3005).\n"
                          "Toggle ON on days you want alerts on WhatsApp, OFF when you don't.")
+        wa_senders = ttk.Button(bl, text="📲 Senders", command=self._open_whatsapp_senders)
+        wa_senders.pack(side="left", padx=(0, 4))
+        self._tip(wa_senders, "WHATSAPP SENDERS:\n"
+                              "Link Kamran's and Hifza's WhatsApp and choose which number\n"
+                              "sends each store's alerts.")
+        try:
+            from gui.wa_inbox import WhatsAppInbox
+            self._wa_inbox = WhatsAppInbox(self, bl)
+        except Exception as e:
+            print(f"  [WhatsApp inbox] not started: {e}")
 
         rf = tk.Frame(hi, bg=self.CARD)
         rf.pack(side="right", pady=8)
@@ -1071,7 +1176,7 @@ class App(tk.Tk):
         pf2 = tk.Frame(pi, bg=self.CARD)
         pf2.pack(fill="x", padx=14, pady=(0, 10))
         self._port_lbl = {}
-        for pk in list(PROFILES) + ["HOANK_CLOSING", "HATHORO_CLOSING"]:
+        for pk in list(PROFILES) + STORE_PORT_KEYS:
             r = tk.Frame(pf2, bg=self.CARD)
             r.pack(fill="x", pady=1)
             tk.Label(r, text=f"{pk} :{PORTS[pk]}", font=(self.MONO, 9),
@@ -1192,7 +1297,7 @@ class App(tk.Tk):
         self._multi_vars = {}
         for pk in PROFILES:
             var = tk.BooleanVar()
-            ttk.Checkbutton(r1, text=pk.split("_")[1][:3], variable=var).pack(side="left", padx=(0, 6))
+            ttk.Checkbutton(r1, text=f"{pk.split('_')[0]}·{pk.split('_')[1][:1]}", variable=var).pack(side="left", padx=(0, 6))
             self._multi_vars[pk] = var
 
         # Profile status row (compact)
@@ -1244,6 +1349,7 @@ class App(tk.Tk):
                   "    mark an order '20' just because no priority coupon applied today.\n"
                   "  • Items Zoro marks 'not eligible for any other offers or promotions' are\n"
                   "    placed normally — no coupon can ever apply, so waiting gains nothing.\n"
+                  "  • Wrenchly ignores Sunday mode: it has no coupons to wait for.\n"
                   "  • Everything else WAITS, unlabelled. Nothing is written to Amazon, so\n"
                   "    unticking this releases every held order at once.\n\n"
                   "Held orders are not re-checked every cycle (no re-scrape, no re-pricing) until\n"
@@ -1275,6 +1381,7 @@ class App(tk.Tk):
         cards.columnconfigure(1, weight=1)
         cards.rowconfigure(0, weight=1)
         cards.rowconfigure(1, weight=1)
+        cards.rowconfigure(2, weight=1)
 
         self._plbl = {}
         self._pmargin = {}
@@ -1287,11 +1394,10 @@ class App(tk.Tk):
         self._prush = {}
         self._pultra = {}
         self._prush_batch = {}
-        self._ppayment = {}  # HS_RESELLER only: "Credit Card" | "Net 30"
         self._pfocus_priority_enabled = {}
         self._pfocus_priority_code = {}
 
-        positions = [(0, 0), (0, 1), (1, 0), (1, 1)]
+        positions = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
         for (row, col), pk in zip(positions, PROFILES):
             card_outer = tk.Frame(cards, bg=self.BORDER)
             card_outer.grid(row=row, column=col, sticky="nsew", padx=4, pady=4)
@@ -1400,19 +1506,20 @@ class App(tk.Tk):
                 .grid(row=0, column=5, sticky="w")
             self._plimit[pk] = limit_var
 
-            # ── Row 1b: Payment method (HS_RESELLER only) ─────────
-            # This Zoro account has BOTH a credit card and Net30 terms
-            # connected — let the user pick which one places orders.
+            # ── Row 1b: Payment (HS_RESELLER only) ─────────
+            # This Zoro account pays on Net 30 terms, ALWAYS (owner, 8 Nov 2026): Net 30 is the
+            # checkout's default and the placer never switches it to the saved card. It used to be
+            # a Credit Card / Net 30 choice; the choice fell back to Credit Card and every order
+            # from 15 Oct to 7 Nov went on the AMEX ****6723. Fixed in utils.config.NET30_PROFILES.
             if pk == "HS_RESELLER":
                 fgp = tk.Frame(card, bg=self.CARD)
                 fgp.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 4))
                 tk.Label(fgp, text="Payment", font=(self.FONT, 9),
                          bg=self.CARD, fg=self.DIM).pack(side="left", padx=(0, 6))
-                pay_var = tk.StringVar(value="Credit Card")
-                pay_combo = self._combo(fgp, ["Credit Card", "Net 30"], 12)
-                pay_combo.configure(textvariable=pay_var)
-                pay_combo.pack(side="left")
-                self._ppayment[pk] = pay_var
+                self._tip(tk.Label(fgp, text="Net 30 (always)", font=(self.FONT, 9, "bold"),
+                                   bg=self.CARD, fg=self.GREEN),
+                          "This Zoro account always pays on Net 30 terms — the checkout's default. "
+                          "The placer never picks a card for it.").pack(side="left")
 
             # ── Row 1b: Secondary Label/Margin (COUPON only) ──────
             if "COUPON" in pk:
@@ -1518,7 +1625,7 @@ class App(tk.Tk):
         self._sep(ti)
 
         self._trk_btns = {}
-        for acct_key, acct_label in [("hathoro", "Hathoro"), ("hoank", "HOANK")]:
+        for acct_key, acct_label in [("hathoro", "Hathoro"), ("hoank", "HOANK"), ("wrenchly", "Wrenchly")]:
             ar = tk.Frame(ti, bg=self.CARD)
             ar.pack(fill="x", padx=14, pady=(4, 6))
 
@@ -1790,14 +1897,14 @@ class App(tk.Tk):
 
         # Both stores in ONE sequential chain: Gmail fetch/sync once, no DB contention between
         # two parallel runs, one set of Chromes at a time. This is what the scheduler uses.
-        both_btn = self._btn(ctrl, "▶ Run Closing (both)", self.GREEN,
+        both_btn = self._btn(ctrl, "▶ Run Closing (all)", self.GREEN,
                              lambda: self._start_bulk("ALL"), small=True)
         both_btn.pack(side="left", padx=(16, 0))
         self._tip(both_btn,
-                  "RUN BOTH STORES IN ONE CHAIN — HOANK then Hathoro, sequentially.\n"
-                  "The Gmail archive fetch/sync runs once instead of twice and the two\n"
-                  "accounts never contend for the database. Same steps as the per-store\n"
-                  "buttons; the per-store Stop buttons stop the whole chain.")
+                  f"RUN EVERY STORE IN ONE CHAIN — {' then '.join(STORES)}, sequentially.\n"
+                  "The Gmail archive fetch/sync runs once and the stores never contend\n"
+                  "for the database. Same steps as the per-store buttons; the per-store\n"
+                  "Stop buttons stop the whole chain.")
         # Delivery on its own (27 Sep 2026): Zoro's order tracking for every shipped,
         # undelivered order of both stores — the step the chain runs as step 5, runnable
         # any time without the report/scrape/messaging around it. No Chrome needed.
@@ -1816,13 +1923,14 @@ class App(tk.Tk):
                                 bg=self.CARD, fg=self.MUTED)
         self.lbl_cls.pack(side="right")
 
-        # ── One full control row PER ACCOUNT (HOANK | Hathoro) ─────────
+        # ── One full control box PER STORE (HOANK | Hathoro | Wrenchly) ─────────
         self._cls_btns = {}
         acct_row = tk.Frame(pi, bg=self.CARD)
         acct_row.pack(fill="x", padx=14, pady=(0, 6))
-        acct_row.columnconfigure(0, weight=1)
-        acct_row.columnconfigure(1, weight=1)
-        for col, (acct, color) in enumerate((("HOANK", self.CYAN), ("Hathoro", self.PURPLE))):
+        _store_colors = {"HOANK": self.CYAN, "Hathoro": self.PURPLE, "Wrenchly": self.AMBER}
+        for col in range(len(STORES)):
+            acct_row.columnconfigure(col, weight=1)
+        for col, (acct, color) in enumerate((a, _store_colors.get(a, self.GREEN)) for a in STORES):
             box = tk.Frame(acct_row, bg=self.INP_BG,
                            highlightbackground=self.DIM, highlightthickness=1)
             box.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 8, 0))
@@ -1872,7 +1980,7 @@ class App(tk.Tk):
     def _launch_chrome_closing(self, account: str = "HOANK"):
         """Launch a dedicated Chrome for closing on account-specific port."""
         import subprocess
-        port = 9331 if account == "HOANK" else 9333
+        port = PORTS.get(f"{str(account).upper()}_CLOSING", 9331)
         profile_dir = os.path.expanduser(f"~/Library/Application Support/Google/Chrome/{account}_Closing_Profile")
         os.makedirs(profile_dir, exist_ok=True)
         self._mark_profile_clean_exit(profile_dir)
@@ -1901,16 +2009,26 @@ class App(tk.Tk):
     def _start_bulk(self, account):
         """▶ Run Closing = the WHOLE completion chain via scripts/daily_bulk.py (Gmail fetch →
         closing ingest → reconcile → SC scrape → delivery → gap-fill → reconcile → messaging
-        when chained → coverage). account = "HOANK" | "Hathoro" | "ALL" (both, sequential,
-        in ONE process — the Gmail fetch runs once and the stores never contend for the DB)."""
-        both = str(account).strip().upper() in ("ALL", "BOTH")
+        when chained → coverage). account = "HOANK" | "Hathoro" | "Wrenchly" | "ALL" (every
+        store) | a list of stores (the scheduler) — several stores run sequentially in ONE
+        process, so the Gmail fetch runs once and the stores never contend for the DB."""
+        if isinstance(account, (list, tuple)):
+            accts = [a for a in STORES if a in account]
+        elif str(account).strip().upper() in ("ALL", "BOTH"):
+            accts = list(STORES)
+        else:
+            accts = [str(account)]
+        if not accts:
+            return
+        both = len(accts) > 1
+        account = accts[0] if not both else "ALL"
         name = "bulk_all" if both else f"bulk_{account.lower()}"
         if name in self._procs or "bulk_all" in self._procs or (both and any(p.startswith("bulk_") for p in self._procs)):
             messagebox.showinfo("Info", "A closing run is already active.")
             return
         cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "scripts", "daily_bulk.py")]
         chain = bool(self._cls_chain_var.get())
-        extra_env = {"ACCOUNTS": "HOANK,Hathoro" if both else str(account), "SKIP_MESSAGES": "0" if chain else "1"}
+        extra_env = {"ACCOUNTS": ",".join(accts), "SKIP_MESSAGES": "0" if chain else "1"}
         if chain:
             # daily_bulk's step 7 reads these; same knobs the ✉ button uses.
             extra_env["MSG_LIMIT"] = (self.cls_msg_limit.get() or "0").strip()
@@ -1920,10 +2038,10 @@ class App(tk.Tk):
         self._launch(name, cmd, "both" if both else account, extra_env=extra_env)
         # Start stays enabled so the OTHER account can also be launched. Stop targets
         # whichever account is selected in the dropdown.
-        for a in (("HOANK", "Hathoro") if both else (account,)):
+        for a in accts:
             self._set_cls_state(a, running=True)
         self._refresh_cls_lbl()
-        self._feed_line(f"Closing bulk started ({'HOANK + Hathoro, sequential' if both else account})"
+        self._feed_line(f"Closing bulk started ({' + '.join(accts) + ', sequential' if both else account})"
                         + (f" → then messaging, limit {extra_env['MSG_LIMIT']}"
                            + (" DRY" if self.cls_msg_dry.get() else "") if chain else ""), "ok")
         self._update_hdr()
@@ -2873,6 +2991,11 @@ class App(tk.Tk):
 
     def _wm_launch_runner(self, scrape, serialized, import_file=""):
         """Shared runner spawn for manual / scrape / file-import."""
+        busy = self._zoro_account_busy("walmart")
+        if busy:
+            messagebox.showwarning("Same Zoro account",
+                                   f"{busy} is running on Walmart's Zoro account. Stop it first.")
+            return
         dry = bool(self.wm_dry.get())
         startproc = bool(self.wm_startproc.get())
         cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "walmart_orders.py")]
@@ -4269,11 +4392,6 @@ class App(tk.Tk):
                 self._prush_batch[pk].set(str(pd_.get("rush_batch", 10)))
             self._pest_margin_only[pk].set(pd_.get("est_margin_only", False))
 
-            if pk in self._ppayment:
-                self._ppayment[pk].set(
-                    "Net 30" if str(pd_.get("payment_method", "CREDIT_CARD")).upper() == "NET30"
-                    else "Credit Card")
-
         self._flash_msg("Config loaded")
 
     def _save_config(self):
@@ -4317,9 +4435,8 @@ class App(tk.Tk):
             except ValueError:
                 pdata["rush_batch"] = 10
 
-            if pk in self._ppayment:
-                pdata["payment_method"] = ("NET30" if self._ppayment[pk].get().strip() == "Net 30"
-                                           else "CREDIT_CARD")
+            if pk == "HS_RESELLER":
+                pdata["payment_method"] = "NET30"     # always (utils.config.NET30_PROFILES)
             profiles[pk] = pdata
 
         try:
@@ -4360,6 +4477,24 @@ class App(tk.Tk):
         _write_cfg_file(cfg)
         self._flash_msg("✅ Config saved!", self.GREEN)
 
+    def _open_whatsapp_senders(self):
+        """Open the gateway's page, starting the gateway first if nothing has needed it yet."""
+        import threading
+
+        def go():
+            import requests
+            from utils.whatsapp import ensure_gateway_running
+            url = "http://127.0.0.1:3005"
+            ensure_gateway_running()
+            for _ in range(20):
+                try:
+                    requests.get(f"{url}/status", timeout=1)
+                    break
+                except Exception:
+                    time.sleep(0.5)
+            webbrowser.open(url)
+        threading.Thread(target=go, daemon=True).start()
+
     def _flash_msg(self, text, color=None):
         color = color or self.DIM
         self._global_msg.configure(text=text, fg=color)
@@ -4382,8 +4517,7 @@ class App(tk.Tk):
         # Closing" never looks frozen — but a per-account choice is explicit
         # and must actually narrow to that account.
         if (source.startswith(("bulk_", "messages_", "closing_", "walmart"))
-                and filt not in ("Tracking HOANK", "Tracking Hathoro",
-                                 "Closing HOANK", "Closing Hathoro")):
+                and not (filt.startswith(("Tracking ", "Closing ")) and filt.split(" ", 1)[1] in STORES)):
             return True
         if filt == "All":
             return True
@@ -4395,14 +4529,11 @@ class App(tk.Tk):
             return source.startswith("orders_")
         if filt == "Tracking":
             return source.startswith("tracking_")
-        if filt == "Tracking HOANK":
-            return source == "tracking_hoank"
-        if filt == "Tracking Hathoro":
-            return source == "tracking_hathoro"
-        if filt == "Closing HOANK":
-            return source in ("bulk_all", "delivery_all") or (source.endswith("_hoank") and source.startswith(("bulk_", "messages_", "closing_")))
-        if filt == "Closing Hathoro":
-            return source in ("bulk_all", "delivery_all") or (source.endswith("_hathoro") and source.startswith(("bulk_", "messages_", "closing_")))
+        if filt.startswith("Tracking ") and filt.split(" ", 1)[1] in STORES:
+            return source == "tracking_" + filt.split(" ", 1)[1].lower()
+        if filt.startswith("Closing ") and filt.split(" ", 1)[1] in STORES:
+            _k = "_" + filt.split(" ", 1)[1].lower()
+            return source in ("bulk_all", "delivery_all") or (source.endswith(_k) and source.startswith(("bulk_", "messages_", "closing_")))
         if filt == "Coupons":
             return source == "coupon"
         if filt == "Listings":
@@ -4438,8 +4569,10 @@ class App(tk.Tk):
             "orders_DM_RESELLER": ("DM·RSL", self.GREEN),
             "orders_HS_COUPON":   ("HS·CPN", self.PURPLE),
             "orders_HS_RESELLER": ("HS·RSL", self.AMBER),
+            "orders_WR_RESELLER": ("WR·RSL", self.GREEN),
             "tracking_hoank":     ("TRK·HO", self.ACCENT),
             "tracking_hathoro":   ("TRK·HA", "#f7a072"),
+            "tracking_wrenchly":  ("TRK·WR", self.GREEN),
             "coupon":             ("COUPON", self.AMBER),
             "listings":           ("LIST  ", self.DIM),
             "walmart":            ("WMART ", self.PURPLE),
@@ -4458,7 +4591,8 @@ class App(tk.Tk):
         if src in table:
             return table[src][0], f"src::{src}"
         if src.startswith(("bulk_", "messages_", "closing_")):
-            acct = "HO" if src.endswith("_hoank") else ("HA" if src.endswith("_hathoro") else "  ")
+            acct = ("HO" if src.endswith("_hoank") else ("HA" if src.endswith("_hathoro") else
+                    ("WR" if src.endswith("_wrenchly") else "  ")))
             return f"CLOSE·{acct}", "dim"
         if src.startswith("orders_"):
             return src.replace("orders_", "")[:6].upper().ljust(6), "dim"
@@ -4581,10 +4715,27 @@ class App(tk.Tk):
         self._feed_line(f"Tracking started ({acct_key})", "ok")
         self._update_hdr()
 
+    # Placers on one Zoro account (one cart) by the owner's design: they take turns. HS_RESELLER
+    # builds its cart before the checkout guard, so only this keeps it out of a running Walmart.
+    ONE_ZORO_ACCOUNT = ("orders_HS_RESELLER", "walmart")
+
+    def _zoro_account_busy(self, name):
+        """The other placer on this one's Zoro account, if it is running; else None."""
+        if name in self.ONE_ZORO_ACCOUNT:
+            for other in self.ONE_ZORO_ACCOUNT:
+                if other != name and other in self._procs:
+                    return other.replace("orders_", "")
+        return None
+
     def _start_orders(self):
         key = _profile_key_from_choice(self.ord_profile.get())
         if f"orders_{key}" in self._procs:
             messagebox.showinfo("Info", f"{key} already running.")
+            return
+        busy = self._zoro_account_busy(f"orders_{key}")
+        if busy:
+            messagebox.showwarning("Same Zoro account",
+                                   f"{busy} is running on {key}'s Zoro account. Stop it first.")
             return
         holder = self._lease_blocks_start()
         if holder:
@@ -4750,6 +4901,10 @@ class App(tk.Tk):
         pkey = f"orders_{key}"
         if pkey in self._procs:
             return False
+        busy = self._zoro_account_busy(pkey)
+        if busy:
+            self._feed_line(f"{key} NOT started: {busy} is running on its Zoro account", "warn")
+            return False
         cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "engine/orders.py"), key]
         self._filter.set(key)
         self._launch(pkey, cmd, key)
@@ -4824,6 +4979,10 @@ class App(tk.Tk):
         n = 0
         for pk in PROFILES:
             if self._multi_vars[pk].get() and f"orders_{pk}" not in self._procs:
+                busy = self._zoro_account_busy(f"orders_{pk}")
+                if busy:
+                    self._feed_line(f"{pk} NOT started: {busy} is running on its Zoro account", "warn")
+                    continue
                 cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "engine/orders.py"), pk]
                 self._launch(f"orders_{pk}", cmd, pk)
                 self._pstat[pk].config(text="Running", fg=self.GREEN)
@@ -4846,6 +5005,8 @@ class App(tk.Tk):
     #  PROCESS MANAGEMENT
     # ══════════════════════════════════════════════════════════════════════
     def _launch(self, name, cmd, label="", extra_env=None):
+        if self._closing_down:      # a timer or remote command must not start anything now
+            return
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
@@ -4885,6 +5046,8 @@ class App(tk.Tk):
         self._procs[name] = proc
         rfh = open(log_path, "r", encoding="utf-8", errors="replace")
         self._readers[name] = (wfh, rfh, log_path)
+        if name.startswith(SURVIVES_CLOSE):
+            self._save_closing_runs()
 
         if not self._polling:
             self._polling = True
@@ -5210,10 +5373,7 @@ class App(tk.Tk):
             self.btn_pl_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
             self._refresh_pl()        # the run just rewrote pl_candidates — show it
         elif name.startswith(("bulk_", "messages_", "closing_")):
-            if name == "bulk_all":
-                accts = ("HOANK", "Hathoro")
-            else:
-                accts = ("HOANK",) if name.endswith("hoank") else (("Hathoro",) if name.endswith("hathoro") else ())
+            accts = _bulk_accounts(name)
             for acct in accts:
                 self._set_cls_state(acct, running=False, status_text=status, color=color)
             remaining = sorted(p.upper() for p in self._procs
@@ -5271,10 +5431,11 @@ class App(tk.Tk):
         if n.startswith("orders_"):
             pk = name[len("orders_"):]
             return [PORTS[pk]] if pk in PORTS else []
-        if "hoank" in n:
-            return [PORTS["HOANK_CLOSING"]]
-        if "hathoro" in n:
-            return [PORTS["HATHORO_CLOSING"]]
+        if n.startswith("tracking_"):       # the tracker's own Chrome, never the one closing is using
+            return [PORTS[f"{s.upper()}_TRACKER"] for s in STORES if s.lower() in n][:1]
+        for s in STORES:
+            if s.lower() in n:
+                return [PORTS[f"{s.upper()}_CLOSING"]]
         return []
 
     def _sweep_chrome(self, name, wait=True):
@@ -5356,7 +5517,7 @@ class App(tk.Tk):
         self.after(4000, self._tick_toast)
 
     def _check_ports(self):
-        for pk in list(PROFILES) + ["HOANK_CLOSING", "HATHORO_CLOSING"]:
+        for pk in list(PROFILES) + STORE_PORT_KEYS:
             p = PORTS[pk]
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(0.5)
@@ -5536,25 +5697,111 @@ class App(tk.Tk):
         elif platform.system() == "Windows":
             os.startfile(SCRIPT_DIR)
 
+    def _install_quit_hooks(self):
+        """Every way of quitting runs _on_close. WM_DELETE_WINDOW is only the window's X: Cmd+Q and
+        Dock > Quit end Tk on the spot, and closing the Terminal kills the launcher. Each of those
+        left the placers and trackers running with nothing to stop them (9 Nov 2026: six
+        survivors, and not one of their logs showed a stop signal)."""
+        try:
+            if platform.system() == "Darwin":
+                self.createcommand("::tk::mac::Quit", self._on_close)
+        except Exception:
+            pass
+
+        def _signalled(signum, frame):
+            try:                    # the Terminal may be gone, and printing to it raises
+                sys.stdout = sys.stderr = open(os.devnull, "w")
+            except Exception:
+                pass
+            self.after(0, self._on_close)
+
+        for sig in ("SIGHUP", "SIGTERM", "SIGINT"):
+            if hasattr(signal, sig):
+                signal.signal(getattr(signal, sig), _signalled)
+
+    def _stop_leftover_workers(self):
+        """Placers, trackers and Walmart left behind by a launcher that died (crash, force quit).
+        This launcher has no record of them, so closing it would otherwise leave them running.
+        Closing-side runs are not on the list. Returns them for _on_close to wait on."""
+        if platform.system() == "Windows":
+            return []
+        try:
+            from utils.proc import AdoptedProcess, orphaned_processes
+            scripts = [os.path.join(SCRIPT_DIR, s)
+                       for s in ("engine/orders.py", "engine/tracking.py", "walmart_orders.py")]
+            found = orphaned_processes(scripts)
+        except Exception:
+            return []
+        left = []
+        for pid, _cmd in found:
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)
+                left.append(AdoptedProcess(pid))
+            except Exception:
+                pass
+        return left
+
     def _on_close(self):
-        self._stop_all()
+        if self._closing_down:      # Cmd+Q pressed twice, or a signal while already closing
+            return
+        self._closing_down = True
+        try:
+            self.withdraw()         # gone for the user; the process stays until its workers exited
+        except Exception:
+            pass
+        # A closing-side run carries on with its browsers (SURVIVES_CLOSE); everything else stops.
+        keep = [] if platform.system() == "Windows" else [n for n in self._procs if n.startswith(SURVIVES_CLOSE)]
+        workers = [p for n, p in self._procs.items() if n not in keep]
+        for n in list(self._procs):
+            if n not in keep:
+                self._stop(n)
+        workers += self._stop_leftover_workers()
+        for n in keep:
+            self._log_line(f"{self._tags.get(n, n).upper()} keeps running with the launcher closed "
+                           f"(reopen the launcher to see it or stop it)", source=n)
+        try:
+            self._save_closing_runs()
+        except Exception:
+            pass
         try:
             os.remove(LAUNCHER_STATE)       # tells the cloud agent (and colleagues) we're closed
         except OSError:
             pass
         # Every automation browser: ask each to quit now, force whatever is still there in 4 s,
         # then close the window. (Placers, tracking and closing all use the ports in PORTS.)
+        ports = set(PORTS.values())
+        if keep:
+            ports -= {PORTS[f"{s.upper()}_CLOSING"] for s in STORES}
         try:
             from utils.proc import close_chrome
-            for port in sorted(set(PORTS.values())):
+            for port in sorted(ports):
                 close_chrome(port=port, wait=False)
         except Exception:
             pass
+        deadline = time.time() + 13           # what _stop gives a worker before its SIGKILL
         def _finish():
+            # Not done until every worker is really gone: _stop's SIGKILL for one that ignores
+            # SIGTERM runs on this window's timers, so destroying the window sooner cancels it.
+            alive = [p for p in workers if p.poll() is None]
+            if alive and time.time() < deadline:
+                self.after(500, _finish)
+                return
+            for p in alive:
+                try:
+                    os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+                except Exception:
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
             try:
                 from utils.proc import close_chrome
-                for port in sorted(set(PORTS.values())):
+                for port in sorted(ports):
                     close_chrome(port=port, timeout=0.0)
+            except Exception:
+                pass
+            try:
+                self._save_closing_runs()     # the log was still being read until now
             except Exception:
                 pass
             self.destroy()

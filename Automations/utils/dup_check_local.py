@@ -88,6 +88,12 @@ def _code_overlap(a, b):
     return any(x == y or x.startswith(y) or y.startswith(x) for x in a for y in b)
 
 
+def different_zoro_codes(a, b):
+    """Do these two texts name different items? True only with proof: Zoro codes on both sides, none shared."""
+    codes_a, codes_b = (set(_ZORO_CODE.findall(str(t or "").upper())) for t in (a, b))
+    return bool(codes_a and codes_b) and not _code_overlap(codes_a, codes_b)
+
+
 def gmail_match_is_other_product(wb, current_asin=None, current_sku=None, current_amazon_id=None):
     """Did this WB, found in Gmail by name/address and ZIP, provably buy a DIFFERENT product?
 
@@ -134,11 +140,13 @@ def gmail_match_is_other_product(wb, current_asin=None, current_sku=None, curren
 
 
 def check_address_local(street, zip_code, days=7, current_asin=None, current_sku=None,
-                        current_amazon_id=None, repeat_threshold_hours=72.0):
+                        current_amazon_id=None, repeat_threshold_hours=72.0, strict=False):
     """Exact-match duplicate lookup with smart repeat-customer & multi-item filtering.
     Returns
         {"wb": <most recent WB>, "source": ..., "when": ..., "all_wbs": [...]}
-    or None when no record matches or when matches are safe repeat/multi-item orders. Never raises."""
+    or None when no record matches or when matches are safe repeat/multi-item orders. Never raises,
+    unless strict=True: then a lookup error raises, for a caller to whom "could not look" and
+    "nothing there" are different answers."""
     st, z5 = _norm_street(street), _zip5(zip_code)
     if not st or not z5:
         return None
@@ -182,6 +190,8 @@ def check_address_local(street, zip_code, days=7, current_asin=None, current_sku
                     })
         c.close()
     except Exception as e:
+        if strict:
+            raise
         print(f"   [DUP_LOCAL] lookup error ({e}) — treating as no local answer")
         return None
 
@@ -210,8 +220,17 @@ def check_address_local(street, zip_code, days=7, current_asin=None, current_sku
             if cur_asin != m["asin"]:
                 different_product = True
         elif cur_sku and m.get("sku"):
-            if cur_sku != m["sku"]:
-                different_product = True
+            # Compare the ITEMS, not the SKU text. In the Rush/Ultra batch check current_sku is
+            # Amazon's seller SKU ("HO- G6723787") while a Zoro receipt carries the bare code
+            # ("G6723787"). As text those never match, so every receipt at the same address read
+            # "DIFFERENT product" and an unlocked order was bought a second time
+            # (114-6240669-0408261: WB8146166479 + WB2913319477, 2 Nov 2026). Different only with
+            # proof: Zoro codes on both sides and none shared. (Walmart: current_sku lists every
+            # Zoro code the row can mean — same test.)
+            if _ZORO_CODE.search(cur_sku) or _ZORO_CODE.search(str(m["sku"]).upper()):
+                different_product = different_zoro_codes(cur_sku, m["sku"])
+            else:
+                different_product = cur_sku != m["sku"]   # no Zoro code on either side: the text is all there is
 
         if different_product:
             print(f"   ℹ️ [DUP_LOCAL] address match is for a DIFFERENT product "
@@ -241,3 +260,115 @@ def check_address_local(street, zip_code, days=7, current_asin=None, current_sku
         if m["wb"] not in all_wbs:
             all_wbs.append(m["wb"])
     return {"wb": top["wb"], "source": top["source"], "when": top["ts"], "all_wbs": all_wbs}
+
+
+# ── "That WB is on this buyer's OTHER order" (owner, 4 Nov 2026) ─────────────────────────────
+# The check above matches by address, so a buyer's real repeat purchase matched the WB of their
+# earlier order and was stamped "<WB> - D" and never bought (112-7422969-0994666, 3 Nov 2026, matched
+# WB5917587551 of 112-9339236-7538642). Seller Central lists a buyer's orders with their Seller order
+# IDs; a WB that sits on another of them does not prove THIS order was bought. These two functions
+# only read text and records, so they can be checked without a browser.
+
+_ORDER_ID_LINE = re.compile(r"^\d{3}-\d{7}-\d{7}$")
+_SELLER_ID_LINE = re.compile(r"^Seller order ID:\s*(.*)$", re.I)
+_PLAIN_LABEL = re.compile(r"^W[BW]\d{6,}(?:\s+W[BW]\d{6,})*(?:\s+\+\d+)?$")
+_WB_ONLY = re.compile(r"^W[BW]\d{6,}$")
+_ROW_CANCELLED = re.compile(r"\bcancell?ed\b|buyer cancellation|cancellation reason|requested cancel"
+                            r"|requested that this order be cancel", re.I)
+_ROW_LIVE = re.compile(r"\b(?:un)?shipped\b", re.I)
+
+
+def parse_order_rows(page_text):
+    """The rows of a Manage Orders page, from its innerText: one order id per line opens a row, the
+    same way scrape_order_ids reads it. Returns [{"amazon_id", "label", "cancelled", "live"}]."""
+    rows, by_id, cur, label_next = [], {}, None, False
+    for raw in (page_text or "").split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        if _ORDER_ID_LINE.match(line):
+            label_next = False
+            cur = by_id.get(line)
+            if cur is None:
+                cur = by_id[line] = {"amazon_id": line, "label": "", "cancelled": False, "live": False}
+                rows.append(cur)
+            continue
+        if cur is None:
+            continue
+        if label_next:
+            label_next = False
+            cur["label"] = re.sub(r"\s+", " ", line)
+            continue
+        m = _SELLER_ID_LINE.match(line)
+        if m:
+            value = re.sub(r"\s+", " ", m.group(1)).strip()
+            if value:
+                cur["label"] = value
+            else:
+                label_next = True
+            continue
+        if _ROW_CANCELLED.search(line):
+            cur["cancelled"] = True
+        if _ROW_LIVE.search(line):
+            cur["live"] = True
+    return rows
+
+
+def placer_wbs_for_orders(amazon_ids):
+    """{amazon_id: {WB, ...}} from order_placer_orders, written the moment an order is placed, so it
+    knows a WB whose write-back to Amazon is still journaled. Raises on a database error."""
+    ids = [a for a in dict.fromkeys(amazon_ids or []) if a]
+    out = {}
+    if not ids:
+        return out
+    c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)
+    try:
+        marks = ",".join("?" * len(ids))
+        for aid, wb in c.execute(f"SELECT amazon_order_id, wb_order_id FROM order_placer_orders "
+                                 f"WHERE amazon_order_id IN ({marks})", ids):
+            found = _WB.findall(wb or "")
+            if found:
+                out.setdefault(aid, set()).update(found)
+    finally:
+        c.close()
+    return out
+
+
+def wbs_on_other_orders(matched_wbs, rows, current_amazon_id, recorded=None):
+    """Is EVERY WB the duplicate check matched attached to another live order on this buyer's list?
+
+    Returns (proved, why). One unaccounted WB and the duplicate stands, because that one may be this
+    order's own purchase: bought as WB2 with the write-back lost, while WB1 sits on the buyer's other
+    order. Attached means the row's label is nothing but WB ids, or the placer's record has that WB
+    placed for that row. A "<WB> - D" label is a verdict, not a purchase: on its own it proves nothing,
+    since a sibling can wear the WB of the very order being checked. A cancelled order proves nothing
+    either: its WB may still be shipping to this buyer, so buying again is a person's call."""
+    wbs = list(dict.fromkeys(matched_wbs or []))
+    if not wbs:
+        return False, "no WB id to check"
+    for w in wbs:
+        if not _WB_ONLY.match(str(w)):
+            return False, f"a match with no clean WB id ({w})"
+    recorded = recorded or {}
+    by_id = {r["amazon_id"]: r for r in rows or []}
+    me = by_id.get(current_amazon_id)
+    if me is None:
+        return False, "this order is not on the list, so it can't be trusted as this buyer's list"
+    if len(by_id) < 2:
+        return False, "the list shows no other order"
+    own = set(_WB.findall(me.get("label") or "")) | set(recorded.get(current_amazon_id) or ())
+    if own:
+        return False, f"this very order already carries {sorted(own)[0]}"
+    where = {}
+    for w in wbs:
+        for aid, r in by_id.items():
+            if aid == current_amazon_id or r.get("cancelled") or not r.get("live"):
+                continue
+            label = (r.get("label") or "").strip()
+            plain = set(_WB.findall(label)) if _PLAIN_LABEL.match(label) else set()
+            if w in plain or w in (recorded.get(aid) or ()):
+                where[w] = aid
+                break
+        else:
+            return False, f"{w} is on none of this buyer's other live orders"
+    return True, ", ".join(f"{w} is on {a}" for w, a in where.items())

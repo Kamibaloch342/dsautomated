@@ -51,6 +51,13 @@ def _ensure_columns():
 
 def _account_from_profile(profile: str) -> str:
     p = profile.upper()
+    try:                                  # WR_RESELLER → Wrenchly (config/accounts.json, 6 Nov 2026)
+        from utils.accounts_config import store_for_profile
+        acct = store_for_profile(p)
+        if acct:
+            return acct
+    except Exception:
+        pass
     return "Hathoro" if p.startswith("DM_") else "HOANK"
 
 

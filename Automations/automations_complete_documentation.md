@@ -69,7 +69,7 @@ graph TB
     end
 
     subgraph "TRACKING (engine/tracking.py)"
-        TR["Tracking Uploader<br/>(2 Chrome profiles)<br/>Ports 9331, 9333"]
+        TR["Tracking Uploader<br/>(2 Chrome profiles)<br/>Ports 9335, 9336"]
     end
 
     subgraph "CLOSING (closing.py)"
@@ -357,7 +357,8 @@ sequenceDiagram
 | `DM_COUPON` | 9221 | Hathoro | Coupon + Credit Card | MR |
 | `DM_RESELLER` | 9222 | Hathoro | Credit Card (NO Net30) | AB ECOM |
 | `HS_COUPON` | 9223 | HOANK | Coupon + Credit Card | MR |
-| `HS_RESELLER` | 9224 | HOANK | Credit Card / Net30 | RAJAR |
+| `HS_RESELLER` | 9224 | HOANK | **Net30, always** (account default; never the card — `utils.config.NET30_PROFILES`, 8 Nov 2026) | RAJAR |
+| `WR_RESELLER` | 9226 | Wrenchly | Credit Card (reseller only, no coupon profile) | WR + every mapped unlabelled order |
 
 #### ASIN Mapping — The Gatekeeper
 
@@ -736,10 +737,16 @@ Falls through tiers automatically. Batch size: 30 tracking IDs per call.
 | 9222 | `hathoro_reseller_orders2` | DM_RESELLER placer |
 | 9223 | `hypersale_coupon_orders` | HS_COUPON placer |
 | 9224 | `hypersale_reseller_orders` | HS_RESELLER placer |
+| 9226 | `wrenchly_reseller_orders` | WR_RESELLER placer (Wrenchly, 6 Nov 2026) |
 | 9331 | (closing HOANK) | Report download + SC operations |
 | 9332 | (FedEx HOANK) | FedEx tracking |
 | 9333 | (closing Hathoro) | Report download + SC operations |
 | 9334 | (FedEx Hathoro) | FedEx tracking |
+| 9335 | `hoank_tracking_ids` | HOANK tracking uploader |
+| 9336 | `hathoro_tracking_ids` | Hathoro tracking uploader |
+| 9337 | (closing Wrenchly) | Report download + SC operations |
+| 9338 | (FedEx Wrenchly) | FedEx tracking |
+| 9339 | `wrenchly_tracking_ids` | Wrenchly tracking uploader |
 | 9361 | `port_9361` | Walmart → Zoro orders |
 | 9362 | `port_9362` | Walmart SC scraper |
 
@@ -1416,6 +1423,8 @@ The bot MUST ONLY place orders for ASINs that exist in the `Verified_SKU_Dataset
 - Remove the unmapped-ASIN dashboard alert
 - Guess or infer a Zoro SKU from the ASIN
 
+**One exception (owner, 9 Nov 2026):** a person writes `Manual-C G…` or `Manual-R G…` in Amazon's Seller order ID. That person chose the code for that one order, so nothing is guessed. A tag with no code still stops at `UNMAPPED_ASIN`, and untagged orders of the ASIN stay on the unmapped panel. Details: `docs/CLOUD_ARCHITECTURE.md`, Manual tags.
+
 ---
 
 ### 🔴 RULE 4: NEVER Change Fail-Closed to Fail-Open on Duplicate Detection
@@ -1425,6 +1434,7 @@ The duplicate check searches ALL 15+ Gmail inboxes. If the search fails (network
 **NEVER:**
 - Make a Gmail search error return "no duplicate found"
 - Treat a Gmail match as "not a duplicate" without proof. Since 2 Nov 2026 a match is skipped only when `utils.dup_check_local.gmail_match_is_other_product` proves that WB bought a different product (owner's decision: 17 real orders had been stamped "- D" and never bought). A WB with no record, a shared item or any error keeps the verdict, and the loop keeps looking so a real duplicate behind that match is still found.
+- Treat any duplicate match (local records or Gmail) as "not a duplicate" on the strength of the buyer's other orders without proof for EVERY WB matched. Since 4 Nov 2026 a match is skipped when `utils.dup_check_local.wbs_on_other_orders` proves each WB from `platforms.gmail.all_matched_wbs` sits on another live order in Seller Central's "See all orders from this buyer" list (owner's decision: a real repeat purchase is not a duplicate). A `<WB> - D` label alone or a cancelled order is not proof. No link, an unreadable list, a WB left unaccounted for, this order already carrying or recorded with a WB, or any error writes `- D` as before. It never overrides the placement lock.
 - Skip the duplicate check on any error condition
 - Reduce the number of Gmail accounts searched (currently 15+)
 - Remove the `DUP_CHECK_FAILED` sentinel handling
@@ -1439,13 +1449,22 @@ Customer messages (delivery check-in, review requests) go to real Amazon buyers.
 - Send a delivery message if `delivery_status ≠ "Delivered"` or `"AllDelivered"` — and a
   delivery is only what Zoro's tracking (or a carrier API) confirmed, never a presumption
 - Send a message outside the owner's timing (set 27 Sep 2026, `bot_config.json → messaging`):
-  delivery check-in on the delivery day (0–7 days), review request 6–30 days after delivery,
+  delivery check-in on the delivery day (0–7 days), review request 7–30 days after delivery and
+  not before Amazon's deliver-by date + 6 days (10 Nov 2026: Amazon counts its 5–30 day window
+  from the deliver-by date; a request it refuses as too early is stored "Not Yet" and asked
+  again, never stored as a final "Expired"),
   ONE delay notice when a shipment has had no carrier scan for 3–10 days — never a second
   one, never for freight/untracked orders, never for stalls older than 10 days (a person's case)
 - Remove the `Msg Sent? = Yes` / `Review Sent? = Yes` / `delay_notice_sent = Yes` re-check
   (DB flag + the "Your e-mail to" copy in Gmail)
 - Send messages to cancelled/refunded orders, to buyers who already wrote to us, or when the
-  ship-to zip does not match Zoro's
+  ship-to zip does not match Zoro's. "Already wrote" is per BUYER, not per order (8 Nov 2026,
+  `post_delivery.buyer_wrote_on_other_order`): a buyer's other orders (same ship name + 5-digit
+  ZIP, any store, purchased within 90 days) are checked too — closing's flags first, Gmail for
+  the rest — and if the buyer wrote on any of them, nothing goes out (check-in, review request,
+  delay notice); the order gets `customer_inquiry = "Buyer wrote on other order <id>"`. If the
+  lookup fails, nothing is sent that run. (112-4846567-6695469 got the "arrived safely?"
+  check-in 17 s after the run skipped the same buyer's complaint order 112-2159451-7162619.)
 - Auto-send messages to customers outside the dashboard — alerts only
 
 ---
@@ -1502,10 +1521,17 @@ The fleet runs on fixed ports. Changing a port breaks the corresponding Chrome p
 | 9222 | DM_RESELLER placer |
 | 9223 | HS_COUPON placer |
 | 9224 | HS_RESELLER placer |
+| 9225 | Zoro guest-tracking sweep (browser transport only) |
+| 9226 | WR_RESELLER placer |
 | 9331 | HOANK closing/SC |
 | 9332 | HOANK FedEx |
 | 9333 | Hathoro closing/SC |
 | 9334 | Hathoro FedEx |
+| 9335 | HOANK tracking uploader |
+| 9336 | Hathoro tracking uploader |
+| 9337 | Wrenchly closing/SC |
+| 9338 | Wrenchly FedEx |
+| 9339 | Wrenchly tracking uploader |
 | 9361 | Walmart Zoro |
 | 9362 | Walmart SC |
 
@@ -1722,10 +1748,20 @@ Google Sheets (`Priority_ASIN_Control` tab) is the single source of truth for al
 
 ---
 
+### 🔴 RULE 27: HS_RESELLER and Walmart Pay on Net 30 — Never the Card
+
+HS_RESELLER's Zoro account (Rajar Enterprise LLC) is the only one with Net 30 terms, and its checkout has Net 30 selected by default. Owner, 8 Nov 2026: the placer sets the address, checks the order and places it on Net 30, nothing else. `utils.config.NET30_PROFILES` / `profile_payment_method()` make it NET30 whatever `bot_config.json`, the launcher or a caller passes. Walmart orders (`WALMART_RESELLER`) use the same Zoro account and pay the same way (owner, 8 Nov 2026). The API path pays with type `INVOICE`; the page paths (`_dom_place_order_fallback`, `dom.place_order_fast`, Vuex) confirm Net 30 with `_ensure_net30_payment` and place nothing when it cannot be confirmed. From 15 Oct to 7 Nov 2026 the launcher's Credit Card / Net 30 choice had fallen back to Credit Card and every order went on the AMEX ****6723.
+
+**NEVER:**
+- Bring back a payment choice for HS_RESELLER or Walmart, or let a config value or a fallback's `CREDIT_CARD` default switch either to the card.
+- Fall back to the card when Net 30 cannot be confirmed — fail closed.
+
+---
+
 ### Summary: Rule Priority
 
 | Priority | Rules | Theme |
 |----------|-------|-------|
-| 🔴 **CRITICAL** (financial risk) | 1, 2, 3, 4, 5, 6, 7, 26 | Placement safety, duplicate prevention, data integrity, sheet authority |
+| 🔴 **CRITICAL** (financial risk) | 1, 2, 3, 4, 5, 6, 7, 26, 27 | Placement safety, duplicate prevention, data integrity, sheet authority, HS_RESELLER + Walmart on Net 30 |
 | 🟡 **IMPORTANT** (operational risk) | 8, 9, 10, 11, 12, 13, 14, 15 | Configuration stability, data preservation |
 | 🟢 **STANDARD** (code quality) | 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 | Best practices, consistency |

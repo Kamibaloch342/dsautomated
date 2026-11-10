@@ -38,7 +38,7 @@ print = __import__("functools").partial(print, flush=True)
 from utils.accounts_config import accounts, gmail_tokens, acquire_lock, release_lock
 from engine.post_delivery import (
     process_single_order, process_delay_notice, _get_gmail_services, _delivery_days_ago,
-    _is_driver_alive, ACCOUNT_CONFIGS, prefetch_guards,
+    _is_driver_alive, ACCOUNT_CONFIGS, prefetch_guards, review_wait_days,
     DAYS_AFTER_DELIVERY_TO_MESSAGE, DELIVERY_MESSAGE_MAX_DAYS, DAYS_AFTER_DELIVERY_TO_REVIEW,
     REVIEW_MAX_DAYS, DELAY_NOTICE_ENABLED, DELAY_NOTICE_STALLED_DAYS, DELAY_NOTICE_MAX_STALLED_DAYS,
     DELAY_NOTICE_MAX_DAYS, DELAY_NOTICE_FRESH_HOURS,
@@ -123,11 +123,13 @@ def load_pending():
         if days < 0 or days > MAX_DAYS:
             continue
         # check-in: from the delivery day (default 0) up to DELIVERY_MESSAGE_MAX_DAYS (7);
-        # review: from DAYS_AFTER_DELIVERY_TO_REVIEW (6) up to MAX_DAYS (30).
+        # review: from DAYS_AFTER_DELIVERY_TO_REVIEW (7) up to MAX_DAYS (30), and not before
+        # Amazon's deliver-by date + 6 days — its own window starts there, and a request sent
+        # earlier is refused (engine.post_delivery.review_wait_days).
         msg_due = (o.get("delivered_msg_sent") or "") not in _MSG_TERMINAL \
             and DAYS_AFTER_DELIVERY_TO_MESSAGE <= days <= DELIVERY_MESSAGE_MAX_DAYS
         rev_due = (o.get("review_requested") or "") not in _REVIEW_TERMINAL \
-            and days >= DAYS_AFTER_DELIVERY_TO_REVIEW
+            and days >= DAYS_AFTER_DELIVERY_TO_REVIEW and review_wait_days(o) <= 0
         if msg_due or rev_due:
             o["_days"], o["_msg_due"], o["_rev_due"] = days, msg_due, rev_due
             pending.append(o)
@@ -219,9 +221,8 @@ def _alert_sent(account, before, res):
 
 def _turn(sc_port, driver):
     """One buyer message = one turn on this store's Seller Central Chrome (utils/sc_chrome.py):
-    the tracking uploader drives the same Chrome all day, and per-order turns let its uploads run
-    between messages instead of waiting out a whole messaging run (late shipments). A dry run has
-    no Chrome and takes no turn."""
+    per-order turns let the hourly store reports run between messages instead of waiting out a
+    whole messaging run. A dry run has no Chrome and takes no turn."""
     from contextlib import nullcontext
     if driver is None:
         return nullcontext()

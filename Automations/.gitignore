@@ -28,6 +28,7 @@ data/
 Final_Testing_Logs/
 engine/_dl_hoank/
 engine/_dl_hathoro/
+engine/_dl_wrenchly/
 *.log
 .autosync_output.log
 .zoro_watch.log
@@ -78,3 +79,7 @@ whatsapp_gateway/queue.json
 whatsapp_gateway/queue_media/
 whatsapp_gateway/backlog_*.json*
 whatsapp_gateway/gateway.pid
+# Hifza's WhatsApp login (credentials) and the live sender choices
+whatsapp_gateway/auth_session_hifza/
+whatsapp_gateway/routes.json
+whatsapp_gateway/inbox.json

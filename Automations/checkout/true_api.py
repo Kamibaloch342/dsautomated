@@ -26,6 +26,7 @@ import json
 import time
 import uuid
 import math
+import socket
 import functools
 from datetime import datetime
 
@@ -148,6 +149,33 @@ _LIVE_ACCOUNTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__
                               "data", "dataset", "zoro_accounts_live.json")
 
 
+def _this_placer():
+    """This process as recorded beside its Zoro account: pid + start time (a pid alone gets reused)."""
+    try:
+        import psutil
+        return {"pid": os.getpid(), "pid_started": psutil.Process().create_time(), "host": socket.gethostname()}
+    except Exception:
+        return {}
+
+
+def _placer_still_running(rec):
+    """Is the placer behind this record still running? A stopped one holds no cart, so it never clashes
+    (3 Nov 2026: HS_RESELLER stopped at 19:07 kept Walmart blocked until 19:21). When it cannot be told
+    (older record, other computer), anything seen in the last 15 minutes counts as running."""
+    if rec.get("pid") and rec.get("host") == socket.gethostname():
+        try:
+            import psutil
+            try:
+                proc = psutil.Process(int(rec["pid"]))
+                return (proc.status() != psutil.STATUS_ZOMBIE
+                        and abs(proc.create_time() - float(rec["pid_started"])) < 2)
+            except psutil.NoSuchProcess:
+                return False
+        except Exception:
+            pass
+    return time.time() - float(rec.get("at") or 0) < 900
+
+
 def _shared_account_clash(driver, profile):
     """Name of ANOTHER running profile logged in to the same Zoro account as this one, else None.
 
@@ -155,7 +183,7 @@ def _shared_account_clash(driver, profile):
     (robstark771) and the two placers built their orders in the same cart: three Zoro orders went
     out with the other placer's item and/or address (WB7699391166, WB7993433455, WB8529119739).
     Each profile records its Zoro customerId here at every checkout; a clash with another profile
-    seen in the last 15 minutes stops the checkout before the cart is touched."""
+    that is still running stops the checkout before the cart is touched."""
     try:
         cart = _get_cart(driver) or {}
         cust = str(cart.get("customerId") or "").strip()
@@ -167,9 +195,10 @@ def _shared_account_clash(driver, profile):
         with mutate_json(_LIVE_ACCOUNTS, {}) as live:
             for other, rec in list(live.items()):
                 if other != profile and isinstance(rec, dict) and rec.get("customer") == cust \
-                        and now - float(rec.get("at") or 0) < 900:
+                        and _placer_still_running(rec):
                     clash = other
-            live[profile] = {"customer": cust, "at": now, "at_text": time.strftime("%Y-%m-%d %H:%M:%S")}
+            live[profile] = {"customer": cust, "at": now, "at_text": time.strftime("%Y-%m-%d %H:%M:%S"),
+                             **_this_placer()}
         return clash
     except Exception as e:
         print(f"   ⚠️ shared-account check skipped: {e}")
@@ -507,29 +536,51 @@ def _set_cart_shipping_address(driver, cart_id, address_dict):
     if not r["ok"]:
         err_str = str(r.get("error") or r.get("data") or "").lower()
         if "poboxnotallowed" in err_str or "po box is not allowed" in err_str:
-            print("   ⚠️  PO Box detected by Zoro — sanitizing address and retrying...")
+            print("   ⚠️  PO Box detected by Zoro — renaming the box and retrying...")
             import re
-            sanitized = dict(address_dict)
-            # Remove "box NNN" patterns (case-insensitive) from address lines
+
+            def _is_po_refusal(resp):
+                e = str(resp.get("error") or resp.get("data") or "").lower()
+                return "poboxnotallowed" in e or "po box is not allowed" in e
+
+            # 1st retry: the box renamed "#<number>" behind the street (owner's rule, 10 Nov 2026 —
+            # the same rewrite the address scrape applies to an explicit "PO Box"; here it also takes
+            # the bare "Box 12" / "BX 12" / "BOX # 12" forms Zoro refuses). 2nd retry: the box dropped
+            # altogether, which is what this code did before. Each try needs a street left to ship to.
+            tries = []
+            try:
+                from platforms.amazon import rename_po_box
+                _a1, _a2, _chg, _street = rename_po_box(address_dict.get("address1", ""),
+                                                        address_dict.get("address2", ""), bare=True)
+                if _chg and _street:
+                    tries.append(("box renamed", dict(address_dict, address1=_a1, address2=_a2)))
+            except Exception as _re:
+                print(f"   [DEBUG] box rename unavailable ({type(_re).__name__}) — dropping the box instead")
+            dropped = dict(address_dict)
             for key in ("address1", "address2"):
-                if sanitized.get(key):
-                    sanitized[key] = re.sub(r'\bbox\s+\d+\b', '', sanitized[key], flags=re.IGNORECASE).strip()
-                    sanitized[key] = re.sub(r'\s+', ' ', sanitized[key]).strip()
-            # If address1 is now empty but address2 has content, swap them
-            if not sanitized.get("address1") and sanitized.get("address2"):
-                sanitized["address1"] = sanitized["address2"]
-                sanitized["address2"] = ""
-            payload2 = _build_payload(sanitized)
-            print(f"   [DEBUG] Retrying with sanitized payload: {json.dumps(payload2)[:400]}")
-            r = _api(driver, "POST", f"/v1/cart/{cart_id}/shippingaddress", payload2)
-            if r["ok"]:
-                print("  ✅ Cart shipping address set (sanitized)")
-                _time("_set_cart_shipping_address", t0)
-                return True
-            # Still failed — return PO_BOX sentinel so caller can label properly
-            print(f"   [DEBUG] Sanitized address also rejected: {r['error']}")
+                if dropped.get(key):
+                    _t = re.sub(r'\b(?:P\.?\s*O\.?\s*)?B(?:OX|X)\s*#?\s*\d+\b', '', dropped[key], flags=re.IGNORECASE)
+                    dropped[key] = re.sub(r'\s+', ' ', _t).strip(" -/,")
+            if not dropped.get("address1") and dropped.get("address2"):
+                dropped["address1"], dropped["address2"] = dropped["address2"], ""
+            if dropped.get("address1") and (dropped.get("address1"), dropped.get("address2")) != (
+                    address_dict.get("address1"), address_dict.get("address2")):
+                tries.append(("box dropped", dropped))
+
+            for _how, _addr in tries:
+                payload2 = _build_payload(_addr)
+                print(f"   [DEBUG] Retrying ({_how}): {json.dumps(payload2)[:400]}")
+                r = _api(driver, "POST", f"/v1/cart/{cart_id}/shippingaddress", payload2)
+                if r["ok"]:
+                    print(f"  ✅ Cart shipping address set (sanitized — {_how})")
+                    _time("_set_cart_shipping_address", t0)
+                    return True
+                if not _is_po_refusal(r):
+                    break                   # refused for another reason: not a PO-box problem any more
+            # Still refused as a PO box — return the sentinel so the caller can label the order
+            print(f"   [DEBUG] Renamed address also rejected: {r['error']}")
             _time("_set_cart_shipping_address", t0)
-            return "PO_BOX"
+            return "PO_BOX" if (not tries or _is_po_refusal(r)) else False
 
     _time("_set_cart_shipping_address", t0)
     if r["ok"]:
@@ -1404,6 +1455,9 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
     bot_log("info", "True API checkout started", sku=sku, qty=qty)
     priority_coupons = priority_coupons or []
     coupon_meta_by_code = coupon_meta_by_code or {}
+    # HS_RESELLER always pays on Net 30, whatever the caller passed (utils.config.NET30_PROFILES).
+    from utils.config import profile_payment_method
+    payment_method = profile_payment_method(active_profile, payment_method)
     try:
         driver._zuhra_submit_started = False
     except Exception:
@@ -1413,6 +1467,15 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
         print("\n[1] ensure_on_site + ensure_token")
         zoro.ensure_on_site(driver)
         zoro.ensure_token(driver)
+
+        # Never share a Zoro account (= one cart) with another running profile (19 Oct 2026).
+        # Before the block below: without pre_price (Walmart) it already empties the cart.
+        _clash = _shared_account_clash(driver, active_profile)
+        if _clash:
+            print(f"   🛑 {active_profile} and {_clash} are logged in to the SAME Zoro account — they share one "
+                  f"cart, so one can buy the other's item for the other's address. NOT placing. Stop "
+                  f"{_clash} first, or log this profile's Chrome in to a different Zoro account.")
+            return _format_checkout_result("SHARED_ACCOUNT", return_details=return_details)
 
         # ── 1. Price / Inventory ──
         if pre_price is not None:
@@ -1431,13 +1494,6 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 return _format_checkout_result("FAILED", return_details=return_details)
 
         # ── 2. Clear cart & add via API ──
-        # Never share a Zoro account (= one cart) with another running profile (19 Oct 2026).
-        _clash = _shared_account_clash(driver, active_profile)
-        if _clash:
-            print(f"   🛑 {active_profile} and {_clash} are logged in to the SAME Zoro account — they share one "
-                  f"cart, so one can buy the other's item for the other's address. NOT placing. Log this "
-                  f"profile's Chrome in to its own Zoro account.")
-            return _format_checkout_result("SHARED_ACCOUNT", return_details=return_details)
         # After Zoro said "cart busy", give it time before the next order: 1, 2, 3 … up to 5
         # minutes after consecutive refusals (a cart stayed busy for 4+ minutes on 16 Oct 2026).
         try:
@@ -2055,7 +2111,8 @@ def _dom_place_order_fallback(driver, sku, qty, address, po_number, active_profi
         from checkout.dom import _set_po_number
         _set_po_number(driver, po_number)
 
-    is_net30 = str(payment_method or "").upper() == "NET30"
+    from utils.config import profile_payment_method
+    is_net30 = profile_payment_method(active_profile, payment_method) == "NET30"
     if "RESELLER" in active_profile:
         if is_net30:
             from checkout.dom import _ensure_net30_payment

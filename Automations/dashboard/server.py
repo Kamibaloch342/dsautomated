@@ -475,7 +475,8 @@ def _run_account(path):
         prof = (json.load(open(path[:-4] + ".json", encoding="utf-8")).get("profile") or "")
     except Exception:
         prof = ""
-    return "Hathoro" if prof.startswith("DM_") else ("HOANK" if prof.startswith("HS_") else "")
+    return ("Hathoro" if prof.startswith("DM_") else ("HOANK" if prof.startswith("HS_") else
+            ("Wrenchly" if prof.startswith("WR_") else "")))
 
 
 def ro():
@@ -1852,7 +1853,8 @@ def save_pnl_hoank(body):
 
 # ── BANK / PAYONEER RECONCILIATION (Zoro charges vs DB) ──────────────────────
 _ZINBOX = {"Hathoro": ("abecomllc26", "salesmercentile", "wrenchlyllc"),
-           "HOANK": ("asad_amazon_us", "inhur_llc")}
+           "HOANK": ("asad_amazon_us", "inhur_llc"),
+           "Wrenchly": ("abecomllc02",)}
 
 def bank_reconcile(body):
     """Parse an uploaded Payoneer activity CSV, total Zoro paid/refunded, and reconcile

@@ -265,10 +265,10 @@ def claim_info(amazon_id):
     'already placed' (CONFIRMED, normal dedup) vs 'held for review' (FAILED_KEPT → Locked Orders)."""
     try:
         c = _conn()
-        r = c.execute("SELECT status, wb_order_id FROM placer_claims WHERE amazon_order_id=?",
+        r = c.execute("SELECT status, wb_order_id, note FROM placer_claims WHERE amazon_order_id=?",
                       (amazon_id,)).fetchone()
         c.close()
-        return {"status": r[0], "wb": r[1]} if r else None
+        return {"status": r[0], "wb": r[1], "note": r[2] or ""} if r else None
     except Exception:
         return None
 

@@ -37,7 +37,10 @@ def authenticate_gmail_account(account_name, interactive=False):
     import os
     if os.path.exists(token_file):
         try:
-            creds = Credentials.from_authorized_user_file(token_file, SCOPES)
+            # The token's OWN scopes, not SCOPES (gmail.readonly): a grant made without gmail.readonly
+            # (forwarding_manager's full-access consent, 8 Nov 2026) answers a readonly refresh with
+            # invalid_scope. gmail.modify / mail.google.com read just as well.
+            creds = Credentials.from_authorized_user_file(token_file)
         except Exception as e:
             print(f"⚠️  [GMAIL WARNING] Corrupt token file for '{account_name}': {e}. Skipping.")
             creds = None
@@ -55,8 +58,10 @@ def authenticate_gmail_account(account_name, interactive=False):
             except RefreshError as e:
                 print(f"⚠️  [GMAIL WARNING] Token for '{account_name}' is revoked or expired: {e}")
                 print(f"   Continuing launcher without '{account_name}'. (Run 'scripts/reauth_gmail.py {account_name}' to re-auth).")
+                # Keep it, renamed: deleting it on 8 Nov 2026 lost ten inboxes' tokens over a scope
+                # mismatch the token itself was fine for.
                 try:
-                    os.remove(token_file)
+                    os.replace(token_file, token_file + time.strftime(".dead-%Y%m%d-%H%M%S.bak"))
                 except OSError:
                     pass
                 creds = None
@@ -178,10 +183,14 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
     # local records say nothing AND the archive is too stale to trust a 'no'.
     try:
         from utils.dup_check_local import check_address_local, archive_is_fresh
+        # strict: a lookup that could not run (database locked or unreadable) must not read as
+        # "nothing there" — with a fresh archive that answer skipped Gmail and allowed the purchase.
+        # It raises instead, and the except below sends the question to live Gmail.
         _local = check_address_local(address_line, zip_code,
                                      current_asin=current_asin,
                                      current_sku=current_sku,
-                                     current_amazon_id=current_amazon_id)
+                                     current_amazon_id=current_amazon_id,
+                                     strict=True)
         if _local:
             if len(_local["all_wbs"]) > 1:
                 print(f"   [DUP_LOCAL] address matches {len(_local['all_wbs'])} WBs "
@@ -195,6 +204,14 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
     except Exception as _le:
         print(f"   [DUP_LOCAL] error ({_le}) — falling back to live Gmail")
 
+    return _gmail_duplicate_search(services_list, address_line, zip_code, customer_name,
+                                   current_asin, current_sku, current_amazon_id)
+
+
+def _gmail_duplicate_search(services_list, address_line, zip_code="", customer_name="",
+                            current_asin=None, current_sku=None, current_amazon_id=None, collect_hits=None):
+    """The live-Gmail tier. Returns the first match, or with collect_hits (a list) walks every account
+    and message and puts ALL matches in it instead, returning None or DUP_CHECK_FAILED."""
     # Gmail stores ZIP+4 without hyphens (e.g., 180175940 not 18017-5940)
     zip_search = (zip_code or "").replace('-', '').strip()
 
@@ -235,9 +252,11 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
                 try:
                     print(f"   [DUP_CHECK] acct={idx} query={query[:120]}")
                     response = service.users().messages().list(
-                        userId='me', q=query, maxResults=10).execute()
+                        userId='me', q=query, maxResults=10 if collect_hits is None else 50).execute()
                     messages = response.get('messages', [])
                     print(f"   [DUP_CHECK] acct={idx} found={len(messages)} messages")
+                    if collect_hits is not None and response.get('nextPageToken'):
+                        search_failed = True      # more hits than we read: "all of them" can't be vouched for
                     break
                 except Exception as e:
                     last_err = e
@@ -285,6 +304,9 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
                         if _other_product(order_match.group(1), current_asin, current_sku, current_amazon_id):
                             continue      # this buyer's other order: keep looking, a real one may follow
                         print(f"   [DUP_CHECK] MATCH in subject: {order_match.group(1)}")
+                        if collect_hits is not None:
+                            collect_hits.append(order_match.group(1))
+                            continue
                         return order_match.group(1)
 
                     order_match = re.search(r'#?((?:WB|WW)\S+)', body_clean)
@@ -292,9 +314,15 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
                         if _other_product(order_match.group(1), current_asin, current_sku, current_amazon_id):
                             continue      # this buyer's other order: keep looking, a real one may follow
                         print(f"   [DUP_CHECK] MATCH in body: {order_match.group(1)}")
+                        if collect_hits is not None:
+                            collect_hits.append(order_match.group(1))
+                            continue
                         return order_match.group(1)
                     else:
                         print(f"   [DUP_CHECK] MATCH (no WB/WW id found)")
+                        if collect_hits is not None:
+                            collect_hits.append("Duplicate")
+                            continue
                         return "Duplicate"
 
             except Exception as e:
@@ -308,6 +336,41 @@ def check_if_address_already_ordered_gmail(services_list, address_line, zip_code
         return DUP_CHECK_FAILED
     print(f"   [DUP_CHECK] no match across all accounts")
     return None
+
+
+def all_matched_wbs(services_list, address_line, zip_code="", customer_name="",
+                    current_asin=None, current_sku=None, current_amazon_id=None, first=None):
+    """Every WB the duplicate check can match for this order, not only the one it answered with.
+
+    Same evidence as the check itself: the local records, and live Gmail only when the archive is too
+    stale to trust. Returns a list of clean WB ids, or None when that list can't be vouched for: a
+    search or database error, more hits than were read, a hit with no WB id, or a record that this
+    very order was already placed. None means the duplicate verdict stands."""
+    wb_id = re.compile(r"W[BW]\d{6,}")
+    from utils.dup_check_local import check_address_local, archive_is_fresh
+    found = [first] if first else []
+    local = check_address_local(address_line, zip_code, current_asin=current_asin, current_sku=current_sku,
+                                current_amazon_id=current_amazon_id, strict=True)
+    if local:
+        if local.get("reason") == "same_amazon_order":
+            return None
+        found += local.get("all_wbs") or []
+    if not archive_is_fresh():
+        print("   [DUP_CHECK] archive is stale — asking live Gmail for every match")
+        hits = []
+        if _gmail_duplicate_search(services_list, address_line, zip_code, customer_name, current_asin,
+                                   current_sku, current_amazon_id, collect_hits=hits) == DUP_CHECK_FAILED:
+            return None
+        found += hits
+    out = []
+    for raw in found:
+        m = wb_id.search(str(raw))
+        if not m:
+            print(f"   [DUP_CHECK] a match has no WB id ({raw})")
+            return None
+        if m.group(0) not in out:
+            out.append(m.group(0))
+    return out
 
 
 def _other_product(wb, asin, sku, amazon_id):
@@ -349,7 +412,8 @@ def batch_check_addresses_gmail(services_list, orders):
             _l = check_address_local(o.get("address") or "", o.get("zip") or "",
                                      current_asin=o.get("asin"),
                                      current_sku=o.get("sku"),
-                                     current_amazon_id=o.get("key"))
+                                     current_amazon_id=o.get("key"),
+                                     strict=True)     # a failed lookup → the Gmail sweep, never "no duplicate"
             if _l:
                 resolved[o["key"]] = _l["wb"]
                 print(f"   [DUP_LOCAL] {o['key']}: duplicate via {_l['source']} → {_l['wb']}")

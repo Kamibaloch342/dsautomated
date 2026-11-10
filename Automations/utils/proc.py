@@ -193,6 +193,50 @@ def chrome_browser_pids(user_data_dir=None, port=None):
     return {pid for pid, cmd in _ps_lines() if _chrome_cmd_matches(cmd, user_data_dir, port)}
 
 
+class AdoptedProcess:
+    """A process an earlier launcher started, with the parts of Popen the launcher uses (it runs in
+    its own session, so killpg works on it too). It is not our child, so its exit code is lost: it
+    reads as 0 once the process is gone. A pid whose command line no longer names the script was
+    reused by something else, so that run is over."""
+
+    def __init__(self, pid, args=()):
+        self.pid = int(pid)
+        self.args = list(args)
+        self.returncode = None
+        script = next((a for a in self.args if str(a).endswith(".py")), "")
+        if not pid_exists(self.pid) or (script and not any(
+                p == self.pid and script in cmd for p, cmd in _ps_lines())):
+            self.returncode = 0
+
+    def poll(self):
+        if self.returncode is None and not pid_exists(self.pid):
+            self.returncode = 0
+        return self.returncode
+
+    def kill(self):
+        kill_pid(self.pid)
+
+
+def orphaned_processes(script_paths):
+    """[(pid, command)] of processes whose parent is gone (PPID 1) and that run one of these
+    scripts. A live launcher's own workers still have it as their parent, so they never match.
+    macOS/Linux only."""
+    if _IS_WIN:
+        return []
+    found = []
+    try:
+        txt = subprocess.run(["ps", "-axo", "pid=,ppid=,command="],
+                             capture_output=True, text=True, timeout=8).stdout
+        for line in txt.splitlines():
+            parts = line.split(None, 2)
+            if len(parts) == 3 and parts[0].isdigit() and parts[1] == "1" \
+                    and any(str(s) in parts[2] for s in script_paths):
+                found.append((int(parts[0]), parts[2]))
+    except Exception:
+        pass
+    return found
+
+
 def terminate_pid(pid):
     """Ask a process to exit (SIGTERM; WM_CLOSE-style taskkill on Windows)."""
     try:

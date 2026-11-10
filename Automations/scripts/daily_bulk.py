@@ -21,7 +21,7 @@ at the end, and reflected in the exit code, so a bad run can't masquerade as a g
                               verdict: "N orders in the 30d report — X closed, these have problems")
 
 PREREQ for steps 4+7: a logged-in headed Chrome must be running per account —
-  HOANK → --remote-debugging-port=9331, Hathoro → 9333. If not up, those steps stop
+  HOANK → --remote-debugging-port=9331, Hathoro → 9333, Wrenchly → 9337. If not up, those steps stop
   safely and the run continues (deliver_by stays amber, messages stay pending).
   Skip SC scrape with SKIP_SCRAPE=1; skip messaging with SKIP_MESSAGES=1.
 
@@ -160,6 +160,29 @@ def _write_run_log(status, mins):
         print(f"[daily_bulk] run log: {e}")
 
 
+def _close_own_chromes():
+    """Nothing else needs the Chromes this chain started once it is done (the trackers have their
+    own since 3 Nov 2026), and a browser costs up to 1 GB on a 16 GB machine running 4 placers.
+    Only the closing profile is closed: a window opened with 🚀 Chrome stays. Not while a ✉ run or
+    an hourly report is using it; the next chain simply reuses a Chrome left up."""
+    from utils.proc import close_chrome
+    from utils.sc_chrome import sc_turn, SCBusy
+    for a in ACCTS:
+        port = int(_cfg_accounts()[a]["sc_port"])
+        got, _ = acquire_lock(f"messages_{a}")
+        if not got:
+            continue
+        try:
+            with sc_turn(port, f"closing {a} done", max_wait=60, on_timeout="skip"):
+                close_chrome(os.path.expanduser(f"~/.closing_chrome_profiles/port_{port}"), timeout=8.0)
+        except SCBusy:
+            pass
+        except Exception as e:
+            print(f"[daily_bulk] ⚠️ could not close {a}'s closing Chrome: {e}")
+        finally:
+            release_lock(f"messages_{a}")
+
+
 def main():
     # 1) Gmail archives (all types/accounts) → gmail_archive.db → unified.
     #    SERIALIZED across concurrent daily_bulk runs: two simultaneous fetches
@@ -256,7 +279,9 @@ def main():
     #    parcels' FedEx scans straight from Zoro's guest lookup on the reseller user agent —
     #    no Chrome, no carrier key, ~0.5 s per order. Exit 2 = Zoro refused (nothing marked).
     #    DELIVERY_SOURCE=carrier restores the FedEx/UPS API path below.
-    _fedex_bases = {acct: 9341 + 10 * i for i, acct in enumerate(_cfg_accounts())}
+    # 9341, 9351, then 9371…: a third store at 9341 + 20 = 9361 would have launched (and pkill'd)
+    # Chrome on the Walmart Zoro port (6 Nov 2026, Wrenchly).
+    _fedex_bases = {acct: 9341 + 10 * (i if i < 2 else i + 1) for i, acct in enumerate(_cfg_accounts())}
     try:
         from utils.accounts_config import fedex_api_credentials, ups_api_credentials
         _carrier_api = bool(fedex_api_credentials().get("client_id")) or bool(ups_api_credentials().get("client_id"))
@@ -326,6 +351,8 @@ def main():
             t.start()
         for t in _msg_threads:
             t.join()
+
+    _close_own_chromes()
 
     # 8) coverage report (Shipped) — counts per column + a missing-ids file per account
     print(f"\n{'='*72}\n📊  COVERAGE (Shipped) after bulk — should be ~0 except deliver_by if SC skipped\n{'='*72}")

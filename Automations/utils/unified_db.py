@@ -997,7 +997,26 @@ def last_list_price(sku: str, exclude_amazon_id: str = "", db_path=None, conn=No
         return None
 
 
+_PLACER_DATE_COLUMNS = ("purchase_date", "ship_by_date", "deliver_by_date")
+
+
+def _iso_order_date(value):
+    """'Sat, Nov 7, 2026' / 'Nov 7, 2026' → '2026-11-07'. Anything else is returned unchanged,
+    such as an already-ISO date or the 'date| ZoroDeliverBy:…' text readers split themselves."""
+    if not isinstance(value, str) or "|" in value:
+        return value
+    for fmt in ("%a, %b %d, %Y", "%A, %B %d, %Y", "%a, %B %d, %Y", "%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(value.strip(), fmt).date().isoformat()
+        except ValueError:
+            pass
+    return value
+
+
 def upsert_placer_order(data: dict, db_path=None) -> bool:
+    # The placer writes Seller Central's wording and the log sync writes ISO, so a row's date
+    # changed format within the hour and anything comparing dates as text saw it twice.
+    data = {k: (_iso_order_date(v) if k in _PLACER_DATE_COLUMNS else v) for k, v in data.items()}
     # The table predates these columns; make sure they exist before a row that carries them.
     try:
         if any(k in data for k in PLACER_PRICE_COLUMNS) or any(k in data for k in PLACER_UPLOAD_COLUMNS):
@@ -1187,6 +1206,7 @@ ZORO_TRACKING_COLUMNS = {
     "stalled_days": "INTEGER",        # days since last_movement_at while undelivered
     "delay_notice_sent": "TEXT",      # Yes / No Permission / No
     "delay_notice_at": "TEXT",
+    "zoro_lookup_email": "TEXT",      # the e-mail that unlocked the order in Zoro's guest lookup (6 Nov 2026)
 }
 
 

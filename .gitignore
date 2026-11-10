@@ -31,6 +31,7 @@ Final_Testing_Logs/
 Automations/data/
 Automations/engine/_dl_hoank/
 Automations/engine/_dl_hathoro/
+Automations/engine/_dl_wrenchly/
 *.log
 *.heartbeat
 *.lock

@@ -15,7 +15,7 @@ Analyzes incoming orders and comparisons against historical database records:
 import os
 import re
 import sqlite3
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from typing import Dict, Any, List, Optional
 
 _SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -59,6 +59,16 @@ def _parse_date(d_str: Any) -> Optional[date]:
         except ValueError:
             pass
     return None
+
+
+def _business_days_after(a: date, b: date) -> int:
+    """Mon–Fri days after a up to and including b; 0 when b is not after a."""
+    n = 0
+    while a < b:
+        a += timedelta(days=1)
+        if a.weekday() < 5:
+            n += 1
+    return n
 
 
 def last_amazon_unit_price(asin: str, exclude_amazon_id: str = "") -> Optional[Dict[str, Any]]:
@@ -704,10 +714,11 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
     # -------------------------------------------------------------
     zoro_date = _parse_date(zoro_deliver_str)
     amz_deliver_by = _parse_date(deliver_by_str)
-    # Alert when Zoro's own "Delivery by" date is two or more days after the date Amazon
-    # promised the buyer. One day late is within the carrier's normal variance.
-    if zoro_date and amz_deliver_by and (zoro_date - amz_deliver_by).days >= 2:
-        days_late = (zoro_date - amz_deliver_by).days
+    # Alert when Zoro's own "Delivery by" date is two or more BUSINESS days after the date Amazon
+    # promised the buyer. One day late is within the carrier's normal variance, and a Friday
+    # promise against a Monday delivery is one business day, not three.
+    if zoro_date and amz_deliver_by and _business_days_after(amz_deliver_by, zoro_date) >= 2:
+        days_late = _business_days_after(amz_deliver_by, zoro_date)
         order_line = f"• Order: `{current_amz_id}`\n" if current_amz_id else ""
         insights.append({
             "code": "DELIVERY_MISMATCH_LATE",
@@ -724,7 +735,7 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
                 f"• ASIN: `{asin}`\n"
                 f"{order_line}\n"
                 f"• Amazon deliver by: *{amz_deliver_by.strftime('%a, %b %d')}*\n"
-                f"• Zoro delivery by:  *{zoro_date.strftime('%a, %b %d')}*  (*{days_late} days* later)"
+                f"• Zoro delivery by:  *{zoro_date.strftime('%a, %b %d')}*  (*{days_late} business days* later)"
             ),
             "data": {
                 "amazon_deliver_by": str(amz_deliver_by),
@@ -873,10 +884,10 @@ def analyze_order_insights(order: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 # ── what the placer is allowed to send ───────────────────────────────────────────────────
-# Exactly two alerts, chosen by the owner on 21 Sep 2026: Zoro's /ea price went up against the
-# last one we recorded for that code, and Zoro's delivery date is 2+ days after Amazon's
-# promise. Every other rule still runs for the dashboard, but never reaches WhatsApp.
-PLACER_ALERT_CODES = ("ZORO_LIST_PRICE_CHANGED", "DELIVERY_MISMATCH_LATE")
+# Only the delivery alert: Zoro's date is 2+ business days after Amazon's promise. Zoro price
+# changes come from one place since 9 Nov 2026, the Unit Price on Zoro's order e-mails
+# (dashboard/insights.py, owner's decision), so this rule no longer reaches WhatsApp either.
+PLACER_ALERT_CODES = ("DELIVERY_MISMATCH_LATE",)
 
 
 def placer_alerts(order: Dict[str, Any]) -> List[Dict[str, Any]]:

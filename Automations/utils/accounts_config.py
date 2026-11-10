@@ -18,10 +18,19 @@ _FALLBACK = {
     "accounts": {
         "HOANK":   {"report_port": 9331, "fedex_port": 9332, "sc_port": 9331, "pd_key": "hoank",
                     "earnings_inbox": "qurtdis",
-                    "zoro_preferred": ["salesmercentile1", "inhur_llc"]},
+                    "zoro_preferred": ["salesmercentile1", "inhur_llc"],
+                    "profile_prefix": "HS", "tracker_port": 9335},
         "Hathoro": {"report_port": 9333, "fedex_port": 9334, "sc_port": 9333, "pd_key": "hathoro",
                     "earnings_inbox": "abecomllc26",
-                    "zoro_preferred": ["robstark771", "wrenchlyllc", "salesmercentile"]},
+                    "zoro_preferred": ["robstark771", "wrenchlyllc", "salesmercentile"],
+                    "profile_prefix": "DM", "tracker_port": 9336},
+        # Third store (6 Nov 2026): reseller-only, placed by WR_RESELLER from the Zoro account whose
+        # mail lands in abecomllc02; Amazon mail ('Sold, ship now') lands in wrenchlyllc.
+        "Wrenchly": {"report_port": 9337, "fedex_port": 9338, "sc_port": 9337, "pd_key": "wrenchly",
+                     "earnings_inbox": "wrenchlyllc",
+                     "zoro_preferred": ["abecomllc02"],
+                     "sc_store_name": "Wrenchly Solutions LLC", "sc_marketplace": "United States",
+                     "profile_prefix": "WR", "tracker_port": 9339},
     },
     "gmail_tokens": ["qurtdis", "abecomllc26", "asad_amazon_us", "inhur_llc", "wrenchlyllc", "salesmercentile", "robstark771"],
     "gmail_accounts": ["qurtdis", "abecomllc26", "asad_amazon_us", "inhur_llc", "wrenchlyllc",
@@ -53,7 +62,15 @@ _FALLBACK = {
     },
     # Placer profile → the Zoro inbox (token name) that profile buys with (owner, 27 Sep 2026).
     "zoro_profile_inboxes": {"HS_COUPON": "inhur_llc", "HS_RESELLER": "asad_amazon_us",
-                             "DM_RESELLER": "abecomllc26", "DM_COUPON": "robstark771"},
+                             "DM_RESELLER": "abecomllc26", "DM_COUPON": "robstark771",
+                             "WR_RESELLER": "abecomllc02"},
+    # Inboxes that receive FORWARDED copies of other accounts' Zoro mail (6 Nov 2026). An order
+    # whose confirmation was read there says nothing about which Zoro account bought it: from
+    # ~12 Oct every store Gmail forwards into mkamrankhan342, closing recorded that hub as the
+    # order's zoro_gmail_account, and the delivery sweep asked Zoro with the hub's address —
+    # 404 for every Hathoro order (robstark771 / abecomllc26 bought them). The sweep now tries
+    # these last, after the account the profile is known to buy with.
+    "zoro_forwarding_hubs": ["mkamrankhan342"],
     # Zoro guest tracking sweep (engine/zoro_tracking.py, scripts/zoro_delivery_check.py).
     "zoro_tracking": {"transport": "auto", "port": 9225, "delay_s": 0.4, "workers": 4, "days": 60,
                       "recheck_hours": 20, "late_days": 2, "stalled_days": 3},
@@ -78,6 +95,62 @@ def _load():
 def accounts() -> dict:
     """{'HOANK': {report_port, fedex_port, sc_port, pd_key}, ...}"""
     return _load()["accounts"]
+
+
+# ── Stores and placer profiles (6 Nov 2026, third store Wrenchly) ─────────────
+# A placer profile is "<prefix>_COUPON" / "<prefix>_RESELLER"; the prefix names the store.
+# Code used to say `"Hathoro" if profile.startswith("DM_") else "HOANK"`, which would have
+# booked every Wrenchly order as HOANK. These built-ins only cover an accounts.json entry
+# that has no profile_prefix / tracker_port yet.
+_BUILTIN_PREFIX = {"HOANK": "HS", "Hathoro": "DM", "Wrenchly": "WR"}
+_BUILTIN_TRACKER_PORT = {"HOANK": 9335, "Hathoro": 9336, "Wrenchly": 9339}
+
+
+def store_names() -> list:
+    """Every Amazon store, in accounts.json order: ['HOANK', 'Hathoro', 'Wrenchly']."""
+    return list(accounts())
+
+
+def store_prefix(store: str) -> str:
+    """'HOANK' → 'HS', 'Hathoro' → 'DM', 'Wrenchly' → 'WR' ('' for an unknown store)."""
+    cfg = accounts().get(store) or {}
+    return str(cfg.get("profile_prefix") or _BUILTIN_PREFIX.get(store, "")).upper()
+
+
+def store_for_profile(profile: str, default: str = "") -> str:
+    """The store a placer profile belongs to: 'WR_RESELLER' → 'Wrenchly'. Matched on the prefix
+    before the first '_' (so 'HS' never matches 'HSX_…'); `default` when no store has it."""
+    pre = str(profile or "").strip().upper().split("_", 1)[0]
+    if not pre:
+        return default
+    for name in store_names():
+        if store_prefix(name) == pre:
+            return name
+    for name, p in _BUILTIN_PREFIX.items():
+        if p == pre:
+            return name
+    return default
+
+
+def store_by_key(key: str, default: str = "") -> str:
+    """'hoank' / 'HATHORO' / 'wrenchly' (any case, or the store's pd_key) → the store name."""
+    k = str(key or "").strip().lower()
+    for name, cfg in accounts().items():
+        if k in (name.lower(), str(cfg.get("pd_key") or "").lower()):
+            return name
+    return default
+
+
+def store_key(store: str) -> str:
+    """The lower-case key a store goes by in tracker / messaging / process names: 'wrenchly'."""
+    cfg = accounts().get(store) or {}
+    return str(cfg.get("pd_key") or store).lower()
+
+
+def tracker_port(store: str) -> int:
+    """The tracking uploader's own Chrome for this store (HOANK 9335, Hathoro 9336, Wrenchly 9339)."""
+    cfg = accounts().get(store) or {}
+    return int(cfg.get("tracker_port") or _BUILTIN_TRACKER_PORT.get(store) or 0)
 
 
 def fedex_api_credentials() -> dict:
@@ -109,6 +182,11 @@ def zoro_profile_inboxes() -> dict:
     out = dict(_FALLBACK["zoro_profile_inboxes"])
     out.update(_load().get("zoro_profile_inboxes") or {})
     return out
+
+
+def zoro_forwarding_hubs() -> set:
+    """Token names of the inboxes that collect forwarded copies of other accounts' Zoro mail."""
+    return {str(t).strip() for t in (_load().get("zoro_forwarding_hubs") or []) if str(t).strip()}
 
 
 def zoro_tracking_cfg() -> dict:

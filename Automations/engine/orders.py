@@ -65,7 +65,9 @@ from utils.config import (
     RESTRICTION_LONG_COOLDOWN, ZORO_SMALL_ORDER_FEE,
     DECIDING_COUPON_MIN_DEFAULT,
     load_gui_config, apply_gui_overrides, select_profile, get_priority_coupons,
+    has_coupon_sibling, profile_payment_method,
 )
+from utils.accounts_config import store_for_profile as _store_for_profile, store_prefix as _store_prefix
 from platforms.amazon import (
     scrape_amazon_address,
     validate_and_prepare_address,
@@ -77,6 +79,7 @@ from platforms.zoro import (
     ensure_on_site,
     ensure_token,
     check_inventory,
+    first_alt_in_stock,
     clear_cart_and_add,
     add_second_item,
     reset_restriction,
@@ -99,6 +102,7 @@ from platforms.gmail import (
     authenticate_gmail_account,
     get_amazon_earnings_from_gmail,
     check_if_address_already_ordered_gmail,
+    all_matched_wbs,
     DUP_CHECK_FAILED,
 )
 from utils.helpers import (
@@ -113,7 +117,7 @@ from utils.helpers import (
 )
 from utils.pricing import log_price_or_status
 from engine.ultra_crew import UltraCrew, LoginWall
-from platforms.auth import is_login_page, auto_login
+from platforms.auth import is_login_page, auto_login, on_account_switcher, choose_store_if_asked
 
 try:
     from utils.unified_db import insert_order, update_order
@@ -179,9 +183,11 @@ PORT = CONFIG["port"]
 PO_NUMBER = CONFIG["po_number"]
 TARGET_LABEL = CONFIG.get("target_label", "")
 TARGET_LABEL_2 = CONFIG.get("target_label_2", "") if "COUPON" in PROFILE_NAME else ""
-# A PO-box order is never placed (Zoro ships UPS/FedEx, neither delivers to a PO box): it is labelled
-# with this on Amazon so the team sees it, and recorded in po_box_orders (owner, 12 Oct 2026 — it
-# replaced the old "POBOX" label and the endless re-scrape of an unlabelled PO-box order).
+# PO boxes. Since 10 Nov 2026 (owner) a PO-box order IS placed, with the box renamed "#<number>"
+# behind its street (platforms.amazon.rename_po_box; recorded in po_box_orders as "renamed"). This
+# label is now only for what cannot be shipped at all: an address that is nothing but a box, or one
+# Zoro still refuses after the rename. (12 Oct – 10 Nov 2026 every PO-box order got it and was not
+# placed; before that the label was "POBOX" and an unlabelled PO-box order was re-scraped forever.)
 PO_BOX_LABEL = "BB"
 # Zoro's own delivery estimate this many days (or more) past Amazon's deliver-by: the buyer would get
 # it late, so the order is NOT placed — it is labelled with this for the team (owner, 15 Oct 2026,
@@ -211,6 +217,19 @@ PRIORITY_COUPONS = get_priority_coupons(gui_cfg)
 
 IS_COUPON_PROFILE = "COUPON" in PROFILE_NAME
 IS_RESELLER_PROFILE = "RESELLER" in PROFILE_NAME
+# The Amazon store this profile places for ('HOANK' / 'Hathoro' / 'Wrenchly') — from
+# config/accounts.json. Before 6 Nov 2026 every non-DM profile was booked as HOANK.
+STORE_ACCOUNT = _store_for_profile(PROFILE_NAME, default="HOANK")
+try:
+    from utils.whatsapp import set_alert_store as _wa_set_alert_store
+    _wa_set_alert_store(STORE_ACCOUNT)   # which WhatsApp number sends this placer's notices
+except Exception as _wa_err:
+    print(f"  [WhatsApp] ⚠️ could not set the alert store: {_wa_err}")
+# Reseller-only stores (Wrenchly) have no coupon profile: every hand-off to a sibling is off.
+HAS_COUPON_SIBLING = has_coupon_sibling(PROFILE_NAME)
+# Every unlabelled order whose ASIN is mapped is this profile's (Wrenchly, owner 6 Nov 2026):
+# discovery treats the whole Verified_SKU_Dataset as the priority list instead of a sheet column.
+PLACE_ALL_MAPPED = bool(CONFIG.get("place_all_mapped", False))
 # Labels-only mode (launcher checkbox): process ONLY already-labelled orders.
 # Priority-ASIN discovery and Deciding-ASIN routing are fully disabled. A Manual-C/-R tag is a label,
 # with or without a Zoro code after it.
@@ -226,8 +245,8 @@ DECIDING_ASINS = []
 DECIDING_COUPON_MIN = float(
     CONFIG.get("deciding_coupon_min", DECIDING_COUPON_MIN_DEFAULT)
     or DECIDING_COUPON_MIN_DEFAULT)
-# RESELLER payment: "CREDIT_CARD" (default) or "NET30" — set per-profile in the GUI.
-PAYMENT_METHOD = str(CONFIG.get("payment_method") or "CREDIT_CARD").upper()
+# RESELLER payment: "CREDIT_CARD" or "NET30". HS_RESELLER is always NET30 (utils.config.NET30_PROFILES).
+PAYMENT_METHOD = profile_payment_method(PROFILE_NAME, CONFIG.get("payment_method"))
 
 # ── Routing rules (bot_config.json "routing") ──────────────────────────────
 ROUTING = dict(gui_cfg.get("routing") or {})
@@ -252,8 +271,11 @@ _CYCLE_STARTED_AT = [time.time()]  # when this cycle loaded its sheet lists (lat
 if SUPERVISE_UNLABELLED:
     print(f"   -> Supervisor: ON — unlabelled mapped orders handled last, max {SUPERVISE_MAX_PER_CYCLE}/cycle "
           f"(regular coupon needs cart ≥ ${SUPERVISE_MIN_CART:.0f})")
-if IS_RESELLER_PROFILE:
+print(f"   -> Store: {STORE_ACCOUNT}" + ("" if HAS_COUPON_SIBLING else " (reseller only — no coupon profile, nothing is routed)"))
+if IS_RESELLER_PROFILE and HAS_COUPON_SIBLING:
     print(f"   -> Deciding rule: cart ≥ threshold OR reseller margin < {DECIDING_MIN_MARGIN:.0%} → coupon profile")
+if PLACE_ALL_MAPPED:
+    print(f"   -> Discovery: EVERY unlabelled order whose ASIN is in {GOOGLE_SHEET_SKU_TAB} (no Priority column)")
 print(f"   -> Min Margin: {MIN_MARGIN:.0%} ({MIN_MARGIN})")
 if ORDER_LIMIT > 0:
     print(f"   -> 🔒 Order Limit: {ORDER_LIMIT} successful order(s) this run, then stop")
@@ -464,7 +486,7 @@ def _upsert_unified_db(amazon_id, detail, **extra):
     try:
         from utils.unified_db import insert_order, update_order
         # Map log fields to DB schema
-        account = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
+        account = STORE_ACCOUNT
         # Multi-item orders carry qty as a comma list ("1, 1") — int() on that
         # raised ValueError and silently dropped the whole unified-DB write
         # (every multi-item order was missing from the dashboard). Sum the
@@ -857,7 +879,9 @@ def _rush_flush_amazon_writes(driver):
                 aid = e["amazon_id"]
                 try:
                     driver.switch_to.window(h)
-                    on_page = (aid in (driver.current_url or "")) and not is_login_page(driver)
+                    # The account switcher's URL carries the order id too (returnTo=…)
+                    on_page = (aid in (driver.current_url or "")) and not is_login_page(driver) \
+                        and not on_account_switcher(driver)
                     if not e.get("label") and not on_page:
                         continue                      # notes-only + wrong page → retry later
                     if on_page and _rush_order_cancelled(driver):
@@ -972,12 +996,12 @@ def _ultra_settle(drv):
     thread does (scrape_order_details), and only one thread may."""
     end = time.time() + 12
     while time.time() < end:
-        if is_login_page(drv):
+        if is_login_page(drv) or on_account_switcher(drv):
             raise LoginWall()
         if drv.execute_script("return document.readyState") == "complete":
             return
         time.sleep(0.3)
-    if is_login_page(drv):
+    if is_login_page(drv) or on_account_switcher(drv):
         raise LoginWall()
 
 
@@ -1211,12 +1235,14 @@ def _ultra_hold_oos(driver, orders, sku_map):
             print("  ⚠️  Stock check stopped early; the listings not reached stay in the queue")
             break
         info = sku_map.get(asin) or {}
-        main, alt = str(info.get("zoro_code") or "").strip(), str(info.get("alt_sku") or "").strip()
+        main = str(info.get("zoro_code") or "").strip()
         if not main:
             continue
         try:
             out = _is_out(main)
-            if out and alt:
+            for alt in info.get("alt_skus") or []:
+                if not out:     # buyable or unknown: the order stays in the queue
+                    break
                 out = _is_out(alt)
         except Exception as e:
             print(f"  ⚠️  Stock check stopped ({type(e).__name__}); the listings not reached stay in the queue")
@@ -1242,10 +1268,52 @@ def _ultra_hold_oos(driver, orders, sku_map):
     for asin, n in held.items():
         log_price_or_status(out_asins[asin], current_price=0.0, status="OOS")
         _ultra_tell_out(out_asins[asin], asin, n)
+        try:        # main and every alternative out for one unit: the Amazon listing must stop selling
+            from engine import listing_guard
+            _o = next((o for o in orders if str(o.get("asin") or "").strip() == asin), {})
+            listing_guard.note_out(STORE_ACCOUNT, asin, str(_o.get("seller_sku") or ""), out_asins[asin],
+                                   (sku_map.get(asin) or {}).get("alt_skus") or [],
+                                   str(_o.get("order_id") or _o.get("amazon_order_id") or ""),
+                                   str(_o.get("title") or ""), held_now=n)
+        except Exception as e:
+            print(f"  ⚠️  listing guard note skipped: {type(e).__name__}: {e}")
     print(f"⚡⚡ Out of stock right now: {sum(held.values())} order(s) held, not marked — "
           + ", ".join(f"{a} x{n} ({out_asins[a]})" for a, n in held.most_common(8))
           + f". {len(keep)} order(s) to work on. Checked again next cycle. ({time.time() - t0:.0f} s)")
     return keep
+
+
+def _listing_out_note(driver, item, amazon_id, alt_tried=None):
+    """Tell the listing guard (engine/listing_guard.py) that this listing's Zoro code and every
+    alternative are out of stock, so the Amazon listing stops selling (DS) or gets a longer handling
+    time (PL) — owner, 10 Nov 2026, after B00TY4AMZQ kept taking orders with Zoro out.
+
+    Only a clear "out": no alternative that failed to answer, not a code a person chose in a Manual tag
+    (that says nothing about the sheet's code), and out for ONE unit of the listing — an order for 3
+    can fail where an order for 1 goes through. One database row; the browser is not used here beyond
+    the stock question. Never raises."""
+    try:
+        if item.get("manual_code") or any(s in _INV_UNKNOWN for _, s in (alt_tried or [])):
+            return
+        asin = str(item.get("asin") or "").strip()
+        main = str(item.get("main_sku") or item.get("sku") or "").strip()
+        if not asin or not main:
+            return
+        order_qty = int(item.get("order_qty") or 1)
+        if order_qty > 1:
+            one = max(1, int(item.get("final_qty") or 1) // order_qty)
+            cartable, status = check_inventory(driver, main, one)
+            if cartable or status in _INV_UNKNOWN:
+                return
+            if item.get("alt_skus"):
+                alt_code, _st, tried = first_alt_in_stock(driver, item["alt_skus"], one)
+                if alt_code or any(s in _INV_UNKNOWN for _, s in tried):
+                    return
+        from engine import listing_guard
+        listing_guard.note_out(STORE_ACCOUNT, asin, item.get("seller_sku") or "", main,
+                               item.get("alt_skus") or [], amazon_id, item.get("title") or "")
+    except Exception as e:
+        print(f"  ⚠️  listing guard note skipped: {type(e).__name__}: {e}")
 
 
 def _ultra_hold_listing(driver, item):
@@ -1598,6 +1666,12 @@ def _route_to_sibling(driver, amazon_id, kind, reason, f):
     else:
         sibling = PROFILE_NAME.replace("_COUPON", "_RESELLER")
         default, status = ("Rajar" if sibling.startswith("HS") else "AB ECOM"), "ROUTED_TO_RESELLER"
+    if sibling not in PROFILES:
+        # A reseller-only store (Wrenchly) has nobody to hand to: writing the other store's
+        # label would park the order where no placer reads it. Every caller is gated on
+        # HAS_COUPON_SIBLING; this is the backstop. Nothing is written, the order stays as it was.
+        print(f"  ⚠️ no {sibling} profile for the {STORE_ACCOUNT} store — not routing ({reason}); order left unlabelled")
+        return False
     label = (PROFILES.get(sibling) or {}).get("target_label") or default
     ok = update_amazon_seller_id(driver, amazon_id, label, PROFILE_NAME)
     print(f"  🔀 ROUTE → {sibling}: {reason} — labelled '{label}' (not placing here)"
@@ -1817,7 +1891,7 @@ _PC_CFG = ((gui_cfg.get("automation") or {}).get("priority_check") or {})
 RECHECK_PER_CYCLE = max(1, int(_PC_CFG.get("recheck_per_cycle", 15) or 15))     # legacy trickle (unused by sweeps)
 SWEEP_MAX = max(1, int(_PC_CFG.get("sweep_max", 250) or 250))                     # one coupon-change sweep = the whole store
 SWEEP_HOLD_MAX_MIN = float(_PC_CFG.get("sweep_hold_max_min", 90) or 90)           # reseller ignores a sweep flag older than this
-_STORE = "DM" if PROFILE_NAME.upper().startswith("DM") else "HS"
+_STORE = _store_prefix(STORE_ACCOUNT) or ("DM" if PROFILE_NAME.upper().startswith("DM") else "HS")
 _SWEEP_FLAG = os.path.join(os.path.dirname(SCRIPT_DIR), "data", "dataset", f"priority_sweep_{_STORE}.json")
 
 
@@ -1868,7 +1942,11 @@ def _sweep_active():
         age (19 Oct 2026: the flag ran out after 90 min with 94 ASINs untested), or
       • the Coupons tab has priority codes the store's coupon placer has not swept (19 Oct:
         HS_COUPON was stopped from 10:30 to 19:05 after the new codes were added).
-    Labelled orders still run while it holds."""
+    Labelled orders still run while it holds.
+    A store with no coupon profile (Wrenchly) never holds: nobody would ever finish that sweep,
+    so the "codes not swept yet" test would stop its discovery for good."""
+    if not HAS_COUPON_SIBLING:
+        return None
     try:
         from utils.jsonstore import read_json
         d = read_json(_SWEEP_FLAG, None)
@@ -2009,7 +2087,12 @@ def _sunday_mode():
     load_gui_config(): that returns {} on any read error, which would switch Sunday mode OFF for
     an order if the launcher happened to be rewriting bot_config.json at that instant — and the
     order placed in that instant is exactly the kind Sunday mode exists to hold. On a read error
-    the last good value is kept."""
+    the last good value is kept.
+
+    Wrenchly is exempt whatever the checkbox says (owner, 9 Nov 2026): it buys from a reseller
+    account only, so it has no Monday coupons to wait for."""
+    if STORE_ACCOUNT == "Wrenchly":
+        return None
     now = time.time()
     if _SUNDAY_CFG["loaded"] and now - _SUNDAY_CFG["at"] < 15:
         return _SUNDAY_CFG["val"]
@@ -2349,7 +2432,7 @@ def _rush_scrape_batch(driver, batch):
                     driver.switch_to.window(h)
                 except Exception:
                     continue
-                if is_login_page(driver):
+                if is_login_page(driver) or on_account_switcher(driver):
                     login_hit = True
                     break
                 if aid not in (driver.current_url or ""):
@@ -2455,6 +2538,9 @@ def _wait_for_orders_to_load(driver, expected=100, timeout=30, settle=5, poll=1.
     return count
 
 
+SCAN_PAGE_LIMIT = 100    # 10,000 orders; only a Next button that never greys out could reach it
+
+
 def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
                      favorites=False):
     """
@@ -2487,6 +2573,9 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
         auto_login(driver, PROFILE_NAME)
         driver.get(url)
     time.sleep(5)
+    if on_account_switcher(driver):      # signed in, no store chosen yet
+        choose_store_if_asked(driver, PROFILE_NAME, target_url=url)
+        time.sleep(5)
 
     # Set filters: dropdown, date range, sort, results per page
     # Favorites = a saved buyer-action view; don't touch the search-type dropdown
@@ -2573,8 +2662,10 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
         print("  ✅ 0 matches — skipping page scan")
         return []
 
-    # ASIN searches: first page only (100 results is enough)
-    effective_max = 1 if asin_search else max_pages
+    # ASIN searches: first page only (100 results is enough). Anything else: every page Amazon counts,
+    # plus one for orders arriving during the scan. A flat 20 left the oldest ~1,900 of HOANK's 3,929
+    # orders unread, Manual tags with a Zoro code among them (3 Nov 2026).
+    effective_max = 1 if asin_search else max(max_pages, min(total_orders // 100 + 2, SCAN_PAGE_LIMIT))
     prev_first_id = None  # top order id of the previous page, for swap detection
 
     for page in range(1, effective_max + 1):
@@ -3190,6 +3281,10 @@ def scrape_order_details(driver, amazon_order_id, fallback_qty=None):
         safe_get(driver, url)
 
     time.sleep(2)
+    if on_account_switcher(driver):
+        if not choose_store_if_asked(driver, PROFILE_NAME, target_url=url):
+            return None                  # never read an order off this page
+        time.sleep(2)
     return _extract_order_details(driver, amazon_order_id, fallback_qty=fallback_qty)
 
 
@@ -3235,8 +3330,12 @@ def _cancel_requested_skip(amazon_id, asin="", sku=""):
     text = (f"Order {amazon_id} ({asin} {sku}) NOT placed — the buyer requested cancellation. "
             f"Cancel it in Seller Central (it does not count against the cancellation rate).")
     try:
-        from utils.whatsapp import send_whatsapp_message
-        send_whatsapp_message("🛑 *BUYER REQUESTED CANCEL*\n" + text)
+        from utils.whatsapp import get_whatsapp_group, send_whatsapp_message
+        # Owner's exact wording, 9 Nov 2026. Hathoro's go to its Orders Alerts group: the one thing there
+        # that is not a placed order. Every other store's stay in the general group.
+        to = get_whatsapp_group(STORE_ACCOUNT, kind="orders") if STORE_ACCOUNT == "Hathoro" else None
+        send_whatsapp_message(f"🛑 Not Placing this Order {amazon_id}\n"
+                              f"The buyer requested cancellation. Cancel krdun?", to=to)
     except Exception as e:
         print(f"  ⚠️ WhatsApp alert error: {e}")
     try:
@@ -3244,6 +3343,182 @@ def _cancel_requested_skip(amazon_id, asin="", sku=""):
         send_telegram_message("🛑 <b>BUYER REQUESTED CANCEL</b>\n" + html.escape(text))
     except Exception as e:
         print(f"  ⚠️ Telegram alert error: {e}")
+
+
+# "See all 2 orders from this buyer" on the order page opens Manage Orders searched by the buyer's e-mail,
+# with each order's Seller order ID on its row (owner, 4 Nov 2026).
+# Seller Central draws it as <a><span data-test-id="shipping-section-buyer-history">…</span></a> with NO href
+# (every real page, 5-7 Nov 2026); clicking it loads orders-v3/search?qt=email&q=<buyer relay e-mail>&date-range=…
+# in the same tab. The old reader looked only for a[href] / kat-link[href], never found it, and every one of the
+# 17 orders it was asked about stayed "- D" (14 were repeat orders the owner then placed by hand with Manual-C).
+_BUYER_ORDERS_SEL = '[data-test-id="shipping-section-buyer-history"]'
+_BUYER_ORDERS_LINK_JS = r"""
+    var re = /see\s+all\s+(?:(\d+)\s+)?orders?\s+from\s+this\s+buyer/i;
+    function words(e) { return (e.innerText || e.textContent || e.getAttribute('label') || '').replace(/\s+/g, ' '); }
+    function hit(e, m) {
+        var a = e.closest('a[href], kat-link[href]');
+        return {count: m[1] ? parseInt(m[1], 10) : 0,
+                url: a ? new URL(a.getAttribute('href'), location.href).href : '', click: !a};
+    }
+    var els = document.querySelectorAll('a[href], kat-link[href]');
+    for (var i = 0; i < els.length; i++) {
+        var m = words(els[i]).match(re);
+        if (m) return hit(els[i], m);
+    }
+    var s = document.querySelector(arguments[0]);
+    if (s) { var m2 = words(s).match(re); if (m2) return hit(s, m2); }
+    return null;
+"""
+_BUYER_ORDERS_TEXT_JS = r"""
+    var re = /orders?\s+from\s+this\s+buyer/i, last = null;
+    document.querySelectorAll('body *').forEach(function(e) { if (re.test(e.textContent || '')) last = e; });
+    return last ? last.outerHTML.slice(0, 400) : '';
+"""
+_BUYER_LINK_WAIT_S = 6
+_SC_ORDERS_PREFIX = "https://sellercentral.amazon.com/orders-v3/"
+
+
+def _buyer_orders_link(driver):
+    """{"count", "url", "click"} of the page's "See all N orders from this buyer", or None. url is '' and
+    click True when Amazon drew it without an href (it must be clicked on the order page). Never raises."""
+    try:
+        link = driver.execute_script(_BUYER_ORDERS_LINK_JS, _BUYER_ORDERS_SEL)
+    except Exception:
+        return None
+    if not link:
+        return None
+    if str(link.get("url") or "").startswith(_SC_ORDERS_PREFIX):
+        return link
+    if link.get("click"):
+        return {"count": link.get("count") or 0, "url": "", "click": True}
+    return None
+
+
+def _click_buyer_orders(driver, opened):
+    """Click "See all N orders from this buyer" on the order page this window stands on and follow it to the
+    buyer's Manage Orders list, whether it loads here or in a new tab (that tab goes into `opened` so the
+    caller closes it). Returns the list's URL, or '' when nothing led to one."""
+    from selenium.webdriver.common.by import By
+    els = driver.find_elements(By.CSS_SELECTOR, _BUYER_ORDERS_SEL)
+    if not els:
+        return ""
+    before, url0 = set(driver.window_handles), driver.current_url
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", els[0])
+        els[0].click()
+    except Exception:
+        driver.execute_script("arguments[0].click();", els[0])
+    end = time.time() + 15
+    while time.time() < end:
+        time.sleep(0.5)
+        new = [h for h in driver.window_handles if h not in before]
+        if new:
+            opened.extend(new)
+            driver.switch_to.window(new[-1])
+            end2 = time.time() + 10
+            while not driver.current_url.startswith(_SC_ORDERS_PREFIX) and time.time() < end2:
+                time.sleep(0.5)
+            break
+        if driver.current_url != url0 and "/orders-v3/order/" not in driver.current_url:
+            break
+    url = driver.current_url
+    return url if url.startswith(_SC_ORDERS_PREFIX) and "/orders-v3/order/" not in url else ""
+
+
+def _read_buyer_orders(driver, amazon_id, link=None):
+    """This buyer's orders, read on a tab or window of its own, so the page the placer stands on (the order
+    page in the classic loop, Zoro in rush and ultra) is exactly as it was afterwards. Ultra takes a window
+    because a tab would hide the Zoro one. Returns rows, or None when they can't be read. Raises only if the
+    placer's own window can't be got back, which is a dead browser and the order loop's to handle."""
+    from utils.dup_check_local import parse_order_rows
+    base = driver.current_window_handle
+    worker = None
+    opened = []                      # tabs a click may open: closed with the worker
+    try:
+        driver.switch_to.new_window("window" if ULTRA_MODE else "tab")
+        worker = driver.current_window_handle
+
+        def _open(url):
+            safe_get(driver, url)
+            if is_login_page(driver):
+                auto_login(driver, PROFILE_NAME)
+                safe_get(driver, url)
+            if on_account_switcher(driver):
+                choose_store_if_asked(driver, PROFILE_NAME, target_url=url)
+
+        if not link or not link.get("url"):
+            # A span to click (the link the scrape saw can't be clicked from here), not drawn yet when the
+            # page was scraped, or never there: the order page, on this tab.
+            _open(f"{AMAZON_BASE_ORDER_URL}{amazon_id}")
+            link, end = None, time.time() + _BUYER_LINK_WAIT_S
+            while not link and time.time() < end:
+                time.sleep(0.5)
+                link = _buyer_orders_link(driver)
+            if not link:
+                # If the words are there but no link was read, the log shows what Amazon drew instead.
+                seen = driver.execute_script(_BUYER_ORDERS_TEXT_JS)
+                print("   [DUP_OTHER] no 'See all orders from this buyer' link on the order page"
+                      + (f"; the page has: {seen}" if seen else ""))
+                return None
+        if link.get("url"):
+            _open(link["url"])
+        else:
+            url = _click_buyer_orders(driver, opened)
+            if not url:
+                print(f"   [DUP_OTHER] clicking 'See all orders from this buyer' led nowhere ({driver.current_url[:120]})")
+                return None
+            print(f"   [DUP_OTHER] opened the buyer's {link.get('count') or ''} orders".replace("  ", " "))
+            if is_login_page(driver) or on_account_switcher(driver):
+                _open(url)
+        _wait_for_orders_to_load(driver, expected=min(int(link.get("count") or 0), 100), timeout=25)
+        return parse_order_rows(driver.execute_script("return document.body.innerText || ''"))
+    except Exception as e:
+        print(f"   [DUP_OTHER] could not read the buyer's orders ({type(e).__name__}: {str(e)[:120]})")
+        return None
+    finally:
+        for h in opened + [worker]:
+            if h and h != base:
+                try:
+                    driver.switch_to.window(h)
+                    driver.close()
+                except Exception:
+                    pass
+        driver.switch_to.window(base)
+
+
+def _dup_is_buyers_other_order(driver, amazon_id, existing_wb, link, duplicate_services,
+                               street, zip_code, buyer, asin, sku):
+    """The duplicate check matched by address. Does that WB only belong to this buyer's OTHER order?
+    Owner, 4 Nov 2026: customers really do order the same thing again within a day or two, and each repeat
+    was stamped "<WB> - D" and never bought. True only with proof for EVERY WB the check can match
+    (utils.dup_check_local.wbs_on_other_orders). No link, a page that won't load, a list that won't parse,
+    a search error: False, and the caller writes "- D" as it always has."""
+    proved, why = False, ""
+    try:
+        from utils.dup_check_local import placer_wbs_for_orders, wbs_on_other_orders
+        first = re.search(r"\bW[BW]\d{6,}\b", str(existing_wb or ""))
+        if not first:
+            return False
+        print(f"   [DUP_OTHER] {first.group(0)} matched — is it on this buyer's other order?")
+        matched = all_matched_wbs(duplicate_services, street, zip_code, buyer, asin, sku, amazon_id,
+                                  first=first.group(0))
+        if matched is None:
+            why = "the matches can't all be named"
+        else:
+            rows = _read_buyer_orders(driver, amazon_id, link)
+            if rows is None:
+                why = "the buyer's orders could not be read"
+            else:
+                proved, why = wbs_on_other_orders(
+                    matched, rows, amazon_id, placer_wbs_for_orders([r["amazon_id"] for r in rows]))
+    except WebDriverException:
+        raise                     # the placer's window is gone: the order loop's to handle
+    except Exception as e:
+        why = f"{type(e).__name__}: {str(e)[:120]}"
+    print(f"   [DUP_OTHER] {'NOT a duplicate' if proved else 'the duplicate stands'} — {why}")
+    _DLOG.log("dup_other_order", profile=PROFILE_NAME, amazon_id=amazon_id, asin=asin, sku=sku,
+              action="cleared" if proved else "stands", reason=why)
+    return proved
 
 
 def _extract_order_details(driver, amazon_order_id, fallback_qty=None):
@@ -3516,6 +3791,7 @@ def _extract_order_details(driver, amazon_order_id, fallback_qty=None):
         "ship_by_date": info.get("ship_by_date", ""),
         "deliver_by_date": info.get("deliver_by_date", ""),
         "ship_service": (info.get("ship_service") or "").strip(),
+        "buyer_orders_link": _buyer_orders_link(driver),
     }
     
     return result
@@ -3560,25 +3836,28 @@ def _get_sheets_write_service():
 _ALT_SKU_HEADERS = {"alternative_sku", "alt_sku", "alternative_zoro_code", "alt_zoro_code"}
 
 
-def _extract_alt_sku(row_dict, zoro_code, asin):
+def _extract_alt_skus(row_dict, zoro_code, asin):
     """Pull the alternative_SKU cell (any common header spelling) and validate it.
-    The alternative is the fallback Zoro code used when the main code is OOS.
-    Returns a G-code or '' — an invalid or self-referencing alternative is ignored
-    (with a warning) so it never breaks the row's main mapping."""
+    The alternatives are the fallback Zoro codes used when the main code is OOS, tried left to right:
+    one code, or several with commas — "G5803393,G5612117" (owner, 4 Nov 2026).
+    Returns a list of G-codes, possibly empty — an invalid or self-referencing code is ignored
+    (with a warning) so it never breaks the row's main mapping or the codes beside it."""
     raw = ""
     for key, val in row_dict.items():
         if str(key).strip().lower().replace(" ", "_") in _ALT_SKU_HEADERS:
             raw = str(val or "").strip()
             break
-    if not raw or raw in ("None", "N/A", "nan", "-"):
-        return ""
-    if not re.match(r'^G\d+$', raw):
-        if raw != "OOS":
-            print(f"  ⚠️  Invalid alternative Zoro Code '{raw}' for ASIN {asin} — ignored")
-        return ""
-    if raw == zoro_code:
-        return ""
-    return raw
+    alts = []
+    for code in re.split(r"[,\s]+", raw):
+        if not code or code in ("None", "N/A", "nan", "-"):
+            continue
+        if not re.match(r'^G\d+$', code):
+            if code != "OOS":
+                print(f"  ⚠️  Invalid alternative Zoro Code '{code}' for ASIN {asin} — ignored")
+            continue
+        if code != zoro_code and code not in alts:
+            alts.append(code)
+    return alts
 
 
 def _execute_sheets_get(spreadsheetId, range_name, force_new=False):
@@ -3642,7 +3921,7 @@ def load_sku_map():
                 "zoro_multiple": z_m,
                 "2nd_part": d.get("2nd_part", "").strip(),
                 "brand": d.get("Brand", "").strip(),
-                "alt_sku": _extract_alt_sku(d, zoro_code, asin),
+                "alt_skus": _extract_alt_skus(d, zoro_code, asin),
             }
         print(f"  ✅ Loaded {len(sku_map)} ASIN→SKU mappings")
         _SKU_MAP_CACHE = sku_map
@@ -3684,7 +3963,7 @@ def load_sku_map():
                 'zoro_multiple': int(row.get('zoro_multiple', 1)),
                 '2nd_part': str(row.get('2nd_part', '')).strip(),
                 'brand': str(row.get('Brand', row.get('brand', ''))).strip(),
-                'alt_sku': _extract_alt_sku(dict(row), zoro_code, asin),
+                'alt_skus': _extract_alt_skus(dict(row), zoro_code, asin),
             }
     print(f"  ✅ Loaded {len(sku_map)} ASIN→SKU mappings (CSV fallback)")
     return sku_map
@@ -3718,6 +3997,26 @@ def _fit_seller_label(wb_string, suffix=""):
         if len(cand) <= budget:
             return cand + suffix
     return wbs[0][:max(0, budget)] + suffix
+
+
+def _label_for_locked_wb(amazon_id, wb, claim=None):
+    """(label, is_own) for an order whose WB the placement lock already holds but Amazon does not show.
+
+    The lock holds a WB for two different reasons. Nearly always it is this order's OWN purchase whose
+    write-back never reached Amazon — the placer was stopped between "order placed" and the write
+    (112-2660099-2409003, 10 Nov 2026: bought 04:22:25, stopped 04:22:28). That order needs the plain
+    WB: the tracker skips every "- D" label, so with "<WB> - D" its tracking was never uploaded and the
+    buyer got nothing. " - D" stays only where the WB is not proven to be this order's own: a claim
+    recorded as "resolved as duplicate" (the WB belongs to the buyer's other order), a claim seeded from
+    old log lines, or a claim that cannot be read."""
+    note = ""
+    try:
+        info = claim if (claim and "note" in claim) else (plock.claim_info(amazon_id) or {})
+        note = str(info.get("note") or "").strip().lower()
+    except Exception:
+        note = ""
+    is_own = note.startswith("placed") or "zoro receipt verified" in note
+    return _fit_seller_label(wb, "" if is_own else " - D"), is_own
 
 
 # Map profile names to Priority_ASIN_Control sheet column headers
@@ -3783,7 +4082,7 @@ def load_store_sorted_asins(profile_name):
     columns of Priority_ASIN_Control — so the supervisor never touches an ASIN a
     human (or the bot) has placed in Reseller / Deciding / Coupon. Returns None on
     API failure (caller keeps the last-known set)."""
-    pref = "DM" if profile_name.upper().startswith("DM") else "HS"
+    pref = _store_prefix(_store_for_profile(profile_name)) or ("DM" if profile_name.upper().startswith("DM") else "HS")
     try:
         result = _execute_sheets_get(GOOGLE_SHEET_ID, f"'{GOOGLE_SHEET_PRIORITY_ASIN_TAB}'!A1:AZ500")
         rows = result.get("values", [])
@@ -3931,6 +4230,8 @@ def _normalize_second_part_sku(value):
 #      price, as since 7 Sep (482884b). _big_order_regular_codes / _big_order_marks_20.
 #   4. the delivery-time check                 (owner, 15 Oct 2026: Zoro's estimate >= 4 days past
 #      Amazon's deliver-by → "Delivery time high", not placed — a tag places it anyway)
+#   5. an unmapped ASIN, ONLY when a Zoro code follows the tag (owner, 9 Nov 2026: "Manual-C G5522807";
+#      a tag with no code still stops at UNMAPPED_ASIN). _fill_unmapped_from_tag.
 # and, as a consequence of (1), the post-failure duplicate re-check before keep_failed(); a
 # human's tag also skips the routing helpers (supervisor, Deciding hand-off, Sunday mode).
 # It does NOT bypass the placement lock
@@ -4178,7 +4479,7 @@ def _po_box_park(driver, amazon_id, addr, detected_by, defer=False):
     try:
         from utils.unified_db import record_po_box, set_po_box_label
         recorded = record_po_box({"amazon_order_id": amazon_id,
-                                  "account": "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK",
+                                  "account": STORE_ACCOUNT,
                                   "profile": PROFILE_NAME, "street": addr.get("street_address", ""),
                                   "street2": addr.get("street_address_2", ""), "city": addr.get("city", ""),
                                   "state": addr.get("state_abbr", ""), "zip": addr.get("zip_code", ""),
@@ -4206,6 +4507,24 @@ def _po_box_park(driver, amazon_id, addr, detected_by, defer=False):
         print(f"  📮 PO box — NOT placed; '{PO_BOX_LABEL}' write NOT confirmed — set it by hand on {amazon_id} "
               f"(it comes back next cycle and the write is tried again)")
     return ok
+
+
+def _po_box_note_renamed(amazon_id, addr):
+    """A PO-box order that IS being placed, its box renamed "#<number>" (owner, 10 Nov 2026): keep the
+    address as Amazon showed it in po_box_orders so Attention → PO boxes lists what was rewritten.
+    Best-effort — never in the way of the order."""
+    orig = str((addr or {}).get("po_box_original") or "")
+    if not orig:
+        return
+    try:
+        from utils.unified_db import record_po_box
+        o1, _, o2 = orig.partition(" | ")
+        record_po_box({"amazon_order_id": amazon_id, "account": STORE_ACCOUNT, "profile": PROFILE_NAME,
+                       "street": o1, "street2": o2, "city": addr.get("city", ""),
+                       "state": addr.get("state_abbr", ""), "zip": addr.get("zip_code", ""),
+                       "detected_by": "renamed", "label_written": ""})
+    except Exception as e:
+        print(f"  ⚠️  PO-box (renamed) record failed for {amazon_id}: {e}")
 
 
 def _only_labelled(orders, label):
@@ -4241,13 +4560,22 @@ def _parse_manual_tag(merchant_id):
     return m.group(1).upper() if m else None
 
 
-_MANUAL_TAG_RE = re.compile(r"^\s*manual\s*[-_ ]?\s*([cr])(?:\s*[-_:,/]?\s*(G\d{5,12}))?\s*$", re.I)
+_MANUAL_TAG_RE = re.compile(
+    r"^\s*manual\s*[-_ ]?\s*([cr])(?:\s*[-_:,/]?\s*(G\d{5,12})(?:\s*[-_:,/]?\s*[x×*]\s*([1-9]\d{0,2}))?)?\s*$", re.I)
 
 
 def _parse_manual_code(merchant_id):
     """The Zoro code written after a Manual-C/-R tag ('Manual-R G7467735' → 'G7467735'), else ''."""
     m = _MANUAL_TAG_RE.match(str(merchant_id or ""))
     return (m.group(2) or "").upper() if m else ""
+
+
+def _parse_manual_qty(merchant_id):
+    """The quantity written after a coded tag ('Manual-C G7467735 x25' → 25), else 0. It is only read
+    after a code, 1–999: 'Manual-C x25', 'x0' or 'x1000' make the whole label not a tag, so a mistyped
+    quantity leaves the order alone instead of buying the wrong amount (owner, 9 Nov 2026)."""
+    m = _MANUAL_TAG_RE.match(str(merchant_id or ""))
+    return int(m.group(3)) if m and m.group(3) else 0
 
 
 def _big_order_regular_codes(regular_codes, raw_cart_cost, big_threshold, manual_override):
@@ -4292,17 +4620,30 @@ def _notify_manual_no_coupon(amazon_id, asin, sku, cart_cost, why, buyer="", cit
 _INV_UNKNOWN = ("API_ERROR", "NO_DATA")
 
 
-def _swap_manual_code(item, code):
+def _apply_manual_qty(item, qty):
+    """'Manual-C G… x25': exactly *qty* units are bought for this line, however many Amazon sold.
+    final_qty is what gets bought; the two pack fields only go to the log and are kept in step."""
+    if qty:
+        item["final_qty"] = qty
+        item["qty_multiplier"] = qty / item["order_qty"]
+        item["zoro_multiple"] = 1
+        item["manual_qty"] = True
+
+
+def _swap_manual_code(item, code, qty=0):
     """Buy *code* for this item instead of the sheet's Zoro code ('Manual-C/-R G…' tag). The sheet's
-    pack size stays; the sheet's ALT is dropped — a person chose this code."""
+    pack size stays unless the tag gives a quantity; the sheet's ALT is dropped — a person chose this code."""
     item["sheet_sku"] = item["sku"]
     item["sku"] = code
-    item["alt_sku"] = ""
+    item["alt_skus"] = []
     item["manual_code"] = True
+    _apply_manual_qty(item, qty)
 
 
 def _manual_code_notes(items):
-    return [f"MANUAL CODE: placed {it['sku']} for {it['asin']} (sheet {it.get('sheet_sku', '')})"
+    return [f"MANUAL CODE: placed {it['sku']} for {it['asin']} ("
+            + (f"sheet {it['sheet_sku']}" if it.get("sheet_sku") else "not in the SKU sheet")
+            + (f", qty {it['final_qty']}" if it.get("manual_qty") or not it.get("sheet_sku") else "") + ")"
             for it in items if it.get("manual_code")]
 
 
@@ -4315,10 +4656,10 @@ def _order_fields(items):
             ", ".join(str(it["final_qty"]) for it in items))
 
 
-def _manual_multi_item_plan(items, code, in_stock):
+def _manual_multi_item_plan(items, code, in_stock, qty=0):
     """A Manual-C/-R multi-item order: what to buy. *in_stock(sku, qty)* → (cartable, status).
     Returns (keep, dropped, problem); dropped = [(item, status)].
-      • Zoro code in the tag: it replaces the ONE item that is out (main and ALT both out). None or
+      • Zoro code in the tag: it replaces the ONE item that is out (main and every ALT out). None or
         several out → *problem*: not placed, a person must say which item the code is for.
       • No code: buy what is in stock, drop the rest — the buyer was told and agreed to get the other
         item later (owner, 30 Oct 2026). All in stock or all out → unchanged; the normal flow decides.
@@ -4326,15 +4667,18 @@ def _manual_multi_item_plan(items, code, in_stock):
     out = []
     for it in items:
         ok, st = in_stock(it["sku"], it["final_qty"])
-        if not ok and st not in _INV_UNKNOWN and it.get("alt_sku"):
-            ok, st = in_stock(it["alt_sku"], it["final_qty"])
+        if not ok and st not in _INV_UNKNOWN:
+            for alt in it.get("alt_skus") or []:
+                ok, st = in_stock(alt, it["final_qty"])
+                if ok or st in _INV_UNKNOWN:
+                    break
         if not ok and st in _INV_UNKNOWN:
             return list(items), [], None
         if not ok:
             out.append((it, st))
     if code:
         if len(out) == 1:
-            _swap_manual_code(out[0][0], code)
+            _swap_manual_code(out[0][0], code, qty)
             return list(items), [], None
         names = ", ".join(f"{it['asin']} {it['sku']}" for it, _ in out)
         why = f"{len(out)} items are out ({names})" if out else "every item is in stock"
@@ -4384,7 +4728,10 @@ def _dup_coupon_lines(asins, store, sheet_codes, verdicts=None):
 def _dup_coupon_note(driver, amazon_id, asins):
     """After '<WB> - D': say in the order's Seller Notes whether a priority coupon works on the item, so
     whoever reviews the duplicate can write Manual-C or Manual-R straight away (owner, 30 Oct 2026).
-    Added below any note already there. Never raises — the duplicate label is what matters."""
+    Added below any note already there. Never raises — the duplicate label is what matters.
+    Not for a reseller-only store (Wrenchly): there is no Manual-C there to choose."""
+    if not HAS_COUPON_SIBLING:
+        return
     try:
         codes = _sheet_priority_codes()
         text = _dup_coupon_lines(asins, _STORE, None if _SHEET_PRI["codes"] is None else codes)
@@ -4432,6 +4779,7 @@ def _build_resolved_order_items(items, sku_map):
                 "asin": asin,
                 "title": title,
                 "qty": order_qty,
+                "seller_sku": str(item.get("seller_sku") or "").strip(),
             })
             continue
 
@@ -4450,13 +4798,37 @@ def _build_resolved_order_items(items, sku_map):
             "qty_multiplier": qty_multiplier,
             "zoro_multiple": zoro_multiple,
             "second_sku": _normalize_second_part_sku((sku_info or {}).get("2nd_part", "")),
-            "alt_sku": str((sku_info or {}).get("alt_sku") or "").strip(),
+            "alt_skus": list((sku_info or {}).get("alt_skus") or []),
             "alt_used": False,
             "main_sku": "",
             "final_qty": final_qty,
         })
 
     return resolved_items, missing_items
+
+
+_SKU_PACK_RE = re.compile(r"(?<![0-9A-Za-z])(\d{1,2})\s*-?\s*(?:pk|pack)\b", re.I)
+
+
+def _fill_unmapped_from_tag(resolved, missing, code, qty=0):
+    """'Manual-C G5522807' on an order line with no row in the SKU sheet: a person chose the code, so the
+    missing mapping is no reason to stop (owner, 9 Nov 2026: some listings stay unmapped on purpose, because
+    the right Zoro code differs from order to order). Only with exactly ONE unmapped line, or the code could
+    be meant for any of them. No sheet row means no pack size: a quantity in the tag ('x25') is bought as
+    written, otherwise it comes from the Amazon SKU's '-4pk' ending (matched what was bought on 97 % of past
+    orders), else 1 per unit. No ALT, no 2nd part.
+    Returns (resolved, missing, code still to use): the code is spent here, the swap below must not reuse it."""
+    if not code or len(missing) != 1 or not missing[0].get("asin"):
+        return resolved, missing, code
+    line = missing[0]
+    m = _SKU_PACK_RE.search(line.get("seller_sku") or "")
+    pack = max(int(m.group(1)), 1) if m else 1
+    item = _build_resolved_order_items([line], {line["asin"]: {"zoro_code": code, "qty_multiplier": pack}})[0][0]
+    item.update(manual_code=True, sheet_sku="")
+    _apply_manual_qty(item, qty)
+    print(f"  🖐️  {line['asin']} is not in the SKU sheet — buying {code} x{item['final_qty']} from the tag "
+          + ("(quantity written in the tag)" if qty else f"(pack of {pack}, Amazon qty {line['qty']})"))
+    return resolved + [item], [], ""
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -4679,17 +5051,20 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             print(f"  ⏳ {amazon_id} placement in progress / held — skipping")
         else:
             # CONFIRMED / history → already bought (we have the WB). Its WB never made it onto
-            # Amazon's seller-id (else the list scrape would have skipped it), so write "<WB> - D"
-            # now: marks it as a caught duplicate AND stops it being re-scraped every cycle.
-            # This is a LABEL write only — it never re-buys.
+            # Amazon's seller-id (else the list scrape would have skipped it), so write it now:
+            # the plain WB when the lock recorded this order's own purchase, "<WB> - D" otherwise
+            # (see _label_for_locked_wb). Either way it stops the order being re-scraped every
+            # cycle. This is a LABEL write only — it never re-buys.
             _wb = (_ci.get("wb") or "").strip()
             if _wb.startswith("WB") or _wb.startswith("WW"):
-                _dlabel = _fit_seller_label(_wb, " - D")
+                _dlabel, _own = _label_for_locked_wb(amazon_id, _wb, _ci)
                 _ok = update_amazon_seller_id(driver, amazon_id, _dlabel, PROFILE_NAME)
                 print(f"  ⏭️  {amazon_id} already placed ({_wb}) — marked Amazon '{_dlabel}'"
+                      + (" (its own order: the earlier write-back never landed)" if _own else "")
                       + ("" if _ok else "  ⚠️ write not verified — set it by hand"))
-                _log_order({"amazon_id": amazon_id, "status": "DUPLICATE", "wb_id": _wb,
-                            "notes": "already placed — marked '<WB> - D' on Amazon by local lock"})
+                _log_order({"amazon_id": amazon_id, "status": "WB_RESTORED" if _own else "DUPLICATE", "wb_id": _wb,
+                            "notes": ("already placed as this order — WB written to Amazon again by local lock"
+                                      if _own else "already placed — marked '<WB> - D' on Amazon by local lock")})
             else:
                 print(f"  ⏭️  {amazon_id} already placed — skipping duplicate")
         return "duplicate"
@@ -4710,8 +5085,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
               f"the Gmail duplicate search will be SKIPPED for it. "
               f"The placement lock still applies, so it can only be placed once.")
     _manual_code = _parse_manual_code(merchant_id) if manual_override else ""
+    _manual_qty = _parse_manual_qty(merchant_id) if manual_override else 0
     if _manual_code:
-        print(f"  🖐️  Zoro code in the tag: {_manual_code} — placed instead of the sheet's code")
+        print(f"  🖐️  Zoro code in the tag: {_manual_code} — placed instead of the sheet's code"
+              + (f", quantity {_manual_qty} as written" if _manual_qty else ""))
 
     # ── SUNDAY MODE: an order already held is not re-priced (a Manual tag always goes through) ──
     if not manual_override and _sunday_parked(amazon_id, coupon_codes):
@@ -4736,6 +5113,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         return "failed"
     
     resolved_items, missing_items = _build_resolved_order_items(items, sku_map)
+    resolved_items, missing_items, _manual_code = _fill_unmapped_from_tag(
+        resolved_items, missing_items, _manual_code, _manual_qty)
     if missing_items:
         missing_asins = ", ".join(item.get("asin") or "UNKNOWN" for item in missing_items)
         missing_qtys = ", ".join(str(item.get("qty") or 1) for item in missing_items)
@@ -4760,7 +5139,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # sheet's pack size, and no ALT (the human chose the code). A multi-item order is resolved once
     # Zoro's stock is known (_manual_multi_item_plan, below): the code replaces the item that is out.
     if _manual_code and len(resolved_items) == 1:
-        _swap_manual_code(resolved_items[0], _manual_code)
+        _swap_manual_code(resolved_items[0], _manual_code, _manual_qty)
 
     primary_item = resolved_items[0]
     is_multi_item = len(resolved_items) > 1
@@ -4859,7 +5238,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     zipcode = addr.get("zip_code", "?")
     buyer = addr.get("name", "?")
     _print_full_address(addr)
-    
+    if addr.get("po_box_original"):
+        # A PO-box address: placed with the box renamed "#<number>" (owner, 10 Nov 2026), not labelled BB
+        _print_kv("PO box", f"renamed — Amazon shows: {addr['po_box_original']}")
+        _po_box_note_renamed(amazon_id, addr)
+        order_note = "; ".join(filter(None, [order_note, "PO box renamed for Zoro"]))
+
     # ── Earnings check ────────────────────────────────────────────
     earnings = None
     original_sku = None
@@ -4948,6 +5332,16 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 "status": "DUP_CHECK_UNVERIFIED", "notes": "Gmail dup-check failed — fail-closed skip",
             })
             return "pending"
+        if existing_wb and _dup_is_buyers_other_order(
+                driver, amazon_id, existing_wb, order_detail.get("buyer_orders_link"), duplicate_services,
+                addr["street_address"], addr.get("zip_code", ""), buyer, asin_field, sku_field):
+            _log_order({
+                "amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
+                "buyer": buyer, "city": city, "state": state,
+                "status": "DUP_OTHER_ORDER",
+                "notes": f"{existing_wb} matched by address but is on this buyer's other order — not a duplicate",
+            })
+            existing_wb = None
         if existing_wb:
             dup_label = _fit_seller_label(existing_wb, " - D")
             print(f"  🔁 DUPLICATE — already ordered: {existing_wb}")
@@ -5034,7 +5428,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     _partial = False
     if manual_override and len(resolved_items) > 1:
         _keep, _dropped, _problem = _manual_multi_item_plan(
-            resolved_items, _manual_code, lambda s, q: check_inventory(driver, s, q))
+            resolved_items, _manual_code, lambda s, q: check_inventory(driver, s, q), _manual_qty)
         if _problem:
             print(f"  ⏸️  MANUAL CODE: {_problem} — NOT placed (tag kept, tried again next cycle)")
             _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
@@ -5179,18 +5573,25 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     for item in resolved_items:
         cartable, inv_status = check_inventory(driver, item["sku"], item["final_qty"])
         alt_fail_note = ""
-        if not cartable and item.get("alt_sku") and inv_status not in ("API_ERROR", "NO_DATA"):
-            # Main SKU genuinely OOS and the sheet lists an alternative — try it before
-            # marking the order OOS. The main SKU's OOS still goes to the price tracker
+        alt_tried = []
+        if not cartable and item.get("alt_skus") and inv_status not in ("API_ERROR", "NO_DATA"):
+            # Main SKU genuinely OOS and the sheet lists alternatives — try them left to right
+            # before marking the order OOS. The main SKU's OOS still goes to the price tracker
             # so "is the main back in stock?" stays answerable from price_tracker.json.
             log_price_or_status(item["sku"], current_price=0.0, status="OOS")
-            print(f"  🔄 {item['sku']} OOS — checking alternative {item['alt_sku']}")
-            alt_cartable, alt_status = check_inventory(driver, item["alt_sku"], item["final_qty"])
-            if alt_cartable:
+            print(f"  🔄 {item['sku']} OOS — checking alternative(s) {', '.join(item['alt_skus'])}")
+            alt_code, alt_status, alt_tried = first_alt_in_stock(driver, item["alt_skus"], item["final_qty"])
+            for _tried, _tried_status in alt_tried:
+                if _tried_status not in ("API_ERROR", "NO_DATA"):
+                    log_price_or_status(_tried, current_price=0.0, status="OOS")
+                print(f"  ❌ Alternative {_tried} also unavailable ({_tried_status})")
+            alt_fail_note = "; ".join(f"alt {_c}: {_s}" for _c, _s in alt_tried)
+            if alt_code:
                 item["main_sku"] = item["sku"]
-                item["sku"] = item["alt_sku"]
+                item["sku"] = alt_code
                 item["alt_used"] = True
-                cartable, inv_status = alt_cartable, alt_status
+                item["alt_passed_over"] = alt_fail_note
+                cartable, inv_status = True, alt_status
                 print(f"  ✅ ALT SUBSTITUTION: placing {item['sku']} instead of {item['main_sku']} (main OOS)")
                 if item is resolved_items[0] and isinstance(addr, dict):
                     # The date read so far was the out-of-stock main's backorder date. Read the ALT's own
@@ -5206,11 +5607,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     if (_gap_limit > 0 and not manual_override and _delivery_gate_holds(
                             item["sku"], _alt_date, _alt_src, f"{item['sku']} (ALT for {item['main_sku']})")):
                         return "skipped"
-            else:
-                if alt_status not in ("API_ERROR", "NO_DATA"):
-                    log_price_or_status(item["alt_sku"], current_price=0.0, status="OOS")
-                alt_fail_note = f"alt {item['alt_sku']}: {alt_status}"
-                print(f"  ❌ Alternative {item['alt_sku']} also unavailable ({alt_status})")
+            elif alt_tried and alt_tried[-1][1] in ("API_ERROR", "NO_DATA"):
+                # Zoro did not answer about an alternative, so this is not a clear OOS and nothing
+                # would ever put a stamped order back: no label, the next cycle asks again.
+                inv_status = alt_tried[-1][1]
         if not cartable:
             # Only label OOS for genuine out-of-stock, not API/network errors
             is_genuine_oos = inv_status not in ("API_ERROR", "NO_DATA")
@@ -5224,6 +5624,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             if label and ULTRA_MODE:
                 # Held, not marked: no label on Amazon, and it comes back next cycle (owner, 2 Nov 2026).
                 _ultra_hold_listing(driver, item)
+                _listing_out_note(driver, item, amazon_id, alt_tried)
                 _log_order({
                     "amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
                     "buyer": buyer, "city": city, "state": state, "status": "OOS_HELD",
@@ -5233,6 +5634,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 return "skipped"
             if label:
                 update_amazon_seller_id(driver, amazon_id, label, PROFILE_NAME)
+                # Main and every alternative out: the listing itself must stop taking orders. Noted
+                # here (one row); dealt with at the end of the cycle (engine/listing_guard.py).
+                _listing_out_note(driver, item, amazon_id, alt_tried)
                 try:
                     from utils.telegram import notify_oos
                     item_title = primary_item.get("title", "") if "primary_item" in locals() else (items[0].get("title", "") if items else "")
@@ -5331,7 +5735,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             f"{it['sku']} x{it['final_qty']}" for it in resolved_items)
         _alt_pairs = ", ".join(
             f"{it['sku']} for {it['main_sku']}" for it in resolved_items if it.get("alt_used"))
-        order_note = "; ".join(filter(None, [order_note, f"ALT: placed {_alt_pairs} (main OOS)"]))
+        order_note = "; ".join(filter(None, [order_note, f"ALT: placed {_alt_pairs} (main OOS)",
+                                             *(it.get("alt_passed_over") for it in resolved_items)]))
 
     # ── DECIDING-ASIN ROUTING (reseller profiles only) ──────────────
     # ASINs in the sheet's *_Deciding columns can't be statically assigned to a
@@ -5365,7 +5770,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         _dset = {d.strip().upper() for d in DECIDING_ASINS if d and d.strip()}
         _is_deciding_order = any((it.get("asin") or "").strip().upper() in _dset
                                  for it in resolved_items)
-    if _is_deciding_order and IS_RESELLER_PROFILE and not manual_override:
+    if _is_deciding_order and IS_RESELLER_PROFILE and HAS_COUPON_SIBLING and not manual_override:
         # Aliased on purpose: a plain `from … import ZORO_SMALL_ORDER_FEE` here would make
         # that name LOCAL to the whole function and break its module-level use further
         # down (UnboundLocalError on every order — happened on 7 Sep 2026).
@@ -5814,7 +6219,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # cycle loaded its sheet lists (a priority coupon works on it now). Never place it at
     # list price then: hand it to the coupon profile. Labelled orders are left alone — a
     # person or the sibling profile decided those.
-    if IS_RESELLER_PROFILE and not (merchant_id or "").strip() and not manual_override:
+    # Not for a reseller-only store (Wrenchly): there is no coupon placer to promote or test the
+    # ASIN, so reseller_must_wait would hold every unlabelled order for good.
+    if IS_RESELLER_PROFILE and HAS_COUPON_SIBLING and not (merchant_id or "").strip() and not manual_override:
         try:
             from engine import priority_check as _pc_late
             _late = _pc_late.load_verdicts().get(str(primary_item.get("asin") or "").strip().upper()) or {}
@@ -5852,11 +6259,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             if _bst == "FAILED_KEPT":
                 print(f"  🔒 HELD FOR REVIEW — {amazon_id} is in the Locked Orders tab — not placing")
             elif _bwb.startswith("WB") or _bwb.startswith("WW"):
-                _dl = _fit_seller_label(_bwb, " - D")
+                _dl, _own = _label_for_locked_wb(amazon_id, _bwb)     # plain WB only for its own purchase
                 update_amazon_seller_id(driver, amazon_id, _dl, PROFILE_NAME)
                 print(f"  ⏭️  {amazon_id} already placed ({_bwb}) — marked Amazon '{_dl}' (not placing again)")
-                _log_order({"amazon_id": amazon_id, "status": "DUPLICATE", "wb_id": _bwb,
-                            "notes": "already placed — marked '<WB> - D' on Amazon by local lock"})
+                _log_order({"amazon_id": amazon_id, "status": "WB_RESTORED" if _own else "DUPLICATE", "wb_id": _bwb,
+                            "notes": ("already placed as this order — WB written to Amazon again by local lock"
+                                      if _own else "already placed — marked '<WB> - D' on Amazon by local lock")})
             else:
                 print(f"  ⏭️  {amazon_id} already placed/claimed — not placing again (duplicate)")
             return "duplicate"
@@ -6148,7 +6556,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 insight_data["zoro_tax"] = split_taxes[idx] if 'split_taxes' in locals() and idx < len(split_taxes) else logged_tax
                 insight_data["coupon_savings"] = split_discounts[idx] if 'split_discounts' in locals() and idx < len(split_discounts) else logged_discount
                 insight_data["coupon_used"] = (last_checkout_result.get("used_coupon_code") if last_checkout_result else None)
-                order_acct = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
+                order_acct = STORE_ACCOUNT
                 insight_data["account"] = order_acct
                 # Zoro's "Delivery by" date was scraped from the PDP before the cart flow (addr).
                 insight_data["zoro_deliver_by"] = ((addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "")
@@ -6294,7 +6702,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             if last_checkout_result:
                 insight_data["zoro_stock"] = last_checkout_result.get("stock_level") or last_checkout_result.get("zoro_stock")
                 insight_data["zoro_deliver_by"] = last_checkout_result.get("est_delivery") or last_checkout_result.get("zoro_deliver_by")
-            order_acct = "Hathoro" if PROFILE_NAME.startswith("DM_") else "HOANK"
+            order_acct = STORE_ACCOUNT
             insight_data["account"] = order_acct
             # Zoro's "Delivery by" date was scraped from the PDP before the cart flow (addr).
             insight_data["zoro_deliver_by"] = ((addr.get("_zoro_deliver_by") if isinstance(addr, dict) else "")
@@ -6603,6 +7011,16 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             # in the Locked Orders tab for a human to verify against Zoro.
             _real_wb = bool(existing_wb) and existing_wb not in (DUP_CHECK_FAILED, "Duplicate") \
                 and (existing_wb.startswith("WB") or existing_wb.startswith("WW"))
+            # The WB of the buyer's other order says nothing about this checkout. Stamping it would record
+            # this order as placed when it may not be, so a person looks instead (the lock below).
+            if _real_wb:
+                try:
+                    if _dup_is_buyers_other_order(driver, amazon_id, existing_wb, order_detail.get("buyer_orders_link"),
+                                                  duplicate_services, addr["street_address"], addr.get("zip_code", ""),
+                                                  buyer, asin_field, sku_field):
+                        _real_wb = False
+                except Exception as _dup_err:
+                    print(f"   [dup-recheck] other-order check error: {_dup_err}")
             if _real_wb:
                 dup_label = _fit_seller_label(existing_wb, " - D")
                 print(f"  🔁 Failed checkout resolves to an existing order — marking {dup_label}")
@@ -6900,6 +7318,14 @@ def main():
             if LABELS_ONLY:
                 print("  🏷️  Labels-only mode: Priority-ASIN & Deciding discovery OFF "
                       "— processing labelled orders only")
+            elif PLACE_ALL_MAPPED:
+                # Reseller-only store (Wrenchly): every mapped ASIN is this profile's. sku_map is the
+                # sheet load that just succeeded above (an empty map already stopped the cycle), so
+                # discovery can never run on a half-read list. Unmapped ASINs stay out, as everywhere.
+                PRIORITY_ASINS.extend(sorted({str(a).strip().upper() for a, v in sku_map.items()
+                                              if str((v or {}).get("zoro_code") or "").strip()}))
+                print(f"  ⭐ Place-all-mapped: {len(PRIORITY_ASINS)} mapped ASIN(s) from {GOOGLE_SHEET_SKU_TAB} "
+                      f"count as this store's — no Priority column for {PROFILE_NAME}")
             else:
                 sheet_priority_asins = load_priority_asins_from_sheet(PROFILE_NAME)
                 if sheet_priority_asins is None:
@@ -7106,7 +7532,17 @@ def main():
                             # whose ASIN isn't in Priority ASIN Control so the launcher's
                             # "Needs Priority" panel can list them (ASIN × N → orders → Seller
                             # Central). Only flag UNLABELLED ones — a labelled order is handled.
-                            if not (fo.get("seller_order_id") or "").strip():
+                            if not (fo.get("seller_order_id") or "").strip() and PLACE_ALL_MAPPED:
+                                # Place-all-mapped (Wrenchly): every mapped ASIN is in the set, so this
+                                # one has no Zoro code — it belongs on the Unmapped panel, once per cycle.
+                                needs_priority_flagged += 1
+                                if _fo_asin and _fo_asin not in _unmapped_seen:
+                                    _unmapped_seen.add(_fo_asin)
+                                    _log_order({"amazon_id": fo.get("amazon_id", ""), "asin": _fo_asin, "sku": "UNKNOWN",
+                                                "qty": fo.get("qty") or 1, "buyer": fo.get("buyer", ""),
+                                                "status": "UNMAPPED_ASIN",
+                                                "notes": "ASIN not in verified SKU sheet — map it and the next cycle places it"})
+                            elif not (fo.get("seller_order_id") or "").strip():
                                 needs_priority_flagged += 1
                                 _log_order({
                                     "amazon_id": fo.get("amazon_id", ""),
@@ -7730,6 +8166,15 @@ def main():
                 driver = _rush_flush_amazon_writes(driver)
             except Exception as e:
                 print(f"  ⚠️  Rush flush error at cycle end: {e}")
+
+        # Listings whose Zoro code and every alternative ran out this cycle: decide PL / DS, tell the
+        # team, watch for the restock (engine/listing_guard.py). Here, with the orders done and Chrome
+        # idle — never in the middle of an order.
+        try:
+            from engine import listing_guard
+            driver = listing_guard.handle_pending(driver, STORE_ACCOUNT, PROFILE_NAME) or driver
+        except Exception as e:
+            print(f"  ⚠️  listing guard: {type(e).__name__}: {e}")
 
         # ── Cycle summary ─────────────────────────────────────────
         _run_log["finished"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

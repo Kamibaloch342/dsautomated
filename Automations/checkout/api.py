@@ -564,6 +564,15 @@ def place_order_fast_vuex(driver, sku, qty, address, po_number, active_profile,
                         "LOW_PROFIT", checkout_total=checkout_total,
                         profit=profit, margin=margin, return_details=return_details)
 
+        # 4b. HS_RESELLER pays on Net 30, the account's default: confirm it is the selected
+        # payment before submitting, and place nothing if it cannot be confirmed.
+        from utils.config import profile_payment_method
+        if profile_payment_method(active_profile) == "NET30":
+            from checkout.dom import _ensure_net30_payment
+            if not _ensure_net30_payment(driver):
+                print("  ❌ Net30 could not be confirmed at checkout — NOT placing")
+                return _format_checkout_result("FAILED", return_details=return_details)
+
         # 5. Place order via Vuex
         zoro_id = _place_order_vuex(driver)
 

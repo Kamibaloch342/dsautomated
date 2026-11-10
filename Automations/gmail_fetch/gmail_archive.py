@@ -495,6 +495,20 @@ def parse_earnings_email(body: str, full_msg: dict) -> Optional[dict]:
     }
 
 
+# One order line of a Zoro "received" e-mail:
+#   Zoro #: G3964829 / Qty:1 / Promo applied: -$2.52 / Unit Price: $16.79 / $16.79 1 / $16.79 / $14.27
+# Groups: 1 code, 2 qty, 3 Unit Price (Zoro's list price, before any promo), 4 unit again,
+# 5 qty again, 6 line total, 7 line total after the promo (only when there is one).
+# Zoro puts "Promo applied" / "Delivery Surcharge" lines between Qty and Unit Price and writes a
+# price under a dollar as "$.76"; the old pattern allowed neither and lost the Unit Price of 21,913
+# of 21,944 promo orders from 1 Oct 2026 — and the Unit Price is what the Zoro price alert reads.
+ZORO_ITEM_LINE_RE = _re.compile(
+    r"Zoro #:\s*(\S+)\s*Qty:\s*(\d+)\s*(?:(?!Zoro #:).){0,200}?"
+    r"Unit Price:\s*\$?([\d,]*\.\d{2})\s*\$?([\d,]*\.\d{2})\s*(\d+)\s*\$?([\d,]*\.\d{2})"
+    r"(?:\s*\$([\d,]*\.\d{2}))?",
+    _re.IGNORECASE | _re.DOTALL)
+
+
 def parse_zoro_email(body: str, full_msg: dict, account_name: str = "") -> Optional[dict]:
     """
     Parse a Zoro 'Has Been Received' email and extract EVERY field.
@@ -568,12 +582,13 @@ def parse_zoro_email(body: str, full_msg: dict, account_name: str = "") -> Optio
     line_total = 0.0
 
     # Look for Zoro # pattern
-    zm = _re.search(r"Zoro #:\s*(\S+)\s*Qty:\s*(\d+)\s*Unit Price:\s*\$?([\d,]+\.\d{2})\s*\$?([\d,]+\.\d{2})\s*(\d+)\s*\$?([\d,]+\.\d{2})", body, _re.IGNORECASE)
+    zm = ZORO_ITEM_LINE_RE.search(body)
     if zm:
         sku = zm.group(1)
         qty = int(zm.group(2))
         unit_price = _clean_currency(zm.group(3))
-        line_total = _clean_currency(zm.group(6))
+        # With a promo the line shows the struck-through total, then what was paid.
+        line_total = _clean_currency(zm.group(7) or zm.group(6))
         # Product name is before Zoro #
         pnm = _re.search(r"Your Order\s*Item\s*Unit Price\s*Qty\s*Total Price\s*(.+?)\s*Zoro #:\s*" + _re.escape(sku), body, _re.DOTALL | _re.IGNORECASE)
         if pnm:

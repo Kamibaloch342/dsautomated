@@ -41,15 +41,25 @@
             "ultra_mode": false
         },
         "HS_RESELLER": {
-            "target_label": "Checking",
+            "target_label": "Rajar",
             "min_margin": 0,
             "order_limit": 0,
             "est_margin_only": true,
-            "labels_only": true,
+            "labels_only": false,
             "rush_mode": false,
             "rush_batch": 100,
-            "payment_method": "CREDIT_CARD",
-            "ultra_mode": true
+            "payment_method": "NET30",
+            "ultra_mode": false
+        },
+        "WR_RESELLER": {
+            "target_label": "WR",
+            "min_margin": 0,
+            "order_limit": 0,
+            "est_margin_only": true,
+            "labels_only": false,
+            "rush_mode": false,
+            "rush_batch": 25,
+            "ultra_mode": false
         }
     },
     "velocity": {
@@ -84,7 +94,8 @@
             ],
             "accounts": [
                 "HOANK",
-                "Hathoro"
+                "Hathoro",
+                "Wrenchly"
             ],
             "every_hours": 0
         },
@@ -111,11 +122,14 @@
             "hoank_orders": "120363410664445868@g.us",
             "hoank_insights": "120363429340767368@g.us",
             "hathoro_orders": "120363412233188303@g.us",
-            "hathoro_insights": "120363413450875187@g.us"
+            "hathoro_insights": "120363413450875187@g.us",
+            "wrenchly_orders": "120363411446972787@g.us",
+            "wrenchly_tracking": "120363432128644067@g.us",
+            "wrenchly_messages": "120363414616862610@g.us"
         }
     },
     "checkout": {
-        "page_checkout": false
+        "page_checkout": true
     },
     "closing": {
         "message_after_closing": true

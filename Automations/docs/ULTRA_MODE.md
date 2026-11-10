@@ -29,11 +29,13 @@ Also in ultra mode only:
 
 - The batched duplicate check runs per few orders instead of per 100, and an order cleared earlier is
   asked again against the placer's own zero-lag records just before it is placed.
+- A duplicate match that may be the buyer's other order (`docs/CLOUD_ARCHITECTURE.md` §5) is checked on the main
+  thread in a window of its own, about 5 s, only for such orders. The crew and the Zoro window are not involved.
 - The cart is not rebuilt when it already holds exactly this one item with no coupon
   (`_cart_holds_exactly`), about 5 s per order. Reseller orders with no coupons only.
 - **Out-of-stock listings are held, not marked** (`_ultra_hold_oos`, owner, 2 Nov 2026). At the start of
-  each cycle Zoro is asked once per SKU. Orders for a listing that is out of stock (and whose ALT, if it
-  has one, is too) are left alone: no page opened, no label written, no time spent. The next cycle asks
+  each cycle Zoro is asked once per SKU. Orders for a listing that is out of stock (and whose ALTs, if it
+  has any, are too) are left alone: no page opened, no label written, no time spent. The next cycle asks
   again, and when it is back they go through the normal way. One WhatsApp/Telegram message when a listing
   runs out and one when it is back.
   - Only a clear "not in stock" holds an order. An API error or a listing not reached in the time allowed

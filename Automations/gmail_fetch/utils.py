@@ -68,7 +68,10 @@ def get_gmail_service(account_name: str):
     creds = None
     if os.path.exists(token_path):
         try:
-            creds = Credentials.from_authorized_user_file(token_path, GMAIL_SCOPES)
+            # The token's OWN scopes, not SCOPES (gmail.readonly): a grant made without gmail.readonly
+            # (forwarding_manager's full-access consent, 8 Nov 2026) answers a readonly refresh with
+            # invalid_scope. gmail.modify / mail.google.com read just as well.
+            creds = Credentials.from_authorized_user_file(token_path)
         except Exception:
             creds = None
 

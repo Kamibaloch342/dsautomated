@@ -17,7 +17,7 @@ from selenium.webdriver.support import expected_conditions as EC
 
 import platforms.zoro as zoro
 from utils.helpers import load_coupon_metadata, update_coupon_status
-from utils.config import FULL_STATE_NAME_MAP
+from utils.config import FULL_STATE_NAME_MAP, profile_payment_method
 from utils.logger import bot_log
 
 print = functools.partial(print, flush=True)
@@ -2117,6 +2117,13 @@ def _click_place_order(driver):
         if not idle:
             print("  ⏸️  No order number, and the page has not returned to an idle checkout — "
                   "not clicking again (a second click could duplicate the order)")
+            # This click may have bought the order. Whatever an EARLIER try was told ("payment not
+            # authorized") no longer describes the outcome, and the caller releases the order for a
+            # fresh purchase when that flag is set — so drop it: the order stays locked for a check.
+            try:
+                driver._zuhra_payment_declined = False
+            except Exception:
+                pass
             break
         _msgs = _report_checkout_refusal(driver, attempt + 1) or []
         _declined = any(_PAYMENT_AUTH_ERR in str(m).lower() for m in _msgs)
@@ -2324,6 +2331,9 @@ def place_order_fast(driver, sku, qty, address, po_number, active_profile,
     bot_log("info", "Checkout started", sku=sku, qty=qty)
     addr_id = None
     priority_coupons = priority_coupons or []
+    # HS_RESELLER always pays on Net 30 — also when a fallback caller (Vuex, the placer's last
+    # resort) did not pass payment_method and the card default would apply.
+    payment_method = profile_payment_method(active_profile, payment_method)
 
     try:
         zoro.ensure_on_site(driver)

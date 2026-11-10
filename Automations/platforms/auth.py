@@ -137,12 +137,14 @@ def resolve_account_key(identifier):
         return identifier.get("key", "").lower()
 
     s = str(identifier).lower().strip()
-    if s in ("hoank", "hathoro"):
+    if s in ("hoank", "hathoro", "wrenchly"):
         return s
     if s.startswith("hs"):
         return "hoank"
     if s.startswith("dm"):
         return "hathoro"
+    if s.startswith("wr"):          # WR_RESELLER / "Wrenchly" (third store, 6 Nov 2026)
+        return "wrenchly"
     return s
 
 
@@ -393,6 +395,27 @@ def pick_account(driver, store_name, marketplace=None, target_url=None, timeout=
             return not on_account_switcher(driver)
         time.sleep(1)
     print("  [AUTH] ⛔ Still on the account switcher after confirming.")
+    return False
+
+
+def choose_store_if_asked(driver, account_identifier, target_url=None):
+    """If Amazon is showing 'Select an account', choose this store. True unless it stayed there.
+
+    Takes whatever the caller knows the store by: a tracker's account_config, 'wrenchly' or
+    'WR_RESELLER'. The page is not a login page, so the tracker and placers never handled it
+    and stopped dead on it after a fresh sign-in (Wrenchly tracker, 9 Nov 2026 02:23).
+    """
+    if not on_account_switcher(driver):
+        return True
+    account_key = resolve_account_key(account_identifier)
+    try:
+        from utils.accounts_config import accounts, store_by_key
+        cfg = accounts().get(store_by_key(account_key)) or {}
+    except Exception:
+        cfg = {}
+    if pick_account(driver, cfg.get("sc_store_name"), cfg.get("sc_marketplace"), target_url=target_url):
+        return True
+    print(f"  [AUTH] ⛔ Could not choose the Seller Central account for '{account_key}'.")
     return False
 
 

@@ -30,7 +30,7 @@ AUTO = os.path.dirname(HERE)
 DB = os.environ.get("CLOUD_DB_PATH") if (os.environ.get("CLOUD_MODE") == "1" and os.environ.get("CLOUD_DB_PATH")) \
     else os.path.join(AUTO, "data", "automations_unified.db")
 
-STORES = ("HOANK", "Hathoro")
+STORES = ("HOANK", "Hathoro", "Wrenchly")
 TREND_DAYS = 14
 
 

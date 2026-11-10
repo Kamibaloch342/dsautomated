@@ -57,7 +57,12 @@ print = __import__("functools").partial(print, flush=True)
 
 # ── config ──────────────────────────────────────────────────────────────────
 ACCOUNT  = os.environ.get("SCRAPE_ACCOUNT", "HOANK").strip()
-PORTS    = {"HOANK": 9331, "Hathoro": 9333}
+PORTS    = {"HOANK": 9331, "Hathoro": 9333, "Wrenchly": 9337}
+try:                                             # each store's Seller Central Chrome (config/accounts.json)
+    from utils.accounts_config import accounts as _accts
+    PORTS.update({a: int(c["sc_port"]) for a, c in _accts().items() if c.get("sc_port")})
+except Exception:
+    pass
 PORT     = int(os.environ.get("SCRAPE_PORT") or PORTS.get(ACCOUNT, 9331))
 TABS     = int(os.environ.get("SCRAPE_TABS") or 4)
 LIMIT    = int(os.environ.get("SCRAPE_LIMIT") or 400)      # per run; 0 = unbounded
@@ -433,8 +438,8 @@ def main():
 
 
 def main_in_turn():
-    """main() while holding this store's Seller Central Chrome (utils/sc_chrome.py) — the
-    tracking uploader drives the same Chrome all day (28 Sep 2026)."""
+    """main() while holding this store's Seller Central Chrome (utils/sc_chrome.py) — closing's
+    report download, messaging and the hourly store reports use the same Chrome."""
     from utils.sc_chrome import sc_turn
     with sc_turn(PORT, f"SC scrape {ACCOUNT}", max_wait=1200):
         main()

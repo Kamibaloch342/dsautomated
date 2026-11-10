@@ -15,8 +15,8 @@ reseller user agent (`utils.helpers.zoro_user_agent()`): no captcha, no limit, h
 | Chain | `scripts/daily_bulk.py` step 5 | Runs the sweep for both stores (`DELIVERY_SOURCE=carrier` restores the FedEx/UPS API path). |
 | Launcher | `gui/launcher.py` | "🚚 Delivery check" button (process `delivery_all`); remote commands `run_delivery_check` / `stop_delivery_check`. |
 | Dashboard | `dashboard/server.py` `GET /api/delivery_watch?account=&counts=1`, `v2.html` Attention → **Delivery** | Buckets: **Zoro cancelled**, **Late** (undelivered ≥ `late_days` past the Amazon deliver-by), **Stalled** (no carrier scan for ≥ `stalled_days`), **Freight / untracked** (context, not an alert). Home "Attention" card carries the counts. |
-| Messaging | `engine/post_delivery.py`, `scripts/send_delivery_messages.py` | Check-in **on the delivery day** (0–7 days), review request **6–30 days** after delivery, **one delay notice** when a shipment has had no carrier scan for 3–10 days (older stalls are a person's case). `bot_config.json → "messaging"` overrides the numbers. |
-| Config | `config/accounts.json` → `gmail_addresses`, `zoro_profile_inboxes`, `zoro_tracking` | token → mailbox address; placer profile → Zoro inbox; `{transport, port, delay_s, days, recheck_hours, late_days, stalled_days, workers}`. |
+| Messaging | `engine/post_delivery.py`, `scripts/send_delivery_messages.py` | Check-in **on the delivery day** (0–7 days), review request **7–30 days** after delivery and not before Amazon's deliver-by date + 6 days (Amazon's own window starts there — 10 Nov 2026), **one delay notice** when a shipment has had no carrier scan for 3–10 days (older stalls are a person's case). `bot_config.json → "messaging"` overrides the numbers. |
+| Config | `config/accounts.json` → `gmail_addresses`, `zoro_profile_inboxes`, `zoro_forwarding_hubs`, `zoro_tracking` | token → mailbox address; placer profile → Zoro inbox; inboxes that only collect forwarded copies (never proof of the buyer); `{max_email_tries, transport, port, delay_s, days, recheck_hours, late_days, stalled_days, workers}`. |
 
 ## The contract (captured from the page, verified on live orders)
 
@@ -45,11 +45,38 @@ buyer's "Delivered 11:43 AM" is what we store; `delivery_date` keeps the FedEx-p
 
 - An order is **Delivered only when every parcel is** (`AllDelivered` for multi-parcel);
   some delivered → `PartialDelivered`; otherwise the best-ranked parcel status.
-- `delivery_status` never moves backwards unless the new answer is a delivery.
-- Which e-mail: `closing_orders.zoro_gmail_account` / `zoro_account_name` →
-  `archive_zoro.gmail_account` → placer profile's inbox → the busiest Zoro inboxes
-  (`archive_zoro` frequency), at most 4 tries; `not_found` after all of them is recorded on the
-  row as `delivery_note = "Zoro: order not found under …"`.
+- `delivery_status` never moves backwards unless the new answer is a delivery, a
+  return/damage exception, or `Delivered` → `PartialDelivered` (a parcel the earlier check
+  never saw is still out; the label leaves Completed/Loss for Incomplete and the delivery
+  date / left-at are cleared).
+- **Every parcel in Zoro's shipping e-mail is tracked** (8 Nov 2026, `email_parcels`):
+  Zoro's order payload can list fewer parcels than it shipped, for good, not just late.
+  WB1658218341 (113-9105766-1277842, 8 gal of chlorine in two boxes) listed only
+  522590833736 (delivered 28 Oct); 522590833725 (FedEx "Returned to facility for
+  inspection", 28 Oct) was never looked up, so the order read Delivered → Completed. The
+  e-mail's numbers come from `archive_tracking` for the WB, not from `closing_orders.tracking_ids`
+  (that list also carries other orders' numbers). FedEx-shaped ones the payload lacks are
+  looked up with `FDEG`; one FedEx rejects is dropped. Measured 8 Nov: 335 orders since
+  20 Sep had a tracking number the sweep never looked up, 4 of them Completed with that
+  parcel undelivered.
+- Which e-mail (6 Nov 2026, `email_candidates`): ① `closing_orders.zoro_lookup_email` — the
+  e-mail that unlocked this order before; ② the inbox Zoro's confirmation landed in
+  (`zoro_gmail_account` / `zoro_account_name`, else `archive_zoro`) **unless it is a forwarding
+  hub** (`accounts.json → zoro_forwarding_hubs`, default `mkamrankhan342`); ③ what this placer
+  profile's (or store's) orders were unlocked with over the last 45 days, each order weighted
+  half per week of age (`learned_emails`), and — at fetch time — whatever unlocked this
+  profile's orders earlier in the same run; ④ `zoro_profile_inboxes`; ⑤ the hub; ⑥ the
+  store's `zoro_preferred`, then the busiest Zoro inboxes. At most `max_email_tries` (6;
+  `ZORO_TRACK_MAX_EMAILS`) beyond ①–②. The e-mail that worked is saved in `zoro_lookup_email`;
+  `not_found` after every try is recorded as `delivery_note = "Zoro: order not found under …"`
+  (the e-mails actually tried) and cleared once Zoro answers.
+  *Why:* from ~12 Oct every store Gmail forwards into the hub, closing recorded the hub as the
+  order's inbox, and the hub went first — ~4,400 Hathoro orders (DM_COUPON bought with
+  robstark771, DM_RESELLER with abecomllc26) got 404 for weeks, stayed `Incomplete`, were
+  never messaged, and their 4 wasted calls each pushed the sweep past closing's 2 h timeout
+  every day from 4 Nov. The profile map alone is not enough: DM_COUPON bought from
+  salesmercentile in September and robstark771 in October; HS_COUPON used four accounts in
+  one October week.
 - Zoro's `deliveries[]` lags the shipping e-mail by a day or more: when it lists no parcel,
   closing's own `tracking_ids` (FedEx-shaped numbers) are looked up directly with code `FDEG`.
 - Freight parcels are recorded as `Untracked` with the carrier name on the order
@@ -84,7 +111,8 @@ First full sweep (27 Sep 2026): 19,749 shipped-undelivered orders of the last 60
 |---|---|---|
 | `delivery_message_days` | 0 | days after delivery before the check-in |
 | `delivery_message_max_days` | 7 | no check-in for older deliveries |
-| `review_days` | 6 | days after delivery before the review request |
+| `review_days` | 7 | days after delivery before the review request (was 6 until 10 Nov 2026) |
+| `review_after_deliver_by_days` | 6 | …and not before Amazon's deliver-by date + this many days: requests sent earlier are refused ("outside the 5-30 day range") |
 | `review_max_days` | 30 | Amazon's window |
 | `delay_notice_enabled` | true | |
 | `delay_notice_stalled_days` | 3 | no carrier scan for this long → one delay notice |

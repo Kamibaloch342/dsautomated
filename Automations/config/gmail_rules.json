@@ -1,6 +1,6 @@
 {
   "_comment": "Gmail organizer rules (scripts/gmail_organizer.py). Rules are tried top to bottom and the FIRST match wins, so a mail gets exactly one label. 'query' is ordinary Gmail search syntax. archive=true takes the mail out of the inbox once it is older than archive_after_days (it keeps its label and stays searchable; the automations search all mail, never the inbox). archive=false = label only, the mail stays in the inbox because a person has to look at it. Nothing is ever deleted or marked read. A mail the organizer already archived is never archived again, so moving one back to the inbox sticks.",
-  "label_prefix": "ZUHRA",
+  "label_prefix": "Kamran",
   "archive_after_days": 1,
   "hub_inbox": "mkamrankhan342",
   "_hub_comment": "Every store Gmail forwards into the hub inbox. There each mail is labelled under the Gmail it was delivered to first (ZUHRA/<source>/<rule label>, matched with Gmail's deliveredto: search), and the hub's own mail under ZUHRA/mkamrankhan342/... source_names renames a source's folder; any inbox not listed uses its token name.",

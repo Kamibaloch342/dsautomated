@@ -100,6 +100,55 @@ def is_po_box(*street_lines):
     return bool(_PO_BOX_RE.search(" ".join(str(s or "") for s in street_lines)))
 
 
+# ── PO box → "#<number>" (owner, 10 Nov 2026) ───────────────────────────────────────────────────
+# Until now a PO-box order was labelled "BB" and never placed. The owner's rule from today: place it,
+# with the box renamed. Nearly every such address also carries a street ("25 Railroad Ave PO Box 12",
+# "12345 Deerwood Ln" + "-or- PO Box 345"), and "#12" after a street is the form the post office
+# itself gives out for parcels from UPS/FedEx ("street addressing"), so the box number stays on the
+# label and Zoro's "PO box is not allowed" check has nothing to refuse.
+#   • the explicit forms — "PO Box 12", "P.O. Box #12", "Post Office Box 12", "POB 12", "Box PO 12";
+#   • with bare=True also "Box 12" / "BX 12" / "BOX # 12" / "BOX12", which Zoro refuses too. Only
+#     with a number after it: "123 Box Canyon Rd" is a street name and is never touched.
+_BOX_NUM = r"\.?\s*(?:#|NO\.?\s+|NUMBER\s+)?\s*([A-Z]?\d+[A-Z]?)?"
+_PO_TOKEN_RE = re.compile(
+    r"(?:\bPOST\s+OFFICE\s+B(?:OX|X)\b|\bB(?:OX|X)\s+P\.?\s*O\.?(?=\W|$)|\bP\.?\s*O\.?\s*B(?:OX|X)(?=\W|\d|$)"
+    r"|\bP\.?\s*O\.?\s*B\.?(?=\s*#?\s*\d))" + _BOX_NUM, re.IGNORECASE)
+_BARE_BOX_TOKEN_RE = re.compile(r"\bB(?:OX|X)(?=\s*#?\s*\d)" + _BOX_NUM, re.IGNORECASE)
+_STREET_RE = re.compile(r"\b\d+[A-Z]?\s+[A-Z]{2,}|\b(?:RR|HC|RT|RTE|ROUTE|RURAL\s+ROUTE|HWY|HIGHWAY|COUNTY\s+R(?:OA)?D|CR|FM)\s*#?\s*\d",
+                        re.IGNORECASE)
+
+
+def _has_street(text):
+    """Is there something a truck can drive to in this line — "12 Main St", "RR 2", "Hwy 61"?"""
+    return bool(_STREET_RE.search(re.sub(r"#\s*\w+", " ", str(text or ""))))
+
+
+def rename_po_box(line1, line2="", bare=False):
+    """Rewrite the box in two street lines as "#<number>". Returns (line1, line2, changed, has_street).
+
+    line1 is the line sent to Zoro as address1. has_street is False when nothing but the box is left
+    ("PO Box 12" alone): there is no place to deliver to, and the caller must not place that order."""
+    def _one(text):
+        t = str(text or "")
+        new = _PO_TOKEN_RE.sub(lambda m: f" #{m.group(1)} " if m.group(1) else " ", t)
+        if bare:
+            new = _BARE_BOX_TOKEN_RE.sub(lambda m: f" #{m.group(1)} " if m.group(1) else " ", new)
+        if new == t:
+            return t.strip(), False
+        new = re.sub(r"\s+", " ", new).strip()
+        # what joined the box to the rest: "-or- #12", "/ #12", "12 Main St - #12", "or #12"
+        new = re.sub(r"^(?:[-/,&.\s]|\bOR\b|\bAND\b)+", "", new, flags=re.IGNORECASE)
+        new = re.sub(r"(?:[-/,&\s]|\bOR\b|\bAND\b)+$", "", new, flags=re.IGNORECASE)
+        new = re.sub(r"\s*[-/,&]\s*(?=#)", " ", new)
+        return re.sub(r"\s+", " ", new).strip(), True
+
+    a, ca = _one(line1)
+    b, cb = _one(line2)
+    if not _has_street(a) and _has_street(b):
+        a, b = b, a                       # the street goes first; "#12" follows it
+    return a, b, (ca or cb), (_has_street(a) or _has_street(b))
+
+
 def _clean_city_line(line):
     """The City/State/ZIP line as the pattern above expects it: dots dropped (as always) and a
     doubled comma collapsed. 12 Oct 2026: 'Loganville,, Georgia 30052' matched nothing, so order
@@ -178,10 +227,18 @@ def scrape_amazon_address(driver, amazon_order_id, account_profile=None, skip_na
         else:
             raise ValueError(f"City/State regex failed on: {city_state_line}")
 
-        # PO Box check — the parsed address rides along so the placer can label the order "BB"
-        # on Amazon and record what kinds of PO-box addresses come in (12 Oct 2026, owner).
+        # PO box → placed with the box renamed "#<number>" (owner, 10 Nov 2026; until then every
+        # PO-box order was labelled "BB" and not placed). The address as Amazon shows it rides along
+        # in po_box_original so the placer can record it. Only an address that is nothing but a box
+        # — no street to deliver to — is still held: the placer labels that one "BB".
         if is_po_box(data["street_address"], data.get("street_address_2", "")):
-            return dict(data, skip_order=True, reason="PO_BOX")
+            _orig1, _orig2 = data["street_address"], data.get("street_address_2", "")
+            _l1, _l2, _changed, _street = rename_po_box(_orig1, _orig2)
+            if not _changed or not _street or is_po_box(_l1, _l2):
+                return dict(data, skip_order=True, reason="PO_BOX")
+            data["po_box_original"] = " | ".join(x for x in (_orig1, _orig2) if x)
+            data["street_address"], data["street_address_2"] = _l1, _l2
+            print(f"   📮 PO box renamed for Zoro: '{data['po_box_original']}' → '{_l1}'" + (f" / '{_l2}'" if _l2 else ""))
 
         try:
             data["phone"] = driver.find_element(

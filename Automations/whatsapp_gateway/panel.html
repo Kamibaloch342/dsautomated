@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WhatsApp Senders</title>
+<style>
+:root {
+  --bg: #f4f5f7; --card: #ffffff; --line: #dfe3e8; --text: #1b2430; --muted: #5f6b7a;
+  --kamran: #0b6bcb; --hifza: #a3339b; --ok: #12784a; --warn: #a15c00; --warn-bg: #fff4e0; --off: #eceff3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11161d; --card: #1a212b; --line: #2d3744; --text: #e8edf3; --muted: #9aa7b6;
+    --kamran: #4ba3f5; --hifza: #dc7ad3; --ok: #4fd195; --warn: #f2b35b; --warn-bg: #33291a; --off: #262f3b;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+       font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+#banner { margin: 0 0 20px; color: var(--muted); }
+#banner.warn { color: var(--warn); font-weight: 600; }
+.accounts { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; margin-bottom: 26px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.card h2 { display: flex; align-items: center; gap: 8px; font-size: 17px; margin: 0 0 10px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+.status { font-size: 13px; font-weight: 600; margin-left: auto; }
+.status.on { color: var(--ok); } .status.off { color: var(--warn); }
+.phone { font: 16px ui-monospace, Menlo, monospace; margin: 0 0 6px; }
+.muted { color: var(--muted); font-size: 13px; margin: 0; }
+.qr { display: block; width: 240px; max-width: 100%; height: auto; margin: 0 auto 10px; background: #fff; border-radius: 8px; }
+.steps { font-size: 13px; color: var(--muted); margin: 0; text-align: center; }
+button { font: inherit; cursor: pointer; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--text); padding: 5px 11px; }
+button:hover { border-color: var(--muted); }
+button:disabled { opacity: .55; cursor: default; }
+.unlink { margin-top: 12px; font-size: 13px; color: var(--muted); }
+.store { margin-bottom: 22px; }
+.store-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.store-head h2 { font-size: 16px; margin: 0 auto 0 0; }
+.store-head button { font-size: 13px; padding: 3px 9px; }
+.rows { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row .name { flex: 1 1 260px; }
+.waiting { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; min-width: 76px; background: var(--off); color: var(--muted); }
+.seg button:first-child { border-radius: 7px 0 0 7px; }
+.seg button:last-child { border-radius: 0 7px 7px 0; border-left: 0; }
+.seg button[aria-pressed="true"] { color: #fff; font-weight: 600; border-color: transparent; }
+.seg button[aria-pressed="true"][data-account="kamran"] { background: var(--kamran); }
+.seg button[aria-pressed="true"][data-account="hifza"] { background: var(--hifza); }
+@media (prefers-color-scheme: dark) { .seg button[aria-pressed="true"] { color: #10151c; } }
+.hold { flex-basis: 100%; font-size: 13px; color: var(--warn); background: var(--warn-bg); border-radius: 6px; padding: 5px 9px; }
+#error { color: var(--warn); font-weight: 600; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>WhatsApp senders</h1>
+  <p id="banner">Loading…</p>
+  <section id="accounts" class="accounts" aria-label="Linked numbers"></section>
+  <section id="lanes" aria-label="Which number sends each alert"></section>
+  <p id="error" role="alert"></p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const STORE_NAMES = { DM: 'DM — Hathoro', HS: 'HS — HOANK', WR: 'WR — Wrenchly', Other: 'Other' };
+let state = null;
+const shown = {};
+
+function paint(id, data, build) {
+  // Only touch the page when something changed, so a poll never swallows a click.
+  const key = JSON.stringify(data);
+  if (shown[id] !== key) { shown[id] = key; $(id).innerHTML = build(data); }
+}
+
+function accountCard(a) {
+  const dot = `<span class="dot" style="background:var(--${esc(a.id)})"></span>`;
+  if (a.connected) {
+    const waiting = a.waiting ? `${a.waiting} alert${a.waiting > 1 ? 's' : ''} waiting` : 'Nothing waiting';
+    return `<div class="card"><h2>${dot}${esc(a.label)}<span class="status on">Linked</span></h2>
+      <p class="phone">+${esc(a.phone)}</p><p class="muted">${waiting}</p>
+      <button class="unlink" data-unlink="${esc(a.id)}" data-label="${esc(a.label)}">Unlink this number</button></div>`;
+  }
+  const body = a.qr
+    ? `<img class="qr" src="${esc(a.qr)}" alt="QR code to link ${esc(a.label)}'s WhatsApp">
+       <p class="steps">On ${esc(a.label)}'s phone: WhatsApp → Linked Devices → Link a Device, then scan this code.</p>`
+    : `<p class="muted">Preparing the QR code…</p>`;
+  return `<div class="card"><h2>${dot}${esc(a.label)}<span class="status off">Not linked</span></h2>${body}</div>`;
+}
+
+function buildAccounts(accounts) {
+  const phones = accounts.filter(a => a.phone).map(a => a.phone);
+  const same = phones.length === 2 && phones[0] === phones[1];
+  return accounts.map(accountCard).join('') +
+    (same ? `<p class="hold" style="grid-column:1/-1">Both cards are linked to the same number. Unlink one and scan with the other phone.</p>` : '');
+}
+
+function holdText(l, accounts) {
+  const who = accounts.find(a => a.id === l.account).label;
+  const other = accounts.find(a => a.id !== l.account).label;
+  if (l.hold === 'not_linked') return `${who} is not linked, so this waits. Link the number above, or switch this row to ${other}.`;
+  if (l.hold === 'not_in_group') return `${who} is not in the group "${l.group || 'for this alert'}", so this waits. Add ${who} to that group, or switch this row to ${other}.`;
+  return '';
+}
+
+function laneRow(l, accounts) {
+  const seg = accounts.map(a => `<button data-lane="${esc(l.id)}" data-account="${esc(a.id)}"
+      aria-pressed="${a.id === l.account}">${esc(a.label)}</button>`).join('');
+  const hold = l.hold ? `<div class="hold">${esc(holdText(l, accounts))}</div>` : '';
+  const waiting = l.waiting ? `<span class="waiting">${l.waiting} waiting</span>` : '';
+  return `<div class="row"><span class="name">${esc(l.label)}</span>${waiting}
+    <span class="seg" role="group" aria-label="Sender for ${esc(l.label)}">${seg}</span>${hold}</div>`;
+}
+
+function buildLanes({ lanes, accounts }) {
+  return Object.keys(STORE_NAMES).map(store => {
+    const rows = lanes.filter(l => l.store === store);
+    const bulk = rows.length < 2 ? '' :
+      accounts.map(a => `<button data-bulk="${esc(store)}" data-to="${esc(a.id)}">All from ${esc(a.label)}</button>`).join('') +
+      `<button data-bulk="${esc(store)}" data-to="normal">Back to normal</button>`;
+    return `<div class="store"><div class="store-head"><h2>${esc(STORE_NAMES[store])}</h2>${bulk}</div>
+      <div class="rows">${rows.map(l => laneRow(l, accounts)).join('')}</div></div>`;
+  }).join('');
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/state');
+    state = await r.json();
+    $('banner').className = state.launcher_running ? '' : 'warn';
+    $('banner').textContent = state.launcher_running
+      ? 'Launcher is running. Alerts go out as soon as they are queued.'
+      : 'Launcher is closed. Alerts wait here until it is open again.';
+    paint('accounts', state.accounts, buildAccounts);
+    paint('lanes', { lanes: state.lanes, accounts: state.accounts }, buildLanes);
+  } catch (e) {
+    $('banner').className = 'warn';
+    $('banner').textContent = 'The WhatsApp gateway is not responding.';
+  }
+}
+
+async function post(url, body) {
+  $('error').textContent = '';
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json()).error || r.status);
+  } catch (e) {
+    $('error').textContent = 'That did not save: ' + e.message;
+  }
+  await refresh();
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b || !state) return;
+  if (b.dataset.lane) {
+    if (b.getAttribute('aria-pressed') !== 'true') post('/route', { changes: { [b.dataset.lane]: b.dataset.account } });
+  } else if (b.dataset.bulk) {
+    const changes = {};
+    for (const l of state.lanes.filter(l => l.store === b.dataset.bulk)) {
+      changes[l.id] = b.dataset.to === 'normal' ? l.normal : b.dataset.to;
+    }
+    post('/route', { changes });
+  } else if (b.dataset.unlink) {
+    if (confirm(`Unlink ${b.dataset.label}'s WhatsApp? You will need to scan a new QR code to send from it again.`)) {
+      b.disabled = true;
+      post('/relink', { account: b.dataset.unlink });
+    }
+  }
+});
+
+refresh();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>

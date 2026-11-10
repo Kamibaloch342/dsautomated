@@ -65,7 +65,8 @@ AMAZON_REVIEW_URL = (
 _MSG_DEFAULTS = {
     "delivery_message_days": 0,        # days after delivery before the check-in (0 = same day)
     "delivery_message_max_days": 7,    # older deliveries are no longer "did it arrive?" material
-    "review_days": 6,                  # days after delivery before the review request
+    "review_days": 7,                  # days after delivery before the review request (owner, 10 Nov 2026; was 6)
+    "review_after_deliver_by_days": 6,  # …and not before Amazon's deliver-by date + this (see review_wait_days)
     "review_max_days": 30,             # Amazon's own request window closes at 30 days
     "delay_notice_enabled": True,
     "delay_notice_stalled_days": 3,    # no carrier movement for this long → tell the buyer
@@ -97,7 +98,11 @@ _MCFG = messaging_cfg()
 DAYS_AFTER_DELIVERY_TO_MESSAGE = _MCFG["delivery_message_days"]
 DELIVERY_MESSAGE_MAX_DAYS = _MCFG["delivery_message_max_days"]
 DAYS_AFTER_DELIVERY_TO_REVIEW = _MCFG["review_days"]
+REVIEW_AFTER_DELIVER_BY_DAYS = _MCFG["review_after_deliver_by_days"]
 REVIEW_MAX_DAYS = _MCFG["review_max_days"]
+# Amazon answered "outside the 5-30 day range" while the window is still open: asked too early.
+# Not a final answer — the order is asked again on a later run (see process_single_order).
+REVIEW_NOT_YET = "Not Yet"
 DELAY_NOTICE_ENABLED = _MCFG["delay_notice_enabled"]
 DELAY_NOTICE_STALLED_DAYS = _MCFG["delay_notice_stalled_days"]
 DELAY_NOTICE_MAX_STALLED_DAYS = _MCFG["delay_notice_max_stalled_days"]
@@ -120,6 +125,13 @@ ACCOUNT_CONFIGS = {
         "key": "hathoro",
         "name": "Hathoro™️",
         "profile_dir": "hathoro_tracking_ids",
+        "send_messages": True,
+        "can_request_review": True,
+    },
+    "wrenchly": {
+        "key": "wrenchly",
+        "name": "Wrenchly™️",
+        "profile_dir": "wrenchly_tracking_ids",
         "send_messages": True,
         "can_request_review": True,
     },
@@ -376,11 +388,139 @@ def prefetch_guards(gmail_services: Dict[str, object], order_ids: List[str], chu
                         out[key].update(part)
                         break
                     out[key].update(hit)
+    out["ids"] = set(ids)      # which orders these answers cover (buyer_wrote_on_other_order)
     logger.info("  [guards] %d orders prefetched in %d Gmail calls — inquiry %d, return %d, refund %d, "
                 "cancel %d, prior mail %d%s", len(ids), n_calls, len(out["inquiry"]), len(out["returns"]),
                 len(out["refunds"]), len(out["cancel"]), len(out["sent"]),
                 "" if out["complete"] else " (incomplete → per-order checks)")
     return out
+
+
+# ── The same buyer's other orders (8 Nov 2026) ───────────────────────────────
+# "The buyer already wrote to us → no message" is about the BUYER, not one order id. David M.
+# bought the same barrel twice (112-2159451-7162619 and 112-4846567-6695469), wrote three times
+# about a missing plug on the first; the 7 Nov run skipped that order and, 17 s later, sent the
+# "arrived safely?" check-in on the second, which had no mail of its own. The buyer is ship name
+# + 5-digit ZIP (our tables hold no stable buyer id); a false match only costs a check-in.
+BUYER_SIBLING_DAYS = 90
+
+
+def _buyer_key(order: dict):
+    name = " ".join(str(order.get("ship_name") or "").lower().split())
+    zip5 = re.sub(r"\D", "", str(order.get("ship_postal_code") or ""))[:5]
+    return (name, zip5) if name and len(zip5) == 5 else None
+
+
+_MON_RX = re.compile(r"\b([A-Z][a-z]{2})[a-z]*\.? (\d{1,2}), (\d{4})")
+_MDY_RX = re.compile(r"^(\d{1,2})/(\d{1,2})/(\d{4})")
+
+
+def _purchase_day(v) -> Optional[_date]:
+    """closing_orders.purchase_date comes as '2026-11-01 05:51', '04/24/2026',
+    'Wed, May 20, 2026, 1:20 PM PDT' or 'Jul 16, 2026 …'."""
+    s = str(v or "").strip()
+    try:
+        if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+            return _date.fromisoformat(s[:10])
+        m = _MDY_RX.match(s)
+        if m:
+            return _date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+        m = _MON_RX.search(s)
+        if m:
+            return datetime.strptime(f"{m.group(1)} {m.group(2)} {m.group(3)}", "%b %d %Y").date()
+    except ValueError:
+        pass
+    return None
+
+
+_BUYER_INDEX = {"at": 0.0, "by_key": {}}
+_BUYER_INDEX_TTL_S = 900
+
+
+def _buyer_index() -> dict:
+    """{buyer key: [(order id, purchase day)]} over closing_orders — one 0.1 s scan, kept 15 min
+    (a per-order ZIP scan costs ~40 ms, and a run checks hundreds of orders)."""
+    if time.time() - _BUYER_INDEX["at"] > _BUYER_INDEX_TTL_S:
+        by_key = {}
+        with get_conn() as conn:
+            for oid, name, zipc, pd in conn.execute(
+                    "SELECT amazon_order_id, ship_name, ship_postal_code, purchase_date FROM closing_orders"):
+                k = _buyer_key({"ship_name": name, "ship_postal_code": zipc})
+                if k:
+                    by_key.setdefault(k, []).append((oid, _purchase_day(pd)))
+        _BUYER_INDEX.update(at=time.time(), by_key=by_key)
+    return _BUYER_INDEX["by_key"]
+
+
+def buyer_other_orders(order: dict) -> Optional[List[dict]]:
+    """The same buyer's other orders (any store) within BUYER_SIBLING_DAYS of this one's
+    purchase (an undatable one counts), with closing's message flags read fresh.
+    None when the DB could not say."""
+    key = _buyer_key(order)
+    if not key:
+        return []
+    oid = order.get("amazon_order_id") or ""
+    d0 = _purchase_day(order.get("purchase_date"))
+    try:
+        ids = [i for i, d in _buyer_index().get(key, [])
+               if i != oid and (d is None or d0 is None or abs((d - d0).days) <= BUYER_SIBLING_DAYS)]
+        if not ids:
+            return []
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT amazon_order_id, customer_messaged, customer_inquiry, customer_inquiry_count "
+                f"FROM closing_orders WHERE amazon_order_id IN ({','.join('?' * len(ids))})", ids).fetchall()
+    except Exception as e:
+        logger.warning("  buyer's other orders: lookup failed for %s: %s", oid, e)
+        return None
+    return [dict(r) for r in rows]
+
+
+def buyer_wrote_on_other_order(gmail_services: Dict[str, object], order: dict,
+                               guards: Optional[dict] = None) -> Optional[str]:
+    """The id of another order of this buyer that the buyer wrote to us about, "" when none,
+    None when it could not be told (the caller then sends nothing this run)."""
+    sibs = buyer_other_orders(order)
+    if sibs is None:
+        return None
+    for s in sibs:
+        if (s.get("customer_messaged") or "") == "Yes" or (s.get("customer_inquiry") or "") \
+                or int(s.get("customer_inquiry_count") or 0) > 0:
+            return s["amazon_order_id"]
+    g = guards if (guards and guards.get("complete")) else None
+    # Orders this run's batched pass already cleared need no second look.
+    ask = [s["amazon_order_id"] for s in sibs
+           if g is None or s["amazon_order_id"] not in g.get("ids", ()) or s["amazon_order_id"] in g["inquiry"]]
+    if not ask:
+        return ""
+    if not gmail_services:
+        return None
+    q = f'{INQUIRY_QUERY} (' + " OR ".join(f'"{i}"' for i in ask) + ")"
+    for svc in gmail_services.values():
+        for m in _search_gmail(svc, q, max_results=5):
+            hit = _ids_in_message(svc, m["id"], ask)
+            if hit is None:
+                return None
+            return sorted(hit)[0]
+    return ""
+
+
+def _skip_for_buyer_elsewhere(order: dict, gmail_services, guards, store_name: str, what: str,
+                              closing_table: bool, dry_run: bool, original: dict) -> bool:
+    """True when nothing may be sent to this order's buyer (see buyer_wrote_on_other_order)."""
+    oid = order.get("amazon_order_id", "")
+    other = buyer_wrote_on_other_order(gmail_services, order, guards)
+    if other is None:
+        logger.info("  [%s] %s — could not check the buyer's other orders; no %s this run", store_name, oid, what)
+        return True
+    if not other:
+        return False
+    note = f"Buyer wrote on other order {other}"
+    logger.info("  [%s] %s — %s; a person answers, no %s", store_name, oid, note, what)
+    order["customer_messaged"] = "Yes"
+    order["customer_inquiry"] = note
+    _persist(oid, {"customer_messaged": "Yes", "customer_inquiry": note}, closing_table, dry_run, existing=original)
+    return True
 
 
 # ── Date helpers ─────────────────────────────────────────────────────────────
@@ -567,10 +707,42 @@ def send_amazon_message(driver, order_id: str, message_text: str, store_name: st
     return "No"
 
 
+def _deliver_by_day(order: dict):
+    """Amazon's deliver-by date of this order as a date, or None when it is not on record."""
+    d = _parse_date_loose(str(order.get("deliver_by_date") or ""))
+    return d.date() if d else None
+
+
+def review_wait_days(order: dict) -> int:
+    """Days still to wait before Amazon will take a review request for this order (0 = ask now).
+
+    Amazon's "5-30 day range after the order delivery date" runs from ITS OWN deliver-by date, not
+    from the day the parcel arrived. Measured on the 15,185 requests of 30 Oct – 10 Nov 2026: before
+    deliver-by + 5 days every request was refused (more than 2,500, each one stored as a final
+    "Expired" and never tried again); at + 5 days 1,061 were refused and 638 accepted; at + 6 days
+    1,078 were accepted and 1 refused. Zoro delivers days ahead of that date, so "6 days after delivery" was
+    usually too early — 2,873 of the 3,995 requests made on day 6 were refused. An order with no
+    deliver-by on record is not held back: it is asked on review_days and, if refused, asked again."""
+    day = _deliver_by_day(order)
+    if not day:
+        return 0
+    return max(0, (day - _date.today()).days + REVIEW_AFTER_DELIVER_BY_DAYS)
+
+
+def _review_window_closed(order: dict, days_since: int) -> bool:
+    """Is Amazon's 30-day review window really over for this order? Only then is "Expired" final."""
+    if days_since >= REVIEW_MAX_DAYS:
+        return True
+    day = _deliver_by_day(order)
+    return bool(day and (_date.today() - day).days > REVIEW_MAX_DAYS)
+
+
 def request_amazon_review(driver, order_id: str) -> str:
     """
     Navigate to Request a Review page and click Yes.
     Returns: "Yes" | "Already Requested" | "Expired" | "No Permission" | "No"
+    ("Expired" = Amazon said "outside the 5-30 day range" — too early OR too late; the caller,
+    which knows the dates, decides which and stores "Not Yet" for the first.)
     """
     url = AMAZON_REVIEW_URL.format(oid=order_id)
     driver.get(url)
@@ -949,6 +1121,9 @@ def process_delay_notice(
         order["customer_inquiry"] = inquiry
         _persist(oid, {"customer_messaged": "Yes", "customer_inquiry": inquiry}, closing_table, dry_run, existing=original)
         return order
+    if _skip_for_buyer_elsewhere(order, gmail_services, guards, store_name, "delay notice",
+                                 closing_table, dry_run, original):
+        return order
     if g is not None and oid not in g["returns"] and oid not in g["refunds"]:
         return_found, refund_found = False, False
     else:
@@ -1123,6 +1298,9 @@ def process_single_order(
         _persist(oid, {"customer_messaged": "Yes", "customer_inquiry": inquiry},
                  closing_table, dry_run, existing=original)
         return order
+    if _skip_for_buyer_elsewhere(order, gmail_services, guards, store_name, "check-in or review request",
+                                 closing_table, dry_run, original):
+        return order
 
     if g is not None and oid not in g["returns"] and oid not in g["refunds"]:
         return_found, refund_found = False, False
@@ -1173,12 +1351,21 @@ def process_single_order(
         order["delivered_msg_sent"] = "No"
 
     # ── Review request ──
+    # Not before review_days after delivery (owner: 7) AND not before Amazon's deliver-by date + 6
+    # days, which is where Amazon's own window starts (review_wait_days). An order still waiting is
+    # left alone — no page load, nothing stored — and comes up again on a later run.
     if can_review and review_sent not in ("Yes", "Already Requested", "Expired") \
-            and DAYS_AFTER_DELIVERY_TO_REVIEW <= days_since <= REVIEW_MAX_DAYS:      # Amazon: 5-30 days
+            and DAYS_AFTER_DELIVERY_TO_REVIEW <= days_since <= REVIEW_MAX_DAYS \
+            and review_wait_days(order) <= 0:
         if dry_run:
             logger.info("  [DRY] [%s] %s — would request review", store_name, oid)
         else:
             review_result = request_amazon_review(driver, oid)
+            if review_result == "Expired" and not _review_window_closed(order, days_since):
+                # "Outside the 5-30 day range" with the window still open means too EARLY. Stored
+                # as a final "Expired" it was never asked again: 4,282 review requests lost in the
+                # two weeks to 10 Nov 2026. "Not Yet" is not final — the next run asks again.
+                review_result = REVIEW_NOT_YET
             order["review_requested"] = review_result
             logger.info("  [%s] %s — review result: %s", store_name, oid, review_result)
             time.sleep(random.uniform(3, 6))
@@ -1235,7 +1422,8 @@ def run_post_delivery(
     table = "closing_orders" if closing_table else "orders"
     if account is None and closing_table:
         key = (account_config.get("key") or "").lower()
-        account = {"hoank": "HOANK", "hathoro": "Hathoro"}.get(key)
+        from utils.accounts_config import store_by_key
+        account = store_by_key(key) or None
     acct_clause = "AND account = ?" if (account and closing_table) else ""
     with get_conn() as conn:
         rows = conn.execute(f"""
@@ -1271,10 +1459,12 @@ def run_post_delivery(
         # Find debugging port for this account
         profile_dir = account_config.get("profile_dir", "")
         port = None
+        from utils.accounts_config import store_by_key, store_for_profile
         is_hathoro = "hathoro" in store_name.lower()
+        _want = store_by_key(account_config.get("key")) or ("Hathoro" if is_hathoro else "HOANK")
         for prof_name, prof_cfg in PROFILES.items():
-            prof_account = "Hathoro" if prof_name.startswith("DM_") else "HOANK"
-            if prof_account == ("Hathoro" if is_hathoro else "HOANK"):
+            prof_account = store_for_profile(prof_name, default="HOANK")
+            if prof_account == _want:
                 port = prof_cfg.get("port")
                 profile_dir = prof_cfg.get("profile_folder_name", profile_dir)
                 break
@@ -1317,7 +1507,7 @@ def run_post_delivery(
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Run post-delivery actions")
-    parser.add_argument("--account", choices=["hoank", "hathoro"], default="hoank",
+    parser.add_argument("--account", choices=["hoank", "hathoro", "wrenchly"], default="hoank",
                         help="Which account to process")
     parser.add_argument("--closing", action="store_true",
                         help="Use closing_orders table instead of legacy orders")

@@ -678,7 +678,7 @@ table.rpt tr.exp>td{padding:0;background:var(--bg);white-space:normal;cursor:def
   <header class="top">
     <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <input id="q" placeholder="Search order id, WB, tracking, buyer, SKU, ASIN, title…" autocomplete="off"><kbd>/</kbd></div>
-    <div class="seg" id="acctseg"><button data-acct="All" class="on">All</button><button data-acct="HOANK">HOANK</button><button data-acct="Hathoro">Hathoro</button></div>
+    <div class="seg" id="acctseg"><button data-acct="All" class="on">All</button><button data-acct="HOANK">HOANK</button><button data-acct="Hathoro">Hathoro</button><button data-acct="Wrenchly">Wrenchly</button></div>
     <div class="datebox daterange"><input type="date" id="from" title="From"><span class="muted">→</span><input type="date" id="to" title="To"></div>
     <div class="grow"></div>
     <button class="b iconb ghost" id="themebtn" title="Toggle theme"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
@@ -883,7 +883,7 @@ const FLAGS = [["#b42318","Red"],["#eab308","Yellow"],["#067647","Green"],["#1d4
 const isUrgentOrder = s => { if (!s) return false; const u = s.is_urgent ?? s.urgent; if (u === "Yes" || u === "1" || u === true || u === 1) return true; return Boolean(s.tags && /\burgent\b/i.test(s.tags)); };
 const CASE_STATUS = ["open","investigating","waiting_customer","waiting_zoro","ask_zoro_refund","resolved","closed"];
 const CASE_TYPE = ["refund","return","late_delivery","wrong_item","damaged","lost","inquiry","other"];
-const PROFILES = ["DM_COUPON","DM_RESELLER","HS_COUPON","HS_RESELLER"];
+const PROFILES = ["DM_COUPON","DM_RESELLER","HS_COUPON","HS_RESELLER","WR_RESELLER"];
 
 /* ── toasts ──────────────────────────────────────────────────────────── */
 const Toast = {
@@ -1635,7 +1635,7 @@ const Ops = {
         <div class="row" style="margin-top:6px">${b("Restart dashboard","restart_dashboard",{},{label:"Restart dashboard",cls:"d",confirm:"Restart the dashboard server on "+(this.target||"the target")+"? Everyone connected to it will reload."})}${b("Shutdown launcher","shutdown_launcher",{},{label:"Shutdown launcher",cls:"d",confirm:"Shut the launcher down completely on "+(this.target||"the target")+"? Nothing will place, track or close until someone starts it again."})}${b(L.headless?"Headless: on → turn off":"Headless: off → turn on","set_headless",{on:!L.headless},{label:"Set headless "+(L.headless?"off":"on"),confirm:"Switch Chrome headless "+(L.headless?"OFF":"ON")+"? Running placers keep their current mode until restarted."})}</div></div>
       <div class="ctrl-group"><h4>Placers</h4><div class="row">${b("Start all placers","start_all_orders",{},{label:"Start all placers",cls:"p"})}</div><div class="row" style="margin-top:6px">${PROFILES.map(pp).join("")}</div></div>
       <div class="ctrl-group"><h4>Tracking</h4><div class="row">${tr("hoank")}${tr("hathoro")}</div></div>
-      <div class="ctrl-group"><h4>Closing &amp; messages</h4><div class="row">${["HOANK","Hathoro"].map(a=>b("Run closing "+a,"run_closing",{account:a},{label:"Run closing "+a,confirm:"Run the closing pipeline for "+a+" now? It reads Gmail, updates closing_orders and can take a while."})).join("")}${b("Stop closing","stop_closing",{},{label:"Stop closing",cls:"d",confirm:"Stop the running closing pipeline?"})}</div><div class="row" style="margin-top:6px">${["HOANK","Hathoro"].map(a=>b("Run messages "+a,"run_messages",{account:a},{label:"Run messages "+a,confirm:"Send delivery check-ins / review requests for "+a+" now?"})).join("")}</div></div>
+      <div class="ctrl-group"><h4>Closing &amp; messages</h4><div class="row">${["HOANK","Hathoro","Wrenchly"].map(a=>b("Run closing "+a,"run_closing",{account:a},{label:"Run closing "+a,confirm:"Run the closing pipeline for "+a+" now? It reads Gmail, updates closing_orders and can take a while."})).join("")}${b("Stop closing","stop_closing",{},{label:"Stop closing",cls:"d",confirm:"Stop the running closing pipeline?"})}</div><div class="row" style="margin-top:6px">${["HOANK","Hathoro","Wrenchly"].map(a=>b("Run messages "+a,"run_messages",{account:a},{label:"Run messages "+a,confirm:"Send delivery check-ins / review requests for "+a+" now?"})).join("")}</div></div>
       <div class="ctrl-group"><h4>Maintenance</h4><div class="row">${b("Priority check HS","run_priority_check",{profile:"HS_COUPON"},{label:"Priority check HS_COUPON"})}${b("Priority check DM","run_priority_check",{profile:"DM_COUPON"},{label:"Priority check DM_COUPON"})}${b("Re-check all HS","run_priority_check",{profile:"HS_COUPON",all:true},{label:"Re-check all HS ASINs",confirm:"Re-test every HOANK ASIN in Priority ASIN Control against the current priority coupons? Runs between placer cycles, a few ASINs at a time."})}${b("Re-check all DM","run_priority_check",{profile:"DM_COUPON",all:true},{label:"Re-check all DM ASINs",confirm:"Re-test every Hathoro ASIN in Priority ASIN Control against the current priority coupons? Runs between placer cycles, a few ASINs at a time."})}${b("Reset HS","run_priority_check",{profile:"HS_COUPON",all:true,reset:true},{label:"Reset & rebuild HS",cls:"d",confirm:"Queue EVERY HOANK ASIN (including ineligible ones) for a full re-check and let the bot re-sort the columns? Existing verdicts are replaced as results come in."})}${b("Reset DM","run_priority_check",{profile:"DM_COUPON",all:true,reset:true},{label:"Reset & rebuild DM",cls:"d",confirm:"Queue EVERY Hathoro ASIN (including ineligible ones) for a full re-check and let the bot re-sort the columns? Existing verdicts are replaced as results come in."})}${b("Sync DB now","sync_now",{},{label:"Sync slim DB to R2"})}${b("Backup now","backup_now",{},{label:"Backup now"})}</div></div>
     </div>${can?"":`<div class="smallnote">Your role can view but not send commands.</div>`}`;
   },
@@ -1710,7 +1710,7 @@ const Ops = {
     const tog = (path, label, hint) => row(path, label, hint, `<button class="toggle ${g(path)?"on":""}" ${dis} onclick="Ops.setCfg('${path}', !this.classList.contains('on'), this)"></button>`);
     const num = (path, label, hint, step="1") => row(path, label, hint, `<input class="in s" type="number" step="${step}" value="${esc(g(path)??"")}" ${dis} onchange="Ops.setCfg('${path}', parseFloat(this.value), this)">`);
     const txt = (path, label, hint, wide) => row(path, label, hint, `<input class="in s ${wide?"wide":""}" type="text" value="${esc(Array.isArray(g(path))?g(path).join(", "):(g(path)??""))}" ${dis} onchange="Ops.setCfg('${path}', this.value, this)">`);
-    const ac = (path, label, hint) => { const cur = g(path)||[]; return row(path, label, hint, ["HOANK","Hathoro"].map(a=>`<label class="row small" style="display:inline-flex;margin-right:10px"><input type="checkbox" ${cur.includes(a)?"checked":""} ${dis} onchange="Ops.setCfgList('${path}', this)"> ${a}</label>`).join("")); };
+    const ac = (path, label, hint) => { const cur = g(path)||[]; return row(path, label, hint, ["HOANK","Hathoro","Wrenchly"].map(a=>`<label class="row small" style="display:inline-flex;margin-right:10px"><input type="checkbox" ${cur.includes(a)?"checked":""} ${dis} onchange="Ops.setCfgList('${path}', this)"> ${a}</label>`).join("")); };
     const cl = c.automation?.auto_closing||{}, pc = c.automation?.priority_check||{};
     $("#ops-settings").innerHTML = `${c.cloud_mode?`<div class="banner">Cloud mode: changes are queued to the machine that owns bot_config.json.</div>`:""}
       <div class="grid g2">
@@ -1809,17 +1809,19 @@ const Att = {
       + (steady.length ? `<details class="card grp"><summary class="hd" style="cursor:pointer"><h2>Holding up</h2><span class="sub">${steady.length} more good seller${steady.length === 1 ? "" : "s"} under the threshold</span></summary><div class="tblwrap" style="border:0;border-radius:0;box-shadow:none"><table class="t">${th}<tbody>${steady.map(row).join("")}</tbody></table></div></details>` : "");
   },
   r_po_boxes(d){
-    // Orders refused for a PO-box address (Zoro ships UPS/FedEx — neither delivers to one): labelled
-    // "BB" on Amazon and not placed; the address is kept so the kinds that come in can be seen.
+    // PO-box orders. Since 10 Nov 2026 they are placed with the box renamed "#<number>" behind the
+    // street ("renamed" rows); 12 Oct – 10 Nov they were labelled "BB" and not placed. "BB" is now only
+    // for an address with no street at all, or one Zoro still refuses. The address is kept either way.
     const rows = d.rows || [];
     $("#att-c-po_boxes").textContent = rows.length || "";
     const kinds = (d.kinds || []).map(([k, n]) => `<span class="chip">${esc(k)} <b>${U.int(n)}</b></span>`).join("");
-    const head = `<div class="banner">A PO-box order is <b>never placed</b> — Zoro ships by UPS/FedEx and neither delivers to a PO box. The placer labels it <b>${esc(d.label || "BB")}</b> on Amazon (so it is not picked up again) and keeps the address here. <b>${U.int(rows.length)}</b> orders: ${U.int(d.recorded || 0)} with the street on record${rows.length > (d.recorded || 0) ? `; ${U.int(rows.length - (d.recorded || 0))} from before 12 Oct have no street — the placer never kept it then (they come from its run logs and labels, with how often each was re-scraped)` : ""}.</div>`
+    const head = `<div class="banner">Since 10 Nov 2026 a PO-box order is <b>placed with the box renamed</b> “#number” behind its street (rows marked <i>placed, box renamed</i>). Only an address with no street at all, or one Zoro still refuses, is labelled <b>${esc(d.label || "BB")}</b> on Amazon and not placed — as every PO-box order was from 12 Oct to 10 Nov. <b>${U.int(rows.length)}</b> orders: ${U.int(d.recorded || 0)} with the street on record${rows.length > (d.recorded || 0) ? `; ${U.int(rows.length - (d.recorded || 0))} from before 12 Oct have no street — the placer never kept it then (they come from its run logs and labels, with how often each was re-scraped)` : ""}.</div>`
       + (kinds ? `<div class="rpt-why"><span class="l">How the box is written</span>${kinds}</div>` : "");
     if (!rows.length) return head + U.empty("No PO-box orders", "none refused yet — new ones appear here as the placers meet them");
     const how = v => { v = v || "";
       if (v.startsWith("amazon_address")) return "Amazon address" + (v.includes("run log") ? `<div class="small muted">from the run logs</div>` : "");
       if (v === "zoro_rejected") return "Zoro refused it";
+      if (v === "renamed") return `placed, box renamed<div class="small muted">not labelled BB</div>`;
       return v.startsWith("label only") ? `label only<div class="small muted">before 12 Oct</div>` : esc(v || "—"); };
     const row = r => `<tr>
         <td class="mono small">${esc(r.purchase_day || "")}</td>

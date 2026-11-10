@@ -577,14 +577,20 @@ class ZoroTracker:
                          f"{tid}.tracking.json")
 
     def track_order(self, order_no: str, email: str, known_parcels: Optional[list] = None,
-                    fallback_tracking: Optional[list] = None) -> dict:
+                    fallback_tracking: Optional[list] = None, email_tracking: Optional[list] = None) -> dict:
         """Order lookup + one tracking lookup per parcel → {outcome, order, packages, aggregate}.
         known_parcels=[{tracking_number, carrier_code}] skips the order call (a re-check of an
         order whose parcels are already recorded). fallback_tracking = the tracking numbers
         closing already holds from Zoro's shipping e-mail: the order payload's deliveries[]
         lags that e-mail by a day or more (WB7476127627, 27 Sep 2026 — shipped and delivered
         while Zoro's order still listed no parcel), so FedEx-shaped numbers are looked up
-        directly with the FedEx code; one that FedEx does not know is simply dropped."""
+        directly with the FedEx code; one that FedEx does not know is simply dropped.
+        email_tracking = the numbers in Zoro's own shipping e-mail for THIS order
+        (archive_tracking). Zoro's payload can list only some of the parcels for good:
+        WB1658218341 (26 Oct 2026, 8 gal of chlorine in two boxes) lists 522590833736
+        (delivered) and never 522590833725 (FedEx exception, returned for inspection), so
+        the order read Delivered → Completed. Every e-mail number the payload lacks is
+        tracked too, with the same "FedEx doesn't know it → dropped" rule."""
         order = None
         if known_parcels:
             parcels = [{"tracking_number": p["tracking_number"], "carrier_code": p.get("carrier_code", ""), "fulfilled_at": None}
@@ -596,9 +602,17 @@ class ZoroTracker:
                 return {"outcome": outcome, "error": body, "order": None, "packages": [], "aggregate": aggregate([])}
             order = parse_order(body, order_no)
             parcels = order["parcels"]
-        if not parcels and fallback_tracking and not (order and order.get("order_status", "").lower() == "cancelled"):
+        cancelled = bool(order and order.get("order_status", "").lower() == "cancelled")
+        if not parcels and fallback_tracking and not cancelled:
             parcels = [{"tracking_number": t, "carrier_code": "FDEG", "fulfilled_at": None, "guessed": True}
                        for t in fallback_tracking if _FEDEX_NUMBER_RX.match(str(t or "").strip())]
+        if email_tracking and not cancelled:
+            listed = {p["tracking_number"] for p in parcels}
+            for t in email_tracking:
+                t = str(t or "").strip()
+                if t and t not in listed and _FEDEX_NUMBER_RX.match(t):
+                    listed.add(t)
+                    parcels.append({"tracking_number": t, "carrier_code": "FDEG", "fulfilled_at": None, "guessed": True})
         packages, failures = [], []
         for p in parcels:
             oc, tb = self.fetch_package(p["tracking_number"], p["carrier_code"])

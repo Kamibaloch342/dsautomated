@@ -11,6 +11,7 @@ import json
 import argparse
 import platform
 import sys
+import threading
 from datetime import datetime
 
 # Allow sibling packages (utils, platforms, checkout) to be found when this
@@ -38,7 +39,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from webdriver_manager.chrome import ChromeDriverManager
 from utils.net_errors import is_network_error, NetSkipGuard
 from selenium.webdriver.chrome.options import Options
-from platforms.auth import auto_login, is_login_page, ensure_logged_in
+from platforms.auth import auto_login, is_login_page, ensure_logged_in, on_account_switcher, choose_store_if_asked
 from platforms.amazon import write_seller_note
 
 try:
@@ -125,7 +126,8 @@ def _alert_tracking_uploaded(driver, store_name, amazon_id, wb_ids, all_tids, up
         if not confirmed:
             print(f"     ⚠️  Amazon does not show the shipment as confirmed — no tracking alert.")
             return False
-        store = "Hathoro" if "hathoro" in str(store_name).lower() else "HOANK"
+        _sn = str(store_name).lower()
+        store = "Hathoro" if "hathoro" in _sn else ("Wrenchly" if "wrenchly" in _sn else "HOANK")
         groups = get_whatsapp_config().get("groups") or {}
         to = None
         for key in (f"{store.lower()}_tracking", f"{store.lower()}_messages"):
@@ -167,12 +169,15 @@ _REPORT_MAX_AGE_MIN = int(os.environ.get("TRACKING_REPORT_MAX_AGE_MIN", "30") or
 _NOTFOUND_TTL_MIN = int(os.environ.get("TRACKING_NOTFOUND_TTL_MIN", "30") or 0)       # don't re-search a WB live within this
 _NOT_FOUND_AT = {}          # wb_id -> epoch of the last clean live sweep that found no shipping email
 _ORDER_LOG_PENDING = {}     # wb_id -> (tracking_ids, shipped_email_time) — flushed to order_log.txt per batch
+_ORDER_LOG_LOCK = threading.Lock()   # fast mode's upload windows add to it from their own threads
 
 account_names = [
     "qurtdis", "abecomllc26", "asad_amazon_us", "salesmercentile", "salesmercentile1",
     "toolzsolutionsllc220", "inhur_llc", "wrenchlyllc", "robstark771",
     # Zoro accounts the owner places orders from by hand (20 Oct 2026)
     "mkamrankhan342", "hifzasultan342",
+    # WR_RESELLER's Zoro account — Wrenchly's shipped / receipt e-mails land here (6 Nov 2026)
+    "abecomllc02",
 ]
 
 ACCOUNTS = []
@@ -199,6 +204,14 @@ AMAZON_ACCOUNTS = [
         "profile_dir": "hoank_tracking_ids",
         "legacy_profile_dir": "hoank_normal_orders",
         "send_messages": True  # ✅ This account WILL send messages
+    },
+    {
+        # Third store (6 Nov 2026), its own tracker Chrome on 9339 (config/accounts.json).
+        "key": "wrenchly",
+        "name": "Wrenchly™️",
+        "profile_dir": "wrenchly_tracking_ids",
+        "legacy_profile_dir": "",
+        "send_messages": True
     },
 ]
 
@@ -303,9 +316,9 @@ def parse_runtime_args():
     )
     parser.add_argument(
         "--accounts",
-        choices=["both", "hathoro", "hoank"],
+        choices=["both", "all", "hathoro", "hoank", "wrenchly"],
         default=os.environ.get("TRACKING_ACCOUNTS", "both").strip().lower() or "both",
-        help="Choose which store account(s) to run.",
+        help="Choose which store account(s) to run (both = HOANK + Hathoro as before; all = every store).",
     )
     parser.add_argument(
         "--parallel-style",
@@ -346,8 +359,11 @@ def parse_runtime_args():
 
 
 def select_accounts(account_option):
-    if account_option == "both":
+    if account_option == "all":
         return AMAZON_ACCOUNTS
+    if account_option == "both":
+        # Kept to its old meaning when Wrenchly was added (6 Nov 2026): HOANK + Hathoro.
+        return [cfg for cfg in AMAZON_ACCOUNTS if cfg.get("key") in ("hathoro", "hoank")]
     return [cfg for cfg in AMAZON_ACCOUNTS if cfg.get("key") == account_option]
 
 
@@ -398,7 +414,7 @@ def launch_or_attach_chrome(account_config, profile_path, download_dir=None):
     import subprocess
     from utils.helpers import CHROME_SOFT_FLAGS, HEADLESS_FLAGS, headless_wanted, mark_profile_clean_exit
     mark_profile_clean_exit(profile_path)
-    port = 9331 if account_config.get("key") == "hoank" else 9333
+    port = _tracker_port(account_config)
     # Tracking had no headless support at all: its flag list was hard-coded. It honours the
     # same switch as the placers now (bot_config chrome.headless / ZUHRA_HEADLESS=1), which
     # matters on a 16 GB machine running 4 placers + 2 trackers side by side.
@@ -482,6 +498,8 @@ _CYCLE_HEALTH = {"halts": 0, "gmail_down": False}
 
 
 def cycle_sleep_seconds(base_seconds):
+    if _fast_mode():     # nothing is uploaded in the gap, so keep it short
+        base_seconds = min(base_seconds, _FAST_SLEEP_S)
     extra = 0
     if _CYCLE_HEALTH.get("gmail_down"):
         extra = max(extra, 900)
@@ -495,18 +513,30 @@ def cycle_sleep_seconds(base_seconds):
     return base_seconds
 
 
-def _sc_port(account_config):
-    return 9331 if account_config.get("key") == "hoank" else 9333
+def _tracker_port(account_config):
+    """The tracker's own Chrome (owner, 3 Nov 2026). 9331 / 9333 belong to the closing chain: on
+    those ports a tracker cycle could hold the browser for hours while closing waited, and
+    stopping a tracker closed the browser closing was using. The profile does not depend on the port.
+    Ports come from config/accounts.json → tracker_port (HOANK 9335, Hathoro 9336, Wrenchly 9339)."""
+    key = account_config.get("key")
+    try:
+        from utils.accounts_config import store_by_key, tracker_port
+        port = tracker_port(store_by_key(key))
+        if port:
+            return port
+    except Exception:
+        pass
+    return {"hoank": 9335, "hathoro": 9336, "wrenchly": 9339}.get(key, 9336)
 
 
 def workflow_in_turn(account_config, passed_driver=None):
-    """main_workflow while holding this store's Seller Central Chrome (utils/sc_chrome.py), so a
-    closing report download, the SC scrape or a buyer message never drives the same tab mid-cycle.
+    """main_workflow while holding the tracker's Chrome (utils/sc_chrome.py). Nothing else uses
+    this Chrome any more; the turn only keeps a second tracker for the same store out of it.
     If the Chrome stays busy for 10 min the cycle is skipped (the next one tries again)."""
     from utils.sc_chrome import sc_turn, SCBusy
     wait = float(os.environ.get("TRACKING_SC_TURN_WAIT") or 600)
     try:
-        with sc_turn(_sc_port(account_config), f"tracker {account_config['name']}", max_wait=wait, on_timeout="skip"):
+        with sc_turn(_tracker_port(account_config), f"tracker {account_config['name']}", max_wait=wait, on_timeout="skip"):
             return main_workflow(account_config, passed_driver=passed_driver)
     except SCBusy as e:
         print(f"  ⏭️  {account_config['name']}: {e} — skipping this cycle")
@@ -879,9 +909,10 @@ def recent_already_shipped(days=14):
     return out
 
 
-def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_type, status, note=""):
+def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_type, status, note="", confirmed=False):
     """Append one tracking upload event to the audit log (one locked read-modify-write,
-    so the two account processes never overwrite each other's entries)."""
+    so the two account processes never overwrite each other's entries). confirmed: the order
+    page already showed the shipment, see _mark_upload_confirmed."""
     entry = {
         "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
         "amazon_order_id": amazon_id,
@@ -892,6 +923,8 @@ def log_tracking_upload(amazon_id, wb_ids, tracking_ids, message_sent, message_t
         "status": status,  # "success" | "failed" | "skipped_dup" | "no_tracking" | "already_shipped"
         "note": note,
     }
+    if confirmed:
+        entry["confirmed"] = True
     try:
         from utils.jsonstore import mutate_json
         with mutate_json(TRACKING_UPLOAD_LOG_FILE, [], indent=2) as entries:   # locked read-modify-write
@@ -943,7 +976,10 @@ def get_gmail_service(credentials_path, token_path):
     creds = None
     if os.path.exists(token_path):
         try:
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
+            # The token's OWN scopes, not SCOPES (gmail.readonly): a grant made without gmail.readonly
+            # (forwarding_manager's full-access consent, 8 Nov 2026) answers a readonly refresh with
+            # invalid_scope. gmail.modify / mail.google.com read just as well.
+            creds = Credentials.from_authorized_user_file(token_path)
         except Exception:
             creds = None
     if not creds or not creds.valid:
@@ -1408,9 +1444,12 @@ def check_for_cancellation_request(service, amazon_order_id):
         print(f"- ⚠️ Gmail API Error while checking cancellation: {error}")
         return False
 
-def _prefetch_batch_tracking(batch_wbs, gmail_services):
+def _prefetch_batch_tracking(batch_wbs, gmail_services, shipped_only=False):
     """Resolve a whole batch of WBs at once instead of one live Gmail search
-    per WB per account:
+    per WB per account. shipped_only (fast mode) leaves out Zoro's "received" mails, which never
+    carry an id and sent every WB to the classic per-WB search (~4 s each). It keeps the receipts:
+    on HS_COUPON and DM_COUPON the id is in the receipt 13+ hours before any "has shipped" mail
+    (3 Nov 2026). The caller paces its own sweeps, so no not-found memory.
       tier 1 — archive_tracking in the unified DB (instant; the Gmail-archive
                sync already extracted these tracking IDs);
       tier 2 — ONE Gmail query per account OR-ing the remaining WBs, bodies
@@ -1490,7 +1529,7 @@ def _prefetch_batch_tracking(batch_wbs, gmail_services):
         # DB-only mode: no sweep ran, so absence from the DB proves nothing —
         # these WBs must stay eligible for retry, not be marked "not found".
         live_complete = False
-    if remaining and gmail_services and _NOTFOUND_TTL_MIN > 0:
+    if remaining and gmail_services and _NOTFOUND_TTL_MIN > 0 and not shipped_only:
         # A WB a clean live sweep found nothing for less than _NOTFOUND_TTL_MIN ago is not
         # searched again this cycle (the archive tiers above still catch its email the moment
         # the hourly sync has it). This is what stops ~131 unshipped WBs × 8 inboxes being
@@ -1513,7 +1552,8 @@ def _prefetch_batch_tracking(batch_wbs, gmail_services):
                 break
             try:
                 resp = service.users().messages().list(
-                    userId='me', q=f'({or_block})', maxResults=30).execute()
+                    userId='me', q=f'({or_block}) subject:(shipped OR receipt)' if shipped_only else f'({or_block})',
+                    maxResults=100 if shipped_only else 30).execute()
                 messages = resp.get('messages', [])
                 if resp.get('nextPageToken'):
                     live_complete = False
@@ -1724,17 +1764,19 @@ def _update_order_log_tracking(wb_id, tracking_ids, shipped_email_time):
     """Record tracking for wb_id: the DB right away, and the order_log.txt line via the
     per-batch flush (_flush_order_log_tracking). The 56 MB / 60k-line log used to be read
     and rewritten in full for every single WB."""
-    _ORDER_LOG_PENDING[wb_id] = (list(tracking_ids or []), shipped_email_time)
+    with _ORDER_LOG_LOCK:
+        _ORDER_LOG_PENDING[wb_id] = (list(tracking_ids or []), shipped_email_time)
     _update_unified_db_tracking(wb_id, tracking_ids, shipped_email_time)
 
 
 def _flush_order_log_tracking():
     """Apply every queued TrackingIDs / ShippedEmailTime update to order_log.txt in ONE
     read-rewrite. Same line format as before (Rule 6: keys are only appended/replaced)."""
-    if not _ORDER_LOG_PENDING:
-        return
-    pending = dict(_ORDER_LOG_PENDING)
-    _ORDER_LOG_PENDING.clear()
+    with _ORDER_LOG_LOCK:
+        if not _ORDER_LOG_PENDING:
+            return
+        pending = dict(_ORDER_LOG_PENDING)
+        _ORDER_LOG_PENDING.clear()
     try:
         log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "rajar_logs")
         log_path = os.path.join(log_dir, "order_log.txt")
@@ -1866,7 +1908,8 @@ def download_amazon_order_report(driver, wait, account_config=None, download_dir
     # Reuse a report younger than _REPORT_MAX_AGE_MIN. Requesting and waiting for Amazon to
     # generate a 30-day report was the dominant cost of every ~10-minute cycle, and the unshipped
     # list changes far more slowly than that (26 Sep 2026).
-    if _REPORT_MAX_AGE_MIN > 0:
+    _max_age = _FAST_REPORT_MAX_AGE_MIN if _fast_mode() else _REPORT_MAX_AGE_MIN    # ~2 min with no uploads
+    if _max_age > 0:
         try:
             cands = [os.path.join(dl_dir, f) for f in os.listdir(dl_dir) if f.endswith(".txt")]
         except OSError:
@@ -1874,9 +1917,9 @@ def download_amazon_order_report(driver, wait, account_config=None, download_dir
         if cands:
             newest = max(cands, key=os.path.getmtime)
             age_min = (time.time() - os.path.getmtime(newest)) / 60.0
-            if age_min < _REPORT_MAX_AGE_MIN and os.path.getsize(newest) > 0:
+            if age_min < _max_age and os.path.getsize(newest) > 0:
                 print(f"\n📦 Reusing the all-orders report downloaded {age_min:.0f} min ago "
-                      f"({os.path.basename(newest)}); a new one is requested every {_REPORT_MAX_AGE_MIN} min")
+                      f"({os.path.basename(newest)}); a new one is requested every {_max_age} min")
                 return newest
     print("\n📦 DOWNLOADING AMAZON ORDER REPORT 📦")
     # Closing's report download points this browser's download folder at data/reports/<ACCT>
@@ -1905,6 +1948,12 @@ def download_amazon_order_report(driver, wait, account_config=None, download_dir
                     print("   ⏳ Still on login page — waiting 30 more seconds...")
                     time.sleep(30)
                 driver.get(REPORT_DOWNLOAD_URL)
+                time.sleep(2)
+
+        # Signed in but no store chosen: Amazon serves "Select an account" instead of the report
+        # page, and the wait below only times out (Wrenchly, 9 Nov 2026, right after a sign-in).
+        if account_config and not choose_store_if_asked(driver, account_config, target_url=REPORT_DOWNLOAD_URL):
+            return None
         
         dropdown_host = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, DROPDOWN_HOST_SELECTOR)))
         dropdown_host.click()
@@ -2024,6 +2073,382 @@ def load_manual_tracking_blockers(file_path):
 
 
 # --- Main Workflow ---
+_CONFIRM_MODAL_JS = r"""
+// After the final "Confirm shipment": when the buyer has asked to cancel, Amazon opens a pop-up that
+// asks again, with its own "Confirm shipment" button. Find that pop-up and click ITS button.
+//   returns {state: 'clicked'|'dialog'|'none', label, html}
+function deep(root, sel, out) {
+    out = out || [];
+    var all = root.querySelectorAll('*');
+    for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (el.matches && el.matches(sel)) out.push(el);
+        if (el.shadowRoot) deep(el.shadowRoot, sel, out);
+    }
+    return out;
+}
+function shown(el) {
+    var r = el.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0)) return false;
+    var v = el.getAttribute && el.getAttribute('visible');
+    return !(el.tagName === 'KAT-MODAL' && (v === null || v === 'false'));
+}
+function labelOf(b) {
+    return ((b.getAttribute && b.getAttribute('label')) || b.innerText || b.textContent || b.value || '')
+        .replace(/\s+/g, ' ').trim().toLowerCase();
+}
+function press(b) {
+    var inner = b.shadowRoot ? b.shadowRoot.querySelector('button') : null;
+    (inner || b).click();
+}
+var MAIN = '[data-test-id="confirm-shipment-button-action"], [data-test-id="confirm-shipment-button"]';
+var BTN = 'kat-button, button, input[type="submit"], input[type="button"], span.a-button-text, a.a-button-text';
+var dialogs = deep(document, 'kat-modal, [role="dialog"], [role="alertdialog"], .a-popover-modal, .a-modal-scroller')
+    .filter(shown);
+function notMain(b) {        // never the form's own Confirm button, wherever it sits
+    return !b.matches(MAIN) && !b.closest(MAIN) && !b.querySelector(MAIN);
+}
+var wanted = ['confirm shipment', 'yes, confirm shipment', 'confirm', 'yes', 'continue'];
+for (var w = 0; w < wanted.length; w++) {
+    for (var d = 0; d < dialogs.length; d++) {
+        var btns = deep(dialogs[d], BTN).filter(shown).filter(notMain);
+        for (var i = 0; i < btns.length; i++) {
+            var lab = labelOf(btns[i]);
+            if (w === 0 ? lab.indexOf(wanted[0]) >= 0 : lab === wanted[w]) {
+                press(btns[i]);
+                return {state: 'clicked', label: lab};
+            }
+        }
+    }
+}
+if (dialogs.length) {
+    return {state: 'dialog', label: deep(dialogs[0], BTN).filter(shown).map(labelOf).filter(Boolean).slice(0, 8).join(' | '),
+            html: (dialogs[0].outerHTML || '').slice(0, 20000)};
+}
+// No pop-up container recognised: a second, separate "Confirm shipment" button that is not the
+// form's own one is the pop-up's.
+var extra = deep(document, 'kat-button, button').filter(shown).filter(function (b) {
+    return labelOf(b).indexOf('confirm shipment') >= 0 && notMain(b);
+});
+var mains = deep(document, MAIN).filter(shown);
+if (extra.length && mains.length) {
+    press(extra[extra.length - 1]);
+    return {state: 'clicked', label: labelOf(extra[extra.length - 1]) + ' (no dialog container)'};
+}
+// The form's button is gone and nothing is asking: the shipment went through, nothing to wait for.
+return {state: mains.length ? 'none' : 'gone'};
+"""
+_MODAL_DUMPED = []            # non-empty once an unrecognised pop-up has been saved this run
+
+
+def _confirm_warning_modal(driver, wait_s=3.0):
+    """Confirm Amazon's "are you sure?" pop-up after the final Confirm shipment. True when one was confirmed.
+
+    An order whose buyer asked to cancel gets a second pop-up with its own "Confirm shipment" button
+    (owner, 10 Nov 2026). The old handler looked only at text in the page's own DOM and clicked every
+    match, the form's button included; the pop-up's button is a kat-button whose text is its `label`
+    attribute, so it was never pressed. The shipment stayed unconfirmed and the order was uploaded
+    again every cycle — 114-9202217-5201055 sixty-six times in 14 hours, 933 repeats on 100 orders.
+    This one presses only a button INSIDE a pop-up, reads the label attribute and looks through shadow
+    roots. A pop-up it cannot read is saved once per run to data/confirm_modal_unhandled.html."""
+    end = time.time() + max(0.5, wait_s)
+    seen_dialog, state = None, None
+    while time.time() < end:
+        try:
+            res = driver.execute_script(_CONFIRM_MODAL_JS) or {}
+        except Exception:
+            return False
+        state = res.get("state")
+        if state == "clicked":
+            print(f"     ☑️  Amazon asked again (buyer requested cancellation) — confirmed the pop-up: '{res.get('label', '')}'")
+            time.sleep(2)
+            return True
+        if state == "gone":
+            return False
+        if state == "dialog":
+            seen_dialog = res
+        time.sleep(0.5)
+    if seen_dialog and not _MODAL_DUMPED:
+        _MODAL_DUMPED.append(1)
+        try:
+            path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "data", "confirm_modal_unhandled.html")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(seen_dialog.get("html") or "")
+            print(f"     ⚠️  A pop-up stayed open after Confirm shipment and none of its buttons was recognised "
+                  f"({seen_dialog.get('label') or 'no buttons'}) — saved to {path}")
+        except Exception:
+            pass
+    elif state == "none" and not seen_dialog and not _MODAL_DUMPED:
+        # The form is still there and no pop-up was recognised: keep the page once, so a pop-up built
+        # some other way can be read afterwards instead of guessed at.
+        _MODAL_DUMPED.append(1)
+        try:
+            path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                "data", "confirm_form_still_open.html")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(driver.execute_script("return (document.body.outerHTML || '').slice(0, 120000);") or "")
+            print(f"     ⚠️  The Confirm shipment form was still open {wait_s:.0f}s after the click and no pop-up "
+                  f"was recognised — page saved to {path}")
+        except Exception:
+            pass
+    return False
+
+
+# ── FAST TRACKING (owner, 3 Nov 2026) ──────────────────────────────────────────────────────────────
+# 2,560 open WB orders with 4 hours to go: one thread finds tracking ids, two Chrome windows upload
+# them, neither waits for the other (engine/tracking_crew.py). On whenever Skip messages is ticked:
+# no buyer message, no seller note, no WhatsApp alert, only the upload and our own records.
+# TRACKING_FAST=0 keeps the normal cycle.
+_FAST_WINDOWS = max(1, int(os.environ.get("TRACKING_FAST_WINDOWS") or 4))
+_FAST_CYCLE_MIN = float(os.environ.get("TRACKING_FAST_CYCLE_MIN") or 25)
+_FAST_SLEEP_S = 20
+_FAST_REPORT_MAX_AGE_MIN = 120
+_FAST_ORDER_URL = "https://sellercentral.amazon.com/orders-v3/order/{}"
+_FAST_RETRY_AT = {}          # amazon_id -> no upload attempt before this time (across cycles)
+_FAST_CLASSIC_AT = {}        # wb -> last classic search for a shipped mail with no id in it
+_FAST_FLUSH_AT = [0.0]
+_FAST_LOGIN_LOCK = threading.Lock()
+
+
+def _fast_mode():
+    return bool(getattr(_cli_args, "skip_messages", False)) and os.environ.get("TRACKING_FAST", "1") != "0"
+
+
+def _fast_release(drv):
+    """End a window's session. It closes only the window it opened: a fresh session starts out
+    attached to an EXISTING window. Killing its chromedriver never affects Chrome."""
+    own = getattr(drv, "_zuhra_own_window", None)
+    if own:
+        try:
+            if drv.current_window_handle == own:
+                drv.close()
+        except Exception:
+            pass
+    try:
+        drv.service.process.kill()
+        drv.service.process.wait(timeout=3)
+    except Exception:
+        pass
+
+
+def _fast_attach(port):
+    """A chromedriver session of its own on the store's Chrome, in a new window (a new tab would hide
+    the other tab, and Chrome throttles a hidden tab's timers)."""
+    from utils.helpers import apply_cdp_stealth
+    opts = Options()
+    opts.add_experimental_option("debuggerAddress", f"127.0.0.1:{port}")
+    drv = _harden_driver(webdriver.Chrome(options=opts))
+    try:
+        drv.switch_to.new_window("window")
+        drv._zuhra_own_window = drv.current_window_handle
+        drv.execute_cdp_cmd("Emulation.setFocusEmulationEnabled", {"enabled": True})
+        apply_cdp_stealth(drv)
+    except Exception:
+        _fast_release(drv)
+        raise
+    return drv
+
+
+def _fast_connect_gmail():
+    services = {}
+    for account in ACCOUNTS:
+        try:
+            service = get_gmail_service(account['credentials_file'], account['token_file'])
+            if service:
+                services[account['name']] = service
+        except Exception as e:
+            print(f"  ⚠️  Could not connect to Gmail account '{account['name']}': {e}")
+    print(f"  ✅  TRK-FIND: connected to {len(services)} Gmail account(s)")
+    return services
+
+
+def _fast_find(wbs, services):
+    """Runs on the finder's thread. A shipped mail with no id in its body or PDF gets the classic
+    search too, at most every 30 min (a freight order has one every cycle and never an id)."""
+    found, no_ids, _ = _prefetch_batch_tracking(wbs, services, shipped_only=True)
+    now = time.time()
+    for wb in no_ids:
+        if wb in found or now - _FAST_CLASSIC_AT.get(wb, 0) < 1800:
+            continue
+        _FAST_CLASSIC_AT[wb] = now
+        for service in services.values():
+            ids, shipped = find_all_tracking_in_emails(service, wb)
+            if ids:
+                found[wb] = (ids, shipped)
+                break
+    return found
+
+
+def _fast_after_sweep():
+    """order_log.txt is rewritten in full, so at most every 5 min (the normal cycle: once a batch)."""
+    if time.time() - _FAST_FLUSH_AT[0] >= 300:
+        _FAST_FLUSH_AT[0] = time.time()
+        _flush_order_log_tracking()
+
+
+def _fast_finish(job, tids, status, note="", driver=None, confirmed=False):
+    amazon_id, wb_ids = job["amazon_id"], job["wb_ids"]
+    log_tracking_upload(amazon_id, wb_ids, list(tids), False, None, status, note=note, confirmed=confirmed)
+    if status != "failed":
+        _record_upload_db(amazon_id, wb_ids, list(tids), status, note=note, driver=driver)
+        for wb_id in wb_ids:
+            _update_order_log_tracking(wb_id, job["tracking_ids"], job.get("shipped_time"))
+    return status
+
+
+def _page_alert_text(driver):
+    """Any error or warning Amazon shows on the page right now, shortened for the log; "" if none."""
+    try:
+        return driver.execute_script("""
+            var out = [];
+            document.querySelectorAll('kat-alert, .a-alert-content, [role=alert], .a-color-error').forEach(function (el) {
+                var r = el.getBoundingClientRect();
+                var t = [el.getAttribute('header'), el.getAttribute('description'), el.innerText]
+                    .filter(Boolean).join(' ').replace(/\\s+/g, ' ').trim();
+                if (t && r.width > 0 && r.height > 0 && out.indexOf(t) < 0) out.push(t);
+            });
+            return out.join(' | ').slice(0, 300);
+        """) or ""
+    except Exception:
+        return ""
+
+
+def _fast_upload_one(driver, job, account_config=None):
+    """One upload, the same form steps as main_workflow: order page, Confirm shipment, tracking id,
+    Confirm. Done means the order page SHOWS the shipment afterwards. Page-level trouble returns
+    "failed"; anything else raises, because the window itself may be broken."""
+    amazon_id = job["amazon_id"]
+    # Stable order: the same shipment must yield the same "primary" ID on every run (15 Sep 2026)
+    all_tids = sorted({t.strip() for t in job["tracking_ids"] if t.strip()}, key=lambda t: (len(t), t))
+    wait = WebDriverWait(driver, 20)
+    url = _FAST_ORDER_URL.format(amazon_id)
+    try:
+        driver.get(url)
+        if is_login_page(driver):
+            with _FAST_LOGIN_LOCK:       # only one window may sign in
+                if is_login_page(driver) and account_config:
+                    auto_login(driver, account_config)
+            driver.get(url)
+            if is_login_page(driver):
+                raise RuntimeError("Seller Central is asking to sign in")
+        if on_account_switcher(driver):
+            with _FAST_LOGIN_LOCK:       # the store is chosen one window at a time too
+                chosen = bool(account_config) and choose_store_if_asked(driver, account_config, target_url=url)
+            if not chosen:
+                raise RuntimeError("Seller Central is asking which account to use")
+        if _page_shows_already_shipped(driver, wait=10):
+            return _fast_finish(job, all_tids, "already_shipped", note="fast pre-check", driver=driver)
+        try:
+            confirm_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, INITIAL_CONFIRM_SHIPMENT_BUTTON_SELECTOR)))
+        except TimeoutException:
+            if _page_shows_already_shipped(driver):
+                return _fast_finish(job, all_tids, "already_shipped", note="fast upload page", driver=driver)
+            return _fast_finish(job, all_tids, "failed", note="no Confirm shipment button on the order page")
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", confirm_btn)
+        time.sleep(0.2)
+        try:
+            confirm_btn.click()
+        except Exception:
+            driver.execute_script("arguments[0].click();", confirm_btn)
+
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, TRACKING_ID_FIELD_SELECTOR)))
+        multi_ids = []
+        units = remaining_qty_on_form(driver) if len(all_tids) > 1 else 0
+        if len(all_tids) > 1:
+            multi_ids = fill_multi_package_tracking(driver, all_tids, units) or []
+        if multi_ids:
+            time.sleep(1)
+        else:
+            field = driver.find_element(By.CSS_SELECTOR, TRACKING_ID_FIELD_SELECTOR)
+            field.click()
+            field.clear()
+            field.send_keys(all_tids[0])
+            time.sleep(2)
+            if len(all_tids) > 1 and units != 1:
+                print(f"     ⚠️  MULTI-PACKAGE {amazon_id}: Amazon only got {all_tids[0]}. Not uploaded: "
+                      f"{', '.join(all_tids[1:])} — add these on Seller Central by hand.")
+                _multi_package_orders.append({"amazon_id": amazon_id, "uploaded": all_tids[0],
+                                              "not_uploaded": all_tids[1:]})
+        wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, FINAL_CONFIRM_SHIPMENT_BUTTON_SELECTOR))).click()
+        time.sleep(2)
+        _confirm_warning_modal(driver)
+        uploaded = list(multi_ids) if multi_ids else all_tids[:1]
+        page_says = _page_alert_text(driver)     # the reload below wipes it
+
+        driver.get(url)
+        end = time.time() + 20
+        while time.time() < end:
+            if _page_shows_already_shipped(driver):
+                return _fast_finish(job, uploaded, "success", note="fast" + (" multi-package" if multi_ids else ""),
+                                    confirmed=True)
+            time.sleep(0.5)
+        if page_says:
+            print(f"     ⚠️  {amazon_id}: Amazon says: {page_says}")
+        return _fast_finish(job, uploaded, "failed", note="Amazon does not show the shipment after Confirm"
+                                                          + (f": {page_says}" if page_says else ""))
+    except TimeoutException as e:
+        return _fast_finish(job, all_tids, "failed", note=f"page timeout: {str(e)[:80]}")
+    except Exception as e:
+        _fast_finish(job, all_tids, "failed", note=str(e)[:200])
+        raise
+
+
+def _fast_cycle(account_config, driver, orders_df):
+    """One fast cycle. Runs inside the tracker's sc_turn and returns the driver to keep."""
+    from engine.tracking_crew import TrackingCrew
+    port = _tracker_port(account_config)
+    try:
+        driver.current_url
+    except Exception:
+        print("  ⚠️  The tracker's Chrome session is gone — attaching a new one")
+        driver = launch_or_attach_chrome(account_config, resolve_user_data_dir(account_config)) or driver
+
+    shipped = recent_already_shipped()
+    orders = {}
+    for _, row in orders_df.iterrows():                 # oldest first; one row per item of an order
+        aid = str(row['amazon-order-id']).strip()
+        wbs = re.findall(r'WB\d+', str(row['merchant-order-id']).strip())
+        if wbs and aid not in shipped:
+            entry = orders.setdefault(aid, {"amazon_id": aid, "wb_ids": []})
+            entry["wb_ids"].extend(w for w in wbs if w not in entry["wb_ids"])
+
+    crew = TrackingCrew(list(orders.values()), _fast_find,
+                        lambda drv, job: _fast_upload_one(drv, job, account_config),
+                        connect=_fast_connect_gmail, after_sweep=_fast_after_sweep, retry_at=_FAST_RETRY_AT,
+                        max_uploads=int(getattr(_cli_args, "max_uploads", 0) or 0))
+    crew.seed(lambda wbs: _prefetch_batch_tracking(wbs, {}, shipped_only=True)[0])
+    ready, waiting = crew.counts()
+    print(f"\n  ⚡  FAST TRACKING: {len(orders)} open WB order(s): {ready} ready to upload, "
+          f"{waiting} with no shipping e-mail yet ({len(shipped)} known shipped skipped)")
+
+    extra = []
+    for _ in range(_FAST_WINDOWS - 1):
+        try:
+            extra.append(_fast_attach(port))
+        except Exception as e:
+            print(f"  ⚠️  Could not open another upload window ({type(e).__name__}: {str(e)[:120]}) — "
+                  f"{1 + len(extra)} window(s) this cycle")
+            break
+    try:
+        driver.execute_cdp_cmd("Emulation.setFocusEmulationEnabled", {"enabled": True})
+    except Exception:
+        pass
+    try:
+        crew.run([driver] + extra, _FAST_CYCLE_MIN * 60)
+    finally:
+        for drv in extra:
+            _fast_release(drv)
+        _flush_order_log_tracking()
+        _FAST_FLUSH_AT[0] = time.time()
+    if _multi_package_orders:
+        print(f"  📦  {len(_multi_package_orders)} multi-package order(s) still need a second tracking id by hand: "
+              + ", ".join(m["amazon_id"] for m in _multi_package_orders))
+    if crew.all_down():
+        raise RuntimeError("every upload window failed")
+    return driver
+
+
 def main_workflow(account_config, passed_driver=None):
     driver = passed_driver
     amazon_report_path = None
@@ -2095,6 +2520,12 @@ def main_workflow(account_config, passed_driver=None):
             blocked_count = initial_wb_count - len(filtered_orders_df)
             if blocked_count > 0:
                 print(f"  🛑  Manual blockers applied — skipped {blocked_count} WB order(s) from auto upload.")
+
+        if _fast_mode() and filtered_orders_df is not None and not filtered_orders_df.empty:
+            driver = _fast_cycle(account_config, driver, filtered_orders_df)
+            _CYCLE_HEALTH["halts"] = 0
+            _CYCLE_HEALTH["gmail_down"] = False
+            return driver
 
         if filtered_orders_df is not None and not filtered_orders_df.empty:
             if len(filtered_orders_df) > 1000:
@@ -2531,30 +2962,7 @@ def main_workflow(account_config, passed_driver=None):
 
                                 wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, FINAL_CONFIRM_SHIPMENT_BUTTON_SELECTOR))).click()
                                 time.sleep(2)
-                                
-                                # Detect cancellation warning modal and confirm again if it appears
-                                try:
-                                    driver.execute_script("""
-                                        var btns = document.querySelectorAll('kat-button, button, span');
-                                        for (var i=0; i<btns.length; i++) {
-                                            var text = btns[i].textContent || btns[i].innerText;
-                                            if (text && text.toLowerCase().includes('confirm shipment')) {
-                                                var rect = btns[i].getBoundingClientRect();
-                                                if (rect.width > 0 && rect.height > 0) {
-                                                    if (btns[i].shadowRoot) {
-                                                        var inner = btns[i].shadowRoot.querySelector('button');
-                                                        if (inner) inner.click();
-                                                        else btns[i].click();
-                                                    } else {
-                                                        btns[i].click();
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    """)
-                                    time.sleep(1)
-                                except Exception:
-                                    pass
+                                _confirm_warning_modal(driver)
 
                                 success_count += 1
                                 print(f"     ✅  Tracking uploaded successfully.")

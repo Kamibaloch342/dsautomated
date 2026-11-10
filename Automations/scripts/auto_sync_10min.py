@@ -88,9 +88,11 @@ def main():
     step("placer_to_closing", c)
 
     def ins():
-        from scripts.send_insights_alerts import dispatch_account_insights
-        dispatch_account_insights(account="HOANK", days=0, limit=10)
-        dispatch_account_insights(account="Hathoro", days=0, limit=10)
+        from scripts.send_insights_alerts import dispatch_account_insights, ACCOUNTS
+        # days=2: an order's Amazon (US) date runs up to a day behind the clock here, and a
+        # launcher left closed for a while should not lose alerts. Each one still goes out once.
+        for acct in ACCOUNTS:
+            dispatch_account_insights(account=acct, days=2, limit=10, summaries=True)
     step("whatsapp_insights", ins)
 
     # 3) keep the log files bounded (rename/copy-truncate when large, delete after 15 days)

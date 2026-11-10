@@ -40,6 +40,7 @@ import json
 import os
 import sqlite3
 import sys
+import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
@@ -50,7 +51,8 @@ sys.path.insert(0, _AUTO)
 print = __import__("functools").partial(print, flush=True)
 
 from utils.accounts_config import (accounts, acquire_lock, release_lock, gmail_addresses,
-                                   zoro_profile_inboxes, zoro_tracking_cfg)
+                                   preferred_inboxes, zoro_forwarding_hubs, zoro_profile_inboxes,
+                                   zoro_tracking_cfg)
 from utils.unified_db import (ensure_zoro_tracking_schema, upsert_package_tracking,
                               start_closing_run, update_closing_run, finish_closing_run)
 from engine.zoro_tracking import ZoroTracker, ZoroRefused, fmt_ts
@@ -72,7 +74,10 @@ FULL = os.environ.get("ZORO_TRACK_FULL", "").strip().lower() in ("1", "true", "y
 ONLY = [x.strip().upper() for x in os.environ.get("ZORO_TRACK_ORDERS", "").replace("\n", ",").split(",") if x.strip()]
 DUMP_DIR = os.environ.get("ZORO_TRACK_DUMP_DIR", "").strip()
 DELIVERED = ("Delivered", "AllDelivered")
-MAX_EMAIL_TRIES = 4          # primary candidates first, then the busiest Zoro inboxes
+# E-mails tried per order (the order's own proof always, however many): a 404 costs one call,
+# and since 6 Nov the right account is usually first (learned / remembered per order).
+MAX_EMAIL_TRIES = max(1, int(os.environ.get("ZORO_TRACK_MAX_EMAILS") or CFG.get("max_email_tries", 6)))
+LEARN_DAYS = 45              # how far back learned_emails() looks for what each profile buys with
 
 
 def _empty(v):
@@ -123,32 +128,133 @@ def busy_inboxes(conn):
     return _BUSY_INBOXES
 
 
-def email_candidates(conn, row):
-    """(primary, all): the Zoro account e-mail for this order — the inbox that received Zoro's
-    confirmation (closing's zoro_gmail_account / archive_zoro.gmail_account), the order's Zoro
-    account name, the placer profile's inbox — then the busiest Zoro inboxes as a last resort."""
-    addr = gmail_addresses()
-    cands = []
+def _as_email(v):
+    """A Gmail token name or an address → the address ('' when unknown)."""
+    v = str(v or "").strip()
+    if "@" in v:
+        return v.lower()
+    return gmail_addresses().get(v, "")
 
-    def add(token):
-        e = addr.get(str(token or "").strip())
-        if e and e not in cands:
-            cands.append(e)
-    add(row.get("zoro_gmail_account")); add(row.get("zoro_account_name"))
-    if not cands:
+
+def _learn_key(profile, account):
+    return str(profile or "").strip().upper() or f"store:{account or ''}"
+
+
+_LEARNED = None
+
+
+def learned_emails(conn):
+    """{profile (or 'store:<account>'): [e-mails, best first]} over the last LEARN_DAYS: the
+    e-mail a lookup succeeded with (zoro_lookup_email), else the inbox Zoro's confirmation
+    landed in when that inbox is a real account and not a forwarding hub. This is what a
+    profile actually buys with — the profile map in accounts.json goes stale: DM_COUPON bought
+    from salesmercentile in September, robstark771 in October, and HS_COUPON from four accounts
+    within one week of October. Each order counts half as much per week of age, so the account
+    a profile switched to outranks the one it used for longer before."""
+    global _LEARNED
+    if _LEARNED is None:
+        hubs = zoro_forwarding_hubs()
+        score = {}
+        try:
+            for prof, acct, lookup, inbox, age, n in conn.execute(
+                    "SELECT (SELECT p.profile_name FROM order_placer_orders p WHERE p.amazon_order_id=o.amazon_order_id "
+                    "        ORDER BY p.id DESC LIMIT 1), o.account, o.zoro_lookup_email, o.zoro_gmail_account, "
+                    "       CAST(julianday('now') - julianday(substr(o.purchase_date,1,10)) AS INTEGER), COUNT(*) "
+                    "FROM closing_orders o WHERE o.delivery_source='zoro' "
+                    "AND COALESCE(o.delivery_status,'') NOT IN ('','Unknown','Blocked') "
+                    "AND substr(o.purchase_date,1,10) >= date('now', ?) GROUP BY 1,2,3,4,5",
+                    (f"-{LEARN_DAYS} day",)):
+                e = _as_email(lookup) or ("" if str(inbox or "").strip() in hubs else _as_email(inbox))
+                if not e:
+                    continue
+                w = n * 0.5 ** (max(0, age if age is not None else LEARN_DAYS) / 7)
+                for key in {_learn_key(prof, acct), _learn_key("", acct)}:
+                    score.setdefault(key, {}).setdefault(e, 0)
+                    score[key][e] += w
+        except sqlite3.Error as ex:
+            print(f"[ZORO-TRACK] ⚠️ could not read the learned lookup e-mails ({ex})")
+        _LEARNED = {k: [e for e, _ in sorted(v.items(), key=lambda kv: -kv[1])] for k, v in score.items()}
+        for k in sorted(_LEARNED):
+            print(f"[ZORO-TRACK] learned {k}: {', '.join(_LEARNED[k][:4])}")
+    return _LEARNED
+
+
+# This run's successes, per profile, most recent first: a profile that switched Zoro accounts
+# finds the new one once and every later order of the run asks with it first.
+_RUN_WINS = {}
+_RUN_WINS_LOCK = threading.Lock()
+
+
+def note_win(key, email):
+    with _RUN_WINS_LOCK:
+        lst = _RUN_WINS.setdefault(key, [])
+        if email in lst:
+            lst.remove(email)
+        lst.insert(0, email)
+        del lst[4:]
+
+
+def ranked(cands, pinned, key):
+    """The try order at fetch time: the order's own proven e-mails, then what unlocked this
+    profile's orders earlier in this run, then the rest — at most MAX_EMAIL_TRIES."""
+    with _RUN_WINS_LOCK:
+        wins = list(_RUN_WINS.get(key, ()))
+    head = cands[:pinned]
+    out = head + [e for e in wins if e not in head]
+    out += [e for e in cands if e not in out]
+    return out[:max(pinned, MAX_EMAIL_TRIES)]
+
+
+def order_profile(conn, row):
+    p = conn.execute("SELECT profile_name FROM order_placer_orders WHERE amazon_order_id=? "
+                     "ORDER BY id DESC LIMIT 1", (row["amazon_order_id"],)).fetchone()
+    return str(p[0] or "").strip().upper() if p else ""
+
+
+def email_candidates(conn, row):
+    """(primary, all, pinned, learn_key) for one order, in the order to try:
+      1. the e-mail that unlocked this order before (zoro_lookup_email)          ┐ pinned: proof
+      2. the inbox Zoro's confirmation landed in, unless it is a forwarding hub  ┘ for this order
+      3. what this profile's (or store's) orders were unlocked with lately (learned_emails)
+      4. the profile's inbox in accounts.json → zoro_profile_inboxes
+      5. the forwarding hub the confirmation was read in (it is also a buying account)
+      6. the store's zoro_preferred inboxes, then the busiest Zoro inboxes.
+    The hub used to come first and was the only order-specific try: 4,400 Hathoro orders since
+    12 Oct got 404 under mkamrankhan342 while robstark771 / abecomllc26 had bought them."""
+    hubs = zoro_forwarding_hubs()
+    cands, hub_seen = [], []
+
+    def add(v, lst=cands):
+        e = _as_email(v)
+        if e and e not in lst:
+            lst.append(e)
+
+    def own(token):
+        t = str(token or "").strip()
+        add(t, hub_seen if t in hubs else cands)
+
+    add(row.get("zoro_lookup_email"))
+    n_proven = len(cands)
+    own(row.get("zoro_gmail_account")); own(row.get("zoro_account_name"))
+    if len(cands) == n_proven:          # closing named no real account: ask the archive
         for r in conn.execute("SELECT gmail_account, zoro_account_name FROM archive_zoro WHERE wb_order_id=? "
-                              "ORDER BY email_timestamp DESC LIMIT 2", (row["wb_order_id"],)):
-            add(r[0]); add(r[1])
-    if not cands:
-        p = conn.execute("SELECT profile_name FROM order_placer_orders WHERE amazon_order_id=?",
-                         (row["amazon_order_id"],)).fetchone()
-        if p and p[0]:
-            add(zoro_profile_inboxes().get(str(p[0]).strip().upper()))
+                              "ORDER BY email_timestamp DESC LIMIT 4", (row["wb_order_id"],)):
+            own(r[0]); own(r[1])
+    pinned = len(cands)
+    profile = order_profile(conn, row)
+    key = _learn_key(profile, row.get("account"))
+    for e in learned_emails(conn).get(key, [])[:3]:
+        add(e)
+    if profile:
+        add(zoro_profile_inboxes().get(profile))
     primary = list(cands)
+    for e in hub_seen:
+        add(e)
+    for t in preferred_inboxes(row.get("account") or "").get("zoro", []):
+        add(t)
     for e in busy_inboxes(conn):
-        if e not in cands:
-            cands.append(e)
-    return primary, cands[:max(len(primary), MAX_EMAIL_TRIES)]
+        add(e)
+    return primary, cands, pinned, key
 
 
 # ── candidates ───────────────────────────────────────────────────────────────
@@ -157,7 +263,7 @@ _COLS = ("amazon_order_id, wb_order_id, merchant_order_id, account, order_status
          "zoro_account_name, zoro_gmail_account, zoro_deliver_by, earnings, zoro_order_total, zoro_tax, "
          "zoro_subtotal, zoro_shipping, zoro_buyer_zip, coupon_used, coupon_savings, zoro_sku, zoro_qty, "
          "profit_dollars, return_requested, refund_done, last_movement_at, zoro_order_status, delivery_checked_at, "
-         "delivery_note, carrier")
+         "delivery_note, carrier, zoro_lookup_email")
 _LIVE_COLS = set()
 
 
@@ -218,13 +324,28 @@ def known_parcels(conn, wb):
         "SELECT tracking_number, carrier FROM zoro_package_tracking WHERE wb_order_id=?", (wb,))]
 
 
+def email_parcels(conn, wb):
+    """Tracking numbers in Zoro's own shipping e-mails for this WB (archive_tracking). Zoro's
+    order payload can list fewer parcels than it shipped (WB1658218341, 8 Nov 2026); these are
+    tracked as well. Not closing's tracking_ids: that list also carries numbers of other orders."""
+    out = []
+    try:
+        for (s,) in conn.execute("SELECT tracking_ids FROM archive_tracking WHERE wb_order_id=?", (wb,)):
+            out += [t for t in _split_ids(s) if t not in out]
+    except sqlite3.Error:
+        pass
+    return out
+
+
 # ── persist ──────────────────────────────────────────────────────────────────
-def persist(conn, row, result, now_s):
+def persist(conn, row, result, now_s, used_email=""):
     """Write one order's result. Returns the new label ('' when the label did not change)."""
     import closing as C
     agg, pkgs, order = result["aggregate"], result["packages"], result.get("order")
     aid, wb = row["amazon_order_id"], row["wb_order_id"]
     sets, vals = ["delivery_source='zoro'", "delivery_checked_at=?"], [now_s]
+    if used_email and used_email != str(row.get("zoro_lookup_email") or "").strip().lower():
+        sets.append("zoro_lookup_email=?"); vals.append(used_email)
     o = dict(row)
     zoro_cancelled = False
     if order:
@@ -268,9 +389,14 @@ def persist(conn, row, result, now_s):
     prev = str(row.get("delivery_status") or "").strip()
     new = agg["delivery_status"]
     is_downgrade_exception = (new == "DeliveryException" and ("return" in str(agg.get("delivery_note") or "").lower() or "damaged" in str(agg.get("delivery_note") or "").lower()))
+    # "Delivered" earlier, but a parcel that check never saw (Zoro's payload left it out, see
+    # email_parcels) is still not delivered: the order is not delivered after all.
+    newly_partial = prev in DELIVERED and new == "PartialDelivered"
     if new and new not in ("Unknown", "Blocked"):
-        # Never move an order backwards unless the new answer is a delivery or an RTS/DeliveryException.
-        if new in DELIVERED or not prev or STATUS_RANK.get(new, 0) >= STATUS_RANK.get(prev, 0) or is_downgrade_exception:
+        # Never move an order backwards unless the new answer is a delivery, an RTS/DeliveryException
+        # or an undelivered parcel the earlier "Delivered" did not know about.
+        if new in DELIVERED or not prev or STATUS_RANK.get(new, 0) >= STATUS_RANK.get(prev, 0) \
+                or is_downgrade_exception or newly_partial:
             o["delivery_status"] = new
             sets.append("delivery_status=?"); vals.append(new)
             sets.append("enriched_from_fedex=1")
@@ -280,7 +406,7 @@ def persist(conn, row, result, now_s):
                 if v:
                     sets.append(f"{col}=?"); vals.append(str(v)[:300])
                     o[col] = v
-                elif is_downgrade_exception and col in ("delivery_date", "left_at", "signed_by"):
+                elif (is_downgrade_exception or newly_partial) and col in ("delivery_date", "left_at", "signed_by"):
                     sets.append(f"{col}=NULL")
                     o[col] = None
     if pkgs and agg.get("untracked") == len(pkgs):
@@ -304,6 +430,12 @@ def persist(conn, row, result, now_s):
     if merged != have:
         sets.append("tracking_ids=?"); vals.append(", ".join(merged))
         o["tracking_ids"] = ", ".join(merged)
+    # Zoro answered: an earlier "order not found under …" / "lookup skipped" note is now wrong.
+    note = str(row.get("delivery_note") or "")
+    if note.startswith(("Zoro: order not found", "Zoro lookup skipped")) and \
+            not any(s.startswith("delivery_note") for s in sets):
+        sets.append("delivery_note=''")
+        o["delivery_note"] = ""
     # label + profit through closing's own rules
     pd, pp = C.calculate_profit(o)
     if pd is not None:
@@ -313,7 +445,7 @@ def persist(conn, row, result, now_s):
     label = C.determine_label(o)
     if row.get("order_label") == "Refunded" and label != "Refunded":
         label = ""      # a refunded order keeps its label — the sweep only adds where the parcel went
-    allow_downgrade = is_downgrade_exception and row.get("order_label") in ("Completed", "Loss")
+    allow_downgrade = (is_downgrade_exception or newly_partial) and row.get("order_label") in ("Completed", "Loss")
     if label and label != row.get("order_label") and (
             allow_downgrade or not (
                 label == "Incomplete" and row.get("order_label") in ("Completed", "Loss", "Refunded", "Cancelled"))):
@@ -341,7 +473,14 @@ def probe(order_no, email):
     tr = ZoroTracker(transport=TRANSPORT, port=PORT, delay_s=DELAY,
                      dump_dir=DUMP_DIR or os.path.join(_AUTO, "data", "dataset", "zoro_tracking_samples"))
     try:
-        res = tr.track_order(order_no, email)
+        mail_ids = []
+        try:
+            ro = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+            mail_ids = email_parcels(ro, order_no.strip().upper())
+            ro.close()
+        except sqlite3.Error:
+            pass
+        res = tr.track_order(order_no, email, email_tracking=mail_ids)
         print(f"{order_no} ({email}) → {res['outcome']} via {tr.mode}, {tr.calls} call(s)")
         if res["outcome"] != "ok":
             print("  payload:", json.dumps(res.get("error"), indent=1, default=str)[:1500])
@@ -432,36 +571,38 @@ def _run():
             parcels = []
             if not FULL and str(row.get("zoro_order_status") or "").strip().lower() == "complete":
                 parcels = known_parcels(conn, row["wb_order_id"])   # fully shipped: no new parcels can appear
-            primary, cands = ([], []) if parcels else email_candidates(conn, row)
-            yield row, parcels, primary, cands
+            primary, cands, pinned, key = ([], [], 0, "") if parcels else email_candidates(conn, row)
+            yield row, parcels, primary, cands, pinned, key, email_parcels(conn, row["wb_order_id"])
 
     def fetch(item):
-        row, parcels, primary, cands = item
+        row, parcels, primary, cands, pinned, key, mail_ids = item
         if parcels:
-            return tr.track_order(row["wb_order_id"], "", known_parcels=parcels), "", True
-        result = None
+            return tr.track_order(row["wb_order_id"], "", known_parcels=parcels, email_tracking=mail_ids), "", True, []
+        result, tried = None, []
         own_ids = _split_ids(row.get("tracking_ids"))     # from Zoro's shipping e-mail, via closing
-        for email in cands:
-            result = tr.track_order(row["wb_order_id"], email, fallback_tracking=own_ids)
+        for email in ranked(cands, pinned, key):
+            tried.append(email)
+            result = tr.track_order(row["wb_order_id"], email, fallback_tracking=own_ids, email_tracking=mail_ids)
             if result["outcome"] == "ok":
-                return result, email, False
+                note_win(key, email)
+                return result, email, False, tried
             if result["outcome"] != "not_found":
                 break
         if result is None:
             result = {"outcome": "invalid", "error": {"error": "no e-mail candidates"}, "order": None,
                       "packages": [], "aggregate": {"delivery_status": ""}}
-        return result, "", False
+        return result, "", False, tried
 
     try:
-        for i, (item, (result, used, parcel_only)) in enumerate(_pipeline(prepared(), fetch, workers), 1):
-            row, parcels, primary, cands = item
+        for i, (item, (result, used, parcel_only, tried)) in enumerate(_pipeline(prepared(), fetch, workers), 1):
+            row, parcels, primary, cands, pinned, key, _mail = item
             now_s = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             if result["outcome"] != "ok":
                 oc = result["outcome"]
                 stats["not_found" if oc == "not_found" else "errors"] += 1
                 if oc in ("not_found", "invalid") and not DRY:
                     # Say why on the row (dashboard "untracked" bucket) without touching a real note.
-                    why = (f"Zoro: order not found under {', '.join(cands)}" if oc == "not_found"
+                    why = (f"Zoro: order not found under {', '.join(tried)}" if oc == "not_found"
                            else f"Zoro lookup skipped: {str(result.get('error', {}).get('error', ''))[:80]}")
                     conn.execute("UPDATE closing_orders SET delivery_checked_at=?, "
                                  "delivery_note=CASE WHEN COALESCE(delivery_note,'')='' OR delivery_note LIKE 'Zoro%' "
@@ -470,7 +611,7 @@ def _run():
                 if oc not in ("not_found", "invalid"):
                     print(f"  {row['wb_order_id']}: {oc} {str(result.get('error'))[:120]}")
                 elif DRY:
-                    print(f"  [DRY] {row['wb_order_id']}: {oc} after {', '.join(cands) or 'no e-mails'}")
+                    print(f"  [DRY] {row['wb_order_id']}: {oc} after {', '.join(tried) or 'no e-mails'}")
             else:
                 agg = result["aggregate"]
                 stats["checked"] += 1
@@ -495,15 +636,16 @@ def _run():
                 else:
                     had_tracking = bool(_split_ids(row.get("tracking_ids")))
                     had_cost = bool(_num(row.get("zoro_order_total")) or 0)
-                    label = persist(conn, row, result, now_s)
+                    label = persist(conn, row, result, now_s, used)
                     if not had_tracking and result["packages"]:
                         stats["tracking_filled"] += 1
                     if not had_cost and result.get("order") and _num((result["order"].get("totals") or {}).get("total")):
                         stats["cost_filled"] += 1
                     if label:
                         stats["labels"] += 1
-            if i % 25 == 0:
-                conn.commit()
+            # Every row: the next one waits on Zoro, and an open transaction holds SQLite's one write
+            # lock all that time. Every 25 rows (~39 s) cost each placer ~60 s per order (3 Nov 2026).
+            conn.commit()
             if i % 100 == 0 or i == len(rows):
                 el = time.time() - t0
                 print(f"  {i}/{len(rows)} · delivered {stats['delivered']} · moving {stats['moving']} · exceptions "

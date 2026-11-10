@@ -29,7 +29,8 @@ GMAIL_ACCOUNTS = [
     "qurtdis",          # HOANK earnings
     "asad_amazon_us",   # HOANK duplicates
     "inhur_llc",        # HOANK duplicates
-    "wrenchlyllc",      # Hathoro duplicates
+    "wrenchlyllc",      # Hathoro duplicates; Wrenchly earnings (6 Nov 2026)
+    "abecomllc02",      # Wrenchly's Zoro account (WR_RESELLER)
 ]
 
 RUN_ID_PREFIX = "live_gmail"

@@ -185,8 +185,8 @@ def _run():
         conn.execute(
             f"UPDATE closing_orders SET {sets}, updated_at=datetime('now') WHERE amazon_order_id=?",
             [*updates.values(), o["amazon_order_id"]])
+        conn.commit()    # never hold SQLite's one write lock through the next Gmail search (placers wait on it)
         if i % 25 == 0:
-            conn.commit()
             print(f"[GAPFILL]   {i}/{len(orders)} scanned, {touched} recovered so far…")
     conn.commit()
     conn.close()

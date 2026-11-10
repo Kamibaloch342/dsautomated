@@ -96,6 +96,14 @@ def _now() -> str:
 
 
 def store_prefix(profile_name: str) -> str:
+    """'DM_COUPON' → 'DM', 'HS_RESELLER' → 'HS', 'WR_RESELLER' → 'WR' (config/accounts.json)."""
+    try:
+        from utils.accounts_config import store_for_profile, store_prefix as _pfx
+        p = _pfx(store_for_profile(profile_name))
+        if p:
+            return p
+    except Exception:
+        pass
     return "DM" if profile_name.upper().startswith("DM") else "HS"
 
 
@@ -438,7 +446,7 @@ def record_verdict(profile_name: str, asin: str, status: str, coupon: str, cart:
 # ── one ASIN ──────────────────────────────────────────────────────────────
 def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None, mod=None) -> dict:
     """Test ONE ASIN on the live Zoro session (no order involved)."""
-    from platforms.zoro import check_inventory
+    from platforms.zoro import check_inventory, first_alt_in_stock
 
     row = {"Check_ASIN": asin, "Check_At": _now(), "Check_Coupon": "", "Check_Cart": "", "Check_Note": ""}
     m = sku_map.get(asin) or {}
@@ -457,21 +465,21 @@ def check_one(driver, asin: str, sku_map: dict, priority_codes: list, cache=None
     except Exception:
         qty = 1
     # Test the SKU an order would actually buy. With the main out of stock (or backordered) the placer
-    # buys the sheet's alternative_SKU, so that is the one whose coupons decide the column — until
-    # 27 Oct 2026 the check stopped at "main OOS" and left B0HH6Q9FF3 in DM_Deciding while every order
-    # shipped the ALT G310877337, which the priority code VEHICLE10926 covers.
-    alt = (m.get("alt_sku") or "").strip()
+    # buys the first of the sheet's alternative_SKU codes in stock, so that is the one whose coupons
+    # decide the column — until 27 Oct 2026 the check stopped at "main OOS" and left B0HH6Q9FF3 in
+    # DM_Deciding while every order shipped the ALT G310877337, which the priority code VEHICLE10926 covers.
+    alts = m.get("alt_skus") or []
     alt_note = ""
-    if alt:
+    if alts:
         main_ok, main_status = check_inventory(driver, code, qty)
         if not main_ok and main_status not in ("API_ERROR", "NO_DATA"):
-            alt_ok, alt_status = check_inventory(driver, alt, qty)
-            if alt_ok:
+            alt, _alt_status, tried = first_alt_in_stock(driver, alts, qty)
+            if alt:
                 alt_note = f"main {code} {main_status} → tested ALT {alt}"
                 code = alt
             else:
                 row.update(Check_Status="OOS", Check_Suggest="Wait / alt code",
-                           Check_Note=f"{code}: {main_status}; ALT {alt}: {alt_status}")
+                           Check_Note="; ".join([f"{code}: {main_status}"] + [f"ALT {c}: {s}" for c, s in tried]))
                 return row
     return _with_alt_note(_check_code(driver, asin, code, qty, m, alt_note, priority_codes, cache, mod, row), alt_note)
 

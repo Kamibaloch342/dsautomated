@@ -56,6 +56,7 @@ BLOCKED_STATES = ['PR', 'HI', 'AK']
 # ==============================================================================
 DM_EARNINGS_EMAIL = "abecomllc26"
 HS_EARNINGS_EMAIL = "qurtdis"
+WR_EARNINGS_EMAIL = "wrenchlyllc"     # Wrenchly's 'Sold, ship now' mail (owner, 6 Nov 2026)
 # Duplicate-check Gmail accounts.
 # LESSON FROM THE 2026-06/07 DUPLICATE INCIDENT: the per-profile lists used to be just 2
 # inboxes each and DID NOT include where confirmations actually land — DM orders' Zoro
@@ -98,6 +99,7 @@ ALL_CONFIRMATION_INBOXES = _load_confirmation_inboxes()
 # Both profile families now check the full set (a too-narrow list is what caused the incident).
 HS_DUPLICATE_CHECK_LIST = list(ALL_CONFIRMATION_INBOXES)
 DM_DUPLICATE_CHECK_LIST = list(ALL_CONFIRMATION_INBOXES)
+WR_DUPLICATE_CHECK_LIST = list(ALL_CONFIRMATION_INBOXES)
 
 # Backwards compatibility — all accounts (used by legacy code)
 DUPLICATE_CHECK_LIST = list(ALL_CONFIRMATION_INBOXES)
@@ -243,8 +245,55 @@ PROFILES = {
         "gmail_duplicates_list": HS_DUPLICATE_CHECK_LIST,
         "blocked_order_ids": [],
         "billing_address": {},
-    }
+        "payment_method": "NET30",     # always — see NET30_PROFILES below
+    },
+    # Wrenchly (third store, 6 Nov 2026) is RESELLER-ONLY: there is no WR_COUPON, so nothing is
+    # ever routed to a coupon sibling (no Deciding column, no late Coupon-column hand-off, no
+    # coupon-sweep hold). place_all_mapped: every unlabelled Wrenchly order whose ASIN is in
+    # Verified_SKU_Dataset is placed here, without a Priority_ASIN_Control column (owner's choice).
+    # Billing is left empty like HS_RESELLER: checkout reads the Zoro account's default address.
+    "WR_RESELLER": {
+        "port": 9226,
+        "profile_folder_name": "wrenchly_reseller_orders",
+        "po_number": "WRENCHLY",
+        "target_label": "WR",
+        # 0 %, like HS_RESELLER's setting — not the -20 % code default: a new store starts by
+        # placing nothing at a loss. The launcher's Min Margin box overrides it.
+        "min_profit_margin": 0.0,
+        "gmail_earnings_account": WR_EARNINGS_EMAIL,
+        "gmail_duplicates_list": WR_DUPLICATE_CHECK_LIST,
+        "blocked_order_ids": [],
+        "billing_address": {},
+        "place_all_mapped": True,
+    },
 }
+
+
+# Profiles whose Zoro account pays on Net 30 terms — ALWAYS, whatever bot_config.json or the
+# launcher says (owner, 8 Nov 2026). HS_RESELLER's account (Rajar Enterprise LLC) is the only one
+# with Net 30, and its checkout has Net 30 selected by default: the placer sets the address,
+# checks the order and places it on Net 30, and never picks a card. From 15 Oct to 7 Nov 2026 the
+# launcher's payment choice had fallen back to "Credit Card" and every HS_RESELLER order was put
+# on the AMEX ****6723 instead. Walmart orders (WALMART_RESELLER) use the same Zoro account and
+# pay the same way (owner, 8 Nov 2026).
+NET30_PROFILES = ("HS_RESELLER", "WALMART_RESELLER")
+
+
+def profile_payment_method(profile_name, configured=None):
+    """'NET30' or 'CREDIT_CARD' for this profile's Zoro checkout. A Net 30 profile gets 'NET30'
+    no matter what is passed in; any other profile keeps its configured value."""
+    if str(profile_name or "").strip().upper() in NET30_PROFILES:
+        return "NET30"
+    _pm = str(configured or "").upper().replace(" ", "").replace("-", "").replace("_", "")
+    return "NET30" if _pm == "NET30" else "CREDIT_CARD"
+
+
+def has_coupon_sibling(profile_name):
+    """True when this store also has the other profile (HS/DM have both; Wrenchly has only
+    WR_RESELLER). Every hand-off to a sibling checks this first."""
+    p = str(profile_name or "").upper()
+    sib = p.replace("_RESELLER", "_COUPON") if p.endswith("_RESELLER") else p.replace("_COUPON", "_RESELLER")
+    return sib != p and sib in PROFILES
 
 # ==============================================================================
 #  URLS
@@ -398,10 +447,8 @@ def apply_gui_overrides(gui_cfg):
                 except (ValueError, TypeError):
                     pass
             if "payment_method" in pvals:
-                # RESELLER accounts with Net30 terms can pay via Net30 or the
-                # saved credit card. Normalize to "NET30" / "CREDIT_CARD".
-                _pm = str(pvals["payment_method"] or "").upper().replace(" ", "").replace("-", "").replace("_", "")
-                PROFILES[pname]["payment_method"] = "NET30" if _pm == "NET30" else "CREDIT_CARD"
+                # Normalized to "NET30" / "CREDIT_CARD"; a NET30_PROFILES profile stays NET30.
+                PROFILES[pname]["payment_method"] = profile_payment_method(pname, pvals["payment_method"])
             if "focus_priority_coupon" in pvals:
                 PROFILES[pname]["focus_priority_coupon"] = str(pvals["focus_priority_coupon"] or "").strip()
             if "focus_priority_coupon_enabled" in pvals:

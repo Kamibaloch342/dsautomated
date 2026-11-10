@@ -2,20 +2,23 @@
 """
 send_insights_alerts.py — Dispatch operational insights directly to WhatsApp groups.
 
-Routes insights with strict account separation:
-  • HOANK Insights   -> 120363429340767368@g.us
-  • Hathoro Insights -> 120363413450875187@g.us
+Routes insights with strict account separation, one Insights group per store
+(Wrenchly has none yet, so its alerts go to the default group — utils.whatsapp.get_whatsapp_group).
 
-Covers all 8 overhauled insight categories:
-  1. Amazon Earnings/Unit (Increase ↑ vs Decrease ↓)
-  2. Amazon Buyer Shipping Status Changed (Free <-> Paid)
-  3. Zoro Base Unit Price (Increase ↑ vs Decrease ↓)
+Sent as they happen (hourly):
+  1. Amazon Earnings/Unit (Increase ↑ vs Decrease ↓), once per real change
+  2. Buyer paid for shipping on a free-shipping listing / a paid listing went free
+  3. Zoro Price (Increase ↑ vs Decrease ↓), from the Unit Price on Zoro's order e-mails
   4. Zoro Shipping Rule Deviation ($50 free / $5.99)
-  5. Handling-Time Tuner (Delivery slack vs Zoro ETA)
-  6. Out of Stock (OOS) / Supplier Depletion & Alt SKU
-  7. Low Margin Split (< 8% vs Unplaced Loss-Kamran)
-  8. Low Zoro Stock (< 20 units)
-Plus operational protections (Zip mismatch, Undelivered past due, Refunded, Shipped late, etc.).
+  5. Zoro late against Amazon's promise, 2+ business days (increase handling)
+  6. Out of Stock, and Alternative SKU used (one per ASIN per day)
+  7. Low Margin (< 8%, one per ASIN per day; unplaced 'Loss-Kamran' per order)
+  8. Zip mismatch, Wrong quantity
+
+Sent as one summary per store:
+  • daily, from SUMMARY_HOUR: Refunded, Undelivered past due, Shipped late, WB unmatched. These
+    happen days after the purchase, so the "only new alerts" check below can never pass them.
+  • weekly: the listings that really have handling days to cut.
 
 Deduplication:
   Dispatched insights are recorded in SQLite table `whatsapp_dispatched_insights`
@@ -43,24 +46,39 @@ from utils.whatsapp import is_whatsapp_enabled, get_whatsapp_group, send_whatsap
 
 DB_PATH = os.path.join(_AUTO_DIR, "data", "automations_unified.db")
 
+ACCOUNTS = ("HOANK", "Hathoro", "Wrenchly")
+
 CATEGORY_HEADERS = {
     "earnings_increase": "📈 *AMAZON EARNINGS INCREASED* 🟢",
     "earnings_decrease": "📉 *AMAZON EARNINGS DECREASED* 🔴",
-    "shipping_change": "🚚 *BUYER SHIPPING STATUS CHANGED*",
-    "zoro_price_increase": "🏷️ *ZORO BASE PRICE INCREASED* 🔴",
-    "zoro_price_decrease": "🏷️ *ZORO BASE PRICE DECREASED* 🟢",
+    "shipping_change": "🚚 *BUYER SHIPPING*",
+    "zoro_price_increase": "🏷️ *ZORO PRICE INCREASED* 🔴",
+    "zoro_price_decrease": "🏷️ *ZORO PRICE DECREASED* 🟢",
     "zoro_ship_rule": "⚠️ *ZORO SHIPPING RULE DEVIATION*",
-    "handling_time_tune": "⏱️ *HANDLING-TIME TUNER (SLACK)*",
-    "oos_alert": "🚨 *OUT OF STOCK / SUPPLIER DEPLETION*",
+    "handling_time_tune": "⏱️ *ZORO LATE AGAINST AMAZON PROMISE*",
+    "oos_alert": "🚨 *OUT OF STOCK*",
+    "alt_sku_used": "🔄 *ALTERNATIVE SKU USED (order placed)*",
     "low_margin": "⚠️ *LOW MARGIN WARNING (< 8%)*",
-    "low_zoro_stock": "📦 *LOW ZORO STOCK (< 20 UNITS)*",
     "zip_mismatch": "📍 *BUYER ZIP CODE MISMATCH*",
-    "undelivered": "📬 *PACKAGE OVERDUE / UNDELIVERED*",
-    "refunded": "💵 *REFUND ACTION REQUIRED*",
     "wrong_qty": "🔢 *WRONG QUANTITY MULTIPLIER*",
-    "shipped_late": "⏰ *SHIPPED LATE VS AMAZON PROMISE*",
-    "wb_unmatched": "❓ *WB ORDER UNMATCHED*",
 }
+
+# One message per store instead of one message per item, in this order.
+DAILY_SUMMARY = (
+    ("refunded", "💵 Refunded"),
+    ("undelivered", "📬 Undelivered past due"),
+    ("shipped_late", "⏰ Shipped late"),
+    ("wb_unmatched", "❓ WB not in placed orders"),
+)
+WEEKLY_SUMMARY = (("handling_review", "⏱️ Handling days that can be cut"),)
+_SUMMARY_CATEGORIES = {c for c, _ in DAILY_SUMMARY + WEEKLY_SUMMARY}
+
+# The daily summary waits for the morning's closing run. Local time.
+SUMMARY_HOUR = int(os.environ.get("ZUHRA_SUMMARY_HOUR", "12") or 12)
+SUMMARY_LOOKBACK_DAYS = 30
+SUMMARY_MAX_PER_CATEGORY = 12
+
+BASELINE_MESSAGE = "BASELINE_HISTORICAL"
 
 
 def _init_tracking_table(con: sqlite3.Connection):
@@ -95,6 +113,28 @@ def _record_dispatched(con: sqlite3.Connection, ref_key: str, account: str, cate
     con.commit()
 
 
+def _record_many(con: sqlite3.Connection, rows: list):
+    """Record (ref_key, account, category, message) rows in one short write."""
+    if not rows:
+        return
+    now_iso = datetime.datetime.now().isoformat()
+    con.executemany(
+        """INSERT OR IGNORE INTO whatsapp_dispatched_insights (ref_key, account, category, dispatched_at, message)
+           VALUES (?, ?, ?, ?, ?)""",
+        [(k, a, c, now_iso, m) for k, a, c, m in rows],
+    )
+    con.commit()
+
+
+def _pretty_day(iso: str) -> str:
+    """'2026-11-07' → 'Sat, Nov 7' for the alert's Date line."""
+    try:
+        d = datetime.date.fromisoformat(str(iso)[:10])
+        return f"{d:%a, %b} {d.day}"
+    except ValueError:
+        return str(iso or "")
+
+
 def _load_asin_meta(con: sqlite3.Connection) -> dict:
     """Pre-index ASIN -> {title, sku} metadata for 100% card fidelity."""
     meta = {}
@@ -121,15 +161,92 @@ def _load_asin_meta(con: sqlite3.Connection) -> dict:
     return meta
 
 
+def _summary_lines(label: str, items: list) -> list:
+    lines = [f"*{label} ({len(items)})*"]
+    for it in items[:SUMMARY_MAX_PER_CATEGORY]:
+        who = it.get("order_id") or it.get("asin") or ""
+        msg = str(it.get("message") or "")
+        if msg.startswith("ASIN "):
+            msg = msg.split(":", 1)[-1].strip()
+        lines.append(f"• `{who}` {msg}" if who else f"• {msg}")
+    if len(items) > SUMMARY_MAX_PER_CATEGORY:
+        lines.append(f"…and {len(items) - SUMMARY_MAX_PER_CATEGORY} more on the dashboard")
+    return lines
+
+
+def _send_summary(con, account: str, target_group: str, state_key: str, title: str, sections: tuple,
+                  all_insights: dict, already: set, dry_run: bool) -> int:
+    """Send one summary of everything in `sections` not yet reported. 1 when a message went out."""
+    blocks, records = [], []
+    for cat, label in sections:
+        fresh = [i for i in all_insights.get(cat, []) if i.get("ref_key") and i["ref_key"] not in already]
+        if fresh:
+            blocks.append("\n".join(_summary_lines(label, fresh)))
+            records += [(i["ref_key"], account, cat, i.get("message") or "") for i in fresh]
+
+    if not blocks:
+        if not dry_run:
+            _record_dispatched(con, state_key, account, "summary", "(nothing new)")
+        return 0
+
+    text = f"📋 *{title}*\n\n" + "\n\n".join(blocks)
+    print(f"  📤 [summary] {state_key}: {len(records)} item(s)")
+    if dry_run:
+        print(f"     [DRY-RUN] Would send:\n{text}\n")
+        return 0
+    if not send_whatsapp_message(text, to=target_group, background=False):
+        print("     ⚠️ Failed to send via gateway!")   # state not recorded: next run tries again
+        return 0
+    _record_many(con, records)
+    _record_dispatched(con, state_key, account, "summary", f"{len(records)} item(s)")
+    already.update(r[0] for r in records)
+    return 1
+
+
+def dispatch_summaries(account: str, dry_run: bool = False, force: bool = False) -> int:
+    """The once-a-day and once-a-week messages for one store. Cheap when neither is due."""
+    now = datetime.datetime.now()
+    today = now.date()
+    monday = today - datetime.timedelta(days=today.weekday())
+    daily_key = f"summary:daily:{account}:{today.isoformat()}"
+    weekly_key = f"summary:weekly:{account}:{monday.isoformat()}"
+
+    con = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        already = _get_dispatched_keys(con)
+        due_daily = force or (now.hour >= SUMMARY_HOUR and daily_key not in already)
+        due_weekly = force or (now.hour >= SUMMARY_HOUR and weekly_key not in already)
+        if not (due_daily or due_weekly):
+            return 0
+
+        date_from = (today - datetime.timedelta(days=SUMMARY_LOOKBACK_DAYS)).isoformat()
+        all_insights = insights.compute(account=account, date_from=date_from, db_path=DB_PATH).get("insights", {})
+        target_group = get_whatsapp_group(account, kind="insights")
+
+        sent = 0
+        if due_daily:
+            sent += _send_summary(con, account, target_group, daily_key,
+                                  f"DAILY SUMMARY — {account} — {_pretty_day(today.isoformat())}",
+                                  DAILY_SUMMARY, all_insights, already, dry_run)
+        if due_weekly:
+            sent += _send_summary(con, account, target_group, weekly_key,
+                                  f"WEEKLY HANDLING REVIEW — {account}",
+                                  WEEKLY_SUMMARY, all_insights, already, dry_run)
+        return sent
+    finally:
+        con.close()
+
+
 def dispatch_account_insights(
     account: str,
     days: int = 7,
     limit: int = 20,
     category_filter: str = None,
     dry_run: bool = False,
-    all_time: bool = False
+    all_time: bool = False,
+    summaries: bool = False,
 ) -> int:
-    """Compute and send pending insights for a given account (HOANK or Hathoro)."""
+    """Compute and send pending insights for a given account."""
     if not is_whatsapp_enabled() and not dry_run:
         print("  [WhatsApp] WhatsApp notifications are disabled in bot_config.json.")
         return 0
@@ -140,18 +257,13 @@ def dispatch_account_insights(
     print(f"  🎯 Target Group: {target_group}")
     print(f"=======================================================")
 
-    today_str = datetime.date.today().isoformat()
+    today = datetime.date.today()
     date_from = None
-    if not all_time:
-        if days > 0:
-            d = datetime.date.today() - datetime.timedelta(days=days)
-            date_from = d.isoformat()
-            print(f"  📅 Window: {date_from} to today ({days} days)")
-        else:
-            date_from = today_str
-            print(f"  📅 Window: Today only ({today_str})")
-    else:
+    if all_time:
         print(f"  📅 Window: All Time")
+    else:
+        date_from = (today - datetime.timedelta(days=max(days, 0))).isoformat()
+        print(f"  📅 Window: {date_from} to today")
 
     res = insights.compute(account=account, date_from=date_from, db_path=DB_PATH)
     all_insights = res.get("insights", {})
@@ -164,6 +276,8 @@ def dispatch_account_insights(
     categories = [category_filter] if category_filter else list(all_insights.keys())
 
     for cat in categories:
+        if cat in _SUMMARY_CATEGORIES:
+            continue
         items = all_insights.get(cat, [])
         if not items:
             continue
@@ -175,9 +289,10 @@ def dispatch_account_insights(
             if not ref_key or ref_key in already_sent:
                 continue
 
-            # USER MANDATE: Only send NEW ones (today's alerts), never historical backlogs
+            # Only new alerts, never historical backlogs. Item dates are ISO; the window is a few
+            # days because an order's Amazon date runs behind the clock here.
             d_str = str(item.get("date") or "")[:10]
-            if not all_time and d_str and d_str < today_str:
+            if date_from and d_str and d_str < date_from:
                 continue
 
             msg_body = item.get("message") or "Insight alert"
@@ -223,7 +338,7 @@ def dispatch_account_insights(
             if order_id:
                 lines.append(f"• Order: `{order_id}`")
             if d_str:
-                lines.append(f"• Date: {d_str}")
+                lines.append(f"• Date: {_pretty_day(d_str)}")
 
             lines.append("")
             lines.append(f"• Alert: {clean_msg}")
@@ -250,24 +365,53 @@ def dispatch_account_insights(
             break
 
     con.close()
+    if summaries and not category_filter:
+        try:
+            sent_count += dispatch_summaries(account, dry_run=dry_run)
+        except Exception as e:
+            print(f"  ⚠️ Summary error: {e}")
     print(f"  ✅ Finished {account}: {sent_count} alert(s) dispatched to WhatsApp.")
     return sent_count
 
 
+def seed_baseline(account: str, days: int = SUMMARY_LOOKBACK_DAYS) -> int:
+    """Mark everything already known as reported, without sending, so a change to how alerts are
+    keyed cannot re-announce old events. The weekly review is left out: it is about this week."""
+    date_from = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+    all_insights = insights.compute(account=account, date_from=date_from, db_path=DB_PATH).get("insights", {})
+    con = sqlite3.connect(DB_PATH, timeout=10)
+    try:
+        already = _get_dispatched_keys(con)
+        rows = [(i["ref_key"], account, cat, BASELINE_MESSAGE)
+                for cat, items in all_insights.items() if cat != "handling_review"
+                for i in items if i.get("ref_key") and i["ref_key"] not in already]
+        _record_many(con, rows)
+    finally:
+        con.close()
+    print(f"  ✅ {account}: {len(rows)} existing item(s) marked as already reported.")
+    return len(rows)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Dispatch operational insights to WhatsApp groups.")
-    parser.add_argument("--account", choices=["HOANK", "Hathoro", "all"], default="all", help="Target store account")
+    parser.add_argument("--account", choices=list(ACCOUNTS) + ["all"], default="all", help="Target store account")
     parser.add_argument("--days", type=int, default=0, help="Lookback window in days (default: 0 = today only)")
     parser.add_argument("--all-time", action="store_true", help="Process all-time insights without date cutoff")
     parser.add_argument("--limit", type=int, default=25, help="Max alerts to send per account per run (default: 25, 0 = unlimited)")
     parser.add_argument("--category", type=str, default=None, help="Filter by specific category key (e.g. oos_alert)")
     parser.add_argument("--dry-run", action="store_true", help="Preview alerts without sending")
+    parser.add_argument("--summaries", action="store_true", help="Also send the daily / weekly summaries when due")
+    parser.add_argument("--baseline", action="store_true", help="Mark what is already known as reported, send nothing")
 
     args = parser.parse_args()
+    accounts = list(ACCOUNTS) if args.account == "all" else [args.account]
+
+    if args.baseline:
+        total = sum(seed_baseline(acc, days=args.days or SUMMARY_LOOKBACK_DAYS) for acc in accounts)
+        print(f"\n🎉 Baseline: {total} item(s)")
+        return
 
     total_sent = 0
-    accounts = ["HOANK", "Hathoro"] if args.account == "all" else [args.account]
-
     for acc in accounts:
         total_sent += dispatch_account_insights(
             account=acc,
@@ -276,6 +420,7 @@ def main():
             category_filter=args.category,
             dry_run=args.dry_run,
             all_time=args.all_time,
+            summaries=args.summaries,
         )
 
     print(f"\n🎉 Total insights dispatched: {total_sent}")
