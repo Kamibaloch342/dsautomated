@@ -43,7 +43,12 @@ _SEL_SWITCH_TILES = 'a[data-name="switch_account_request"]'
 _SEL_SWITCH_ADD   = "#cvf-account-switcher-add-accounts-link"
 
 # ── keywords that identify a login / OTP page ────────────────────────
-_LOGIN_URL_MARKERS = ["ap/signin", "ap/mfa"]
+# ap/forgotpassword: Amazon's "Password reset required" page (10 Nov 2026) — not signed in either.
+_LOGIN_URL_MARKERS = ["ap/signin", "ap/mfa", "ap/forgotpassword"]
+
+# Why the last auto_login() did not get through, in words a person can act on ("" = it did, or it
+# has not run). Read by callers that report the failure.
+last_problem = ""
 
 
 def _load_creds(account_key):
@@ -225,6 +230,67 @@ def _pick_remembered_account(driver, email):
         return ""
 
 
+def _shown(driver, selectors):
+    """Is any of these on the page and visible right now? No waiting."""
+    for sel in selectors:
+        try:
+            if any(e.is_displayed() for e in driver.find_elements(By.CSS_SELECTOR, sel)):
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _where(driver):
+    """Which step of Amazon's sign-in the browser is on:
+    'in' (signed in), 'reset' (Amazon demands a new password), 'otp', 'password', 'switch'
+    (the remembered-accounts list), 'email', or '' while the page is still loading or is unknown.
+
+    "The URL is not a sign-in URL" is NOT signed in. On 10 Nov 2026 pressing Hathoro's account led to
+    /ap/forgotpassword/reverification ("Password reset required"); the old test called that a
+    success, and the placer went straight back to the sign-in page. Signed in means: on Seller
+    Central and outside every /ap/ page."""
+    try:
+        url = (driver.current_url or "").lower()
+    except Exception:
+        return ""
+    if "ap/forgotpassword" in url:
+        return "reset"
+    if "sellercentral.amazon.com" in url and "/ap/" not in url:
+        return "in"
+    if "ap/mfa" in url or _shown(driver, [_SEL_OTP_FIELD]):
+        return "otp"
+    if _shown(driver, _SEL_PASSWORD_OPTS):
+        return "password"
+    if _shown(driver, [_SEL_SWITCH_TILES]):
+        return "switch"
+    if _shown(driver, _SEL_EMAIL_OPTS):
+        return "email"
+    return ""
+
+
+def _settle(driver, seconds=12.0):
+    """Wait until the page is one _where() knows, and say which. '' if it never becomes one.
+    A headless Chrome needs a moment after a click or a load: on 10 Nov the remembered-accounts list
+    appeared half a second after the first look, and that attempt spent 80 seconds on fields that
+    were never going to be there."""
+    end = time.time() + seconds
+    while True:
+        state = _where(driver)
+        if state or time.time() >= end:
+            return state
+        time.sleep(0.5)
+
+
+def _reset_required(account_key):
+    global last_problem
+    last_problem = (f"Amazon requires a NEW PASSWORD for the {account_key} account (\"Password reset required\"). "
+                    "Only a person can do that: Amazon sends a one-time code to the account's e-mail or mobile. "
+                    f"Then save the new password with: python scripts/set_sc_credentials.py {account_key}")
+    print(f"  🛑  {last_problem}")
+    return False
+
+
 def _page_says(driver):
     """The page's own heading, for the log — so a sign-in page this code does not know names itself."""
     try:
@@ -255,6 +321,8 @@ def auto_login(driver, account_identifier, max_attempts=2):
         True  – login succeeded (or was not needed).
         False – login failed and manual intervention is required.
     """
+    global last_problem
+    last_problem = ""
     if not is_login_page(driver):
         return True  # already logged in
 
@@ -262,6 +330,7 @@ def auto_login(driver, account_identifier, max_attempts=2):
     creds = _load_creds(account_key)
     if not creds:
         print(f"  ⚠️  Auto-login unavailable for '{account_key}'. Manual login required.")
+        last_problem = f"no saved Seller Central login for '{account_key}'"
         return False
 
     email    = creds["email"]
@@ -272,6 +341,14 @@ def auto_login(driver, account_identifier, max_attempts=2):
         print(f"  🔐  Auto-login attempt {attempt}/{max_attempts} for '{account_key}'...")
 
         try:
+            # ── Where are we? (waits for the page to draw) ────────
+            state = _settle(driver)
+            if state == "in":
+                print(f"  ✅  Auto-login successful for '{account_key}'.")
+                return True
+            if state == "reset":
+                return _reset_required(account_key)
+
             # ── Step 0: already past the password? ────────────────
             # Amazon keeps the 2SV step on its own page, and a session can arrive here
             # directly — a retry after the password was accepted, or a tab that was already
@@ -282,9 +359,12 @@ def auto_login(driver, account_identifier, max_attempts=2):
                 print("  🔐  Already at the 2-step verification page — entering the code.")
                 if not _submit_otp(driver, totp_secret):
                     continue
-                if not is_login_page(driver):
+                state = _settle(driver, 15)
+                if state == "in":
                     print(f"  ✅  Auto-login successful for '{account_key}'.")
                     return True
+                if state == "reset":
+                    return _reset_required(account_key)
                 print(f"  ⚠️  Still on a login page after the code (attempt {attempt}).")
                 continue
 
@@ -293,9 +373,12 @@ def auto_login(driver, account_identifier, max_attempts=2):
             if picked:
                 print("  🔐  Amazon showed its 'Switch accounts' page — "
                       + ("chose this store's account." if picked == "account" else "pressed 'Add account'."))
-                if not is_login_page(driver):
+                state = _settle(driver, 15)          # what Amazon shows next decides, not the URL alone
+                if state == "in":
                     print(f"  ✅  Auto-login successful for '{account_key}'.")
                     return True
+                if state == "reset":
+                    return _reset_required(account_key)
 
             # ── Step 1: Email ─────────────────────────────────────
             # (not after choosing a remembered account: that page goes straight to the password)
@@ -345,16 +428,20 @@ def auto_login(driver, account_identifier, max_attempts=2):
                     continue
 
             # ── Step 5: Verify success ────────────────────────────
-            if not is_login_page(driver):
+            state = _settle(driver, 15)
+            if state == "in":
                 print(f"  ✅  Auto-login successful for '{account_key}'.")
                 return True
-            else:
-                print(f"  ⚠️  Still on login page after attempt {attempt}.")
+            if state == "reset":
+                return _reset_required(account_key)
+            print(f"  ⚠️  Still on a sign-in page after attempt {attempt}. The page says: "
+                  f"\"{_page_says(driver) or 'nothing readable'}\"")
 
         except Exception as e:
             print(f"  ❌  Login error on attempt {attempt}: {e}")
 
     print(f"  ❌  Auto-login failed after {max_attempts} attempts for '{account_key}'.")
+    last_problem = last_problem or f"the automatic sign-in for '{account_key}' did not get through (page: {_page_says(driver) or 'unknown'})"
     return False
 
 

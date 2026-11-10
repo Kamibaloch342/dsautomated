@@ -594,33 +594,29 @@ def _first_line(e):
     return (s.splitlines()[0] if s else type(e).__name__)[:300]
 
 
-SIGNIN_RETRY_S = 300
-_signin_told_at = [0.0]
+SIGNIN_RETRY_S = 300                 # after a sign-in that did not get through
+SIGNIN_RESET_RETRY_S = 1800          # when Amazon wants a new password: nothing changes until a person acts
 
 
 def _signin_needed():
     """Seller Central still shows a sign-in page after the automatic sign-in: nothing in this cycle can
-    work. Say it once and plainly, tell the Orders group at most once an hour, wait five minutes
-    rather than try Amazon's sign-in every 40 seconds, then end the cycle.
+    work. Say why in ONE line, in this pane, then wait rather than try Amazon's sign-in every 40
+    seconds, and end the cycle. No WhatsApp message: the pane is where the owner looks for this
+    (owner, 10 Nov 2026 — an alert to the Orders group that nobody asked for was taken out again).
 
-    10 Nov 2026: both Hathoro placers stood on Amazon's "Switch accounts" page. Each cycle went on to
-    the order filters and printed five stack traces; the cause was one line among a hundred."""
-    print(f"  🛑 SELLER CENTRAL SIGN-IN NEEDED — {PROFILE_NAME} cannot read orders. The automatic sign-in did not "
-          f"get through (see the 🔐 lines above). Sign in in this profile's Chrome window (port {PORT}); "
-          f"trying again in {SIGNIN_RETRY_S // 60} minutes.")
-    if time.time() - _signin_told_at[0] > 3600:
-        _signin_told_at[0] = time.time()
-        try:
-            from utils.whatsapp import get_whatsapp_group, send_whatsapp_message
-            send_whatsapp_message(f"🔐 *Seller Central sign-in needed — {PROFILE_NAME}*\n"
-                                  f"• The placer cannot read {STORE_ACCOUNT}'s orders: Amazon asks to sign in and the "
-                                  f"automatic sign-in did not get through\n"
-                                  f"• Sign in once in this profile's Chrome window on the Mac; the placer tries again "
-                                  f"every {SIGNIN_RETRY_S // 60} minutes",
-                                  to=get_whatsapp_group(STORE_ACCOUNT, kind="orders"))
-        except Exception as e:
-            print(f"  ⚠️ WhatsApp alert error: {e}")
-    time.sleep(SIGNIN_RETRY_S)
+    10 Nov 2026: both Hathoro placers stood on Amazon's "Switch accounts" page after the account's
+    password had been changed. Each cycle went on to the order filters and printed five stack
+    traces; the cause was one line among a hundred."""
+    try:
+        from platforms import auth as _auth
+        why = str(getattr(_auth, "last_problem", "") or "")
+    except Exception:
+        why = ""
+    wait_s = SIGNIN_RESET_RETRY_S if "NEW PASSWORD" in why else SIGNIN_RETRY_S
+    print(f"  🛑 SELLER CENTRAL SIGN-IN NEEDED — {PROFILE_NAME} cannot read orders. "
+          + (why if why else "The automatic sign-in did not get through (see the 🔐 lines above).")
+          + f" Or sign in by hand in this profile's Chrome (port {PORT}). Trying again in {wait_s // 60} minutes.")
+    time.sleep(wait_s)
     raise RuntimeError(f"Seller Central sign-in needed for {PROFILE_NAME}")
 
 
