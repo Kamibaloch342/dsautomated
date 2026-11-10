@@ -346,6 +346,17 @@ def scrape_all_asins_offers(
                       success_count, fail_count, start_time)
         return cache
 
+    # While each page is open: the brand line, the rating, the number of ratings, the category and
+    # who else sells on our own-brand listings. One WhatsApp message per run says what changed since
+    # the last look (utils/listing_watch.py, owner 10 Nov 2026). It can never stop the scrape.
+    watch, _watch_rows = None, {}
+    try:
+        from utils.listing_watch import ListingWatch
+        watch = ListingWatch("Hathoro")
+        _watch_rows = {str(r["asin"]): r for _, r in asins_df.iterrows()}
+    except Exception as _we:
+        emit_log(f"    ⚠️ listing watch unavailable: {_we}")
+
     driver = get_driver(headless=headless)
     zip_set = False
 
@@ -379,6 +390,11 @@ def scrape_all_asins_offers(
                     # Parse offers from page
                     html = driver.page_source
                     offers = parse_all_offers_from_page(html)
+                    if watch:
+                        _wr = _watch_rows.get(asin)
+                        watch.observe(asin, html, offers,
+                                      sku=str(_wr["sku"] or "") if _wr is not None else "",
+                                      title=str(_wr["title"] or "") if _wr is not None else "")
 
                     total_sellers = len(offers)
                     buy_box_offer = next((o for o in offers if o.get("is_pinned")), offers[0] if offers else None)
@@ -462,6 +478,8 @@ def scrape_all_asins_offers(
             except Exception:
                 pass
         save_cache(cache)
+        if watch:
+            watch.finish()          # remember what was seen; one message if anything changed
         emit_progress("Hathoro", total_asins, total_asins, "", "Scraping completed",
                       success_count, fail_count, start_time)
 
