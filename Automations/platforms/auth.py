@@ -301,6 +301,138 @@ def _page_says(driver):
         return ""
 
 
+def _move_on(driver, from_state, seconds):
+    """Wait until Amazon has left the step `from_state` and say where it is now; `from_state` again
+    when it never moved. After a click the old page stays up while Amazon answers — looking at once
+    reads the page that was just submitted."""
+    end = time.time() + seconds
+    while time.time() < end:
+        time.sleep(0.5)
+        state = _where(driver)
+        if state and state != from_state:
+            return state
+    return _where(driver) or from_state
+
+
+def _page_complaint(driver):
+    """What the sign-in page itself says is wrong (a wrong password, a picture puzzle), for the log."""
+    try:
+        return (driver.execute_script("""
+            var out = [];
+            document.querySelectorAll('.a-alert-content, [role=alert], #auth-error-message-box, #auth-warning-message-box').forEach(function (e) {
+                var r = e.getBoundingClientRect(), t = (e.innerText || '').replace(/\\s+/g, ' ').trim();
+                if (r.width > 0 && r.height > 0 && t && out.indexOf(t) < 0) out.push(t);
+            });
+            if (document.querySelector('#auth-captcha-image, #captchacharacters, img[src*="captcha"], iframe[src*="captcha"]'))
+                out.push('Amazon is showing a picture puzzle (CAPTCHA) — a person has to sign in once in this Chrome');
+            return out.join(' | ').slice(0, 240);""") or "")
+    except Exception:
+        return ""
+
+
+def _sign_in_once(driver, account_key, email, password, totp_secret):
+    """One pass through Amazon's sign-in, taking each page as it comes. True when signed in.
+
+    Amazon decides the order of the pages, not this code: the remembered-accounts list may lead to the
+    password page, straight to the 2-step code, or to "Password reset required"; the e-mail and the
+    password may share a page or not. So this looks where it is (_where), does that one step, waits
+    for Amazon to move on (_move_on), and looks again. Written after 10 Nov 2026, when a fixed order
+    of steps (e-mail → password → code) met the code page right after the account list and spent 40
+    seconds looking for a password box, and a look taken too soon after "Sign in" read the page that
+    had just been submitted and called it a failure.
+
+    The password is typed at most once: the password page coming back means Amazon refused it, and
+    typing it again only adds failed attempts — auto_login() then stops instead of trying again."""
+    global last_problem
+    password_sent = False
+    deadline = time.time() + 120
+    while time.time() < deadline:
+        state = _settle(driver)
+        if state == "in":
+            return True
+        if state == "reset":
+            return _reset_required(account_key)
+
+        if state == "otp":
+            print("  🔐  2-step verification page — entering the code.")
+            if not _submit_otp(driver, totp_secret):
+                return False
+            state = _move_on(driver, "otp", 20)
+            if state == "otp":
+                print(f"  ⚠️  Still on the 2-step page after the code. {_page_complaint(driver)}")
+                return False
+            continue
+
+        if state == "switch":
+            picked = _pick_remembered_account(driver, email)
+            if not picked:
+                print("  ⚠️  Amazon's 'Switch accounts' page is up but nothing on it could be pressed.")
+                return False
+            print("  🔐  Amazon showed its 'Switch accounts' page — "
+                  + ("chose this store's account." if picked == "account" else "pressed 'Add account'."))
+            if _move_on(driver, "switch", 15) == "switch":
+                print("  ⚠️  The 'Switch accounts' page did not move on.")
+                return False
+            continue
+
+        if state == "email":
+            email_field = _find_with_fallbacks(driver, _SEL_EMAIL_OPTS, timeout=3)
+            if not email_field:
+                return False
+            email_field.clear()
+            _type_slowly(email_field, email)
+            time.sleep(random.uniform(0.3, 0.6))
+            # Only here: on the password page "#continue" is the "Sign in with a passkey" button.
+            continue_btn = _find_with_fallbacks(driver, _SEL_CONTINUE_OPTS, timeout=3)
+            if continue_btn and continue_btn.is_displayed() and "passkey" not in (continue_btn.text or "").lower():
+                continue_btn.click()
+            if _move_on(driver, "email", 12) == "email":
+                print(f"  ⚠️  The e-mail page did not move on. {_page_complaint(driver)}")
+                return False
+            continue
+
+        if state == "password":
+            if password_sent:
+                # Not tried a second time: the same password would only be refused again.
+                last_problem = (f"Amazon did not accept the saved password for '{account_key}': "
+                                f"{_page_complaint(driver) or 'the page gives no reason'}. If the password was changed, "
+                                f"save it with: python scripts/set_sc_credentials.py {account_key}")
+                print(f"  🛑  {last_problem}")
+                return False
+            # some sign-in pages carry the e-mail box and the password box together
+            for sel in _SEL_EMAIL_OPTS:
+                try:
+                    boxes = [b for b in driver.find_elements(By.CSS_SELECTOR, sel) if b.is_displayed()]
+                except Exception:
+                    boxes = []
+                if boxes:
+                    if not (boxes[0].get_attribute("value") or "").strip():
+                        _type_slowly(boxes[0], email)
+                        time.sleep(random.uniform(0.3, 0.6))
+                    break
+            pw_field = _find_with_fallbacks(driver, _SEL_PASSWORD_OPTS, timeout=5)
+            if not pw_field:
+                print(f"  ⚠️  Password field not found. The page says: \"{_page_says(driver) or 'nothing readable'}\"")
+                return False
+            pw_field.clear()
+            _type_slowly(pw_field, password)
+            time.sleep(random.uniform(0.3, 0.6))
+            btn = _find_with_fallbacks(driver, _SEL_SIGNIN_OPTS, timeout=5)
+            if not btn:
+                print("  ⚠️  Sign-in button not found.")
+                return False
+            btn.click()
+            password_sent = True
+            _move_on(driver, "password", 25)        # the old page stays up while Amazon answers
+            continue
+
+        print(f"  ⚠️  A sign-in page this code does not know. The page says: "
+              f"\"{_page_says(driver) or 'nothing readable'}\" {_page_complaint(driver)}")
+        return False
+    print("  ⚠️  The sign-in took longer than two minutes.")
+    return False
+
+
 def auto_login(driver, account_identifier, max_attempts=2):
     """
     Detects and handles Amazon Seller Central login + OTP automatically.
@@ -339,106 +471,14 @@ def auto_login(driver, account_identifier, max_attempts=2):
 
     for attempt in range(1, max_attempts + 1):
         print(f"  🔐  Auto-login attempt {attempt}/{max_attempts} for '{account_key}'...")
-
         try:
-            # ── Where are we? (waits for the page to draw) ────────
-            state = _settle(driver)
-            if state == "in":
+            if _sign_in_once(driver, account_key, email, password, totp_secret):
                 print(f"  ✅  Auto-login successful for '{account_key}'.")
                 return True
-            if state == "reset":
-                return _reset_required(account_key)
-
-            # ── Step 0: already past the password? ────────────────
-            # Amazon keeps the 2SV step on its own page, and a session can arrive here
-            # directly — a retry after the password was accepted, or a tab that was already
-            # part-way through. Restarting from the email field then hunts for a password
-            # box that is no longer on the page and reports "Password field not found",
-            # which is what a real 2SV prompt looked like on 19 Sep. Go straight to the code.
-            if "ap/mfa" in (driver.current_url or "").lower() or _otp_field_present(driver):
-                print("  🔐  Already at the 2-step verification page — entering the code.")
-                if not _submit_otp(driver, totp_secret):
-                    continue
-                state = _settle(driver, 15)
-                if state == "in":
-                    print(f"  ✅  Auto-login successful for '{account_key}'.")
-                    return True
-                if state == "reset":
-                    return _reset_required(account_key)
-                print(f"  ⚠️  Still on a login page after the code (attempt {attempt}).")
-                continue
-
-            # ── Step 0b: "Switch accounts" — pick the store's own account ──
-            picked = _pick_remembered_account(driver, email)
-            if picked:
-                print("  🔐  Amazon showed its 'Switch accounts' page — "
-                      + ("chose this store's account." if picked == "account" else "pressed 'Add account'."))
-                state = _settle(driver, 15)          # what Amazon shows next decides, not the URL alone
-                if state == "in":
-                    print(f"  ✅  Auto-login successful for '{account_key}'.")
-                    return True
-                if state == "reset":
-                    return _reset_required(account_key)
-
-            # ── Step 1: Email ─────────────────────────────────────
-            # (not after choosing a remembered account: that page goes straight to the password)
-            email_field = None if picked == "account" else _find_with_fallbacks(driver, _SEL_EMAIL_OPTS, timeout=8)
-            if email_field:
-                email_field.clear()
-                _type_slowly(email_field, email)
-                time.sleep(random.uniform(0.3, 0.6))
-
-            # ── Step 1b: Click "Continue" if present ──────────────
-            # Amazon's two-step flow: email → Continue → password page
-            # IMPORTANT: Only click #continue on the email-step page.
-            # On the password-step page, #continue is the "Sign in with
-            # a passkey" button — clicking it triggers errors.
-            continue_btn = _find_with_fallbacks(driver, _SEL_CONTINUE_OPTS, timeout=3)
-            if continue_btn:
-                btn_text = continue_btn.text.strip().lower() if continue_btn.text else ""
-                password_already_visible = _find_with_fallbacks(driver, _SEL_PASSWORD_OPTS, timeout=2) is not None
-
-                if (continue_btn.is_displayed()
-                        and "passkey" not in btn_text
-                        and not password_already_visible):
-                    continue_btn.click()
-                    time.sleep(random.uniform(2.0, 3.5))
-
-            # ── Step 2: Password ──────────────────────────────────
-            pw_field = _find_with_fallbacks(driver, _SEL_PASSWORD_OPTS, timeout=10)
-            if not pw_field:
-                print(f"  ⚠️  Password field not found. The page says: \"{_page_says(driver) or 'nothing readable'}\"")
-                continue
-            pw_field.clear()
-            _type_slowly(pw_field, password)
-            time.sleep(random.uniform(0.3, 0.6))
-
-            # ── Step 3: Click Sign-In ─────────────────────────────
-            btn = _find_with_fallbacks(driver, _SEL_SIGNIN_OPTS, timeout=5)
-            if not btn:
-                print(f"  ⚠️  Sign-in button not found.")
-                continue
-            btn.click()
-            time.sleep(random.uniform(2.0, 3.5))
-
-            # ── Step 4: OTP / MFA ─────────────────────────────────
-            # Check if we landed on an OTP page
-            if "ap/mfa" in driver.current_url.lower() or _otp_field_present(driver):
-                if not _submit_otp(driver, totp_secret):
-                    continue
-
-            # ── Step 5: Verify success ────────────────────────────
-            state = _settle(driver, 15)
-            if state == "in":
-                print(f"  ✅  Auto-login successful for '{account_key}'.")
-                return True
-            if state == "reset":
-                return _reset_required(account_key)
-            print(f"  ⚠️  Still on a sign-in page after attempt {attempt}. The page says: "
-                  f"\"{_page_says(driver) or 'nothing readable'}\"")
-
+            if last_problem:                 # Amazon wants a new password: trying again changes nothing
+                return False
         except Exception as e:
-            print(f"  ❌  Login error on attempt {attempt}: {e}")
+            print(f"  ❌  Login error on attempt {attempt}: {str(e).splitlines()[0] if str(e) else type(e).__name__}")
 
     print(f"  ❌  Auto-login failed after {max_attempts} attempts for '{account_key}'.")
     last_problem = last_problem or f"the automatic sign-in for '{account_key}' did not get through (page: {_page_says(driver) or 'unknown'})"
