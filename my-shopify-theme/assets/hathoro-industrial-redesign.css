@@ -1,0 +1,2091 @@
+/* ==========================================================================
+   HATHORO — NAVY BLUE & CRISP WHITE INDUSTRIAL REDESIGN
+   Typography: Montserrat (400, 500, 600, 700, 800)
+   Palette:
+     - Primary Navy Blue:      #0f2342
+     - Deep Navy Dark:         #09172e
+     - Navy Hover / Accent:    #1b3764
+     - Soft Navy Tint:         #f4f7fb
+     - Navy Pill Background:   #e8eff8
+     - Pure White Surface:     #ffffff
+     - Subtle Hairline Border: #e2e8f0
+     - Primary Text:           #0f172a
+     - Body Text:              #334155
+     - Muted Text:             #64748b
+   ========================================================================== */
+
+:root {
+  --hathoro-navy: #0f2342;
+  --hathoro-navy-dark: #09172e;
+  --hathoro-navy-hover: #1b3764;
+  --hathoro-navy-soft: #f4f7fb;
+  --hathoro-navy-pill: #e8eff8;
+  --hathoro-white: #ffffff;
+  --hathoro-ink: #0f172a;
+  --hathoro-body: #334155;
+  --hathoro-muted: #64748b;
+  --hathoro-border: #e2e8f0;
+  --hathoro-border-subtle: #f1f5f9;
+  --hathoro-green: #15803d;
+  --hathoro-green-bg: #ecfdf5;
+  --hathoro-radius: 10px;
+  --hathoro-radius-sm: 6px;
+  --hathoro-radius-lg: 14px;
+  --hathoro-shadow: 0 4px 20px rgba(15, 35, 66, 0.05);
+  --hathoro-shadow-hover: 0 14px 30px rgba(15, 35, 66, 0.10);
+
+  --font-body-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  --font-heading-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  --page-width: 136rem !important;
+}
+
+/* --------------------------------------------------------------------------
+   1. GLOBAL TYPOGRAPHY & LAYOUT (MONTSERRAT)
+   -------------------------------------------------------------------------- */
+html,
+body,
+button,
+input,
+select,
+textarea,
+.button,
+.h0, .h1, .h2, .h3, .h4, .h5, .h6,
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  letter-spacing: -0.01em;
+}
+
+body {
+  color: var(--hathoro-body);
+  background-color: var(--hathoro-white);
+  font-size: 1.5rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, .h1,
+h2, .h2,
+h3, .h3,
+h4, .h4 {
+  color: var(--hathoro-ink);
+  font-weight: 700 !important;
+  line-height: 1.26;
+  letter-spacing: -0.02em;
+}
+
+.page-width {
+  max-width: 1360px !important;
+  padding-left: 2.4rem !important;
+  padding-right: 2.4rem !important;
+}
+
+@media screen and (min-width: 990px) {
+  .page-width {
+    padding-left: 3.6rem !important;
+    padding-right: 3.6rem !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   2. STICKY HEADER & MINIMALIST NAVIGATION BAR
+   -------------------------------------------------------------------------- */
+.utility-bar,
+.announcement-bar-section .utility-bar {
+  background: var(--hathoro-navy-dark) !important;
+  color: var(--hathoro-white) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  min-height: 36px;
+}
+
+.announcement-bar__message {
+  font-family: 'Montserrat', sans-serif !important;
+  font-weight: 500 !important;
+  font-size: 1.22rem !important;
+  letter-spacing: 0.03em !important;
+  color: var(--hathoro-white) !important;
+  padding: 0.65rem 1rem !important;
+}
+
+/* Sticky Header Group */
+.hathoro-sticky-header-shell,
+.section-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 1000 !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(15, 35, 66, 0.06);
+}
+
+.header-wrapper {
+  background: var(--hathoro-white) !important;
+  border-bottom: 1px solid var(--hathoro-border) !important;
+}
+
+.header {
+  padding-top: 1.4rem !important;
+  padding-bottom: 1.4rem !important;
+  align-items: center !important;
+}
+
+/* Clean Minimalist Category Nav Bar (Sticks with Header) */
+.hathoro-minimal-nav {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hathoro-minimal-nav__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+}
+
+.hathoro-minimal-nav__links {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.hathoro-minimal-nav__links::-webkit-scrollbar {
+  display: none;
+}
+
+.hathoro-minimal-nav__link {
+  color: rgba(255, 255, 255, 0.88);
+  text-decoration: none;
+  font-size: 1.28rem;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 0.55rem 1.15rem;
+  border-radius: 6px;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.hathoro-minimal-nav__link:hover,
+.hathoro-minimal-nav__link--active {
+  color: var(--hathoro-white);
+  background: rgba(255, 255, 255, 0.14);
+  font-weight: 600;
+}
+
+.hathoro-minimal-search {
+  display: flex;
+  align-items: center;
+  background: var(--hathoro-white);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.35rem 0.45rem 0.35rem 1.4rem;
+  width: 300px;
+  transition: box-shadow 0.2s ease;
+}
+
+.hathoro-minimal-search:focus-within {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.25);
+}
+
+.hathoro-minimal-search input {
+  border: none !important;
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+  font-size: 1.28rem;
+  color: var(--hathoro-ink);
+  width: 100%;
+}
+
+.hathoro-minimal-search button {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+  border: none;
+  border-radius: 999px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+@media screen and (max-width: 749px) {
+  .hathoro-minimal-search {
+    display: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3. HOMEPAGE ZORO-STYLE CATEGORY EXPLORER GRID (FIRST SECTION)
+   -------------------------------------------------------------------------- */
+.hathoro-category-explorer {
+  padding: 4.4rem 0 2.4rem;
+  background: var(--hathoro-white);
+}
+
+.hathoro-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.8rem;
+}
+
+@media screen and (min-width: 750px) {
+  .hathoro-category-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-category-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2rem;
+  }
+}
+
+.hathoro-category-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius);
+  padding: 2rem;
+  text-decoration: none;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.hathoro-category-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--hathoro-shadow-hover);
+  border-color: var(--hathoro-navy);
+}
+
+.hathoro-category-card__top {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  margin-bottom: 1.4rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid var(--hathoro-border-subtle);
+}
+
+.hathoro-category-card__icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: var(--hathoro-navy-soft);
+  color: var(--hathoro-navy);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  flex-shrink: 0;
+}
+
+.hathoro-category-card__title {
+  font-size: 1.55rem !important;
+  font-weight: 700 !important;
+  color: var(--hathoro-navy) !important;
+  margin: 0 !important;
+  line-height: 1.3;
+}
+
+.hathoro-category-card__sublist {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.4rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.hathoro-category-card__sublist li {
+  font-size: 1.28rem;
+  color: var(--hathoro-body);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.hathoro-category-card__sublist li::before {
+  content: '›';
+  color: var(--hathoro-navy);
+  font-weight: 700;
+}
+
+.hathoro-category-card__cta {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--hathoro-navy);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* --------------------------------------------------------------------------
+   4. PRODUCT CARDS ("YOU MAY ALSO LIKE" & TOP SELLING)
+   -------------------------------------------------------------------------- */
+.product-grid {
+  row-gap: 2.4rem !important;
+  column-gap: 2rem !important;
+}
+
+.card-wrapper.product-card-wrapper {
+  height: 100%;
+}
+
+.card-wrapper .card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: var(--hathoro-white) !important;
+  border: 1px solid var(--hathoro-border) !important;
+  border-radius: var(--hathoro-radius) !important;
+  box-shadow: var(--hathoro-shadow) !important;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease !important;
+  overflow: hidden;
+}
+
+.card-wrapper:hover .card {
+  transform: translateY(-4px);
+  box-shadow: var(--hathoro-shadow-hover) !important;
+  border-color: var(--hathoro-navy) !important;
+}
+
+.card__inner {
+  background: var(--hathoro-white) !important;
+  border-bottom: 1px solid var(--hathoro-border-subtle);
+  padding: 1.6rem;
+}
+
+.card__media .media img {
+  object-fit: contain !important;
+  padding: 0.4rem;
+  background: var(--hathoro-white);
+  transition: transform 0.3s ease !important;
+}
+
+.card-wrapper:hover .card__media .media img {
+  transform: scale(1.04);
+}
+
+.card > .card__content {
+  padding: 1.6rem 1.8rem 1.8rem !important;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-grow: 1;
+}
+
+.card__information {
+  padding: 0 !important;
+  margin-bottom: 1.2rem;
+}
+
+.hathoro-card-vendor,
+.card-information .caption-with-letter-spacing {
+  font-size: 1.08rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  color: var(--hathoro-navy) !important;
+  margin-bottom: 0.4rem !important;
+  display: block;
+}
+
+.card__heading,
+.card__heading a {
+  font-family: 'Montserrat', sans-serif !important;
+  font-size: 1.4rem !important;
+  font-weight: 600 !important;
+  line-height: 1.42 !important;
+  color: var(--hathoro-ink) !important;
+  text-decoration: none !important;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 4rem;
+  margin-bottom: 0.7rem;
+}
+
+.card-wrapper:hover .card__heading a {
+  color: var(--hathoro-navy) !important;
+}
+
+.hathoro-card-stock {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 1.12rem;
+  font-weight: 600;
+  color: var(--hathoro-green);
+  margin: 0 0 0.6rem;
+}
+
+.hathoro-card-stock__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--hathoro-green);
+}
+
+.card-information .price {
+  font-family: 'Montserrat', sans-serif !important;
+  font-size: 1.75rem !important;
+  font-weight: 700 !important;
+  color: var(--hathoro-navy) !important;
+}
+
+.card-information .price--on-sale .price-item--regular {
+  font-size: 1.3rem !important;
+  font-weight: 400 !important;
+  color: var(--hathoro-muted) !important;
+}
+
+.card-information .price--on-sale .price-item--sale {
+  color: var(--hathoro-navy) !important;
+  font-weight: 700 !important;
+}
+
+.card__badge .badge {
+  font-family: 'Montserrat', sans-serif !important;
+  font-size: 1.08rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  padding: 0.38rem 0.85rem !important;
+  border-radius: 6px !important;
+  background-color: var(--hathoro-navy) !important;
+  color: var(--hathoro-white) !important;
+  border: none !important;
+}
+
+.quick-add {
+  margin-top: 0.8rem !important;
+}
+
+.quick-add__submit {
+  font-family: 'Montserrat', sans-serif !important;
+  font-size: 1.3rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.02em !important;
+  min-height: 4.2rem !important;
+  border-radius: var(--hathoro-radius-sm) !important;
+  background: var(--hathoro-navy) !important;
+  color: var(--hathoro-white) !important;
+  border: 1px solid var(--hathoro-navy) !important;
+  transition: all 0.18s ease !important;
+}
+
+.quick-add__submit:hover:not([disabled]) {
+  background: var(--hathoro-navy-hover) !important;
+  border-color: var(--hathoro-navy-hover) !important;
+}
+
+.quick-add__submit::before,
+.quick-add__submit::after {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   5. FULFILLED PRODUCT DETAIL PAGE (PDP) — NAVY BLUE & WHITE
+   -------------------------------------------------------------------------- */
+.hathoro-breadcrumb-bar {
+  background: var(--hathoro-navy-soft);
+  border-bottom: 1px solid var(--hathoro-border);
+  padding: 1.2rem 0;
+  margin-bottom: 2.8rem;
+  font-size: 1.25rem;
+  color: var(--hathoro-muted);
+}
+
+.hathoro-breadcrumb-bar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.hathoro-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+}
+
+.hathoro-breadcrumbs a {
+  color: var(--hathoro-navy);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.hathoro-breadcrumbs a:hover {
+  text-decoration: underline;
+}
+
+.hathoro-breadcrumbs__current {
+  color: var(--hathoro-body);
+  font-weight: 500;
+  max-width: 440px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Gallery Stage */
+.product__media-wrapper .product-media-container {
+  background: var(--hathoro-white) !important;
+  border: 1px solid var(--hathoro-border) !important;
+  border-radius: var(--hathoro-radius-lg) !important;
+  box-shadow: var(--hathoro-shadow) !important;
+  padding: 2.4rem;
+}
+
+.product__media-wrapper .product__media img {
+  object-fit: contain !important;
+}
+
+.thumbnail[aria-current] {
+  border: 2px solid var(--hathoro-navy) !important;
+}
+
+/* Fulfilled Buy Box Card */
+.product__info-container {
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-lg);
+  padding: 2.8rem !important;
+  box-shadow: var(--hathoro-shadow);
+}
+
+@media screen and (max-width: 749px) {
+  .product__info-container {
+    padding: 2rem !important;
+  }
+}
+
+.hathoro-pdp-meta-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-bottom: 1.2rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid var(--hathoro-border-subtle);
+}
+
+.hathoro-pdp-brand-badge {
+  background: var(--hathoro-navy-pill);
+  color: var(--hathoro-navy);
+  font-size: 1.15rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0.4rem 1rem;
+  border-radius: 5px;
+  text-decoration: none;
+}
+
+.hathoro-pdp-sku-badge {
+  background: var(--hathoro-navy-soft);
+  color: var(--hathoro-body);
+  font-size: 1.15rem;
+  font-weight: 600;
+  padding: 0.4rem 1rem;
+  border-radius: 5px;
+}
+
+.hathoro-pdp-stock-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--hathoro-green-bg);
+  color: var(--hathoro-green);
+  font-weight: 700;
+  font-size: 1.15rem;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  margin-left: auto;
+}
+
+.hathoro-pdp-stock-pill__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--hathoro-green);
+}
+
+.product__info-container > .product__text,
+.product__info-container > .product__sku,
+.product__info-container > .product__inventory,
+.product__info-container > .product__description {
+  display: none !important;
+}
+
+.product__title {
+  margin: 0 0 1rem !important;
+}
+
+.product__title h1 {
+  font-size: 2.35rem !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+  color: var(--hathoro-ink) !important;
+}
+
+.hathoro-pdp-submeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.6rem;
+  font-size: 1.28rem;
+}
+
+.hathoro-pdp-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  color: var(--hathoro-body);
+}
+
+.hathoro-pdp-rating__stars {
+  color: #f59e0b;
+  letter-spacing: 1px;
+  font-size: 1.45rem;
+}
+
+.hathoro-pdp-jump-link {
+  color: var(--hathoro-navy);
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 1.25rem;
+  border-bottom: 1px solid var(--hathoro-navy);
+}
+
+/* Price & Delivery Box */
+.hathoro-pdp-price-card {
+  background: var(--hathoro-navy-soft);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius);
+  padding: 1.5rem 1.8rem;
+  margin-bottom: 1.6rem;
+}
+
+.product__info-container .price--large {
+  font-size: 2.9rem !important;
+  font-weight: 800 !important;
+  color: var(--hathoro-navy) !important;
+}
+
+.product__info-container .price--on-sale .price-item--regular {
+  font-size: 1.6rem !important;
+  font-weight: 500 !important;
+  color: var(--hathoro-muted) !important;
+}
+
+.product__info-container .price .badge {
+  background: var(--hathoro-navy) !important;
+  color: var(--hathoro-white) !important;
+  font-weight: 700 !important;
+  font-size: 1.15rem !important;
+  padding: 0.4rem 0.95rem !important;
+  border-radius: 6px !important;
+}
+
+.hathoro-shipping-promise {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-left: 4px solid var(--hathoro-navy);
+  border-radius: var(--hathoro-radius-sm);
+  padding: 1.2rem 1.4rem;
+  color: var(--hathoro-body);
+  font-size: 1.3rem;
+  line-height: 1.5;
+  margin: 0 0 1.8rem;
+}
+
+.hathoro-shipping-promise__icon {
+  width: 20px;
+  height: 20px;
+  color: var(--hathoro-navy);
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+/* Quantity + Solid Navy Blue Add to Cart Button */
+.quantity {
+  border: 1.5px solid var(--hathoro-border) !important;
+  border-radius: var(--hathoro-radius-sm) !important;
+  background: var(--hathoro-white) !important;
+  min-height: 5.2rem !important;
+}
+
+.quantity::before,
+.quantity::after {
+  display: none !important;
+}
+
+.quantity__input {
+  font-family: 'Montserrat', sans-serif !important;
+  font-weight: 700 !important;
+  font-size: 1.5rem !important;
+  color: var(--hathoro-ink) !important;
+}
+
+.product-form__submit {
+  font-family: 'Montserrat', sans-serif !important;
+  font-size: 1.48rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.03em !important;
+  text-transform: uppercase !important;
+  min-height: 5.2rem !important;
+  border-radius: var(--hathoro-radius-sm) !important;
+  background: var(--hathoro-navy) !important;
+  color: var(--hathoro-white) !important;
+  border: 1px solid var(--hathoro-navy) !important;
+  box-shadow: 0 6px 16px rgba(15, 35, 66, 0.18) !important;
+  transition: background 0.2s ease, transform 0.15s ease !important;
+}
+
+.product-form__submit:hover:not([disabled]) {
+  background: var(--hathoro-navy-hover) !important;
+  border-color: var(--hathoro-navy-hover) !important;
+  transform: translateY(-1px);
+}
+
+.product-form__submit::before,
+.product-form__submit::after {
+  display: none !important;
+}
+
+/* Buy Box Key Highlights */
+.hathoro-buybox-highlights {
+  margin-top: 1.8rem;
+  padding-top: 1.6rem;
+  border-top: 1px solid var(--hathoro-border);
+}
+
+.hathoro-buybox-highlights__title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--hathoro-navy);
+  margin: 0 0 0.8rem;
+}
+
+.hathoro-buybox-highlights__list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.8rem;
+  font-size: 1.32rem;
+  line-height: 1.55;
+  color: var(--hathoro-body);
+}
+
+.hathoro-buybox-highlights__list li {
+  position: relative;
+  padding-left: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.hathoro-buybox-highlights__list li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-weight: 800;
+  color: var(--hathoro-navy);
+}
+
+.product__info-container .icon-with-text {
+  background: var(--hathoro-navy-soft);
+  border-radius: var(--hathoro-radius-sm);
+  padding: 1.2rem !important;
+  margin-top: 1.6rem !important;
+}
+
+.product__info-container .icon-with-text .h4 {
+  font-size: 1.2rem !important;
+  font-weight: 600 !important;
+  color: var(--hathoro-navy) !important;
+}
+
+/* --------------------------------------------------------------------------
+   6. SIDE-BY-SIDE OVERVIEW & ZORO TECHNICAL SPECIFICATIONS MATRIX
+   -------------------------------------------------------------------------- */
+.hathoro-pdp-details-hub {
+  margin-top: 4.8rem;
+}
+
+.hathoro-pdp-overview-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.8rem;
+  align-items: start;
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-pdp-overview-grid {
+    grid-template-columns: 1.22fr 0.78fr;
+    gap: 3.2rem;
+  }
+}
+
+.hathoro-pdp-card {
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-lg);
+  box-shadow: var(--hathoro-shadow);
+  overflow: hidden;
+}
+
+.hathoro-pdp-card__header {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+  padding: 1.5rem 2.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hathoro-pdp-card__title {
+  color: var(--hathoro-white) !important;
+  font-size: 1.65rem !important;
+  font-weight: 700 !important;
+  margin: 0 !important;
+}
+
+.hathoro-pdp-card__badge {
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--hathoro-white);
+  padding: 0.35rem 0.9rem;
+  border-radius: 4px;
+}
+
+.hathoro-pdp-card__body {
+  padding: 2.4rem;
+}
+
+.hathoro-formatted-description {
+  font-size: 1.48rem !important;
+  line-height: 1.75 !important;
+  color: var(--hathoro-body) !important;
+}
+
+.hathoro-formatted-description p {
+  margin: 0 0 1.4rem;
+}
+
+.hathoro-formatted-description h3 {
+  font-size: 1.65rem !important;
+  font-weight: 700 !important;
+  color: var(--hathoro-navy) !important;
+  margin: 2rem 0 1.2rem !important;
+}
+
+.hathoro-formatted-description ul {
+  list-style: none !important;
+  padding: 0 !important;
+  margin: 1.2rem 0 0 !important;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.hathoro-formatted-description ul li {
+  position: relative;
+  padding: 1rem 1.4rem 1rem 3.6rem;
+  background: var(--hathoro-navy-soft);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-sm);
+  font-size: 1.4rem;
+  line-height: 1.55;
+  color: var(--hathoro-ink);
+}
+
+.hathoro-formatted-description ul li::before {
+  content: '✓';
+  position: absolute;
+  left: 1.2rem;
+  top: 1.05rem;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+  font-size: 1.05rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Zoro-Style 2-Column Zebra Specifications Table */
+.hathoro-specs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 1.38rem;
+}
+
+.hathoro-specs-table tr {
+  border-bottom: 1px solid var(--hathoro-border);
+}
+
+.hathoro-specs-table tr:last-child {
+  border-bottom: none;
+}
+
+.hathoro-specs-table tr:nth-child(odd) {
+  background: var(--hathoro-navy-soft);
+}
+
+.hathoro-specs-table tr:nth-child(even) {
+  background: var(--hathoro-white);
+}
+
+.hathoro-specs-table th,
+.hathoro-specs-table td {
+  padding: 1.15rem 1.8rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.hathoro-specs-table th {
+  width: 44%;
+  font-weight: 700;
+  color: var(--hathoro-ink);
+  border-right: 1px solid var(--hathoro-border);
+}
+
+.hathoro-specs-table td {
+  width: 56%;
+  font-weight: 500;
+  color: var(--hathoro-body);
+}
+
+/* --------------------------------------------------------------------------
+   7. PDP FULFILLMENT SECTIONS: NAVY ADVANTAGE BANNER, REVIEWS & FAQ
+   -------------------------------------------------------------------------- */
+.hathoro-navy-banner {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+  border-radius: var(--hathoro-radius-lg);
+  padding: 3.6rem 3.2rem;
+  margin-top: 4rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 2.4rem;
+}
+
+.hathoro-navy-banner__item h4 {
+  color: var(--hathoro-white) !important;
+  font-size: 1.55rem !important;
+  font-weight: 700 !important;
+  margin: 0 0 0.6rem !important;
+}
+
+.hathoro-navy-banner__item p {
+  color: #cbd5e1;
+  font-size: 1.32rem;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* Customer Reviews Section on PDP */
+.hathoro-reviews-section {
+  margin-top: 4.8rem;
+  padding-top: 4.4rem;
+  border-top: 1px solid var(--hathoro-border);
+}
+
+.hathoro-reviews-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.4rem;
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-reviews-grid {
+    grid-template-columns: 300px 1fr;
+    gap: 3.2rem;
+  }
+}
+
+.hathoro-reviews-summary {
+  background: var(--hathoro-navy-soft);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-lg);
+  padding: 2.8rem;
+  text-align: center;
+}
+
+.hathoro-reviews-summary__score {
+  font-size: 4.4rem;
+  font-weight: 800;
+  color: var(--hathoro-navy);
+  line-height: 1;
+}
+
+.hathoro-reviews-summary__stars {
+  color: #f59e0b;
+  font-size: 2rem;
+  letter-spacing: 2px;
+  margin: 0.8rem 0;
+}
+
+.hathoro-reviews-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.8rem;
+}
+
+.hathoro-review-card {
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius);
+  padding: 2.2rem;
+  box-shadow: var(--hathoro-shadow);
+}
+
+.hathoro-review-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.hathoro-review-card__verified {
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: var(--hathoro-green);
+  background: var(--hathoro-green-bg);
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+}
+
+.hathoro-review-card h4 {
+  font-size: 1.48rem !important;
+  margin: 0 0 0.6rem !important;
+  color: var(--hathoro-ink) !important;
+}
+
+.hathoro-review-card p {
+  font-size: 1.35rem;
+  line-height: 1.6;
+  color: var(--hathoro-body);
+  margin: 0 0 1.2rem;
+}
+
+.hathoro-review-card__author {
+  font-size: 1.22rem;
+  font-weight: 600;
+  color: var(--hathoro-muted);
+}
+
+/* FAQ Accordion Section on PDP */
+.hathoro-faq-section {
+  margin-top: 4.8rem;
+  padding-top: 4.4rem;
+  border-top: 1px solid var(--hathoro-border);
+}
+
+.hathoro-faq-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.2rem;
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-faq-list {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.6rem;
+  }
+}
+
+.hathoro-faq-item {
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius);
+  padding: 1.6rem 2rem;
+}
+
+.hathoro-faq-item summary {
+  font-size: 1.45rem;
+  font-weight: 700;
+  color: var(--hathoro-navy);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.hathoro-faq-item summary::-webkit-details-marker {
+  display: none;
+}
+
+.hathoro-faq-item summary::after {
+  content: '+';
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: var(--hathoro-navy);
+}
+
+.hathoro-faq-item[open] summary::after {
+  content: '−';
+}
+
+.hathoro-faq-item p {
+  margin: 1rem 0 0;
+  font-size: 1.35rem;
+  line-height: 1.6;
+  color: var(--hathoro-body);
+}
+
+/* "You May Also Like" Section */
+.related-products {
+  background: var(--hathoro-navy-soft);
+  border-top: 1px solid var(--hathoro-border);
+  padding-top: 5.2rem !important;
+  padding-bottom: 6rem !important;
+  margin-top: 5.2rem;
+}
+
+.hathoro-section-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.6rem;
+  margin-bottom: 2.8rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 2px solid var(--hathoro-border);
+}
+
+.hathoro-section-eyebrow {
+  display: inline-block;
+  font-size: 1.12rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--hathoro-navy);
+  background: var(--hathoro-navy-pill);
+  padding: 0.3rem 0.85rem;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.related-products__heading {
+  font-size: 2.5rem !important;
+  font-weight: 700 !important;
+  color: var(--hathoro-navy) !important;
+  margin: 0 !important;
+}
+
+/* --------------------------------------------------------------------------
+   8. ZORO-STYLE COMPREHENSIVE MULTI-TIER FOOTER (BRANDED FOR HATHORO)
+   -------------------------------------------------------------------------- */
+.hathoro-zoro-footer {
+  background: var(--hathoro-navy-dark);
+  color: #cbd5e1;
+  font-size: 1.32rem;
+  margin-top: 0;
+}
+
+.hathoro-zoro-footer__top-cta {
+  background: var(--hathoro-navy);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 3.2rem 0;
+}
+
+.hathoro-zoro-footer__top-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2.4rem;
+}
+
+.hathoro-zoro-footer__newsletter {
+  flex: 1;
+  min-width: 280px;
+  max-width: 560px;
+}
+
+.hathoro-zoro-footer__newsletter h3 {
+  color: var(--hathoro-white) !important;
+  font-size: 1.85rem !important;
+  font-weight: 700 !important;
+  margin: 0 0 0.4rem !important;
+}
+
+.hathoro-zoro-footer__newsletter p {
+  color: #cbd5e1;
+  margin: 0 0 1.2rem;
+  font-size: 1.32rem;
+}
+
+.hathoro-zoro-footer__form {
+  display: flex;
+  gap: 0.8rem;
+}
+
+.hathoro-zoro-footer__form input {
+  flex: 1;
+  padding: 1.1rem 1.4rem;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--hathoro-white);
+  color: var(--hathoro-ink);
+  font-size: 1.35rem;
+  outline: none;
+}
+
+.hathoro-zoro-footer__form button {
+  padding: 1.1rem 2.2rem;
+  border-radius: 6px;
+  border: 1px solid var(--hathoro-white);
+  background: transparent;
+  color: var(--hathoro-white);
+  font-weight: 700;
+  font-size: 1.32rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.hathoro-zoro-footer__form button:hover {
+  background: var(--hathoro-white);
+  color: var(--hathoro-navy);
+}
+
+.hathoro-zoro-footer__hotline {
+  display: flex;
+  align-items: center;
+  gap: 2.4rem;
+  flex-wrap: wrap;
+}
+
+.hathoro-zoro-footer__hotline-box {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 1.2rem 1.8rem;
+}
+
+.hathoro-zoro-footer__hotline-box strong {
+  display: block;
+  color: var(--hathoro-white);
+  font-size: 1.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.hathoro-zoro-footer__hotline-box span {
+  font-size: 1.2rem;
+  color: #94a3b8;
+}
+
+/* 5-Column Directory Grid */
+.hathoro-zoro-footer__main {
+  padding: 4.8rem 0 4rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hathoro-zoro-footer__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3.2rem;
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-zoro-footer__grid {
+    grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr;
+    gap: 2.8rem;
+  }
+}
+
+.hathoro-zoro-footer__col h4 {
+  color: var(--hathoro-white) !important;
+  font-size: 1.42rem !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 1.4rem !important;
+}
+
+.hathoro-zoro-footer__col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.hathoro-zoro-footer__col a {
+  color: #cbd5e1;
+  text-decoration: none;
+  font-size: 1.32rem;
+  transition: color 0.15s ease;
+}
+
+.hathoro-zoro-footer__col a:hover {
+  color: var(--hathoro-white);
+  text-decoration: underline;
+}
+
+.hathoro-zoro-footer__bottom {
+  padding: 2.4rem 0;
+  font-size: 1.22rem;
+  color: #94a3b8;
+}
+
+.hathoro-zoro-footer__bottom-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1.6rem;
+}
+
+.hathoro-zoro-footer__legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.8rem;
+}
+
+.hathoro-zoro-footer__legal-links a {
+  color: #94a3b8;
+  text-decoration: none;
+}
+
+.hathoro-zoro-footer__legal-links a:hover {
+  color: var(--hathoro-white);
+}
+
+.hathoro-zoro-footer__payments {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.hathoro-zoro-footer__pay-pill {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--hathoro-white);
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 0.35rem 0.8rem;
+  border-radius: 4px;
+}
+
+/* Hide default sparse Shopify footer when our comprehensive Zoro-style Hathoro footer renders */
+.shopify-section-group-footer-group {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   12. TOP HERO BANNERS SHOWCASE (ZORO / GEMPLERS SPLIT INDUSTRIAL HERO)
+   -------------------------------------------------------------------------- */
+.hathoro-top-banners {
+  padding: 2.4rem 0 0.8rem;
+  background: linear-gradient(180deg, var(--hathoro-navy-soft) 0%, var(--hathoro-white) 100%);
+  border-bottom: 1px solid var(--hathoro-border);
+}
+
+.hathoro-top-banners__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.8rem;
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-top-banners__grid {
+    grid-template-columns: 1.85fr 1fr;
+    gap: 2rem;
+    align-items: stretch;
+  }
+}
+
+/* Primary Left Hero Banner (Deep Navy Blue & Crisp White) */
+.hathoro-hero-main {
+  background: linear-gradient(135deg, #09172e 0%, #0f2342 58%, #16325c 100%);
+  border-radius: var(--hathoro-radius-lg);
+  padding: 3.2rem 3.4rem;
+  color: var(--hathoro-white);
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.4rem;
+  align-items: center;
+  box-shadow: 0 14px 34px rgba(9, 23, 46, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@media screen and (min-width: 750px) {
+  .hathoro-hero-main {
+    grid-template-columns: 1.35fr 0.85fr;
+    padding: 3.8rem 4rem;
+  }
+}
+
+.hathoro-hero-main::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+  background-size: 22px 22px;
+  pointer-events: none;
+}
+
+.hathoro-hero-main__content {
+  position: relative;
+  z-index: 2;
+}
+
+.hathoro-hero-main__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #e0f2fe;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+  margin-bottom: 1.4rem;
+}
+
+.hathoro-hero-main__title {
+  color: var(--hathoro-white) !important;
+  font-size: clamp(2.4rem, 2.7vw, 3.3rem) !important;
+  font-weight: 800 !important;
+  line-height: 1.18 !important;
+  letter-spacing: -0.02em !important;
+  margin: 0 0 1.2rem !important;
+}
+
+.hathoro-hero-main__subtitle {
+  color: #cbd5e1;
+  font-size: 1.38rem;
+  line-height: 1.6;
+  margin: 0 0 2.2rem;
+  max-width: 52rem;
+}
+
+.hathoro-hero-main__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem;
+}
+
+.hathoro-hero-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.28rem;
+  font-weight: 700;
+  text-decoration: none;
+  padding: 1.15rem 2.2rem;
+  border-radius: var(--hathoro-radius-sm);
+  transition: all 0.18s ease;
+}
+
+.hathoro-hero-btn--primary {
+  background: var(--hathoro-white);
+  color: var(--hathoro-navy-dark);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+}
+
+.hathoro-hero-btn--primary:hover {
+  background: #f1f5f9;
+  transform: translateY(-1px);
+}
+
+.hathoro-hero-btn--secondary {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--hathoro-white);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+}
+
+.hathoro-hero-btn--secondary:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Right Visual Showcase Card inside Hero */
+.hathoro-hero-main__showcase {
+  position: relative;
+  z-index: 2;
+  background: var(--hathoro-white);
+  border-radius: var(--hathoro-radius);
+  padding: 1.8rem;
+  color: var(--hathoro-ink);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+.hathoro-hero-main__showcase-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.hathoro-hero-main__showcase-badge {
+  background: var(--hathoro-green-bg);
+  color: var(--hathoro-green);
+  font-size: 1.05rem;
+  font-weight: 800;
+  padding: 0.3rem 0.8rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.hathoro-hero-main__showcase-sku {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--hathoro-muted);
+}
+
+.hathoro-hero-main__showcase-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+.hathoro-hero-main__showcase-item {
+  background: var(--hathoro-navy-soft);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-sm);
+  padding: 1rem;
+  text-align: center;
+  text-decoration: none;
+  color: var(--hathoro-ink);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.hathoro-hero-main__showcase-item:hover {
+  border-color: var(--hathoro-navy);
+  transform: translateY(-2px);
+}
+
+.hathoro-hero-main__showcase-item span {
+  display: block;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--hathoro-navy);
+  margin-top: 0.4rem;
+}
+
+.hathoro-hero-main__showcase-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 1rem;
+  border-top: 1px solid var(--hathoro-border);
+  font-size: 1.18rem;
+  font-weight: 700;
+  color: var(--hathoro-navy);
+}
+
+/* Right Stacked Promo Banners */
+.hathoro-hero-side {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 1.8rem;
+}
+
+.hathoro-promo-card {
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-lg);
+  padding: 2.2rem 2.4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: var(--hathoro-shadow);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hathoro-promo-card:hover {
+  border-color: var(--hathoro-navy);
+  box-shadow: var(--hathoro-shadow-lg);
+}
+
+.hathoro-promo-card--navy-tint {
+  background: linear-gradient(135deg, #ffffff 0%, #f0f5fc 100%);
+  border-left: 4px solid var(--hathoro-navy);
+}
+
+.hathoro-promo-card--accent-tint {
+  background: linear-gradient(135deg, #0f2342 0%, #1a3660 100%);
+  color: var(--hathoro-white);
+  border-color: #0f2342;
+}
+
+.hathoro-promo-card__badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.35rem 0.9rem;
+  border-radius: 4px;
+  margin-bottom: 0.9rem;
+}
+
+.hathoro-promo-card--navy-tint .hathoro-promo-card__badge {
+  background: var(--hathoro-green-bg);
+  color: var(--hathoro-green);
+}
+
+.hathoro-promo-card--accent-tint .hathoro-promo-card__badge {
+  background: rgba(255, 255, 255, 0.16);
+  color: #e0f2fe;
+}
+
+.hathoro-promo-card__title {
+  font-size: 1.75rem !important;
+  font-weight: 800 !important;
+  line-height: 1.28 !important;
+  margin: 0 0 0.6rem !important;
+}
+
+.hathoro-promo-card--navy-tint .hathoro-promo-card__title {
+  color: var(--hathoro-navy-dark) !important;
+}
+
+.hathoro-promo-card--accent-tint .hathoro-promo-card__title {
+  color: var(--hathoro-white) !important;
+}
+
+.hathoro-promo-card__desc {
+  font-size: 1.26rem;
+  line-height: 1.5;
+  margin: 0 0 1.2rem;
+}
+
+.hathoro-promo-card--navy-tint .hathoro-promo-card__desc {
+  color: var(--hathoro-body);
+}
+
+.hathoro-promo-card--accent-tint .hathoro-promo-card__desc {
+  color: #cbd5e1;
+}
+
+.hathoro-promo-card__link {
+  font-size: 1.24rem;
+  font-weight: 700;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hathoro-promo-card--navy-tint .hathoro-promo-card__link {
+  color: var(--hathoro-navy);
+}
+
+.hathoro-promo-card--accent-tint .hathoro-promo-card__link {
+  color: #ffffff;
+}
+
+.hathoro-promo-card__link:hover {
+  text-decoration: underline;
+}
+
+/* 4-Item Top Trust Strip Under Hero Banners */
+.hathoro-top-trust-bar {
+  margin-top: 1.8rem;
+  padding: 1.3rem 2rem;
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.2rem;
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-top-trust-bar {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.hathoro-top-trust-bar__item {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 1.24rem;
+  font-weight: 600;
+  color: var(--hathoro-ink);
+}
+
+.hathoro-top-trust-bar__icon {
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 8px;
+  background: var(--hathoro-navy-soft);
+  color: var(--hathoro-navy);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}
+
+.hathoro-top-trust-bar__item strong {
+  display: block;
+  font-size: 1.26rem;
+  font-weight: 700;
+  color: var(--hathoro-navy-dark);
+}
+
+.hathoro-top-trust-bar__item span {
+  display: block;
+  font-size: 1.14rem;
+  color: var(--hathoro-muted);
+  font-weight: 500;
+}
+
+/* Clickable Subcategory Links inside Category Explorer Cards */
+.hathoro-category-card__title-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.hathoro-category-card__title-link:hover .hathoro-category-card__title {
+  text-decoration: underline;
+}
+
+.hathoro-category-card__sublist a {
+  color: var(--hathoro-body);
+  text-decoration: none;
+  display: inline-block;
+  padding: 0.1rem 0;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.hathoro-category-card__sublist a:hover {
+  color: var(--hathoro-navy);
+  font-weight: 700;
+  text-decoration: underline;
+  transform: translateX(2px);
+}
+
+.hathoro-category-card__cta {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hathoro-category-card__cta:hover {
+  text-decoration: underline;
+}
+
+/* --------------------------------------------------------------------------
+   13. COLLECTION / CATEGORY CATALOG PAGE HEADER & DEPARTMENT PILLS
+   -------------------------------------------------------------------------- */
+.hathoro-collection-header {
+  padding: 1.8rem 0 2.4rem;
+  background: linear-gradient(180deg, var(--hathoro-navy-soft) 0%, var(--hathoro-white) 100%);
+  border-bottom: 1px solid var(--hathoro-border);
+}
+
+.hathoro-collection-header__card {
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-lg);
+  padding: 2.6rem 3rem;
+  box-shadow: var(--hathoro-shadow);
+}
+
+.hathoro-collection-header__main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--hathoro-border);
+}
+
+.hathoro-collection-header__title {
+  font-size: clamp(2.2rem, 2.5vw, 3rem) !important;
+  font-weight: 800 !important;
+  color: var(--hathoro-navy-dark) !important;
+  margin: 0.4rem 0 0.8rem !important;
+}
+
+.hathoro-collection-header__description {
+  font-size: 1.38rem;
+  line-height: 1.6;
+  color: var(--hathoro-body);
+  max-width: 72rem;
+  margin: 0;
+}
+
+.hathoro-collection-header__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.8rem;
+}
+
+.hathoro-collection-header__count {
+  background: var(--hathoro-green-bg);
+  color: var(--hathoro-green);
+  font-size: 1.2rem;
+  font-weight: 700;
+  padding: 0.5rem 1.2rem;
+  border-radius: 999px;
+}
+
+.hathoro-collection-header__ship {
+  background: var(--hathoro-navy-soft);
+  color: var(--hathoro-navy);
+  font-size: 1.18rem;
+  font-weight: 600;
+  padding: 0.45rem 1.1rem;
+  border-radius: 6px;
+}
+
+.hathoro-collection-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  padding-top: 1.8rem;
+}
+
+.hathoro-collection-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--hathoro-navy-soft);
+  border: 1px solid var(--hathoro-border);
+  color: var(--hathoro-navy);
+  font-size: 1.22rem;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 0.65rem 1.35rem;
+  border-radius: 999px;
+  transition: all 0.15s ease;
+}
+
+.hathoro-collection-pill:hover,
+.hathoro-collection-pill--active {
+  background: var(--hathoro-navy);
+  border-color: var(--hathoro-navy);
+  color: var(--hathoro-white);
+}
+
+.hathoro-collection-pill__num {
+  font-size: 1.1rem;
+  opacity: 0.78;
+}
+
+/* --------------------------------------------------------------------------
+   14. BUILT-IN HATHORO CONTENT, SUPPORT, POLICY & B2B PAGES HUB
+   -------------------------------------------------------------------------- */
+.hathoro-info-hub {
+  padding: 3.2rem 0 6.4rem;
+  background: var(--hathoro-bg);
+}
+
+.hathoro-info-hub__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2.8rem;
+  align-items: start;
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-info-hub__grid {
+    grid-template-columns: 280px 1fr;
+    gap: 3.2rem;
+  }
+}
+
+.hathoro-info-sidebar {
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-lg);
+  padding: 2rem;
+  box-shadow: var(--hathoro-shadow);
+}
+
+.hathoro-info-sidebar__group {
+  margin-bottom: 1.8rem;
+}
+
+.hathoro-info-sidebar__group:last-child {
+  margin-bottom: 0;
+}
+
+.hathoro-info-sidebar__heading {
+  font-size: 1.12rem !important;
+  font-weight: 800 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--hathoro-muted) !important;
+  margin: 0 0 0.8rem !important;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--hathoro-border);
+}
+
+.hathoro-info-sidebar__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.hathoro-info-sidebar__link {
+  display: block;
+  padding: 0.7rem 1rem;
+  border-radius: 6px;
+  font-size: 1.28rem;
+  font-weight: 600;
+  color: var(--hathoro-body);
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.hathoro-info-sidebar__link:hover,
+.hathoro-info-sidebar__link--active {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+}
+
+.hathoro-info-article {
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius-lg);
+  box-shadow: var(--hathoro-shadow);
+  overflow: hidden;
+}
+
+.hathoro-info-article__banner {
+  background: linear-gradient(135deg, #09172e 0%, #0f2342 100%);
+  color: var(--hathoro-white);
+  padding: 3rem 3.4rem;
+}
+
+.hathoro-info-article__eyebrow {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.14);
+  color: #e0f2fe;
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  margin-bottom: 1rem;
+}
+
+.hathoro-info-article__title {
+  color: var(--hathoro-white) !important;
+  font-size: clamp(2.2rem, 2.5vw, 3rem) !important;
+  font-weight: 800 !important;
+  margin: 0 0 0.6rem !important;
+}
+
+.hathoro-info-article__subtitle {
+  color: #cbd5e1;
+  font-size: 1.4rem;
+  margin: 0;
+  line-height: 1.55;
+}
+
+.hathoro-info-article__body {
+  padding: 3.2rem 3.4rem;
+  font-size: 1.44rem;
+  line-height: 1.75;
+  color: var(--hathoro-body);
+}
+
+.hathoro-info-article__body h3 {
+  font-size: 1.8rem !important;
+  font-weight: 800 !important;
+  color: var(--hathoro-navy-dark) !important;
+  margin: 2.4rem 0 1rem !important;
+}
+
+.hathoro-info-article__body h3:first-child {
+  margin-top: 0 !important;
+}
+
+.hathoro-info-form {
+  background: var(--hathoro-navy-soft);
+  border: 1px solid var(--hathoro-border);
+  border-radius: var(--hathoro-radius);
+  padding: 2.4rem;
+  margin-top: 2.2rem;
+  display: grid;
+  gap: 1.4rem;
+}
+
+.hathoro-info-form label {
+  display: block;
+  font-size: 1.24rem;
+  font-weight: 700;
+  color: var(--hathoro-navy-dark);
+  margin-bottom: 0.5rem;
+}
+
+.hathoro-info-form input,
+.hathoro-info-form select,
+.hathoro-info-form textarea {
+  width: 100%;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.35rem;
+  padding: 1.1rem 1.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--hathoro-border-strong);
+  background: var(--hathoro-white);
+  color: var(--hathoro-ink);
+}
+
+.hathoro-info-form button {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+  border: none;
+  border-radius: 6px;
+  padding: 1.25rem 2.4rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.32rem;
+  font-weight: 700;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.hathoro-info-form button:hover {
+  background: var(--hathoro-navy-hover);
+}
+
+
