@@ -4341,7 +4341,7 @@ def _delivery_gap_hold(amazon_deliver_by, zoro_estimate, limit, ships_fast):
     return (not fast), gap, why
 
 
-_DELIVERY_GAP_ALERTED = set()           # amazon_ids already alerted this run (one alert per order)
+_DELIVERY_GAP_ALERTED = set()           # "<kind>:<amazon_id>" already alerted this run (one per order and reason)
 _DELIVERY_UNKNOWN_TRIES = {}            # amazon_id -> tries with no Zoro delivery date (not placed)
 _PAYMENT_DECLINED_TRIES = {}            # amazon_id -> cycles Zoro declined the card (not placed)
 _CART_BUSY_TRIES = {}                   # amazon_id -> cycles Zoro said the cart was busy (not placed)
@@ -4392,23 +4392,57 @@ def _notify_alt_main_oos(driver, main_skus, account=""):
     print(f"  📸 ALT order: Zoro page of {', '.join(s for s, _ in shots)} → '<code> OOS' sent after the order alert")
 
 
-def _notify_delivery_gap(amazon_id, asin, sku, why, ship_by="", buyer="", city="", state=""):
-    """One WhatsApp + Telegram alert per held order — the ship-by date keeps running while it waits."""
-    if amazon_id in _DELIVERY_GAP_ALERTED:
-        return
-    _DELIVERY_GAP_ALERTED.add(amazon_id)
+# One header per reason (owner, 11 Nov 2026): every one of these used to arrive as "DELIVERY TIME HIGH …
+# Labelled 'Delivery time high' on Amazon", although only the two late-date reasons write that label and
+# three of them have nothing to do with delivery.
+_HELD_KINDS = {
+    "late":           ("🐢", "DELIVERY TIME HIGH"),
+    "no_date":        ("🐢", "NO ZORO DELIVERY DATE"),
+    "cart_busy":      ("🛒", "ZORO CART BUSY"),
+    "card_declined":  ("💳", "ZORO DECLINED THE CARD"),
+    "shared_account": ("👥", "TWO PROFILES ON ONE ZORO ACCOUNT"),
+}
+
+
+def _held_order_text(kind, amazon_id, asin, sku, why, ship_by="", buyer="", city="", state="", labelled=True):
+    """(header, text) of the alert for an order the placer did not buy."""
+    icon, title = _HELD_KINDS.get(kind, _HELD_KINDS["late"])
     loc = f"{city}, {state}".strip(", ")
-    text = (f"Order {amazon_id} NOT placed — {why} ({asin} {sku}{', ' + buyer if buyer else ''}"
-            f"{' (' + loc + ')' if loc else ''}). Labelled '{DELIVERY_GAP_LABEL}' on Amazon"
-            f"{'; ship-by ' + ship_by if ship_by else ''}. Cancel it, or write Manual-C/-R to place it anyway.")
+    who = f"{asin} {sku}{', ' + buyer if buyer else ''}{' (' + loc + ')' if loc else ''}"
+    if kind == "late":
+        tail = (f"Labelled '{DELIVERY_GAP_LABEL}' on Amazon." if labelled else
+                f"⚠️ The '{DELIVERY_GAP_LABEL}' label could not be written on Amazon, so please set it by hand.")
+        tail += " Cancel it, or write Manual-C/-R to place it anyway."
+    elif kind == "no_date":
+        tail = ("Nothing is written on Amazon and it is tried again every cycle. Cancel it, or write Manual-C/-R "
+                "to place it without the date check.")
+    elif kind == "shared_account":
+        tail = "Nothing was bought and nothing is written on Amazon; the order waits."
+    else:                                   # cart_busy, card_declined
+        tail = "Nothing was bought and nothing is written on Amazon; it is tried again every cycle."
+    text = (f"Order {amazon_id} NOT placed — {why} ({who}). {tail}"
+            + (f" Ship-by {ship_by}." if ship_by else ""))
+    return f"{icon} {title}", text
+
+
+def _notify_delivery_gap(amazon_id, asin, sku, why, ship_by="", buyer="", city="", state="",
+                         kind="late", labelled=True):
+    """One WhatsApp + Telegram alert per held order and reason — the ship-by date keeps running while it
+    waits. kind: see _HELD_KINDS. labelled (kind 'late' only): the Amazon label write was confirmed."""
+    key = f"{kind}:{amazon_id}"
+    if key in _DELIVERY_GAP_ALERTED:
+        return
+    _DELIVERY_GAP_ALERTED.add(key)
+    header, text = _held_order_text(kind, amazon_id, asin, sku, why, ship_by, buyer, city, state, labelled)
+    icon, title = header.split(" ", 1)
     try:
         from utils.whatsapp import send_whatsapp_message
-        send_whatsapp_message("🐢 *DELIVERY TIME HIGH*\n" + text)
+        send_whatsapp_message(f"{icon} *{title}*\n" + text)
     except Exception as e:
         print(f"  ⚠️ WhatsApp alert error: {e}")
     try:
         from utils.telegram import send_telegram_message
-        send_telegram_message("🐢 <b>DELIVERY TIME HIGH</b>\n" + html.escape(text))
+        send_telegram_message(f"{icon} <b>{title}</b>\n" + html.escape(text))
     except Exception as e:
         print(f"  ⚠️ Telegram alert error: {e}")
 
@@ -5658,7 +5692,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         _notify_delivery_gap(amazon_id, asin_field, _sku_text,
                              f"Zoro delivers by {_zest}, {_gap} days after Amazon's deliver-by "
                              f"{order_detail.get('deliver_by_date', '')}", order_detail.get("ship_by_date", ""),
-                             buyer, city, state)
+                             buyer, city, state, kind="late", labelled=_ok)
         return True
 
     if _gap_limit > 0 and not manual_override and resolved_items and _pcart:
@@ -6976,7 +7010,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             _notify_delivery_gap(amazon_id, asin_field, sku_field,
                                  f"{PROFILE_NAME} is logged in to the same Zoro account as another running "
                                  f"profile — orders stop until each is on its own account",
-                                 order_detail.get("ship_by_date", ""), buyer, city, state)
+                                 order_detail.get("ship_by_date", ""), buyer, city, state, kind="shared_account")
     elif result_status == "CART_BUSY":
         # Zoro refused the order because the account's cart was still tied up with the previous
         # order (409 RESOURCE_CONFLICT / 422 "already being processed"). Nothing was bought, so the
@@ -6987,7 +7021,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         if _CART_BUSY_TRIES[amazon_id] == 6:
             _notify_delivery_gap(amazon_id, asin_field, sku_field,
                                  f"Zoro kept refusing the {PROFILE_NAME} cart (busy) on 6 tries",
-                                 order_detail.get("ship_by_date", ""), buyer, city, state)
+                                 order_detail.get("ship_by_date", ""), buyer, city, state, kind="cart_busy")
     elif result_status == "ZORO_NET":
         # Ultra mode: Zoro stopped answering before the order was sent (checkout/true_api.py). Nothing
         # was bought, so it is released and comes back next cycle instead of being locked.
@@ -7002,7 +7036,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         if _PAYMENT_DECLINED_TRIES[amazon_id] == 3:
             _notify_delivery_gap(amazon_id, asin_field, sku_field,
                                  f"Zoro declined the {PROFILE_NAME} card on 3 cycles (3 tries each) — check the card",
-                                 order_detail.get("ship_by_date", ""), buyer, city, state)
+                                 order_detail.get("ship_by_date", ""), buyer, city, state, kind="card_declined")
     elif result_status == "DELIVERY_UNKNOWN":
         # Neither Zoro page showed a delivery date: never buy blind (owner, 15 Oct 2026). Nothing
         # is written to Amazon, so the order comes back next cycle; after 3 tries a person is told.
@@ -7011,22 +7045,29 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                        f"NOT placed, retried next cycle")
         if _DELIVERY_UNKNOWN_TRIES[amazon_id] == 3:
             _notify_delivery_gap(amazon_id, asin_field, sku_field,
-                                 "Zoro showed no delivery date on 3 tries, so it was not bought",
-                                 order_detail.get("ship_by_date", ""), buyer, city, state)
+                                 "Zoro showed no delivery date on 3 tries",
+                                 order_detail.get("ship_by_date", ""), buyer, city, state, kind="no_date")
     elif result_status == "DELIVERY_TIME_HIGH":
         # Zoro's checkout page, for this address and cart, said "Delivery expected by" 4+ days after
         # Amazon's deliver-by — Place Order was NOT clicked (owner, 15 Oct 2026).
         _zd = addr.get("_zoro_deliver_by", "") if isinstance(addr, dict) else ""
         if defer_amazon_writes:
             _rush_defer_wb(amazon_id, DELIVERY_GAP_LABEL)
+            _gap_labelled = True
         else:
-            update_amazon_seller_id(driver, amazon_id, DELIVERY_GAP_LABEL, PROFILE_NAME)
+            try:
+                _gap_labelled = bool(update_amazon_seller_id(driver, amazon_id, DELIVERY_GAP_LABEL, PROFILE_NAME))
+            except Exception as _e:
+                _gap_labelled = False
+                print(f"  ⚠️  could not write '{DELIVERY_GAP_LABEL}' on {amazon_id}: {_e}")
         status_note = (f"Zoro checkout: delivery expected by {_zd}, past Amazon's deliver-by "
-                       f"{order_detail.get('deliver_by_date', '')} — labelled {DELIVERY_GAP_LABEL}, not placed")
+                       f"{order_detail.get('deliver_by_date', '')} — "
+                       + (f"labelled {DELIVERY_GAP_LABEL}" if _gap_labelled else f"'{DELIVERY_GAP_LABEL}' write NOT confirmed")
+                       + ", not placed")
         _notify_delivery_gap(amazon_id, asin_field, sku_field,
                              f"Zoro's checkout says delivery by {_zd}; Amazon's deliver-by is "
                              f"{order_detail.get('deliver_by_date', '')}", order_detail.get("ship_by_date", ""),
-                             buyer, city, state)
+                             buyer, city, state, kind="late", labelled=_gap_labelled)
     elif result_status == "PO_BOX_RESTRICTED":
         _po_box_park(driver, amazon_id, addr, "zoro_rejected", defer=defer_amazon_writes)
         status_note = f"PO Box not allowed by Zoro ({addr.get('city', '')}, {state}) — labelled {PO_BOX_LABEL}"
