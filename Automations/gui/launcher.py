@@ -660,6 +660,12 @@ class App(tk.Tk):
 
         # Raw debug logs file (verbose API / dup-check output goes here, not console)
         self._raw_log_path = os.path.join(SCRIPT_DIR, "data", "raw_logs.txt")
+        # While _poll hands over a tick's worth of lines, the two log files are written and the
+        # boxes scrolled once for the whole tick instead of once per line (_end_log_batch).
+        self._in_poll = False
+        self._poll_logged = False
+        self._console_log_buf = []
+        self._raw_log_buf = []
 
         self._current_page = "dashboard"
         # Attention panels (Unmapped / Needs Priority) are LIVE, session-scoped: they show only
@@ -3686,7 +3692,11 @@ class App(tk.Tk):
             return
         self._logs_text.configure(state="normal")
         self._append_logs_line(ts, text, source, needle)
+        self._trim_text(self._logs_text, self.LOGS_LIVE_MAX)
         self._logs_text.configure(state="disabled")
+        if self._in_poll:
+            self._poll_logged = True     # _end_log_batch scrolls once for the whole tick
+            return
         if self._logs_follow.get():
             self._logs_text.see("end")
 
@@ -5294,12 +5304,34 @@ class App(tk.Tk):
         except Exception:
             pass
 
+    # How many lines the live boxes keep. Before 12 Nov 2026 a new line was only ever ADDED:
+    # the console and the Logs page grew for the launcher's whole life (200k–500k lines a
+    # day on 9–11 Nov 2026), so its memory climbed and every insert and redraw got slower
+    # until the Mac lagged. Nothing is lost by trimming: _console_history (150k) still feeds
+    # the Logs page search and every filter change, and data/console_log.txt has every line.
+    CONSOLE_LIVE_MAX = 20000
+    LOGS_LIVE_MAX = 20000          # the Logs page renders at most this many (_refresh_logs_view)
+    FEED_LIVE_MAX = 2000
+
+    @staticmethod
+    def _trim_text(widget, max_lines, slack=1000):
+        """Drop a Text widget's oldest lines once it passes max_lines + slack (the widget must
+        be in state normal). Deleting in slack-sized chunks keeps it to one delete per
+        ~1,000 lines; Tk keeps the view on the line being read when lines above it go."""
+        try:
+            n = int(widget.index("end-1c").split(".")[0])
+            if n > max_lines + slack:
+                widget.delete("1.0", f"{n - max_lines}.0")
+        except Exception:
+            pass
+
     def _log(self, text, tag=None):
         self.console.configure(state="normal")
         if tag:
             self.console.insert("end", text, tag)
         else:
             self.console.insert("end", text)
+        self._trim_text(self.console, self.CONSOLE_LIVE_MAX)
         if self._auto_scroll.get():
             self.console.see("end")
         self.console.configure(state="disabled")
@@ -5314,9 +5346,13 @@ class App(tk.Tk):
             return
         self.console.configure(state="normal")
         self._insert_console_line(ts, text, source)
+        self._trim_text(self.console, self.CONSOLE_LIVE_MAX)
+        self.console.configure(state="disabled")
+        if self._in_poll:
+            self._poll_logged = True     # _end_log_batch scrolls + counts once for the tick
+            return
         if self._auto_scroll.get():
             self.console.see("end")
-        self.console.configure(state="disabled")
         self._update_console_line_count()
 
     def _refresh_console_view(self):
@@ -5343,6 +5379,7 @@ class App(tk.Tk):
             self._feed.insert("end", text + "\n", tag)
         else:
             self._feed.insert("end", text + "\n")
+        self._trim_text(self._feed, self.FEED_LIVE_MAX, slack=200)
         self._feed.see("end")
         self._feed.configure(state="disabled")
 
@@ -5757,8 +5794,12 @@ class App(tk.Tk):
     def _write_raw_log(self, line):
         """Append a line to the raw debug log file."""
         try:
+            entry = f"{datetime.now().strftime('%H:%M:%S')}  {line}\n"
+            if self._in_poll:
+                self._raw_log_buf.append(entry)
+                return
             with open(self._raw_log_path, "a", encoding="utf-8") as f:
-                f.write(f"{datetime.now().strftime('%H:%M:%S')}  {line}\n")
+                f.write(entry)
         except Exception:
             pass
 
@@ -5768,14 +5809,54 @@ class App(tk.Tk):
             today = datetime.now().strftime("%Y-%m-%d")
             if today != self._console_log_date:
                 self._console_log_date = today
-            path = self._console_log_path
-            with open(path, "a", encoding="utf-8") as f:
-                src_tag = f"[{source}] " if source else ""
-                f.write(f"{today} {ts}  {src_tag}{text}\n")
+            src_tag = f"[{source}] " if source else ""
+            entry = f"{today} {ts}  {src_tag}{text}\n"
+            if self._in_poll:
+                self._console_log_buf.append(entry)
+                return
+            with open(self._console_log_path, "a", encoding="utf-8") as f:
+                f.write(entry)
         except Exception:
             pass
 
+    def _end_log_batch(self):
+        """Close a _poll batch: write the buffered lines to both log files (one open each, not
+        two per line — up to a million a day) and scroll / count the boxes once."""
+        self._in_poll = False
+        for attr, path in (("_console_log_buf", self._console_log_path),
+                           ("_raw_log_buf", self._raw_log_path)):
+            buf = getattr(self, attr)
+            if not buf:
+                continue
+            setattr(self, attr, [])          # swap first: a line added meanwhile is never lost
+            try:
+                with open(path, "a", encoding="utf-8") as f:
+                    f.writelines(buf)
+            except Exception:
+                pass
+        if self._poll_logged:
+            self._poll_logged = False
+            try:
+                if self._auto_scroll.get():
+                    self.console.see("end")
+                self._update_console_line_count()
+                if hasattr(self, "_logs_text") and self._logs_follow.get():
+                    self._logs_text.see("end")
+            except Exception:
+                pass
+
     def _poll(self):
+        self._in_poll = True
+        try:
+            self._poll_readers()
+        finally:
+            self._end_log_batch()
+        if self._readers:
+            self.after(250, self._poll)
+        else:
+            self._polling = False
+
+    def _poll_readers(self):
         for name in list(self._readers):
             wfh, rfh, lp = self._readers[name]
             tag = self._tags.get(name, name)
@@ -5819,12 +5900,11 @@ class App(tk.Tk):
                 except OSError:
                     pass
                 del self._readers[name]
+                # _on_done may log, open a dialog or start the next run: it runs outside the
+                # batch exactly as before, with everything read so far already written.
+                self._end_log_batch()
                 self._on_done(name, proc.returncode)
-
-        if self._readers:
-            self.after(250, self._poll)
-        else:
-            self._polling = False
+                self._in_poll = True
 
     # ══════════════════════════════════════════════════════════════════════
     #  PARSE output → stats
