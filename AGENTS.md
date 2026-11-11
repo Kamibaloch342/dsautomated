@@ -63,10 +63,9 @@ agent and the dashboard run as macOS LaunchAgents.
   and every alternative are out, the placer notes the listing (`listing_oos`) and at the end of the
   cycle decides PL / DS from the product's brand, makes the change on Seller Central in its own
   Chrome (DS → quantity 0; PL → handling time 7 days, never 0 — `engine/offer_edit.py`, driven and
-  tried on the live Edit Listing → Offer page on 10 Nov 2026), says what was done (a handling-time
-  change to the Insights group only, a listing taken off sale to the Orders Alerts and Insights
-  groups; a listing that still holds what the guard set is not announced again — 11 Nov 2026) and
-  adds the code to Restock Watch. Every 30 min it asks Zoro again, and
+  tried on the live Edit Listing → Offer page on 10 Nov 2026), says what was done in the
+  store's Insights group only, never in Orders Alerts (a listing that still holds what the guard
+  set is not announced again — both 11 Nov 2026) and adds the code to Restock Watch. Every 30 min it asks Zoro again, and
   when the main code or an alternative is buyable for 3 units of the listing it puts back what it
   changed itself (quantity → `prev_value`; handling time → `prev_value` or the store's default) —
   only while the field still holds what the guard set. Two placers of one store take a row with

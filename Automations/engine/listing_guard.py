@@ -18,9 +18,8 @@ How it runs, so that an order is never held up:
                          listing_oos (unified DB). No browser, never raises.
   2. handle_pending()  — called by the placer at the END of a cycle, when its Chrome is idle:
        a. each new row: decide PL / DS, make the change on Seller Central (engine/offer_edit.py),
-          say what was done, put the Zoro code on the dashboard's Restock Watch. A handling-time
-          change goes to the store's Insights group only (owner, 11 Nov 2026); a listing taken off
-          sale, or one the placer could not decide on, to the Orders Alerts group as well;
+          say what was done in the store's Insights group — and only there, never in the Orders
+          Alerts group (owner, 11 Nov 2026) — and put the Zoro code on the dashboard's Restock Watch;
        b. each listing changed earlier: every restock_check_minutes ask Zoro whether the main code or
           an alternative is buyable again, and if so put the listing back — the quantity it had, or
           the handling time it had (owner, 10 Nov 2026: "Yes, build it").
@@ -331,17 +330,11 @@ def _watch_restock(row: Dict[str, Any], remove: bool = False) -> bool:
         return False
 
 
-def _groups_for(action: str) -> Tuple[str, ...]:
-    """Which WhatsApp groups a listing's messages go to. A handling-time change (own-brand listing)
-    is an Insights matter only (owner, 11 Nov 2026); a listing taken off sale, or one the placer could
-    not decide on, also goes to the store's Orders Alerts group."""
-    return ("insights",) if action == "handling" else ("orders", "insights")
-
-
 def _tell(store: str, text: str, row: Dict[str, Any], kind: str, short: str,
-          to: Tuple[str, ...] = ("orders", "insights")) -> None:
-    """One message to each of the store's groups named in *to*, and one row for the dashboard's
-    Insights tab (utils/listing_events.py)."""
+          to: Tuple[str, ...] = ("insights",)) -> None:
+    """One message to the store's Insights group, and one row for the dashboard's Insights tab
+    (utils/listing_events.py). Listing changes are an Insights matter: nothing from the guard goes to
+    the Orders Alerts group (owner, 11 Nov 2026 — first for handling time, then for quantity 0 too)."""
     try:
         from utils.whatsapp import get_whatsapp_group, send_whatsapp_message
         groups = []
@@ -423,7 +416,7 @@ def _handle_new(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict
         else f"NOT changed on Amazon: {res['note']}"))
     if not quiet:
         _tell(store, _message(row, kind, brand, src, action, res, watching, bool(cfg["restore"])), row,
-              "listing_off_sale", short, to=_groups_for(action))
+              "listing_off_sale", short)
     cols = dict(kind=kind, brand=brand, kind_from=src, action=action, status="changed" if res["done"] else "alerted",
                 action_at=_now(), note=res["note"][:300], restock_checked_at=None)
     if res["changed"]:
@@ -495,7 +488,7 @@ def _restore(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[st
                                        f"• To do by hand: {listing_url(asin)}"]
     print(f"  ✅ LISTING RESTOCKED AT ZORO: {asin} ({sku or '?'}) — {note}")
     _watch_restock(row, remove=True)
-    _tell(store, "\n".join(lines), row, "listing_back_on_sale", note, to=_groups_for(action))
+    _tell(store, "\n".join(lines), row, "listing_back_on_sale", note)
     _update(store, asin, status=status, restored_at=_now(), note=note[:300])
 
 
