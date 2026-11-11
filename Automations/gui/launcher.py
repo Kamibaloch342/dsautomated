@@ -216,6 +216,350 @@ DEFAULT_CFG = {
 }
 
 
+# ── Watch list (🛑 Watch list, right end of the bar under the header) ──────────────────────────────
+# Owner, 11 Nov 2026: "in the launcher, I would like to see what ASINs are in the watch list". A listing goes
+# on the list (engine/listing_guard.py → table listing_oos) when the placer finds its Zoro code and every
+# alternative out of stock; while that store's placer runs it asks Zoro again every restock_check_minutes and
+# the listing leaves the list when Zoro has the item again (status 'restored' or 'restock_told').
+# Read-only here, never written.
+WATCH_LIST_DB = os.path.join(SCRIPT_DIR, "data", "automations_unified.db")
+_WATCH_LIST_CLOSED = ("restored", "restock_told")       # = listing_guard._CLOSED: off the list
+_WATCH_LIST_COLS = ("store", "asin", "seller_sku", "title", "zoro_code", "alt_codes", "kind", "brand", "kind_from",
+                    "orders", "last_order", "first_seen", "last_seen", "status", "action", "action_at", "note",
+                    "prev_value", "changed_to", "restock_checked_at", "restored_at")
+# (row key, column heading, width) of the window's table
+_WATCH_LIST_TREE = (("store", "Store", 70), ("asin", "ASIN", 105), ("sku", "SKU", 130), ("kind", "PL/DS", 48),
+                    ("title", "Title", 250), ("zoro", "Zoro code (+ alternatives)", 160),
+                    ("did", "What the placer did", 200), ("since", "On the list since", 112),
+                    ("checked", "Last Zoro check", 118), ("orders", "OOS orders", 72))
+# The second table, "Back in stock — needs a person": listings Zoro restocked in the last _WATCH_LIST_BACK_DAYS
+# days (status 'restock_told': every restock the placer did not put back itself). Its note picks the 'To do'
+# text. Same first columns as the table above.
+_WATCH_LIST_BACK_DAYS = 3
+_WATCH_LIST_BACK_TREE = (("store", "Store", 70), ("asin", "ASIN", 105), ("sku", "SKU", 130), ("kind", "PL/DS", 48),
+                         ("title", "Title", 250), ("code", "Zoro code back", 160), ("todo", "To do on Amazon", 200),
+                         ("back", "Back at Zoro since", 112), ("why", "Placer's note", 190))
+_WATCH_LIST_STATE = {
+    "new": "Waiting for the placer: it decides at the end of its next cycle.",
+    "working": "The placer is changing it on Seller Central right now.",
+    "recheck": "Orders kept coming, so the placer will look at Seller Central again.",
+    "changed": "Done on Seller Central. Waiting for Zoro to have it again.",
+    "alerted": "Nothing was changed on Seller Central. Waiting for Zoro to have it again.",
+    "restoring": "Zoro has it again: the placer is putting the listing back now.",
+}
+
+
+def _watch_list_settings():
+    """bot_config.json → listing_guard, read the way engine.listing_guard.settings() reads it: {'every': minutes
+    between the placer's Zoro checks (30 by default, 5 at least, as in _restock_pass), 'restore', 'enabled'}.
+    Never raises (it runs while the launcher's header is built): a missing or odd value keeps the default."""
+    out = {"every": 30, "restore": True, "enabled": True}
+    try:
+        cfg = _read_cfg_file()
+        raw = cfg.get("listing_guard") if isinstance(cfg, dict) else None
+        if not isinstance(raw, dict):
+            return out
+        for k in ("restore", "enabled"):
+            v = raw.get(k)
+            if v is not None and v != "":
+                out[k] = v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on")
+        v = raw.get("restock_check_minutes")
+        if v is not None and v != "":
+            out["every"] = max(5, int(float(v)))
+    except Exception:
+        pass
+    return out
+
+
+def _watch_list_every():
+    """bot_config.json → listing_guard.restock_check_minutes (30 by default, as in listing_guard). Never raises."""
+    try:
+        return int(_watch_list_settings()["every"])
+    except Exception:
+        return 30
+
+
+def _watch_list_intro(cfg):
+    """The line under the window's heading: how a listing gets on the list and leaves it."""
+    try:
+        every = int(cfg.get("every") or 30)
+        on = bool(cfg.get("restore", True)) and bool(cfg.get("enabled", True))
+        off = "enabled" if not cfg.get("enabled", True) else "restore"
+    except Exception:
+        every, on, off = 30, True, ""
+    check = (f"While that store's placer is running it checks Zoro every {every} minutes; when Zoro has the item "
+             "again it puts back the quantity or handling time it changed itself, and the listing leaves the list. "
+             f"⚠️ in 'Last Zoro check' = no check for more than {2 * every} minutes." if on else
+             f"The restock check is switched off (bot_config.json → listing_guard.{off} is false): when Zoro has "
+             "the item again, nothing is put back, so please do it by hand.")
+    return ("The placer puts a listing here when Zoro is out of its item and of every alternative in the sheet. "
+            + check + " Click a row for its details, double-click to open it in Seller Central.")
+
+
+def _watch_list_age(ts, now=None):
+    """Minutes since a local 'YYYY-mm-dd HH:MM:SS' time (listing_guard._now), None when empty or unreadable."""
+    try:
+        t = datetime.strptime(str(ts or "").strip()[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+    return ((now or datetime.now()) - t).total_seconds() / 60.0
+
+
+def _watch_list_ago(minutes):
+    """95 → '1 h 35 min', 3000 → '2 days 2 h'."""
+    m = int(max(0.0, float(minutes or 0)))
+    if m < 60:
+        return f"{m} min"
+    h, m = divmod(m, 60)
+    if h < 48:
+        return f"{h} h {m} min" if m else f"{h} h"
+    d, h = divmod(h, 24)
+    return f"{d} days {h} h" if h else f"{d} days"
+
+
+def _watch_list_url(asin):
+    """The listing in Seller Central's Manage Inventory (the link engine.listing_guard.listing_url builds)."""
+    import urllib.parse
+    return ("https://sellercentral.amazon.com/myinventory/inventory?fulfilledBy=all&page=1&pageSize=25"
+            f"&searchField=all&searchTerm={urllib.parse.quote(str(asin or ''))}&sort=date_created_desc&status=all")
+
+
+def _watch_list_short_title(title, limit=48):
+    """'Eagle Plastic Drum, 30 Gallon Drum, DOT Compliant' — the title's first comma parts, cut at a word."""
+    t = " ".join(str(title or "").split()).split(" | ")[0].strip(" ,.-")
+    out = ""
+    for part in (p.strip() for p in t.split(",")):
+        if not part:
+            continue
+        if out and len(out) + 2 + len(part) > limit:
+            break
+        out = f"{out}, {part}" if out else part
+    if len(out) > limit:
+        out = out[:limit].rsplit(" ", 1)[0].rstrip(" ,.-") + "…"
+    return out
+
+
+def _watch_list_when(ts):
+    """'2026-11-11 14:26:18' → '11 Nov 14:26' ('' when empty)."""
+    s = str(ts or "").strip()
+    if not s:
+        return ""
+    try:
+        return datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S").strftime("%d %b %H:%M")
+    except ValueError:
+        return s[:16]
+
+
+def _watch_list_did(r):
+    """What the placer did on Seller Central, in a few words: 'Quantity 11 → 0', 'Handling 1 → 7 days',
+    'Already 0', 'Already 7 days', 'Could not change …', 'Error — see details', 'Alert only (guard not armed)',
+    'Not decided yet'. prev_value / changed_to are the guard's own change (what a restore puts back); without
+    them the field already held the value, or the change failed (status 'alerted'): the note tells which —
+    'error: …' when handle_pending caught an exception, '… switched off (listing_guard.armed)' when the guard
+    only alerts."""
+    st = str(r.get("status") or "new").strip()
+    if st == "new":
+        return "Not decided yet"
+    if st == "working":
+        return "Being changed now"
+    act = str(r.get("action") or "").strip()
+    prev, to = str(r.get("prev_value") or "").strip(), str(r.get("changed_to") or "").strip()
+    note = " ".join(str(r.get("note") or "").split())
+    m = re.search(r"already (\d+)", note)
+    if note.lower().startswith("error:"):
+        did = "Error — see details"
+    elif "switched off" in note.lower():
+        did = "Alert only (guard not armed)"
+    elif act not in ("qty0", "handling"):
+        did = "Could not tell PL or DS"
+    elif to:
+        did = f"Quantity {prev or '?'} → {to}" if act == "qty0" else f"Handling {prev or 'default'} → {to} days"
+    elif st in ("changed", "recheck", "restoring"):
+        # 'quantity was already N' / 'handling time was already N days' are written only on a success
+        # (status 'changed'); on a failed row 'already 3 tries' would read as success
+        n = m.group(1) if m else ""
+        did = f"Already {n or '0'}" if act == "qty0" else (f"Already {n} days" if n else "Already raised")
+    else:
+        did = "Could not change quantity" if act == "qty0" else "Could not change handling time"
+    if st == "recheck":
+        did += " · checking again"
+    elif st == "restoring":
+        did += " · putting back now"
+    return did
+
+
+def _watch_list_detail(r):
+    """The lines under the tables for the selected listing: full title, PL / DS, where it stands, the note."""
+    kind, brand, src = r.get("kind") or "", r.get("brand") or "", r.get("kind_from") or ""
+    if r.get("section") == "back":              # "Back in stock — needs a person"
+        mine = ("Our own brand" if kind == "PL" else "Not our brand" if kind == "DS" else "PL or DS was not decided")
+        why = str(r.get("why") or "").rstrip(" .")
+        lines = [f"{r.get('store', '')} · {r.get('asin', '')} · {r.get('full_title') or r.get('title') or ''}",
+                 f"{mine}{f' ({brand})' if brand and kind in ('PL', 'DS') else ''}. Zoro has {r.get('code') or '?'} "
+                 f"again since {r.get('back') or '?'}. {why}.",
+                 f"To do: {r.get('todo') or 'check the listing'} on Seller Central — double-click the row to open it."]
+        if r.get("last_order"):
+            lines[-1] += f" · Last order marked out of stock: {r['last_order']}"
+        return "\n".join(lines)
+    if kind == "PL":
+        what = f"Our own brand{f' ({brand})' if brand else ''}: it stays on sale with a longer handling time."
+    elif kind == "DS":
+        what = f"Not our brand{f' ({brand})' if brand else ''}: it goes off sale at Amazon quantity 0."
+    else:
+        what = "PL or DS is not decided yet."
+    if kind and src:
+        what += f" Brand from the {src}."
+    lines = [f"{r.get('store', '')} · {r.get('asin', '')} · {r.get('full_title') or r.get('title') or ''}",
+             f"{what} {_WATCH_LIST_STATE.get(r.get('status') or '', r.get('status') or '')}"]
+    tail = []
+    if r.get("last_order"):
+        tail.append(f"Last order marked out of stock: {r['last_order']}"
+                    + (f" ({r['last_seen']})" if r.get("last_seen") else ""))
+    if r.get("note"):
+        tail.append(f"Placer's note: {r['note']}")
+    if tail:
+        lines.append(" · ".join(tail))
+    if r.get("stale"):
+        lines.append(f"⚠️ No Zoro check for {_watch_list_ago(r.get('check_age'))}, more than twice the "
+                     f"{r.get('every') or 30} minutes between checks: the {r.get('store') or ''} placer has not asked "
+                     "Zoro since. It asks only while it runs, at the end of a placing cycle.")
+    elif r.get("check_on") is False:
+        lines.append("The restock check is switched off in bot_config.json (listing_guard): when Zoro has the item "
+                     "again, nothing is put back, so please do it by hand.")
+    return "\n".join(lines)
+
+
+def _watch_list_query(where, params, order, db_path=None, timeout=3.0):
+    """listing_oos rows (dicts with the _WATCH_LIST_COLS keys; a column the table lacks reads None):
+    (rows, problem). rows is None when the table is not there yet; problem starts with '⚠️' when the
+    database could not be read. Read-only connection; never raises sqlite3 errors."""
+    path = db_path or WATCH_LIST_DB
+    if not os.path.exists(path):
+        return [], f"⚠️ The database is not there: {path}"
+    try:
+        import urllib.parse
+        con = sqlite3.connect(f"file:{urllib.parse.quote(path)}?mode=ro", uri=True, timeout=timeout)
+    except sqlite3.Error as e:
+        return [], f"⚠️ Could not open the database: {e}"
+    try:
+        have = {c[1] for c in con.execute("PRAGMA table_info(listing_oos)")}
+        if not have:
+            return None, ""
+        con.row_factory = sqlite3.Row
+        pick = ", ".join(c if c in have else f"NULL AS {c}" for c in _WATCH_LIST_COLS)
+        return [dict(x) for x in con.execute(f"SELECT {pick} FROM listing_oos WHERE {where} ORDER BY {order}",
+                                             params)], ""
+    except sqlite3.Error as e:
+        return [], f"⚠️ Could not read the watch list: {e}"
+    finally:
+        con.close()
+
+
+def _watch_list_rows(db_path=None, timeout=3.0, cfg=None):
+    """The listings on the watch list, newest first: (rows, note). Each row is a dict with the table's
+    columns (_WATCH_LIST_TREE keys) plus the details. note says why the list is empty, and starts with
+    '⚠️' when the database could not be read. cfg = _watch_list_settings() (read here when not given).
+    Read-only connection; never raises."""
+    raw, problem = _watch_list_query("COALESCE(status, 'new') NOT IN (?, ?)", _WATCH_LIST_CLOSED,
+                                     "COALESCE(first_seen, '') DESC, COALESCE(last_seen, '') DESC", db_path, timeout)
+    if problem:
+        return [], problem
+    if raw is None:
+        return [], "Nothing on the watch list yet: the placer has not found a listing out of stock at Zoro."
+    cfg = cfg if isinstance(cfg, dict) else _watch_list_settings()
+    every = int(cfg.get("every") or 30)
+    on = bool(cfg.get("restore", True)) and bool(cfg.get("enabled", True))
+    now = datetime.now()
+    rows = []
+    for r in raw:
+        alts = ", ".join(a.strip() for a in str(r.get("alt_codes") or "").split(",") if a.strip())
+        try:
+            orders = int(r.get("orders") or 0)
+        except (TypeError, ValueError):
+            orders = 0
+        title = " ".join(str(r.get("title") or "").split())
+        did = _watch_list_did(r)
+        st = r.get("status") or "new"
+        # 'Last Zoro check': the restock pass asks Zoro about 'changed' / 'alerted' rows every `every` minutes,
+        # counted from the change (action_at) until the first check. Older than twice that = the store's placer
+        # has not run a cycle for a while. A ttk.Treeview cell has no colour of its own: ⚠️ marks it.
+        ref = r.get("restock_checked_at") or (r.get("action_at") if st in ("changed", "alerted") else "")
+        age = _watch_list_age(ref, now) if ref else None
+        # only rows the restock pass really asks about (listing_guard._restock_pass: 'changed' / 'alerted'
+        # with a Zoro code) can be overdue
+        checked_rows = st in ("changed", "alerted") and bool(str(r.get("zoro_code") or "").strip())
+        stale = bool(on and checked_rows and age is not None and age > 2 * every)
+        checked = _watch_list_when(r.get("restock_checked_at")) or ("not yet" if on else "restock check off")
+        rows.append({
+            "section": "list",
+            "store": r.get("store") or "", "asin": r.get("asin") or "", "sku": r.get("seller_sku") or "",
+            "kind": r.get("kind") or "?", "title": _watch_list_short_title(title) or "—",
+            "zoro": (str(r.get("zoro_code") or "").strip() or "?") + (f" + {alts}" if alts else ""),
+            "did": did, "since": _watch_list_when(r.get("first_seen")),
+            "checked": f"⚠️ {checked}" if stale else checked, "orders": orders,
+            # details (the lines under the tables)
+            "full_title": title, "brand": r.get("brand") or "", "kind_from": r.get("kind_from") or "",
+            "status": st, "note": r.get("note") or "", "last_order": r.get("last_order") or "",
+            "last_seen": _watch_list_when(r.get("last_seen")),
+            "attention": did.startswith(("Could not", "Error", "Alert only")),
+            "stale": stale, "check_age": age, "every": every, "check_on": on,
+        })
+    return rows, ("" if rows else "The watch list is empty: no listing is waiting for Zoro to restock.")
+
+
+def _watch_list_note_tail(note, main=""):
+    """'Zoro G2388429 is in stock again; the placer had not changed …' → ('G2388429', 'The placer had not
+    changed …'): the Zoro code that came back and what the placer said after it (listing_guard._restore)."""
+    m = re.match(r"Zoro (\S+) is in stock again\s*(?:[;,—–-]\s*(?:but\s+)?)?(.*)$", str(note or ""), re.S)
+    if not m:
+        return (str(main or "").strip() or "?"), str(note or "")
+    tail = m.group(2).strip()
+    return m.group(1), ((tail[:1].upper() + tail[1:]) if tail else str(note or ""))
+
+
+def _watch_list_back_rows(db_path=None, timeout=3.0, days=_WATCH_LIST_BACK_DAYS):
+    """The table 'Back in stock — needs a person': listings Zoro restocked in the last `days` days (status 'restock_told',
+    restored_at since then) whose note says the placer left the Amazon listing as it was — it had not changed
+    it, did not know the old value, could not put it back, or found it changed by hand since. Newest first:
+    (rows, note); note starts with '⚠️' when the database could not be read. Read-only; never raises."""
+    raw, problem = _watch_list_query("COALESCE(status, '') = ?", ("restock_told",),
+                                     "COALESCE(restored_at, '') DESC", db_path, timeout)
+    if problem:
+        return [], problem.replace("the watch list", "the restocked listings")
+    since = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    rows = []
+    for r in raw or []:
+        note = " ".join(str(r.get("note") or "").split())
+        low = note.lower()
+        # every restock_told row needs a person (listing_guard._restore gives that status to every outcome
+        # but a real restore); the phrases only pick the 'To do' text below
+        if str(r.get("restored_at") or "")[:19] < since:
+            continue
+        code, why = _watch_list_note_tail(note, r.get("zoro_code"))
+        act, prev = str(r.get("action") or "").strip(), str(r.get("prev_value") or "").strip()
+        what = {"qty0": "quantity", "handling": "handling time"}.get(act, "")
+        if not what:
+            todo = "Check the listing by hand"
+        elif "changed by hand since" in low:
+            todo = f"Check the {what}: changed by hand"
+        elif "could not be put back" in low and prev.isdigit() and (act == "handling" or int(prev) > 0):
+            todo = f"Set the {what} back to {prev}" + ("" if act != "handling" else " day" if prev == "1" else " days")
+        else:
+            todo = f"Set the {what} by hand"
+        title = " ".join(str(r.get("title") or "").split())
+        rows.append({
+            "section": "back",
+            "store": r.get("store") or "", "asin": r.get("asin") or "", "sku": r.get("seller_sku") or "",
+            "kind": r.get("kind") or "?", "title": _watch_list_short_title(title) or "—",
+            "code": code, "todo": todo, "back": _watch_list_when(r.get("restored_at")), "why": why,
+            # details (the lines under the tables)
+            "full_title": title, "brand": r.get("brand") or "", "kind_from": r.get("kind_from") or "",
+            "status": r.get("status") or "", "note": note, "last_order": r.get("last_order") or "",
+            "attention": "could not be put back" in low,
+        })
+    return rows, ""
+
+
 class _Tip:
     """Minimal themed hover tooltip. Shows after a short delay, follows theme."""
     def __init__(self, widget, text, app):
@@ -944,6 +1288,8 @@ class App(tk.Tk):
             self._wa_inbox = WhatsAppInbox(self, bl)
         except Exception as e:
             print(f"  [WhatsApp inbox] not started: {e}")
+        # 🛑 Watch list sits at the right end of the bar under the header (_build_toast): the header has no
+        # room left at the window's 1200 px minimum width (11 Nov 2026: 1148 px used; a button here → 1267).
 
         rf = tk.Frame(hi, bg=self.CARD)
         rf.pack(side="right", pady=8)
@@ -975,6 +1321,20 @@ class App(tk.Tk):
         self._toast_lbl = tk.Label(self._toast_frame, text="", font=(self.FONT, 10, "bold"),
                                    bg="#1a1040", fg="#f5c542")
         self._toast_lbl.pack(expand=True)
+        # 🛑 Watch list (the listing guard's list): placed at the bar's right end, so the message stays centred
+        # and the header keeps its width.
+        watch = tk.Label(self._toast_frame, text="🛑 Watch list", font=(self.FONT, 9, "bold"), bg="#2a1f5c",
+                         fg=self.TEXT, padx=10, pady=1, cursor="hand2")
+        watch.place(relx=1.0, rely=0.5, anchor="e", x=-12)
+        # on release: the press stays with the tooltip's <ButtonPress> (it hides the tip); one binding per event
+        watch.bind("<ButtonRelease-1>", lambda _e: self._open_watch_list(), add="+")
+        watch.bind("<Enter>", lambda _e: watch.config(bg="#3b2d7a"), add="+")
+        watch.bind("<Leave>", lambda _e: watch.config(bg="#2a1f5c"), add="+")
+        self._tip(watch, "WATCH LIST:\n"
+                         "The listings the placer found out of stock at Zoro (main code and\n"
+                         f"every alternative). It checks Zoro again every {_watch_list_every()} minutes while\n"
+                         "that store's placer is running, and puts the listing back when Zoro\n"
+                         "has it. Click to see which ASINs are on it.")
         self._toast_msgs = [
             "Hello Mama! 💖", "Hello Papa! 💪",
             "Work hard Papa to get Mama! 🔥",
@@ -4495,6 +4855,310 @@ class App(tk.Tk):
             webbrowser.open(url)
         threading.Thread(target=go, daemon=True).start()
 
+    # ── Watch list window (🛑 Watch list in the bar under the header): the listings the listing guard watches ──
+    # Its timers run on the root (self.after), never on the Toplevel: destroying a Toplevel deletes the Tcl
+    # commands of the timers scheduled on it, and one still pending then fires into "invalid command name …"
+    # (an error dialog on macOS). The ids are kept in _wl_top / _wl_poll / _wl_auto and cancelled at close.
+    def _wl_alive(self):
+        """The watch-list window while it exists, else None. Never raises."""
+        win = getattr(self, "_wl_win", None)
+        try:
+            return win if win is not None and win.winfo_exists() else None
+        except tk.TclError:
+            return None
+
+    def _wl_cancel(self, *names):
+        """Cancel the window's pending timers (all three when no name is given)."""
+        for name in names or ("_wl_top", "_wl_poll", "_wl_auto"):
+            tid = getattr(self, name, None)
+            setattr(self, name, None)
+            if tid:
+                try:
+                    self.after_cancel(tid)
+                except Exception:
+                    pass
+
+    def _wl_untop(self):
+        self._wl_top = None
+        win = self._wl_alive()
+        if win is None:
+            self._wl_cancel()
+            return
+        try:
+            win.attributes("-topmost", False)
+        except tk.TclError:
+            pass
+
+    def _open_watch_list(self):
+        """Show the window (built once, then raised) and read the list again."""
+        win = self._wl_alive()
+        if win is None:
+            self._build_watch_list_window()
+            win = self._wl_win
+        win.deiconify()
+        win.lift()
+        win.attributes("-topmost", True)     # in front once, not pinned there
+        self._wl_cancel("_wl_top")
+        self._wl_top = self.after(1500, self._wl_untop)
+        self._refresh_watch_list()
+
+    def _build_watch_list_window(self):
+        self._wl_cancel()                    # timers of an earlier window, if one was destroyed some other way
+        win = tk.Toplevel(self)
+        win.title("Watch list — listings out of stock at Zoro")
+        win.configure(bg=self.BG)
+        try:
+            win.geometry(f"1320x700+{self.winfo_rootx() + 40}+{self.winfo_rooty() + 50}")
+        except Exception:
+            win.geometry("1320x700")
+        win.minsize(900, 440)
+        win.protocol("WM_DELETE_WINDOW", self._close_watch_list)
+        cfg = _watch_list_settings()
+
+        po, pi = self._panel(win)
+        po.pack(fill="both", expand=True, padx=8, pady=8)
+        h = self._heading(pi, "WATCH LIST — listings out of stock at Zoro", self.RED)
+        self._btn(h, "↻ Refresh", self.CYAN, self._refresh_watch_list, small=True).pack(side="right")
+        store = self._combo(h, ["All"] + list(STORES), 10)
+        store.set("All")
+        store.pack(side="right", padx=(0, 8))
+        store.bind("<<ComboboxSelected>>", lambda e: self._fill_watch_list(keep_view=False))
+        tk.Label(h, text="Store:", font=(self.MONO, 9), bg=self.CARD, fg=self.DIM).pack(side="right", padx=(0, 4))
+        count = tk.Label(h, text="", font=(self.MONO, 10, "bold"), bg=self.CARD, fg=self.AMBER)
+        count.pack(side="right", padx=(0, 10))
+        intro = tk.Label(pi, text=_watch_list_intro(cfg), font=(self.FONT, 9), bg=self.CARD, fg=self.MUTED,
+                         wraplength=1240, justify="left")
+        intro.pack(anchor="w", padx=14, pady=(2, 8))
+        detail = tk.Label(pi, text="", font=(self.FONT, 10), bg=self.CARD, fg=self.TEXT, wraplength=1240,
+                          justify="left", anchor="w")
+        detail.pack(side="bottom", fill="x", padx=14, pady=(0, 10))
+
+        st = ttk.Style(self)
+        st.configure("Watch.Treeview", background=self.BORDER, foreground=self.TEXT,
+                     fieldbackground=self.BORDER, rowheight=26, font=(self.FONT, 10))
+        st.configure("Watch.Treeview.Heading", background=self.CARD, foreground=self.ACCENT,
+                     font=(self.FONT, 10, "bold"), relief="flat", borderwidth=1)
+        st.map("Watch.Treeview", background=[("selected", "#33467c")], foreground=[("selected", self.TEXT)])
+
+        # Back in stock — needs a person: Zoro has the item again, the Amazon listing was left as it was
+        # (above the detail line; packed before the list so a short window squeezes the list, not this)
+        bk = tk.Frame(pi, bg=self.CARD)
+        bk.pack(side="bottom", fill="x", padx=12, pady=(6, 8))
+        bh = tk.Frame(bk, bg=self.CARD)
+        bh.pack(fill="x", padx=2, pady=(0, 4))
+        tk.Label(bh, text="BACK IN STOCK — NEEDS A PERSON", font=(self.FONT, 10, "bold"), bg=self.CARD,
+                 fg=self.GREEN).pack(side="left")
+        back_count = tk.Label(bh, text="", font=(self.MONO, 10, "bold"), bg=self.CARD, fg=self.AMBER)
+        back_count.pack(side="left", padx=(10, 0))
+        tk.Label(bh, text=f"Zoro has the item again (last {_WATCH_LIST_BACK_DAYS} days), but the placer left the "
+                          "Amazon listing as it was.", font=(self.FONT, 9), bg=self.CARD, fg=self.DIM).pack(
+                     side="left", padx=(10, 0))
+        back_none = tk.Label(bk, text="", font=(self.FONT, 10), bg=self.CARD, fg=self.DIM, anchor="w", justify="left")
+        bw = tk.Frame(bk, bg=self.CARD)
+        bw.columnconfigure(0, weight=1)
+        back = ttk.Treeview(bw, columns=[k for k, _h, _w in _WATCH_LIST_BACK_TREE], show="headings",
+                            selectmode="browse", style="Watch.Treeview", height=3)
+        for k, head, w in _WATCH_LIST_BACK_TREE:
+            back.heading(k, text=head)
+            back.column(k, width=w, minwidth=40, anchor="w", stretch=(k == "title"))
+        bsb = ttk.Scrollbar(bw, orient="vertical", command=back.yview)
+        back.configure(yscrollcommand=bsb.set)
+        back.grid(row=0, column=0, sticky="nsew")
+        bsb.grid(row=0, column=1, sticky="ns")
+        back.tag_configure("even", background=self.INP_BG)
+        back.tag_configure("odd", background="#11131a")
+        back.tag_configure("attention", foreground=self.AMBER)
+        back.bind("<<TreeviewSelect>>", lambda e: self._on_watch_list_select(e, "back"))
+        back.bind("<Double-1>", self._on_watch_list_dblclick)
+
+        tw = tk.Frame(pi, bg=self.CARD)
+        tw.pack(fill="both", expand=True, padx=12, pady=(0, 6))
+        tw.rowconfigure(0, weight=1)
+        tw.columnconfigure(0, weight=1)
+        tree = ttk.Treeview(tw, columns=[k for k, _h, _w in _WATCH_LIST_TREE], show="headings",
+                            selectmode="browse", style="Watch.Treeview")
+        for k, head, w in _WATCH_LIST_TREE:
+            tree.heading(k, text=head)
+            tree.column(k, width=w, minwidth=40, anchor="e" if k == "orders" else "w", stretch=(k == "title"))
+        vsb = ttk.Scrollbar(tw, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(tw, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        tree.tag_configure("even", background=self.INP_BG)
+        tree.tag_configure("odd", background="#11131a")
+        tree.tag_configure("attention", foreground=self.AMBER)
+        tree.bind("<<TreeviewSelect>>", self._on_watch_list_select)
+        tree.bind("<Double-1>", self._on_watch_list_dblclick)
+
+        self._wl_win, self._wl_tree, self._wl_store, self._wl_count, self._wl_detail = win, tree, store, count, detail
+        self._wl_intro, self._wl_back_tree, self._wl_back_wrap, self._wl_back_none, self._wl_back_count = (
+            intro, back, bw, back_none, back_count)
+        self._wl_rows, self._wl_note, self._wl_back, self._wl_back_note, self._wl_cfg = [], "", [], "", cfg
+        self._wl_by_item, self._wl_back_by_item, self._wl_sel, self._wl_busy = {}, {}, None, False
+
+    def _refresh_watch_list(self):
+        """Read both lists off the Tk thread (two small read-only SELECTs) and fill the window when they are
+        back. While the window is open it reads again every 2 minutes."""
+        win = self._wl_alive()
+        if win is None:
+            self._wl_cancel()
+            return
+        if self._wl_busy:                    # a read is on its way; it schedules the next one
+            return
+        import threading
+        self._wl_busy = True
+        self._wl_count.config(text="reading…", fg=self.DIM)
+        box = {}
+
+        def work():
+            cfg = _watch_list_settings()
+            try:
+                res = _watch_list_rows(cfg=cfg)
+            except Exception as e:               # the readers do not raise; belt and braces
+                res = ([], f"⚠️ Could not read the watch list: {e}")
+            try:
+                back = _watch_list_back_rows()
+            except Exception as e:
+                back = ([], f"⚠️ Could not read the restocked listings: {e}")
+            box["cfg"], box["back"] = cfg, back
+            box["res"] = res                     # last: wait() takes the box when this is there
+
+        def wait(tries=0):
+            self._wl_poll = None
+            if self._wl_alive() is not win:      # closed (the close cancels this timer; belt and braces)
+                self._wl_busy = False
+                self._wl_cancel()
+                return
+            if "res" not in box and tries < 150:            # up to 15 s
+                self._wl_poll = self.after(100, wait, tries + 1)
+                return
+            self._wl_busy = False
+            self._wl_rows, self._wl_note = box.get("res") or (
+                [], "⚠️ The database did not answer within 15 seconds. Press Refresh to try again.")
+            self._wl_back, self._wl_back_note = box.get("back") or ([], "")
+            self._wl_cfg = box.get("cfg") or self._wl_cfg
+            self._fill_watch_list()
+            self._wl_cancel("_wl_auto")
+            self._wl_auto = self.after(120000, self._refresh_watch_list)
+
+        threading.Thread(target=work, daemon=True, name="watch-list").start()
+        self._wl_cancel("_wl_poll")
+        self._wl_poll = self.after(100, wait)
+
+    def _fill_watch_list(self, keep_view=True):
+        """Fill both tables from the last read. The row whose details are shown stays selected (and its details
+        shown) when it is still there; keep_view keeps the tables' scroll position (a refresh), otherwise the
+        tables start at the top (the store was changed)."""
+        win, t, bt = self._wl_alive(), getattr(self, "_wl_tree", None), getattr(self, "_wl_back_tree", None)
+        if win is None or t is None or bt is None:
+            return
+        self._wl_intro.config(text=_watch_list_intro(self._wl_cfg or {}))
+        rows, back_rows = self._wl_rows or [], self._wl_back or []
+        store = (self._wl_store.get() or "All").strip()
+        shown = [r for r in rows if store == "All" or r["store"] == store]
+        back_shown = [r for r in back_rows if store == "All" or r["store"] == store]
+        sel = self._wl_sel                       # (section, store, asin) of the row whose details are shown
+        views = (t.yview()[0], bt.yview()[0]) if keep_view else (0.0, 0.0)
+        hit = None                               # (tree, iid, row) of that row after the refill
+
+        def put(tree, items, cols, section):
+            nonlocal hit
+            tree.delete(*tree.get_children())
+            by = {}
+            for i, r in enumerate(items):
+                tags = ("even" if i % 2 == 0 else "odd",) + (("attention",) if r.get("attention") else ())
+                iid = tree.insert("", "end", values=tuple(r.get(k, "") for k, _h, _w in cols), tags=tags)
+                by[iid] = r
+                if sel == (section, r.get("store"), r.get("asin")):
+                    hit = (tree, iid, r)
+            return by
+
+        self._wl_by_item = put(t, shown, _WATCH_LIST_TREE, "list")
+        self._wl_back_by_item = put(bt, back_shown, _WATCH_LIST_BACK_TREE, "back")
+
+        # the "Back in stock — needs a person" table, or one line when there is none
+        bad_back = (self._wl_back_note or "").startswith("⚠")
+        if back_shown:
+            self._wl_back_none.pack_forget()
+            bt.configure(height=min(len(back_shown), 4))
+            self._wl_back_wrap.pack(fill="x")
+            self._wl_back_count.config(text=str(len(back_shown)), fg=self.AMBER)
+        else:
+            self._wl_back_wrap.pack_forget()
+            self._wl_back_none.config(
+                text=self._wl_back_note if bad_back else
+                f"None: no listing{'' if store == 'All' else ' of ' + store} that Zoro restocked in the last "
+                f"{_WATCH_LIST_BACK_DAYS} days is waiting for a person.",
+                fg=self.RED if bad_back else self.DIM)
+            self._wl_back_none.pack(fill="x", padx=2)
+            self._wl_back_count.config(text="not read" if bad_back else "0",
+                                       fg=self.RED if bad_back else self.GREEN)
+
+        # the same row selected again, the tables where they were
+        if hit:
+            hit[0].selection_set(hit[1])
+        else:
+            self._wl_sel = None
+        if keep_view or not hit:
+            win.update_idletasks()               # the tables' new length, before scrolling them back
+            t.yview_moveto(views[0])
+            bt.yview_moveto(views[1])
+        else:
+            hit[0].see(hit[1])
+        per = {}
+        for r in rows:
+            per[r["store"]] = per.get(r["store"], 0) + 1
+        if store == "All":
+            text = f"{len(rows)} on the list" + (" · " + " · ".join(f"{s} {n}" for s, n in per.items())
+                                                 if len(per) > 1 else "")
+        else:
+            text = f"{len(shown)} of {len(rows)} on the list"
+        bad = (self._wl_note or "").startswith("⚠")
+        self._wl_count.config(text="not read" if bad else text,
+                              fg=self.RED if bad else (self.AMBER if rows else self.GREEN))
+        if hit:
+            self._wl_detail.config(text=_watch_list_detail(hit[2]), fg=self.TEXT)
+        else:
+            self._wl_detail.config(
+                text=self._wl_note if (bad or not rows) else
+                (f"No listing of {store} is on the list." if not shown else
+                 "Click a row to see its full title, whether it is our own brand, and where it stands."),
+                fg=self.RED if bad else self.TEXT)
+
+    def _on_watch_list_select(self, _e=None, section="list"):
+        if self._wl_alive() is None:
+            return
+        t = self._wl_back_tree if section == "back" else self._wl_tree
+        by = self._wl_back_by_item if section == "back" else self._wl_by_item
+        sel = t.selection() if t is not None else ()
+        r = by.get(sel[0]) if sel else None
+        if not r:
+            return
+        self._wl_sel = (section, r.get("store"), r.get("asin"))
+        other = self._wl_tree if section == "back" else self._wl_back_tree
+        if other is not None and other.selection():        # one row selected in the two tables
+            other.selection_remove(*other.selection())
+        self._wl_detail.config(text=_watch_list_detail(r), fg=self.TEXT)
+
+    def _on_watch_list_dblclick(self, event):
+        item = event.widget.identify_row(event.y)
+        by = self._wl_back_by_item if event.widget is getattr(self, "_wl_back_tree", None) else self._wl_by_item
+        r = by.get(item) if item else None
+        if r and r.get("asin"):
+            # off the Tk thread: on macOS webbrowser runs osascript, which would freeze the launcher a moment
+            import threading
+            threading.Thread(target=webbrowser.open, args=(_watch_list_url(r["asin"]),), daemon=True).start()
+
+    def _close_watch_list(self):
+        self._wl_cancel()                     # the root's timers for this window: none may fire after it is gone
+        self._wl_busy = False
+        win = self._wl_alive()
+        if win is not None:
+            win.destroy()
+        self._wl_win = self._wl_tree = self._wl_back_tree = None
+
     def _flash_msg(self, text, color=None):
         color = color or self.DIM
         self._global_msg.configure(text=text, fg=color)
@@ -5747,6 +6411,10 @@ class App(tk.Tk):
         self._closing_down = True
         try:
             self.withdraw()         # gone for the user; the process stays until its workers exited
+            try:
+                self._close_watch_list()        # its own window and timers go with the launcher
+            except Exception:
+                pass
         except Exception:
             pass
         # A closing-side run carries on with its browsers (SURVIVES_CLOSE); everything else stops.
