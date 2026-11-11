@@ -4277,6 +4277,8 @@ def _normalize_second_part_sku(value):
 # the focus coupon. If Zoro does not accept it nothing is bought: the order keeps its tag, waits
 # (COUPON_WAIT_MIN, or until another code is written) and the one Manual-C alert names the code.
 # The code may stand with a Zoro code and a quantity, in either order: "Manual-C G7467735 x25 SAVE20NOW".
+# "ZC" (Zoro coupon) may go before it when the ASIN and quantity are already mapped: "Manual-C ZC GP3267KN9MRT4"
+# (owner, 12 Nov 2026); "coupon" works the same way.
 # Nothing is learned from it (no working pair, no promo strike cleared): it is one person's choice for
 # one order. The profit gate stays waived as for every tagged order, so whatever the code takes off,
 # the order is placed. Manual-R never carries a coupon. _parse_manual / _tag_coupon_codes.
@@ -4648,7 +4650,9 @@ _MT_HEAD = r"^\s*manual\s*[-_ ]?\s*([cr])"
 _MT_ZORO = r"(G\d{5,12})(?:\s*[-_:,/]?\s*[x×*]\s*([1-9]\d{0,2}))?"
 # A coupon needs a real gap before it: "Manual-Cancel" must never read as Manual-C + coupon "ancel".
 _MT_GAP = r"(?:\s+|\s*[-_:,/=]\s*)"
-_MT_COUPON = r"(?:coupon\s*[-_:,/=]?\s*)?([A-Za-z0-9]{4,24})"
+# "ZC" (Zoro coupon, owner 12 Nov 2026) or "coupon" may stand before the code, with a real gap after it,
+# so a code that itself begins with ZC… is never cut ("Manual-C ZC GP3267KN9MRT4" → GP3267KN9MRT4).
+_MT_COUPON = r"(?:(?:coupon|zc)(?:\s+|\s*[-_:,/=]\s*))?([A-Za-z0-9]{4,24})"
 _MANUAL_TAG_RE = re.compile(
     _MT_HEAD + rf"(?:\s*[-_:,/]?\s*{_MT_ZORO})?(?:{_MT_GAP}{_MT_COUPON})?\s*$", re.I)
 _MANUAL_TAG_COUPON_FIRST_RE = re.compile(                      # "Manual-C SAVE20NOW G7467735 x25"

@@ -368,7 +368,10 @@ are enforced in code, not by convention:
      at once when another code is written, and the Manual-C "no coupon" alert goes out once per order and
      code, naming the code and Zoro's reason (a reply that is only an API error sends nothing and is retried).
      The code is tried as typed, then in capitals. It may stand with a Zoro code and a quantity, in either
-     order (`Manual-C G7467735 x25 SAVE20NOW`). 4–24 letters / digits with at least one letter; a word that
+     order (`Manual-C G7467735 x25 SAVE20NOW`). When the ASIN and the quantity are already mapped,
+     `Manual-C ZC GP3267KN9MRT4` is enough: "ZC" (Zoro coupon) or "coupon" may stand before the code,
+     with a space or a separator after it, so a code that itself starts with ZC… stays whole (owner,
+     12 Nov 2026). 4–24 letters / digits with at least one letter; a word that
      looks like a Zoro code (`G123`) or a quantity (`x1000`), two words, or a code after `Manual-R` (a
      reseller applies no coupon) make the label not a tag, so the order is left alone. The profit gate stays
      waived as for every tagged order: whatever the code takes off, the order is placed. Nothing is learned
