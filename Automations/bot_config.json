@@ -129,7 +129,7 @@
         }
     },
     "checkout": {
-        "page_checkout": true
+        "page_checkout": false
     },
     "closing": {
         "message_after_closing": true
