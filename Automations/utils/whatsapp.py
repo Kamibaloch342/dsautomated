@@ -155,6 +155,13 @@ def _sender_lane(to: str = None) -> str:
     return "hathoro_notices" if not to and _process_store == "hathoro" else ""
 
 
+def _plain(text: str) -> str:
+    """No code boxes in WhatsApp (owner, 11 Nov 2026): a backtick around an order id, SKU or ASIN
+    shows as a grey monospace box there. Every alert, caption included, leaves through this file, so
+    the backticks are dropped here once instead of in each sender. *bold* and _italic_ stay."""
+    return str(text or "").replace("`", "")
+
+
 def _do_send_message(text: str, to: str = None) -> bool:
     """Worker function to send text message via local gateway."""
     if not is_whatsapp_enabled():
@@ -165,7 +172,7 @@ def _do_send_message(text: str, to: str = None) -> bool:
 
     payload = {
         "to": target,
-        "text": text,
+        "text": _plain(text),
         "priority": _alert_priority(target),   # the gateway paces everything (one per ~20 s)
         "lane": _sender_lane(to),
     }
@@ -208,7 +215,7 @@ def _do_send_photo(photo_bytes: bytes, caption: str = "", to: str = None) -> boo
         payload = {
             "to": target,
             "image_base64": b64_str,
-            "caption": caption,
+            "caption": _plain(caption),
             "priority": _alert_priority(target),
             "lane": _sender_lane(to),
         }

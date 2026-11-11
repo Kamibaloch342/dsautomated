@@ -17,6 +17,9 @@ shows both QR codes and one Kamran / Hifza switch per lane.
 
 ## How it works
 
+* No code boxes (owner, 11 Nov 2026): `utils/whatsapp.py` (`_plain`) drops every backtick from a
+  text or caption before it goes to the gateway, so ids show as plain text. Bold and italic stay.
+
 * `whatsapp_gateway/server.js`: `ACCOUNTS` holds the two logins (`auth_session/` is Kamran's,
   `auth_session_hifza/` is Hifza's, both git-ignored). `LANES` holds the table above.
 * The lane comes from the target group, so callers do not change. Only the placers' notices have no

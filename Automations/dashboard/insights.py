@@ -944,12 +944,14 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
         listings = ", ".join(f"{a} ({s})" for s, a in c["listings"][:4]) if c["listings"] else (c["asin"] or "—")
         if len(c["listings"]) > 4:
             listings += f" +{len(c['listings']) - 4} more"
+        # The alert ends at the old price's date (owner, 11 Nov 2026); the listings on the code stay
+        # on the item as data, not in the text.
         msg = (f"Zoro SKU {code}: Unit Price {word} {arrow} ${old:.2f} → ${new:.2f}/ea ({sign}${abs(diff):.2f}, {pct:+.1f}%). "
-               f"New price first on {c['wb']} ({_short_day(c['ts'])}); old price last on {c['old_wb']} ({_short_day(c['old_ts'])}). "
-               f"Listings: {listings}")
+               f"New price first on {c['wb']} ({_short_day(c['ts'])}); old price last on {c['old_wb']} ({_short_day(c['old_ts'])})")
         add(kind, f"zoro_price:{code}:{c['wb']}", c["order_id"], msg, sev, {
             "asin": c["asin"], "account": c["account"], "sku": code, "title": c["title"], "old": old,
-            "new": new, "wb": c["wb"], "old_wb": c["old_wb"], "date": _day(c["ts"]), "link": "asin"
+            "new": new, "wb": c["wb"], "old_wb": c["old_wb"], "date": _day(c["ts"]), "link": "asin",
+            "listings": listings
         })
 
     # ═══════════════════════════════════════════════════════════════════════════

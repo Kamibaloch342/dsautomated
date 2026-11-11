@@ -22,7 +22,7 @@ Rules:
 
 | Alert | Rule |
 |---|---|
-| Zoro price up / down | The Unit Price on Zoro's order e-mail differs from that code's previous e-mail, to the cent, either direction. One alert per change, to the store whose order showed it first, naming every listing on the code. |
+| Zoro price up / down | The Unit Price on Zoro's order e-mail differs from that code's previous e-mail, to the cent, either direction. One alert per change, to the store whose order showed it first. The alert line ends at the old price's date: "… New price first on WB… (Wed, Nov 11); old price last on WB… (Wed, Nov 11)". The listings on the code are kept on the item (`listings`), not in the text (owner, 11 Nov 2026). |
 | Earnings up / down | Per (store, ASIN): unit earnings by day against the previous day with orders, over 60 days of history. Combined-ASIN orders are left out. closing's quantity wins over the placer's. |
 | Zoro late vs Amazon | Zoro's date is 2+ **business** days after Amazon's, on an order placed within 1 business day. One per listing per week. |
 | Handling review | Weekly summary. Listings with 5+ orders in 30 days, usually 2+ business days to ship-by, and Zoro not tight against Amazon's date. |
@@ -43,6 +43,11 @@ its headers, or each arrives twice.
 |---|---|---|
 | Listing still selling, Zoro out; listing back when Zoro restocks | `engine/listing_guard.py` → **Insights group only**, never the Orders group (owner, 11 Nov 2026: first for handling time, then for quantity 0 as well) | The placer found the main Zoro code and every alternative out of stock (for one unit of the listing; an alternative that did not answer does not count as out). The placer then makes the change on Seller Central itself (`engine/offer_edit.py`: DS quantity 0; PL handling time 7 days, never 0) and sends one message per listing saying PL or DS — from the brand on the product page — and what was done, or what to do by hand if it could not. If orders keep coming the listing is looked at again on Seller Central: after 2 h when its quantity was set to 0 (the change may not have stuck), after 24 h when its handling time was raised (an own-brand listing stays on sale, so orders are expected) or when it could not be changed. A listing that still holds what the guard set is **not announced again** — only a new change or a failure is (11 Nov 2026: two own-brand listings had been announced again every 2–3 hours, 6 repeats in one night, each to both groups). Every 30 min the placer asks Zoro again; when the main code or an alternative is buyable for 3 units of the listing it puts back what it changed (and only that), and says so. The Zoro code goes on Restock Watch. Table `listing_oos`. |
 | Own-brand listings: what changed | `utils/listing_watch.py` → Insights group | During the 12-hourly repricer scrape, for listings whose brand is HOANK / Hathoro: a seller who is none of our stores and was not there last time, the star rating moved, the number of ratings changed, the category changed. One message per store and run. The first look at a listing only records it. A value the page did not show keeps the remembered one. `data/pl_watch_state.json`. |
+
+No code boxes in WhatsApp (owner, 11 Nov 2026): `utils.whatsapp._plain()` drops every backtick from
+a message or caption as it leaves for the gateway, so an order id, SKU or ASIN shows as plain text,
+not a grey monospace box. `*bold*` and `_italic_` stay. Senders may keep their backticks; Telegram
+(HTML) is not touched.
 
 Things that bit us, do not reintroduce:
 
