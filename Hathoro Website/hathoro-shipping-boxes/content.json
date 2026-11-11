@@ -1,0 +1,97 @@
+{
+  "_placeholders": "{L} {W} {H} {LxWxH} {pack} {wall} {WALL} {wall_slug} {rating} {rating_title} {rating_claim} {rating_label} {rating_file} {seal_top} {seal_main} {seal_sub} {ect} {burst} {max_lbs} {size_limit} {box_type} {spec_line} {sku}",
+
+  "main": {
+    "file": "1_Hathoro_{LxWxH}_{sku}_Main.jpg",
+    "show_info": false,
+    "size": "{L}\" × {W}\" × {H}\"",
+    "spec": "{spec_line}",
+    "pack": "{pack} PACK"
+  },
+
+  "dimensions": {
+    "file": "2_Hathoro_{LxWxH}_{wall_slug}{style_file}_Dimensions.jpg",
+    "eyebrow": "{box_type}",
+    "badge": "{L}\" × {W}\" × {H}\"",
+    "subline": "Great for Shipping, Moving,\nStorage & Packaging",
+    "length": "{L}\" LENGTH",
+    "width": "{W}\" WIDTH",
+    "height": "{H}\" HEIGHT"
+  },
+
+  "corrugated": {
+    "file": "3_Hathoro_{wall_slug}_{rating_file}.jpg",
+    "eyebrow": "{WALL} CORRUGATED",
+    "badge": "HOLDS UP TO {max_lbs} LBS",
+    "subline": "{rating_claim},\nBuilt for Safe Stacking",
+    "seal_top": "{seal_top}",
+    "seal_main": "{seal_main}",
+    "seal_sub": "{seal_sub}",
+    "seal_bottom": "{WALL}",
+    "tiles": [
+      { "icon": "crush",  "value": "{rating_title}",  "label": "{rating_label}" },
+      { "icon": "weight", "value": "{max_lbs} LBS",   "label": "Max Gross Weight" },
+      { "icon": "ruler",  "value": "{size_limit} IN", "label": "Max Size (L + W + H)" }
+    ]
+  },
+
+  "corrugated_generic": {
+    "file": "3_Hathoro_{wall_slug}_Corrugated.jpg",
+    "eyebrow": "{WALL} CORRUGATED",
+    "badge": "STRONG & STACKABLE",
+    "subline": "Durable Kraft Corrugated Board,\nBuilt for Safe Shipping",
+    "seal_top": "CORRUGATED BOARD",
+    "seal_main": "KRAFT",
+    "seal_sub": "{WALL}",
+    "seal_bottom": "HATHORO",
+    "tiles": [
+      { "icon": "shield",  "value": "Durable",   "label": "Puncture Resistant" },
+      { "icon": "crush",   "value": "Stackable", "label": "Holds Its Shape" },
+      { "icon": "recycle", "value": "100%",      "label": "Recyclable Kraft" }
+    ]
+  },
+
+  "pack": {
+    "file": "4_Hathoro_{wall_slug}_{pack}Pack.jpg",
+    "eyebrow": "REUSABLE & RECYCLABLE",
+    "badge": "{pack} PACK",
+    "subline": "Unmarked {wall} Corrugated Boxes,\nShipped Flat & Ready to Fold",
+    "tiles": [
+      { "icon": "recycle", "value": "100%",       "label": "Recyclable Kraft" },
+      { "icon": "box",     "value": "Reusable",   "label": "Sturdy, Long-Lasting" },
+      { "icon": "flat",    "value": "Ships Flat", "label": "Saves Storage Space" }
+    ]
+  },
+
+  "origin": {
+    "file": "5_Hathoro_Made_In_USA.jpg",
+    "eyebrow": "QUALITY YOU CAN TRUST",
+    "badge": "MADE IN THE USA",
+    "subline": "Proudly Manufactured Domestically\nwith Simple, Reliable Materials",
+    "seal_top": "PROUDLY MADE IN THE",
+    "seal_main": "USA",
+    "seal_sub": "QUALITY PACKAGING",
+    "seal_bottom": "HATHORO",
+    "tiles": [
+      { "icon": "flag",    "value": "Made in USA", "label": "Domestic Manufacturing" },
+      { "icon": "recycle", "value": "100%",        "label": "Recyclable & Reusable" },
+      { "icon": "shield",  "value": "Dependable",  "label": "Excellent Performance" }
+    ]
+  },
+
+  "origin_not_usa": {
+    "file": "5_Hathoro_Quality.jpg",
+    "eyebrow": "HATHORO INDUSTRIAL PACKAGING",
+    "badge": "BUILT TO PERFORM",
+    "subline": "Simple Materials,\nExcellent Performance",
+    "seal_top": "HATHORO INDUSTRIAL",
+    "seal_main": "PRO",
+    "seal_sub": "QUALITY GRADE",
+    "seal_bottom": "PACKAGING",
+    "tiles": [
+      { "icon": "truck",   "value": "Fast",       "label": "Ships in 1 Business Day" },
+      { "icon": "recycle", "value": "100%",       "label": "Recyclable & Reusable" },
+      { "icon": "shield",  "value": "Dependable", "label": "Excellent Performance" }
+    ]
+  }
+}

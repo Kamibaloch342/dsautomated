@@ -1,0 +1,22 @@
+{
+  "_note": "Test row shaped like a zoro_data row. Values are from the plan's worked example (G800906080); descriptions, country_of_origin and image_path (a sample supplier-style photo) are placeholders until the real DB row is used.",
+  "zoro_no": "G800906080",
+  "manufacturer_part_number": "",
+  "upc_code": "",
+  "zoro_brand_name": "Zoro Select",
+  "short_description": "Shipping Box, 22 in x 18 in x 8 in, Brown, Single Wall, 32 ECT",
+  "long_description": "Corrugated shipping box. Inside dimensions 22 in L x 18 in W x 8 in H. Single wall kraft corrugated, 32 ECT. Sold in bundles of 25.",
+  "sales_price": 2.69,
+  "unit_price": 2.69,
+  "min_order_qty": 25,
+  "uom": "EA",
+  "lead_time": "Usually ships in 1 day",
+  "availabilityStatus": "In Stock",
+  "ship_pack_length": 40,
+  "ship_pack_width": 26,
+  "ship_pack_height": 9,
+  "ship_pack_weight": 25,
+  "zoro_image_name": "",
+  "country_of_origin": "USA",
+  "image_path": "assets/photos/source/zoro_sample_closed_box.png"
+}

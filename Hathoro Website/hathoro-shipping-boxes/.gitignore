@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.DS_Store
+# generated: images (~2 GB for the full catalog), CSVs, downloaded supplier photos
+output/

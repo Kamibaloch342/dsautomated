@@ -1,0 +1,22 @@
+{
+  "_source": "Public Zoro listing https://www.zoro.com/zoro-select-shipping-box-12x9x6-2-in-55nm36/i/G0507745/ (via web search, Oct 2026): Zoro Select shipping box 12x9x6 in, Mfr 55NM36, kraft, single wall, 65 lb max weight, sold in multiples of 25 for $16.75. The description follows Zoro's naming for its sibling boxes (e.g. G0503344, 12x9x9, 'Single Wall, 200#').",
+  "_assumed": "sales_price 0.67 = $16.75 / 25; lead_time and availabilityStatus assumed from the qualifying-SKU filter. Unknown (left empty): UPC, ship pack weight/size, country of origin, zoro_image_name. Run with --sku G0507745 on the Mac to use the real combined_reports.db row instead.",
+  "zoro_no": "G0507745",
+  "manufacturer_part_number": "55NM36",
+  "upc_code": "",
+  "zoro_brand_name": "Zoro Select",
+  "short_description": "12 in x 9 in x 6 in Shipping Box, Kraft, Corrugate, Single Wall, 200#",
+  "long_description": "Inside Length 12 in. Inside Width 9 in. Inside Depth 6 in. Wall Type Single Wall. Max. Weight 65 lb. Color Kraft.",
+  "sales_price": 0.67,
+  "unit_price": 0.67,
+  "min_order_qty": 25,
+  "uom": "EA",
+  "lead_time": "1 day",
+  "availabilityStatus": "In Stock",
+  "ship_pack_length": null,
+  "ship_pack_width": null,
+  "ship_pack_height": null,
+  "ship_pack_weight": null,
+  "zoro_image_name": "",
+  "country_of_origin": null
+}

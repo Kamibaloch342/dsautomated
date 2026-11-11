@@ -1,0 +1,63 @@
+{
+  "paths": {
+    "database": "/Users/kamibaloch342/Downloads/Dropshipping/Development_Unit/Automations/TSV Files/combined_reports.db",
+    "images_dir": "output/shipping_boxes_images",
+    "csv": "output/hathoro_zoro_select_shipping_boxes_master.csv",
+    "exceptions": "output/exceptions.csv"
+  },
+
+  "pricing": {
+    "partner_discount": 0.10,
+    "free_freight_threshold": 50.00,
+    "freight_fee": 5.99,
+    "target_margin": 0.10,
+    "price_ending": 0.99,
+    "compare_at_ratio": 0.80
+  },
+
+  "_image_hosting": "Shopify downloads every image from a public https URL. Upload the JPGs (e.g. Shopify admin > Content > Files) and set image_base_url to the folder URL. image_url builds each URL; {base}/{file} suits Shopify Files (one flat folder), {base}/{handle}/{file} suits a CDN with one folder per product. Leave image_base_url empty to import products without images.",
+  "image_base_url": "",
+  "image_url": "{base}/{file}",
+
+  "zoro_images": {
+    "_note": "url_template must match how your 108-drum script builds Zoro image URLs; {name} = zoro_image_name. Photos are cached in folder as <zoro_no>.jpg, and you can drop files there by hand.",
+    "url_template": "https://www.zoro.com/static/cms/product/large/{name}",
+    "referer": "https://www.zoro.com/",
+    "folder": "output/zoro_photos",
+    "download": true,
+    "delay_seconds": 0.5
+  },
+
+  "shopify": {
+    "handle": "hathoro-{LxWxH}-{handle_extra}-shipping-boxes-{pack}-pack",
+    "title": "Hathoro {L}\" x {W}\" x {H}\" {title_style}Corrugated Shipping Boxes ({pack} Pack){title_suffix}",
+    "vendor": "Hathoro",
+    "_product_category": "Shopify Standard Product Taxonomy: full breadcrumb or category ID (os-14-1). The Shipping Boxes collection rule is 'Category is equal to Moving & Shipping Boxes'.",
+    "product_category": "Office Supplies > Shipping Supplies > Moving & Shipping Boxes",
+    "type": "Shipping Boxes",
+    "tags": ["Shipping Boxes", "Corrugated Boxes", "Hathoro Packaging", "{pack} Pack", "{LxWxH}",
+             "{rating}", "{wall}", "{color_tag}", "{style_tag}"],
+    "collection": "Shipping Boxes",
+    "sku": "HAT-BOX-{sku}-{LxWxH_upper}",
+    "option1_name": "Pack Size",
+    "option1_value": "{pack} Pack",
+    "inventory_tracker": "shopify",
+    "inventory_qty": 50,
+    "inventory_policy": "deny",
+    "fulfillment_service": "manual",
+    "requires_shipping": true,
+    "taxable": true,
+    "published": true,
+    "status": "active",
+    "seo_title": "{L}\" x {W}\" x {H}\" {title_style}Shipping Boxes, {pack} Pack | Hathoro",
+    "seo_description": "Hathoro {L} x {W} x {H} inch {title_style_lower}{wall_lower} corrugated shipping boxes, {pack} pack{rating_seo}. Ships flat, ready to fold. Fast dispatch.",
+    "body_template": "templates/body.html",
+    "image_alt": {
+      "main": "Hathoro {L} x {W} x {H} inch {title_style_lower}corrugated shipping box",
+      "dimensions": "{L} x {W} x {H} inch shipping box dimensions",
+      "corrugated": "{wall} corrugated board construction",
+      "pack": "{pack} pack of flat-shipped corrugated boxes",
+      "origin": "Hathoro shipping boxes quality and origin"
+    }
+  }
+}

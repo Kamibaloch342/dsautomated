@@ -1,0 +1,6 @@
+length,width,height,title,tagline,filename
+12,9,3,FLAT SHIPPING BOX,"Great for Shipping, Moving,\nStorage & Packaging Smaller Items",box_12x9x3.png
+12,9,6,SMALL SHIPPING BOX,"Great for Shipping, Moving,\nStorage & Packaging Small Items",box_12x9x6.png
+10,10,10,CUBE SHIPPING BOX,"Great for Shipping, Moving,\nStorage & Packaging",box_10x10x10.png
+24,6,6,LONG SHIPPING BOX,"Great for Shipping Long Items,\nPosters, Tools & Parts",box_24x6x6.png
+12,12,1,EXTRA FLAT BOX,"Great for Shipping Prints,\nDocuments & Flat Items",box_12x12x1.png

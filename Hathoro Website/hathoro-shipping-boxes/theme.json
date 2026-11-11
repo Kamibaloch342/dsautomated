@@ -1,0 +1,92 @@
+{
+  "canvas": 1500,
+  "supersample": 3,
+  "jpeg_quality": 95,
+  "dpi": 300,
+
+  "logo": "assets/logo.png",
+  "logo_subtitle": "INDUSTRIAL PACKAGING",
+
+  "fonts": {
+    "black": "assets/fonts/Montserrat-Black.ttf",
+    "extrabold": "assets/fonts/Montserrat-ExtraBold.ttf",
+    "bold": "assets/fonts/Montserrat-Bold.ttf",
+    "semibold": "assets/fonts/Montserrat-SemiBold.ttf",
+    "medium": "assets/fonts/Montserrat-Medium.ttf"
+  },
+
+  "colors": {
+    "background": "#FFFFFF",
+    "navy": "#092955",
+    "orange": "#F8700B",
+    "ink": "#1B2533",
+    "muted": "#5E6878",
+    "tile": "#F5F0EA",
+    "on_dark": "#FFFFFF"
+  },
+
+  "text": {
+    "eyebrow":       { "font": "bold",      "size": 38, "tracking": 3.5, "color": "navy" },
+    "badge":         { "font": "extrabold", "size": 78, "color": "on_dark", "fill": "orange",
+                       "height": 116, "pad_x": 40, "radius": 18 },
+    "subline":       { "font": "semibold",  "size": 48, "color": "ink", "line_height": 1.3 },
+    "callout":       { "font": "bold",      "size": 38, "color": "navy" },
+    "tile_value":    { "font": "extrabold", "size": 40, "color": "navy" },
+    "tile_label":    { "font": "semibold",  "size": 25, "color": "muted" },
+    "logo_subtitle": { "font": "bold",      "size": 18, "tracking": 4.6, "color": "muted" },
+    "main_size":     { "font": "extrabold", "size": 74, "color": "navy" },
+    "main_spec":     { "font": "semibold",  "size": 34, "color": "muted" },
+    "pill":          { "font": "extrabold", "size": 52, "color": "on_dark" }
+  },
+
+  "layout": {
+    "margin_x": 95,
+    "margin_top": 95,
+    "margin_bottom": 80,
+    "eyebrow_gap": 22,
+    "badge_gap": 36,
+    "logo_width": 340,
+    "logo_top": 92,
+    "content_gap": 40,
+    "tiles_height": 190,
+    "tile_radius": 26,
+    "tile_gap": 26,
+    "tile_icon": 90,
+    "main_padding": 90
+  },
+
+  "arrows": {
+    "color": "navy",
+    "width": 4.5,
+    "dash": 16,
+    "gap": 10,
+    "head": 20,
+    "head_angle": 38,
+    "offset": 28,
+    "label_pad": 14,
+    "trim": 6
+  },
+
+  "photos": {
+    "_note": "Fixed template photos. Anchor points are pixel positions in the photo file; check them with tools/check_anchors.py after swapping a photo.",
+    "open_box": {
+      "file": "assets/photos/open_box.png",
+      "blend": "multiply",
+      "anchors": {
+        "width":  [[168, 538], [388, 690]],
+        "length": [[388, 690], [1034, 588]],
+        "height": [[388, 690], [388, 424]],
+        "centre": [610, 420]
+      }
+    },
+    "flat_stack": {
+      "file": "assets/photos/flat_stack.png",
+      "blend": "alpha",
+      "bleed_right": true
+    },
+    "closeup": {
+      "file": "assets/photos/closeup.jpg",
+      "blend": "card"
+    }
+  }
+}

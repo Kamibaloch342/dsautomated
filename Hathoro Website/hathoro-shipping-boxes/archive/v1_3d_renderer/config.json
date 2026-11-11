@@ -1,0 +1,110 @@
+{
+  "canvas": 1500,
+  "supersample": 3,
+  "background": "#FFFFFF",
+  "box": {
+    "length": 12,
+    "width": 9,
+    "height": 3,
+    "unit": "\""
+  },
+  "shape": null,
+  "title": "FLAT SHIPPING BOX",
+  "badge": "{L}X{W}X{H}{u}",
+  "tagline": "Great for Shipping, Moving,\nStorage & Packaging Smaller Items",
+  "labels": {
+    "length": "{L}{u} LENGTH",
+    "width": "{W}{u} WIDTH",
+    "height": "{H}{u} HEIGHT"
+  },
+  "logo": "assets/logo.png",
+  "fonts": {
+    "title": "assets/fonts/Poppins-Bold.ttf",
+    "badge": "assets/fonts/Poppins-Bold.ttf",
+    "tagline": "assets/fonts/Poppins-SemiBold.ttf",
+    "label": "assets/fonts/Poppins-Bold.ttf"
+  },
+  "colors": {
+    "navy": "#092955",
+    "title": "#092955",
+    "badge": "#F8700B",
+    "badge_text": "#FFFFFF",
+    "tagline": "#1B1B1B",
+    "kraft": "#D69D65",
+    "edge_liner": "#C8925C",
+    "edge_medium": "#B8844F",
+    "edge_cavity": "#5A3A20"
+  },
+  "camera": {
+    "yaw": 30,
+    "elevation": 22,
+    "perspective": 0.22
+  },
+  "flaps": {
+    "angles": {
+      "front": 38,
+      "back": 12,
+      "left": 50,
+      "right": 48
+    },
+    "depth": null
+  },
+  "material": {
+    "thickness": 0.17,
+    "flute_pitch": 1.5,
+    "rib_pitch": 0.17,
+    "rib_strength": 0.012,
+    "grain": 0.018
+  },
+  "lighting": {
+    "direction": [
+      -0.55,
+      0.75,
+      0.35
+    ],
+    "ambient": 0.82,
+    "diffuse": 0.3,
+    "min": 0.8,
+    "max": 1.04,
+    "shadow_direction": [
+      -0.3,
+      1.0,
+      0.2
+    ]
+  },
+  "shadow": {
+    "soft_opacity": 0.12,
+    "soft_blur": 30,
+    "contact_opacity": 0.5,
+    "contact_blur": 9,
+    "contact_grow": 0.25
+  },
+  "layout": {
+    "margin_x": 95,
+    "margin_top": 95,
+    "margin_bottom": 70,
+    "title_size": 46,
+    "title_tracking": 2,
+    "title_gap": 22,
+    "badge_size": 82,
+    "badge_height": 120,
+    "badge_pad_x": 38,
+    "badge_radius": 14,
+    "badge_gap": 40,
+    "tagline_size": 54,
+    "tagline_line_height": 1.25,
+    "box_top_gap": 40,
+    "logo_width": 380,
+    "logo_top": 95,
+    "label_size": 40,
+    "label_pad": 14,
+    "arrow_gap": 28,
+    "arrow_trim": 6,
+    "arrow_width": 4.5,
+    "dash": 16,
+    "dash_gap": 10,
+    "arrow_head": 20,
+    "arrow_head_angle": 38,
+    "height_arrow": "corner"
+  }
+}
