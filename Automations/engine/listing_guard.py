@@ -288,7 +288,7 @@ def change_on_amazon(driver, store: str, row: Dict[str, Any], action: str, profi
     in the placer's own Chrome. Returns {'done', 'changed', 'note', 'previous', 'set_to'}: done is True
     when Amazon now holds the wanted value; changed only when the guard itself just set it. See
     engine/offer_edit.py for how the page is driven and what was tried on the live page."""
-    out = {"done": False, "changed": False, "note": "", "previous": "", "set_to": ""}
+    out = {"done": False, "changed": False, "note": "", "previous": "", "set_to": "", "found": ""}
     cfg = settings()
     if not cfg["armed"]:
         out["note"] = "the automatic change is switched off (listing_guard.armed)"
@@ -300,7 +300,8 @@ def change_on_amazon(driver, store: str, row: Dict[str, Any], action: str, profi
     field, value = ("quantity", 0) if action == "qty0" else ("handling_days", int(cfg["pl_handling_days"]))
     res = offer_edit.set_offer_field(driver, row["asin"], row.get("seller_sku") or "", field, value,
                                      login_profile=profile or None)
-    out.update(done=bool(res.get("ok")), changed=bool(res.get("changed")), note=str(res.get("note") or ""))
+    out.update(done=bool(res.get("ok")), changed=bool(res.get("changed")), note=str(res.get("note") or ""),
+               found=str(res.get("previous") or ""))   # what the field held on the page (for the message)
     if out["changed"]:          # only a real change is something to undo later
         out.update(previous=str(res.get("previous") or ""), set_to=str(value))
     return out
@@ -353,43 +354,96 @@ def _tell(store: str, text: str, row: Dict[str, Any], kind: str, short: str,
         pass
 
 
-def _head(row: Dict[str, Any]) -> List[str]:
-    lines = []
-    if (row.get("title") or "").strip():
-        lines.append(f"• {row['title'].strip()[:80]}")
-    lines.append(f"• ASIN `{row['asin']}`" + (f" · SKU `{row['seller_sku']}`" if row.get("seller_sku") else ""))
-    return lines
+# ── the messages (owner, 11 Nov 2026: plain sentences, first person, no labels) ────────────────
+def short_name(title: str, asin: str = "") -> str:
+    """The product as a headline can name it: the title's first comma-separated parts, up to about
+    55 characters ('Eagle Plastic Drum, 30 Gallon Drum, DOT Compliant'); 'ASIN …' with no title."""
+    t = " ".join(str(title or "").split()).split(" | ")[0].strip(" ,.-")
+    if not t:
+        return f"ASIN {asin}" if asin else "this listing"
+    parts, out = [p.strip() for p in t.split(",") if p.strip()], ""
+    for p in parts:
+        if out and len(out) + 2 + len(p) > 55:
+            break
+        out = f"{out}, {p}" if out else p
+    if len(out) > 70:
+        out = out[:70].rsplit(" ", 1)[0]
+    return out
+
+
+def _ids(row: Dict[str, Any]) -> str:
+    return f"• ASIN {row['asin']}" + (f" · SKU {row['seller_sku']}" if row.get("seller_sku") else "")
+
+
+def _days(v: str) -> str:
+    return f"{v} day" + ("" if str(v) == "1" else "s")
 
 
 def _message(row: Dict[str, Any], kind: str, brand: str, src: str, action: str, res: Dict[str, Any],
-             watching: bool, restore_on: bool) -> str:
+             watching: bool, restore_on: bool, cfg: Optional[Dict[str, Any]] = None) -> str:
+    """The message when the placer finds a listing's Zoro item, and every alternative, out of stock.
+    Example (owner's wording):
+        🛑 Zoro is out of stock for Eagle Plastic Drum, 30 Gallon Drum, DOT Compliant.
+        • ASIN B001DSIEL0 · SKU Imran-G0673644
+        • I couldn't find an alternative in the sheet for Zoro item G0673644.
+        • One order has been marked out of stock.
+        • ✅ The Amazon quantity was already 0, so I left it as is.
+        • I added it to the list to recheck stock every 30 minutes. I'll let you know when Zoro has it back
+          in stock. The Amazon quantity will need to be updated."""
+    cfg = cfg or settings()
+    code = row.get("zoro_code") or "?"
     alts = (row.get("alt_codes") or "").strip()
-    want = {"qty0": "set the Amazon quantity to 0", "handling": "raise the handling time (do NOT set it to 0 — own brand)"}
-    done, why = res.get("done"), res.get("note") or ""
-    head = ("taken off sale" if action == "qty0" else "handling time raised") if done else "still LIVE on Amazon"
-    lines = [f"🛑 *Zoro is out of stock — {row['store']} listing {head}*"] + _head(row)
-    lines.append(f"• Zoro `{row.get('zoro_code') or '?'}` is out"
-                 + (f"; alternatives also out: {alts}" if alts else "; no alternative in the sheet"))
-    lines.append("• Listing: " + ({"PL": "own brand (PL)", "DS": "DS"}.get(kind, "could not tell PL from DS"))
-                 + (f" — brand “{brand}”" if brand else "") + (f" ({src})" if src else ""))
-    lines.append(f"• Orders stamped OOS so far: {row.get('orders') or 1}")
-    if done:
-        lines.append(f"• ✅ On Amazon: {why}")
-        if not res.get("changed"):
-            lines.append("• The placer changed nothing here, so at the restock you are told and nothing is put back")
-        elif restore_on:
-            lines.append("• When Zoro has it again the placer puts it back by itself"
-                         + (f" (to {res['previous']})" if res.get("previous") else ""))
+    done, changed, why = bool(res.get("done")), bool(res.get("changed")), (res.get("note") or "").strip()
+    prev, found = str(res.get("previous") or "").strip(), str(res.get("found") or "").strip()
+    pl_days = str(res.get("set_to") or cfg["pl_handling_days"])
+    url = listing_url(row["asin"])
+    n = int(row.get("orders") or 1)
+    ours = f"It's our own brand{f' ({brand})' if brand else ''}"
+
+    lines = [f"🛑 *Zoro is out of stock for {short_name(row.get('title'), row['asin'])}.*", _ids(row)]
+    lines.append(f"• Zoro item {code} is out, and so is every alternative in the sheet ({alts})." if alts
+                 else f"• I couldn't find an alternative in the sheet for Zoro item {code}.")
+    lines.append("• One order has been marked out of stock." if n == 1 else f"• {n} orders have been marked out of stock.")
+
+    # what was done on Amazon
+    if action == "qty0":
+        if done and changed:
+            lines.append(f"• ✅ I set the Amazon quantity from {prev or '?'} to 0, so the listing is off sale.")
+        elif done:
+            lines.append(f"• ✅ The Amazon quantity was already {found or '0'}, so I left it as is.")
         else:
-            lines.append("• When Zoro has it again: put it back by hand (automatic restore is switched off)")
-    elif action:
-        lines.append(f"• ⚠️ NOT changed on Amazon — {why}")
-        lines.append(f"• To do by hand: {want[action]}")
-        lines.append(f"  {listing_url(row['asin'])}")
+            lines.append(f"• ⚠️ I couldn't set the Amazon quantity to 0 because {why}. Please set it to 0 by hand: {url}")
+    elif action == "handling":
+        if done and changed:
+            lines.append(f"• ✅ {ours}, so it stays on sale. I raised the handling time from "
+                         + (_days(prev) if prev.isdigit() else "the store's default") + f" to {_days(pl_days)}.")
+        elif done:
+            lines.append(f"• ✅ {ours}, so it stays on sale. The handling time was already "
+                         f"{_days(found or pl_days)}, so I left it as is.")
+        else:
+            lines.append(f"• ⚠️ {ours}, so it should stay on sale with a longer handling time, but I couldn't change it "
+                         f"because {why}. Please raise the handling time to {_days(pl_days)} by hand, and don't set the "
+                         f"quantity to 0: {url}")
     else:
-        lines.append(f"• ⚠️ Check it by hand: {listing_url(row['asin'])}")
-    if watching:
-        lines.append("• Restock Watch: added")
+        lines.append(f"• ⚠️ I couldn't tell whether this is our own brand, so I changed nothing on Amazon. "
+                     f"Please check it: {url}")
+
+    # what happens at the restock
+    what = "quantity" if action == "qty0" else "handling time"
+    every = f"every {int(cfg['restock_check_minutes'])} minutes"
+    if not restore_on:
+        lines.append(f"• Automatic restore is switched off: when Zoro has it again, please put the Amazon {what} back by hand.")
+    elif done and changed:
+        back = (f"the quantity back to {prev}" if action == "qty0" and prev.isdigit()
+                else "the quantity back" if action == "qty0"
+                else f"the handling time back to {_days(prev)}" if prev.isdigit()
+                else "the handling time back to the store's default")
+        lines.append(f"• I'll check Zoro {every}. When it's back in stock I'll put {back} and let you know.")
+    elif done:
+        lines.append(f"• I added it to the list to recheck stock {every}. I'll let you know when Zoro has it back "
+                     f"in stock. The Amazon {what} will need to be updated.")
+    else:
+        lines.append(f"• I'll check Zoro {every} and let you know when it's back in stock.")
     return "\n".join(lines)
 
 
@@ -415,7 +469,7 @@ def _handle_new(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict
         f"{'quantity set to 0' if action == 'qty0' else 'handling time raised'} on Amazon ({res['note']})" if res["done"]
         else f"NOT changed on Amazon: {res['note']}"))
     if not quiet:
-        _tell(store, _message(row, kind, brand, src, action, res, watching, bool(cfg["restore"])), row,
+        _tell(store, _message(row, kind, brand, src, action, res, watching, bool(cfg["restore"]), cfg), row,
               "listing_off_sale", short)
     cols = dict(kind=kind, brand=brand, kind_from=src, action=action, status="changed" if res["done"] else "alerted",
                 action_at=_now(), note=res["note"][:300], restock_checked_at=None)
@@ -445,16 +499,18 @@ def _restore(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[st
     asin, sku, action = row["asin"], row.get("seller_sku") or "", row.get("action") or ""
     set_to, prev = str(row.get("changed_to") or "").strip(), str(row.get("prev_value") or "").strip()
     what = "quantity" if action == "qty0" else "handling time"
-    lines = [f"✅ *Zoro has it again — {store} listing"]
+    main = str(row.get("zoro_code") or "").strip()
+    url = listing_url(asin)
     status, note = "restock_told", ""
+    lines = [f"✅ *Zoro has {short_name(row.get('title'), asin)} back in stock.*", _ids(row),
+             f"• Zoro item {code} can be bought again." if code == main or not main
+             else f"• Zoro has the alternative {code} in stock again (the main item {main} is still out)."]
 
     if not set_to:
         # The guard changed nothing here (the value was already there, or the change failed): tell, don't touch.
-        lines[0] += " to put back by hand*"
         note = f"Zoro {code} is in stock again; the placer had not changed this listing, so it is left as it is"
-        lines += _head(row) + [f"• Zoro `{code}` is in stock again",
-                               "• The placer had not changed this listing, so nothing was put back — check it by hand",
-                               f"  {listing_url(asin)}"]
+        lines.append(f"• I hadn't changed this listing, so I left it alone. Please update the Amazon {what} "
+                     f"by hand: {url}")
     else:
         target: Optional[int] = None
         if action == "qty0":
@@ -464,28 +520,26 @@ def _restore(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[st
         else:                                   # it was empty before = the store's own default
             target = offer_edit.account_default_handling_days(driver)
         if target is None:
-            lines[0] += " to put back by hand*"
             note = f"Zoro {code} is in stock again; the {what} it had before is not known"
-            lines += _head(row) + [f"• Zoro `{code}` is in stock again",
-                                   f"• ⚠️ The {what} it had before is not known — set it by hand", f"  {listing_url(asin)}"]
+            lines.append(f"• ⚠️ I don't know what the {what} was before, so please set it by hand: {url}")
         else:
             res = offer_edit.set_offer_field(driver, asin, sku, "quantity" if action == "qty0" else "handling_days",
                                              target, login_profile=profile or None, lower_ok=True, only_if=set_to)
+            was = set_to if action == "qty0" else _days(set_to)
+            now = str(target) if action == "qty0" else _days(str(target))
             if res.get("ok"):
                 status = "restored"
-                lines[0] += " back on sale*" if action == "qty0" else " back to its normal handling time*"
                 note = f"Zoro {code} is in stock again — {res.get('note')}"
-                lines += _head(row) + [f"• Zoro `{code}` is in stock again", f"• ✅ On Amazon: {res.get('note')}"]
+                lines.append(f"• ✅ I set the Amazon quantity back from {was} to {now}, so the listing is on sale again."
+                             if action == "qty0" else f"• ✅ I set the handling time back from {was} to {now}.")
             elif res.get("skipped"):
-                lines[0] += " left as it is*"
                 note = f"Zoro {code} is in stock again; {res.get('note')}"
-                lines += _head(row) + [f"• Zoro `{code}` is in stock again", f"• Not touched: {res.get('note')}"]
+                lines.append(f"• Someone changed the {what} after I did (it is {res.get('previous') or 'empty'} now, "
+                             f"not {was}), so I left it alone.")
             else:
-                lines[0] += " NOT put back*"
                 note = f"Zoro {code} is in stock again, but the {what} could not be put back: {res.get('note')}"
-                lines += _head(row) + [f"• Zoro `{code}` is in stock again",
-                                       f"• ⚠️ Could not put the {what} back to {target}: {res.get('note')}",
-                                       f"• To do by hand: {listing_url(asin)}"]
+                lines.append(f"• ⚠️ I couldn't put the {what} back to {now} because {res.get('note')}. "
+                             f"Please do it by hand: {url}")
     print(f"  ✅ LISTING RESTOCKED AT ZORO: {asin} ({sku or '?'}) — {note}")
     _watch_restock(row, remove=True)
     _tell(store, "\n".join(lines), row, "listing_back_on_sale", note)
