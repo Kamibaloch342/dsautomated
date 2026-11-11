@@ -18,8 +18,9 @@ How it runs, so that an order is never held up:
                          listing_oos (unified DB). No browser, never raises.
   2. handle_pending()  — called by the placer at the END of a cycle, when its Chrome is idle:
        a. each new row: decide PL / DS, make the change on Seller Central (engine/offer_edit.py),
-          tell the Orders Alerts and Insights groups what was done, put the Zoro code on the
-          dashboard's Restock Watch;
+          say what was done, put the Zoro code on the dashboard's Restock Watch. A handling-time
+          change goes to the store's Insights group only (owner, 11 Nov 2026); a listing taken off
+          sale, or one the placer could not decide on, to the Orders Alerts group as well;
        b. each listing changed earlier: every restock_check_minutes ask Zoro whether the main code or
           an alternative is buyable again, and if so put the listing back — the quantity it had, or
           the handling time it had (owner, 10 Nov 2026: "Yes, build it").
@@ -47,8 +48,10 @@ Settings — bot_config.json → "listing_guard" (all optional):
   restore               true   false = a restock is not acted on (the Restock Watch alert still comes)
   restock_check_minutes 30     how often a changed listing's Zoro stock is asked
   restock_depth         3      units of the listing that must be buyable before it goes back on sale
-  realert_hours         24     a listing still taking OOS orders is announced again after this long
-                               (2 hours when it was changed on Amazon — then something did not stick)
+  realert_hours         24     a listing still taking OOS orders is looked at again after this long
+                               (2 hours when its quantity was set to 0 — then the change may not have
+                               stuck). A listing that still holds what the guard set is not announced
+                               again; one that could not be changed is.
   max_per_cycle         3      listings changed or restored at the end of one placer cycle (about a minute each)
 """
 from __future__ import annotations
@@ -77,7 +80,7 @@ CREATE TABLE IF NOT EXISTS listing_oos (
     last_order    TEXT,
     first_seen    TEXT,
     last_seen     TEXT,
-    status        TEXT DEFAULT 'new',  -- new → working → changed | alerted → restoring → restored | restock_told
+    status        TEXT DEFAULT 'new',  -- new | recheck → working → changed | alerted → restoring → restored | restock_told
     action        TEXT,            -- qty0 | handling
     action_at     TEXT,
     note          TEXT,
@@ -93,7 +96,7 @@ _LATER_COLUMNS = {"prev_value": "TEXT", "changed_to": "TEXT", "unit_qty": "INTEG
 
 _DEFAULTS = {"enabled": True, "armed": True, "pl_handling_days": 7, "restore": True, "restock_check_minutes": 30,
              "restock_depth": 3, "realert_hours": 24, "max_per_cycle": 3}
-REALERT_AFTER_CHANGE_HOURS = 2      # orders still arriving this long after the change: it did not stick
+REALERT_AFTER_CHANGE_HOURS = 2      # quantity set to 0 and orders still arriving this long after: look again
 STALE_CLAIM_MINUTES = 20            # a row left 'working' / 'restoring' by a placer that died goes back
 RESTOCK_CHECKS_PER_CYCLE = 10
 _CLOSED = ("restored", "restock_told")   # done with: the next "out of stock" starts the listing afresh
@@ -169,7 +172,7 @@ def _write_note(ev: Dict[str, Any], realert_hours: int) -> None:
     c = _conn()
     try:
         with c:
-            row = c.execute("SELECT status, action_at FROM listing_oos WHERE store=? AND asin=?",
+            row = c.execute("SELECT status, action_at, action FROM listing_oos WHERE store=? AND asin=?",
                             (ev["store"], ev["asin"])).fetchone()
             held = ev.get("held_now")                 # Ultra mode: orders held right now, not one more order
             if row is None:
@@ -180,17 +183,24 @@ def _write_note(ev: Dict[str, Any], realert_hours: int) -> None:
                 return
             # Known listing: count the order. It is dealt with again
             #   • at once when it had been put back (or closed) and Zoro is out once more;
-            #   • after 2 hours when it was changed on Amazon and still takes orders — it did not stick;
+            #   • after 2 hours when its quantity was set to 0 and it still takes orders — looked at
+            #     again ('recheck'), because then the change may not have stuck;
+            #   • after realert_hours when its handling time was raised: an own-brand listing stays on
+            #     sale on purpose, so orders go on arriving and say nothing (11 Nov 2026: two listings
+            #     were announced again every 2–3 hours, 6 repeats in one night, each to two groups);
             #   • after realert_hours when it was only announced.
+            # A 'recheck' sends a message only if something had to be changed again (_handle_new).
             st = row["status"]
             if st in _CLOSED:
-                again, fresh = True, ", prev_value=NULL, changed_to=NULL, restock_checked_at=NULL, restored_at=NULL"
+                again, fresh = "new", ", prev_value=NULL, changed_to=NULL, restock_checked_at=NULL, restored_at=NULL"
             else:
-                wait_h = REALERT_AFTER_CHANGE_HOURS if st == "changed" else realert_hours
-                again, fresh = st in ("changed", "alerted") and _hours_since(row["action_at"]) >= wait_h, ""
+                wait_h = (REALERT_AFTER_CHANGE_HOURS if st == "changed" and (row["action"] or "") != "handling"
+                          else realert_hours)
+                due = st in ("changed", "alerted") and _hours_since(row["action_at"]) >= wait_h
+                again, fresh = ({"changed": "recheck", "alerted": "new"}[st] if due else ""), ""
             c.execute("UPDATE listing_oos SET last_order = COALESCE(NULLIF(?, ''), last_order), last_seen=?, "
                       "seller_sku = COALESCE(NULLIF(?, ''), seller_sku), title = COALESCE(NULLIF(?, ''), title), "
-                      "zoro_code=?, alt_codes=?, unit_qty=?" + (", status='new'" if again else "") + fresh
+                      "zoro_code=?, alt_codes=?, unit_qty=?" + (f", status='{again}'" if again else "") + fresh
                       + ", orders = " + ("?" if st in _CLOSED else "MAX(orders, ?)" if held else "orders + ?")
                       + " WHERE store=? AND asin=?",
                       (ev["amazon_id"], ev["at"], ev["seller_sku"], ev["title"], ev["zoro_code"], ev["alt_codes"],
@@ -321,13 +331,21 @@ def _watch_restock(row: Dict[str, Any], remove: bool = False) -> bool:
         return False
 
 
-def _tell(store: str, text: str, row: Dict[str, Any], kind: str, short: str) -> None:
-    """One message to the store's Orders Alerts group and its Insights group, and one row for the
-    dashboard's Insights tab (utils/listing_events.py)."""
+def _groups_for(action: str) -> Tuple[str, ...]:
+    """Which WhatsApp groups a listing's messages go to. A handling-time change (own-brand listing)
+    is an Insights matter only (owner, 11 Nov 2026); a listing taken off sale, or one the placer could
+    not decide on, also goes to the store's Orders Alerts group."""
+    return ("insights",) if action == "handling" else ("orders", "insights")
+
+
+def _tell(store: str, text: str, row: Dict[str, Any], kind: str, short: str,
+          to: Tuple[str, ...] = ("orders", "insights")) -> None:
+    """One message to each of the store's groups named in *to*, and one row for the dashboard's
+    Insights tab (utils/listing_events.py)."""
     try:
         from utils.whatsapp import get_whatsapp_group, send_whatsapp_message
         groups = []
-        for which in ("orders", "insights"):
+        for which in to:
             g = get_whatsapp_group(store, kind=which)
             if g and g not in groups:
                 groups.append(g)
@@ -382,7 +400,10 @@ def _message(row: Dict[str, Any], kind: str, brand: str, src: str, action: str, 
     return "\n".join(lines)
 
 
-def _handle_new(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[str, Any]) -> None:
+def _handle_new(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[str, Any],
+                recheck: bool = False) -> None:
+    """recheck: the listing was changed earlier and orders went on arriving, so Seller Central is
+    looked at again. If it still holds what was set, nothing is said: only the launcher pane shows it."""
     kind, brand, src = classify(driver, store, row["asin"], row.get("seller_sku") or "")
     action = {"PL": "handling", "DS": "qty0"}.get(kind, "")
     res: Dict[str, Any] = {"done": False, "changed": False, "note": "PL or DS could not be decided", "previous": "", "set_to": ""}
@@ -392,13 +413,17 @@ def _handle_new(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict
         except Exception as e:
             res["note"] = f"{type(e).__name__}: {str(e)[:120]}"
     watching = _watch_restock(row)
-    print(f"  🛑 LISTING OUT AT ZORO: {row['asin']} ({row.get('seller_sku') or '?'}) — "
+    quiet = recheck and res["done"] and not res["changed"]      # still as the guard left it: no news
+    print(f"  🛑 LISTING OUT AT ZORO{' (checked again, nothing to do)' if quiet else ''}: "
+          f"{row['asin']} ({row.get('seller_sku') or '?'}) — "
           f"{kind or '?'}{' / ' + brand if brand else ''} — "
           + (f"on Amazon: {res['note']}" if res["done"] else f"NOT changed on Amazon ({res['note']})"))
     short = (f"Zoro {row.get('zoro_code') or '?'} is out of stock — " + (
         f"{'quantity set to 0' if action == 'qty0' else 'handling time raised'} on Amazon ({res['note']})" if res["done"]
         else f"NOT changed on Amazon: {res['note']}"))
-    _tell(store, _message(row, kind, brand, src, action, res, watching, bool(cfg["restore"])), row, "listing_off_sale", short)
+    if not quiet:
+        _tell(store, _message(row, kind, brand, src, action, res, watching, bool(cfg["restore"])), row,
+              "listing_off_sale", short, to=_groups_for(action))
     cols = dict(kind=kind, brand=brand, kind_from=src, action=action, status="changed" if res["done"] else "alerted",
                 action_at=_now(), note=res["note"][:300], restock_checked_at=None)
     if res["changed"]:
@@ -470,7 +495,7 @@ def _restore(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[st
                                        f"• To do by hand: {listing_url(asin)}"]
     print(f"  ✅ LISTING RESTOCKED AT ZORO: {asin} ({sku or '?'}) — {note}")
     _watch_restock(row, remove=True)
-    _tell(store, "\n".join(lines), row, "listing_back_on_sale", note)
+    _tell(store, "\n".join(lines), row, "listing_back_on_sale", note, to=_groups_for(action))
     _update(store, asin, status=status, restored_at=_now(), note=note[:300])
 
 
@@ -547,17 +572,17 @@ def handle_pending(driver, store: str, profile: str = ""):
                 c.execute("UPDATE listing_oos SET status='new' WHERE status='working' AND action_at <= ?", (_ago(STALE_CLAIM_MINUTES),))
                 c.execute("UPDATE listing_oos SET status='changed' WHERE status='restoring' AND action_at <= ?", (_ago(STALE_CLAIM_MINUTES),))
             rows = [dict(r) for r in c.execute(
-                "SELECT * FROM listing_oos WHERE store=? AND status='new' ORDER BY first_seen LIMIT ?",
+                "SELECT * FROM listing_oos WHERE store=? AND status IN ('new', 'recheck') ORDER BY first_seen LIMIT ?",
                 (store, int(cfg["max_per_cycle"])))]
         finally:
             c.close()
         room = int(cfg["max_per_cycle"])
         for row in rows:
-            if not _claim(store, row["asin"], "new", "working"):
+            if not _claim(store, row["asin"], row["status"], "working"):
                 continue                                 # the store's other placer has it
             room -= 1
             try:
-                _handle_new(driver, store, profile, cfg, row)
+                _handle_new(driver, store, profile, cfg, row, recheck=row["status"] == "recheck")
             except Exception as e:
                 print(f"  ⚠️  listing guard: {row['asin']}: {type(e).__name__}: {e}")
                 _update(store, row["asin"], status="alerted", note=f"error: {type(e).__name__}: {str(e)[:200]}")
