@@ -27,8 +27,11 @@ Env: MSG_ACCOUNT (HOANK) | MSG_DRY=1 (preview only)
      review-request window is ~30 days and a check-in that late reads as spam)
 """
 import os
+import re
 import sys
 import sqlite3
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 _AUTO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _AUTO not in sys.path:
@@ -41,7 +44,7 @@ from engine.post_delivery import (
     _is_driver_alive, ACCOUNT_CONFIGS, prefetch_guards, review_wait_days,
     DAYS_AFTER_DELIVERY_TO_MESSAGE, DELIVERY_MESSAGE_MAX_DAYS, DAYS_AFTER_DELIVERY_TO_REVIEW,
     REVIEW_MAX_DAYS, DELAY_NOTICE_ENABLED, DELAY_NOTICE_STALLED_DAYS, DELAY_NOTICE_MAX_STALLED_DAYS,
-    DELAY_NOTICE_MAX_DAYS, DELAY_NOTICE_FRESH_HOURS,
+    DELAY_NOTICE_MAX_DAYS, DELAY_NOTICE_FRESH_HOURS, _parse_date_loose,
 )
 from engine.amazon_scraper import _connect_chrome
 
@@ -184,6 +187,78 @@ def load_delayed():
     return [dict(r) for r in rows]
 
 
+# ── "Shipped on time, delivered on time" line of the WhatsApp card (owner, 11 Nov 2026) ──
+# Amazon's ship-by and deliver-by are US/Pacific calendar days; a day counts as late only when
+# it falls AFTER that day. "Shipped" is Zoro's "has shipped" e-mail (shipped_email_time, stored
+# on our PKT clock) moved to the Pacific day: the moment Zoro shipped it, not when we uploaded
+# the tracking. The shipped half is the same rule as closing.compute_ship_timeliness (the
+# dashboard's shipped_on_time). Any date missing → its half says which one is unknown, never a guess.
+try:            # a missing tz database must never stop the messaging run over one card line
+    _PKT = ZoneInfo("Asia/Karachi")
+    _PACIFIC = ZoneInfo("America/Los_Angeles")
+except Exception:
+    _PKT = _PACIFIC = None
+_ISO_STAMP_RX = re.compile(r"^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}")
+
+
+def _amazon_day(v):
+    """A stored Amazon date as a date: ship-by '2026-11-09' / '11/09/2026', deliver-by
+    'Fri, Nov 13, 2026| ZoroDeliverBy:…' (the part after '|' is cut), delivered
+    'Tuesday, 11/10/2026 10:00 am'. None when it cannot be read."""
+    d = _parse_date_loose(str(v or ""))
+    return d.date() if d else None
+
+
+def _shipped_day(v):
+    """The US/Pacific day of Zoro's 'has shipped' e-mail, or None. A naive stamp
+    ('2026-11-10 06:12:11', all stored ones today) is PKT; one that carries its own offset or 'Z'
+    ('2026-11-10T01:12:11Z', '…-05') is read with that offset. Anything else — a zone name, AM/PM,
+    a year-less 'Mon, Nov 9' (old e-mail-body fallback) — is not read: never taken as PKT, never a
+    guessed year; the card then says the ship date is unknown."""
+    s = str(v or "").strip()
+    if _PACIFIC is None or not _ISO_STAMP_RX.match(s):
+        return None
+    try:
+        t = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=_PKT)
+    return t.astimezone(_PACIFIC).date()
+
+
+def _on_time_line(o):
+    """'Shipped on time, delivered on time' / 'Shipped 1 day late, delivered on time' /
+    'Ship date unknown, delivered 2 days late' / 'Shipped on time, deliver-by date unknown'.
+    Early counts as on time. A half names the date it is missing: the actual one ('ship date',
+    'delivery date') first, else the deadline ('ship-by date', 'deliver-by date'). Never raises:
+    a value that cannot be read counts as missing instead of costing the whole card."""
+    def read(of):
+        try:
+            return of()
+        except Exception:
+            return None
+
+    def part(actual_of, due_of, verb, actual_unknown, due_unknown):
+        actual, due = read(actual_of), read(due_of)
+        if not actual:
+            return actual_unknown
+        if not due:
+            return due_unknown
+        late = (actual - due).days
+        if late <= 0:
+            return f"{verb} on time"
+        return f"{verb} {late} day{'' if late == 1 else 's'} late"
+    text = (part(lambda: _shipped_day(o.get("shipped_email_time")),
+                 lambda: _amazon_day(o.get("ship_by_date")),
+                 "shipped", "ship date unknown", "ship-by date unknown")
+            + ", "
+            + part(lambda: _amazon_day(o.get("delivery_date")),
+                   lambda: _amazon_day(o.get("deliver_by_date")),
+                   "delivered", "delivery date unknown", "deliver-by date unknown"))
+    return text[:1].upper() + text[1:]
+
+
 def _alert_sent(account, before, res):
     """One WhatsApp line per order where a check-in or a review request ACTUALLY went through on
     this visit (owner, 15 Oct 2026). Errors, 'No Permission', 'Already Requested' and 'Expired'
@@ -210,6 +285,7 @@ def _alert_sent(account, before, res):
                 f"Purchase date: {d('purchase_date')}\n"
                 f"Deliver by: {d('deliver_by_date')}\n"
                 f"Delivered: {d('delivery_date')}\n"
+                f"{_on_time_line(o)}\n"
                 f"Return requested: {yn(o.get('return_requested'))}\n"
                 f"Refund issued: {yn(o.get('refund_done'))}\n"
                 f"Delivery message sent: {msg_state(o.get('delivered_msg_sent'))}\n"

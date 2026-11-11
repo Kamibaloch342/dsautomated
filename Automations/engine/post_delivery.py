@@ -927,10 +927,12 @@ def build_delivery_message(order: dict, store_name: str) -> str:
     if deliver_by and delivery_date:
         due = _parse_date_loose(deliver_by)
         actual = _parse_date_loose(delivery_date)
-        if due and actual and actual > due:
+        # Calendar days (11 Nov 2026): deliver-by parses to midnight and the delivery carries a
+        # time, so comparing datetimes called a parcel delivered ON its deliver-by day "late".
+        if due and actual and actual.date() > due.date():
             is_late = True
-        elif due and actual and actual <= due:
-            days_early = (due - actual).days
+        elif due and actual and actual.date() <= due.date():
+            days_early = (due.date() - actual.date()).days
             if days_early >= 2:
                 early_note = f"Great news — your order was delivered {days_early} days ahead of schedule!\n\n"
             elif days_early == 1:
