@@ -144,15 +144,37 @@ _process_store = ""
 
 
 def set_alert_store(store: str) -> None:
-    """A placer says which store it works for at start-up. Its notices have no group of their own,
-    so this is what lets the gateway send DM notices from the number chosen for DM (9 Nov 2026)."""
+    """A placer says which store it works for at start-up. Its notices have no group of their own:
+    since 11 Nov 2026 they go to that store's Insights group (_notice_target); 9-11 Nov this only
+    told the gateway to send DM notices from the number chosen for DM (lane hathoro_notices)."""
     global _process_store
     _process_store = str(store or "").strip().lower()
 
 
-def _sender_lane(to: str = None) -> str:
-    """The gateway finds the sender from the target group; only a notice with no group needs a lane."""
-    return "hathoro_notices" if not to and _process_store == "hathoro" else ""
+def _notice_target(to: str = None) -> str:
+    """Where an alert goes. The caller's own group always wins. A send with no group from a placer
+    (set_alert_store) goes to that store's Insights group instead of the general group (owner,
+    11 Nov 2026: "General group > send to insights"). A store with no Insights group (Wrenchly today)
+    and every process that never set a store keep bot_config whatsapp.recipient_phone."""
+    if to:
+        return to
+    general = get_whatsapp_config().get("recipient_phone") or ""
+    if _process_store:
+        try:
+            return get_whatsapp_group(_process_store, kind="insights") or general
+        except Exception:
+            pass
+    return general
+
+
+def _sender_lane(to: str = None, target: str = "") -> str:
+    """The gateway finds the sender from the target group, so a notice that lands in Hathoro Insights
+    goes from that group's number. Only a DM placer's notice that still lands in the general group
+    (recipient_phone: Hathoro without an Insights group) names its lane."""
+    if to or _process_store != "hathoro":
+        return ""
+    general = get_whatsapp_config().get("recipient_phone") or ""
+    return "hathoro_notices" if (not target or target == general) else ""
 
 
 def _plain(text: str) -> str:
@@ -168,13 +190,13 @@ def _do_send_message(text: str, to: str = None) -> bool:
         return False
     cfg = get_whatsapp_config()
     base_url = cfg.get("server_url", "http://127.0.0.1:3005").rstrip("/")
-    target = to or cfg.get("recipient_phone") or ""
+    target = _notice_target(to)
 
     payload = {
         "to": target,
         "text": _plain(text),
         "priority": _alert_priority(target),   # the gateway paces everything (one per ~20 s)
-        "lane": _sender_lane(to),
+        "lane": _sender_lane(to, target),
     }
     try:
         resp = requests.post(f"{base_url}/send", json=payload, timeout=15)
@@ -208,7 +230,7 @@ def _do_send_photo(photo_bytes: bytes, caption: str = "", to: str = None) -> boo
         return False
     cfg = get_whatsapp_config()
     base_url = cfg.get("server_url", "http://127.0.0.1:3005").rstrip("/")
-    target = to or cfg.get("recipient_phone") or ""
+    target = _notice_target(to)
 
     try:
         b64_str = base64.b64encode(photo_bytes).decode("utf-8")
@@ -217,7 +239,7 @@ def _do_send_photo(photo_bytes: bytes, caption: str = "", to: str = None) -> boo
             "image_base64": b64_str,
             "caption": _plain(caption),
             "priority": _alert_priority(target),
-            "lane": _sender_lane(to),
+            "lane": _sender_lane(to, target),
         }
         try:
             resp = requests.post(f"{base_url}/send", json=payload, timeout=25)

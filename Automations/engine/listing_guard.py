@@ -190,8 +190,14 @@ def _write_note(ev: Dict[str, Any], realert_hours: int) -> None:
             #   • after realert_hours when it was only announced.
             # A 'recheck' sends a message only if something had to be changed again (_handle_new).
             st = row["status"]
+            fresh_args: tuple = ()
             if st in _CLOSED:
-                again, fresh = "new", ", prev_value=NULL, changed_to=NULL, restock_checked_at=NULL, restored_at=NULL"
+                # A new round for this listing: it starts afresh, so the launcher's watch list shows when it
+                # went out THIS time and no note, action or brand verdict left from the last round.
+                again = "new"
+                fresh = (", prev_value=NULL, changed_to=NULL, restock_checked_at=NULL, restored_at=NULL, "
+                         "first_seen=?, note=NULL, action=NULL, action_at=NULL")
+                fresh_args = (ev["at"],)
             else:
                 wait_h = (REALERT_AFTER_CHANGE_HOURS if st == "changed" and (row["action"] or "") != "handling"
                           else realert_hours)
@@ -203,7 +209,7 @@ def _write_note(ev: Dict[str, Any], realert_hours: int) -> None:
                       + ", orders = " + ("?" if st in _CLOSED else "MAX(orders, ?)" if held else "orders + ?")
                       + " WHERE store=? AND asin=?",
                       (ev["amazon_id"], ev["at"], ev["seller_sku"], ev["title"], ev["zoro_code"], ev["alt_codes"],
-                       ev["unit_qty"], int(held or 1), ev["store"], ev["asin"]))
+                       ev["unit_qty"]) + fresh_args + (int(held or 1), ev["store"], ev["asin"]))
     finally:
         c.close()
 
@@ -599,6 +605,27 @@ def _restock_pass(driver, store: str, profile: str, cfg: Dict[str, Any], room: i
             _update(store, row["asin"], status=row["status"], note=f"restore error: {type(e).__name__}"[:300])
 
 
+def _anything_due(store: str, cfg: Dict[str, Any]) -> bool:
+    """One read-only look: does this store have a row to handle (new / recheck / a claim to tidy) or a
+    restock check that is due? A placer with no orders calls handle_pending every cycle (11 Nov 2026),
+    so the usual answer — nothing — must not take the database's write lock. Unsure → True."""
+    every = max(5, int(cfg["restock_check_minutes"]))
+    try:
+        c = sqlite3.connect(f"file:{DB}?mode=ro", uri=True, timeout=5)
+        try:
+            return c.execute(
+                "SELECT 1 FROM listing_oos WHERE store=? AND (status IN ('new', 'recheck', 'working', 'restoring') "
+                "OR (? AND status IN ('changed', 'alerted') AND COALESCE(zoro_code, '') != '' AND action_at <= ? "
+                "AND (restock_checked_at IS NULL OR restock_checked_at <= ?))) LIMIT 1",
+                (store, 1 if cfg["restore"] else 0, _ago(every), _ago(every))).fetchone() is not None
+        finally:
+            c.close()
+    except sqlite3.OperationalError as e:
+        return "no such table" not in str(e)            # no table yet: nothing to do; anything else: look properly
+    except sqlite3.Error:
+        return True
+
+
 def handle_pending(driver, store: str, profile: str = ""):
     """End of a placer cycle: deal with this store's listings — the ones noted out of stock since the
     last time, and the ones Zoro has restocked. Returns the driver."""
@@ -613,6 +640,8 @@ def handle_pending(driver, store: str, profile: str = ""):
             except sqlite3.Error:
                 _MISSED.insert(0, ev)
                 break
+        if not _anything_due(store, cfg):
+            return driver
         c = _conn()
         try:
             with c:                                      # rows a placer took and never finished (it was stopped)

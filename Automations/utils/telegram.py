@@ -449,13 +449,14 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
     """Send immediate notification when an order is skipped/marked Loss-Kamran.
     `margin` is accepted for the placer's call (engine/orders.py passes it) — before 16 Oct 2026
     the unexpected keyword made every low-profit rejection alert fail silently. The % shown is
-    still computed here from earnings and cost."""
+    still computed here from earnings and cost. Owner, 11 Nov 2026: "Profit" (not "Projected
+    Profit"), no Threshold line (`min_margin` is still accepted, not shown), a loss carries its
+    minus sign on the dollar amount too, and Status "Not Placed / Marked <label>"."""
     diff = earnings - cost
     pct = (diff / cost) * 100.0 if cost > 0 else 0.0
-    pfx = "+" if diff >= 0 else ""
-    margin_pct = f"{pfx}{pct:.1f}%"
-    dollar_diff = abs(diff)
-    thresh_pct = f"{min_margin * 100.0:.0f}%"
+    sign = "+" if diff >= 0 else "-"
+    profit_str = f"{sign}${abs(diff):.2f}"          # -$3.40 / +$1.12
+    margin_pct = f"{sign}{abs(pct):.1f}%"           # -5.2% / +1.8%
 
     title = str(title or "").strip()
     sku = str(sku or "").strip()
@@ -472,9 +473,8 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
             f"<b>ASIN:</b> <code>{asin}</code>\n"
             f"<b>Amazon ID:</b> <code>{amazon_id}</code>\n\n"
             f"<b>Earnings:</b> ${earnings:.2f} | <b>Cost:</b> ${cost:.2f}\n"
-            f"<b>Projected Profit:</b> {pfx}${dollar_diff:.2f} ({margin_pct})\n"
-            f"<b>Threshold:</b> Min required {thresh_pct}\n"
-            f"<b>Status:</b> Skipped / Marked {reason or 'LOSS'}"
+            f"<b>Profit:</b> {profit_str} ({margin_pct})\n"
+            f"<b>Status:</b> Not Placed / Marked {html.escape(reason or 'LOSS')}"
         )
         send_telegram_message(msg, background=True)
 
@@ -487,13 +487,12 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
             wa_msg = (
                 f"⛔ *ORDER REJECTED — LOW PROFIT*\n\n"
                 f"• Title: *{title[:80] if title else 'Product Listing'}*\n"
-                f"• SKU: `{sku if sku else 'N/A'}`\n"
-                f"• ASIN: `{asin}`\n"
-                f"• Order: `{amazon_id}`\n\n"
-                f"• Projected Profit: *{pfx}${dollar_diff:.2f}* ({margin_pct})\n"
+                f"• SKU: {sku if sku else 'N/A'}\n"
+                f"• ASIN: {asin}\n"
+                f"• Order: {amazon_id}\n\n"
+                f"• Profit: *{profit_str}* ({margin_pct})\n"
                 f"• Earnings / Cost:  ${earnings:.2f} / ${cost:.2f}\n"
-                f"• Threshold:        Min required {thresh_pct}\n"
-                f"• Status:           Skipped / Marked {reason or 'LOSS'}"
+                f"• Status:           Not Placed / Marked {reason or 'LOSS'}"
             )
             send_whatsapp_message(wa_msg, to=target_wa_group, background=True)
     except Exception:

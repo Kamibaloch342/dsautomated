@@ -8,12 +8,12 @@ shows both QR codes and one Kamran / Hifza switch per lane.
 |---|---|---|
 | DM order alerts (DM Coupon + DM Reseller) | `hathoro_orders` | Hifza |
 | DM tracking ID alerts | `hathoro_tracking` | Hifza |
-| DM insights | `hathoro_insights` | Hifza |
-| DM placer notices | `recipient_phone`, with `lane: hathoro_notices` | Hifza |
+| DM insights, and DM placer notices since 11 Nov 2026 | `hathoro_insights` | Hifza |
 | DM closing (delivery messages + review requests) | `hathoro_messages` | Kamran |
-| All HS lanes | `hoank_*` | Kamran |
+| All HS lanes; HS placer notices go to `hoank_insights` since 11 Nov 2026 | `hoank_*` | Kamran |
 | Wrenchly orders, tracking, closing | `wrenchly_orders`, `wrenchly_tracking`, `wrenchly_messages` | Kamran |
-| HS and WR placer notices, WR insights, anything else | `recipient_phone` | Kamran |
+| WR placer notices, WR insights (no `wrenchly_insights` group yet), anything else | `recipient_phone` | Kamran |
+| Buyer requested cancel | DM: `hathoro_orders`, WR: `wrenchly_orders`, HS: `hoank_insights` | as the group's lane |
 
 ## How it works
 
@@ -21,10 +21,25 @@ shows both QR codes and one Kamran / Hifza switch per lane.
   text or caption before it goes to the gateway, so ids show as plain text. Bold and italic stay.
 
 * `whatsapp_gateway/server.js`: `ACCOUNTS` holds the two logins (`auth_session/` is Kamran's,
-  `auth_session_hifza/` is Hifza's, both git-ignored). `LANES` holds the table above.
+  `auth_session_hifza/` is Hifza's, both git-ignored). `LANES` in `server.js` holds the sender
+  lanes; the table shows where each kind of alert lands.
 * The lane comes from the target group, so callers do not change. Only the placers' notices have no
-  group of their own: `engine/orders.py` calls `utils.whatsapp.set_alert_store()` at start-up, and a
-  DM placer's no-group alerts carry `lane: hathoro_notices`.
+  group of their own: `engine/orders.py` calls `utils.whatsapp.set_alert_store(STORE_ACCOUNT)` at
+  start-up.
+* Placer notices go to the store's Insights group (owner, 11 Nov 2026: "General group > send to
+  insights"). `utils.whatsapp._notice_target` sends every text or photo a placer sends without a
+  group to `get_whatsapp_group(<store>, "insights")`: delivery time high / no Zoro date / cart busy /
+  card declined / two profiles on one Zoro account, Manual-C no coupon, manual code which item, big
+  order '20', placed then cancelled, the Ultra out-of-stock and back-in-stock lines, and HOANK's
+  buyer-requested-cancel. The sender then follows that group's lane: DM Insights from Hifza, HS
+  Insights from Kamran, so the DM Insights switch on the page now also moves DM placer notices.
+  `hathoro_notices` is used only if Hathoro had no Insights group (the notice would fall back to
+  `recipient_phone`).
+* Wrenchly has no `wrenchly_insights` group, so its placer notices still go to `recipient_phone`.
+  Adding `wrenchly_insights` under `whatsapp.groups` in `bot_config.json` moves them there with no
+  code change (the gateway then sends them on its `general` lane until it gets a Wrenchly Insights
+  lane). The tracker, closing, the dashboard and the launcher never set a store: their sends without
+  a group still go to `recipient_phone`.
 * The sender is decided when an alert leaves the queue, not when it is queued, so a switch also
   moves what is already waiting. Switches are saved in `whatsapp_gateway/routes.json`.
 * Each number has its own pacing, and one number being offline does not stop the other.

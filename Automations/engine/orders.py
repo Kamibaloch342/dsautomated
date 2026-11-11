@@ -222,7 +222,7 @@ IS_RESELLER_PROFILE = "RESELLER" in PROFILE_NAME
 STORE_ACCOUNT = _store_for_profile(PROFILE_NAME, default="HOANK")
 try:
     from utils.whatsapp import set_alert_store as _wa_set_alert_store
-    _wa_set_alert_store(STORE_ACCOUNT)   # which WhatsApp number sends this placer's notices
+    _wa_set_alert_store(STORE_ACCOUNT)   # no-group notices go to this store's Insights group (utils.whatsapp._notice_target)
 except Exception as _wa_err:
     print(f"  [WhatsApp] ⚠️ could not set the alert store: {_wa_err}")
 # Reseller-only stores (Wrenchly) have no coupon profile: every hand-off to a sibling is off.
@@ -3368,9 +3368,11 @@ def _cancel_requested_skip(amazon_id, asin="", sku=""):
             f"Cancel it in Seller Central (it does not count against the cancellation rate).")
     try:
         from utils.whatsapp import get_whatsapp_group, send_whatsapp_message
-        # Owner's exact wording, 9 Nov 2026. Hathoro's go to its Orders Alerts group: the one thing there
-        # that is not a placed order. Every other store's stay in the general group.
-        to = get_whatsapp_group(STORE_ACCOUNT, kind="orders") if STORE_ACCOUNT == "Hathoro" else None
+        # Owner's exact wording, 9 Nov 2026. Hathoro's and Wrenchly's go to their store's Orders Alerts group,
+        # the one thing there that is not a placed order (owner, 11 Nov 2026: "Also for Wrenchly and Hathoro
+        # but not for HOANK"). HOANK's names no group, so it lands in HOANK Insights (utils.whatsapp._notice_target).
+        to = (get_whatsapp_group(STORE_ACCOUNT, kind="orders")
+              if str(STORE_ACCOUNT or "").strip().lower() in ("hathoro", "wrenchly") else None)
         send_whatsapp_message(f"🛑 Not Placing this Order {amazon_id}\n"
                               f"The buyer requested cancellation. Cancel krdun?", to=to)
     except Exception as e:
@@ -5094,50 +5096,83 @@ def _evaluate_order_strategy(resolved_items, priority_coupons, unit_price, list_
     return strategy
 
 
-def _notify_big_order_20(amazon_id, asin, sku, cart_cost, buyer="", city="", state="", title=""):
-    """Send WhatsApp and Telegram alert when an order >= $800 is marked '20'."""
+def _big_order_title(primary_item, resolved_items):
+    """The title the '20' alert shows: the first item's, with '(+N more items)' on a multi-item order,
+    so it does not read as if one title covered every ASIN listed below it."""
+    t = str((primary_item or {}).get("title") or "").strip()
+    more = len(resolved_items or []) - 1
+    if not (t and more > 0):
+        return t
+    if len(t) > 80:                       # room for the marker: the alert shows at most ~100 characters
+        t = t[:80].rsplit(" ", 1)[0].rstrip(" ,.-") + "…"
+    return f"{t} (+{more} more item{'s' if more > 1 else ''})"
+
+
+def _notify_big_order_20(amazon_id, asin, sku, cart_cost, buyer="", city="", state="", title="",
+                         earnings=None, threshold=None, labelled=True):
+    """WhatsApp + Telegram alert when an order at or above the big-order threshold is marked '20'.
+    Owner's layout, 11 Nov 2026: no divider lines, no emoji at the start of a body line (the 🚨 header
+    stays), the order's Amazon earnings (payout e-mail) beside the Zoro cost, "Please check" last.
+    `threshold` is the big_order_threshold the caller decided with; the header shows it instead of a
+    fixed $800. labelled=False: the '20' write on Amazon was not confirmed — the alert says so."""
     loc = f"{city}, {state}".strip(", ")
     binfo = f"{buyer} ({loc})" if (buyer or loc) else "Customer"
+    try:
+        _thr = float(threshold if threshold is not None else
+                     ((gui_cfg if "gui_cfg" in globals() else {}).get("big_order_threshold", 800.0) or 800.0))
+    except (TypeError, ValueError):
+        _thr = 800.0
+    thr_str = f"${_thr:,.0f}" if _thr.is_integer() else f"${_thr:,.2f}"
+    try:
+        cost_str = f"${float(cart_cost):,.2f}"
+    except (TypeError, ValueError):
+        cost_str = "unknown"
+    try:
+        _earn = float(earnings) if earnings is not None and str(earnings).strip() != "" else 0.0
+    except (TypeError, ValueError):
+        _earn = 0.0
+    earn_str = f"${_earn:,.2f}" if _earn > 0 else "unknown"
 
     title = str(title or "").strip()
     sku = str(sku or "").strip()
     if (not title or not sku or sku in ("N/A", "None", "")) and asin:
         try:
             from utils.telegram import _lookup_title_and_sku
-            db_t, db_s = _lookup_title_and_sku(asin)
-            title = title or db_t
+            first = str(asin).split(",")[0].strip()                    # multi-item: the first ASIN
+            db_t, db_s = _lookup_title_and_sku(first)
+            if not title and db_t:
+                n_more = len([a for a in str(asin).split(",") if a.strip()]) - 1
+                title = _big_order_title({"title": db_t}, [None] * (n_more + 1))
             sku = sku or db_s
         except Exception:
             pass
 
-    title_str = title[:80] if title else "Product Listing"
+    title_str = title[:120] if title else "Product Listing"
     sku_str = sku if sku else "N/A"
+    tag_line = ("Amazon Tag: Marked '20' in Seller Order ID" if labelled else
+                "Amazon Tag: ⚠️ '20' could not be written on Amazon — please set it by hand")
 
     wa_msg = (
-        f"🚨 *BIG ORDER ($800+) — MARKED '20'*\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🚨 *BIG ORDER ({thr_str}+) — MARKED '20'*\n"
         f"• Title: *{title_str}*\n"
-        f"• SKU: `{sku_str}`\n"
-        f"• ASIN: `{asin}`\n"
-        f"📦 *Order ID*: `{amazon_id}`\n"
-        f"💰 *Zoro Purchase*: *${cart_cost:.2f}*\n"
-        f"👤 *Buyer*: {binfo}\n"
-        f"📝 *Amazon Tag*: Marked *'20'* in Seller Order ID\n"
-        f"📞 *Action*: No priority coupon applies. Call Zoro customer service for manual 20% phone discount!\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━"
+        f"• SKU: {sku_str}\n"
+        f"• ASIN: {asin}\n"
+        f"Order ID: {amazon_id}\n"
+        f"Zoro Purchase: {cost_str} (Earnings: {earn_str})\n"
+        f"Buyer: {binfo}\n"
+        f"{tag_line}\n"
+        f"Please check"
     )
     tg_msg = (
-        f"🚨 <b>BIG ORDER ($800+) — MARKED '20'</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🚨 <b>BIG ORDER ({thr_str}+) — MARKED '20'</b>\n"
         f"• Title: <b>{html.escape(title_str)}</b>\n"
-        f"• SKU: <code>{sku_str}</code>\n"
-        f"• ASIN: <code>{asin}</code>\n"
-        f"📦 <b>Order ID</b>: <code>{amazon_id}</code>\n"
-        f"💰 <b>Zoro Purchase</b>: <b>${cart_cost:.2f}</b>\n"
-        f"👤 <b>Buyer</b>: {binfo}\n"
-        f"📝 <b>Amazon Tag</b>: Marked <b>'20'</b> in Seller Order ID\n"
-        f"📞 <b>Action</b>: No priority coupon applies. Call Zoro customer service for manual 20% phone discount!\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━"
+        f"• SKU: {html.escape(sku_str)}\n"
+        f"• ASIN: {html.escape(str(asin))}\n"
+        f"Order ID: {html.escape(str(amazon_id))}\n"
+        f"Zoro Purchase: {cost_str} (Earnings: {earn_str})\n"
+        f"Buyer: {html.escape(binfo)}\n"
+        f"{html.escape(tag_line)}\n"
+        f"Please check"
     )
     try:
         from utils.whatsapp import send_whatsapp_message
@@ -5921,7 +5956,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
                     "buyer": buyer, "city": city, "state": state, "status": "MARKED_20_CALL_ZORO",
                     "notes": reason})
-        _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state)
+        _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state,
+                             title=_big_order_title(primary_item, resolved_items), earnings=earnings,
+                             threshold=big_threshold, labelled=ok)
         return "skipped"
 
     _is_deciding_order = bool(order_detail.get("_deciding"))
@@ -6056,7 +6093,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
                         "buyer": buyer, "city": city, "state": state, "status": "MARKED_20_CALL_ZORO",
                         "notes": _dec["reason"]})
-            _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state)
+            _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state,
+                                 title=_big_order_title(primary_item, resolved_items), earnings=earnings,
+                             threshold=big_threshold, labelled=ok)
             return "skipped"
         if _dec["action"] == "reseller":
             _route_to_sibling(driver, amazon_id, "reseller", "Supervisor: " + _dec["reason"],
@@ -6256,7 +6295,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
                         "buyer": buyer, "city": city, "state": state, "status": "MARKED_20_CALL_ZORO",
                         "notes": reason})
-            _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state)
+            _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state,
+                                 title=_big_order_title(primary_item, resolved_items), earnings=earnings,
+                             threshold=big_threshold, labelled=ok)
             return "skipped"
         # No coupon at all in today's pool: this profile exists to place WITH coupons, so it
         # waits for the next coupon load instead of buying at list price.
@@ -7179,7 +7220,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         _log_order({"amazon_id": amazon_id, "asin": asin_field, "sku": sku_field, "qty": qty_field,
                     "buyer": buyer, "city": city, "state": state, "status": "MARKED_20_CALL_ZORO",
                     "notes": reason})
-        _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state)
+        _notify_big_order_20(amazon_id, asin_field, sku_field, raw_cart_cost, buyer, city, state,
+                             title=_big_order_title(primary_item, resolved_items), earnings=earnings,
+                             threshold=big_threshold, labelled=ok)
         return "skipped"
 
     # ── Reconcile the local claim on failure ──────────────────────
@@ -7846,6 +7889,15 @@ def main():
                 print(f"  ℹ️  No orders found with label {labels_str}")
                 _run_log["orders_scraped"] = 0
                 _save_log()
+                # The watch list's Zoro checks (engine/listing_guard.py) also run on a cycle with no
+                # orders: the alert promises a check every restock_check_minutes, and an idle placer
+                # never reached the call at the cycle end (11 Nov 2026: Hathoro rows unchecked for 2 h
+                # while both DM placers ran). When nothing is due it returns after one read-only look.
+                try:
+                    from engine import listing_guard
+                    driver = listing_guard.handle_pending(driver, STORE_ACCOUNT, PROFILE_NAME) or driver
+                except Exception as e:
+                    print(f"  ⚠️  listing guard: {type(e).__name__}: {e}")
                 if SINGLE_CYCLE:
                     return
                 print("   -> Waiting 10 seconds before next cycle...")

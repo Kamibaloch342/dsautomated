@@ -48,8 +48,10 @@ try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch (e) { /* exists */ }
 
 // ── Lanes: which number sends what ────────────────────────────────────────────────────────────
 // A lane is found from the group an alert goes to, so callers do not have to know about senders.
-// Only the placers' notices share one mixed group (bot_config recipient_phone); a DM placer names
-// its lane ('hathoro_notices') and everything else in that group is 'general'.
+// Since 11 Nov 2026 placer notices go to the store's Insights group (utils/whatsapp._notice_target).
+// Only Wrenchly's (no Insights group) and sends from processes that set no store still use the mixed
+// group (bot_config recipient_phone) = 'general'; 'hathoro_notices' is used only if Hathoro Insights
+// were missing.
 // `normal` is the owner's setup of 9 Nov 2026: all of HS and DM closing from Kamran, the rest of DM
 // from Hifza. Same ids as DEFAULT_GROUPS in utils/whatsapp.py; bot_config whatsapp.groups overrides.
 const DEFAULT_GROUPS = {
@@ -65,17 +67,17 @@ const DEFAULT_GROUPS = {
 const LANES = [
     { id: 'hathoro_orders',   store: 'DM', label: 'Order alerts (DM Coupon + DM Reseller)', normal: 'hifza' },
     { id: 'hathoro_tracking', store: 'DM', label: 'Tracking ID alerts', normal: 'hifza' },
-    { id: 'hathoro_insights', store: 'DM', label: 'Insights', normal: 'hifza' },
-    { id: 'hathoro_notices',  store: 'DM', label: 'Placer notices (cancel requests, delivery time, Manual-C)', normal: 'hifza', mixedGroup: true },
+    { id: 'hathoro_insights', store: 'DM', label: 'Insights + DM placer notices', normal: 'hifza' },
+    { id: 'hathoro_notices',  store: 'DM', label: 'Placer notices — only if Hathoro Insights is missing (unused today)', normal: 'hifza', mixedGroup: true },
     { id: 'hathoro_messages', store: 'DM', label: 'Closing (delivery messages + review requests)', normal: 'kamran' },
     { id: 'hoank_orders',     store: 'HS', label: 'Order alerts (HS Coupon + HS Reseller)', normal: 'kamran' },
     { id: 'hoank_tracking',   store: 'HS', label: 'Tracking ID alerts', normal: 'kamran' },
-    { id: 'hoank_insights',   store: 'HS', label: 'Insights', normal: 'kamran' },
+    { id: 'hoank_insights',   store: 'HS', label: 'Insights + HS placer notices', normal: 'kamran' },
     { id: 'hoank_messages',   store: 'HS', label: 'Closing (delivery messages + review requests)', normal: 'kamran' },
     { id: 'wrenchly_orders',   store: 'WR', label: 'Order alerts (WR Reseller)', normal: 'kamran' },
     { id: 'wrenchly_tracking', store: 'WR', label: 'Tracking ID alerts', normal: 'kamran' },
     { id: 'wrenchly_messages', store: 'WR', label: 'Closing (delivery messages + review requests)', normal: 'kamran' },
-    { id: 'general',          store: 'Other', label: 'HS and WR placer notices, WR insights and anything else', normal: 'kamran', mixedGroup: true },
+    { id: 'general',          store: 'Other', label: 'WR placer notices, WR insights and anything else', normal: 'kamran', mixedGroup: true },
 ];
 const laneById = id => LANES.find(l => l.id === id);
 
