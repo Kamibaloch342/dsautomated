@@ -6,7 +6,7 @@
 
 ---
 
-## How the alerts work now (9 Nov 2026) — read this first
+## How the alerts work now (9 Nov 2026, changes of 11 Nov 2026) — read this first
 
 This section overrides anything below it. The original plan further down is kept for history.
 
@@ -24,13 +24,86 @@ Rules:
 |---|---|
 | Zoro price up / down | The Unit Price on Zoro's order e-mail differs from that code's previous e-mail, to the cent, either direction. One alert per change, to the store whose order showed it first. The alert line ends at the old price's date: "… New price first on WB… (Wed, Nov 11); old price last on WB… (Wed, Nov 11)". The listings on the code are kept on the item (`listings`), not in the text (owner, 11 Nov 2026). |
 | Earnings up / down | Per (store, ASIN): unit earnings by day against the previous day with orders, over 60 days of history. Combined-ASIN orders are left out. closing's quantity wins over the placer's. |
-| Zoro late vs Amazon | Zoro's date is 2+ **business** days after Amazon's, on an order placed within 1 business day. One per listing per week. |
+| Zoro late vs Amazon | Zoro's date is 2+ **business** days after Amazon's, on an order placed within 1 business day. One per listing per **day** (owner, 11 Nov 2026: "no make this daily"; it was one per week), showing the day's latest late order; "(N orders that day)" counts that day's late orders. Key `{store}:{asin}:late_vs_promise:{order day}`. |
 | Handling review | Weekly summary. Listings with 5+ orders in 30 days, usually 2+ business days to ship-by, and Zoro not tight against Amazon's date. |
-| Out of stock / Alternative SKU | Separate categories, one per ASIN per day. |
+| Out of stock | One per listing per **6-hour block** of Pakistan time — 00–06, 06–12, 12–18, 18–24 (owner, 11 Nov 2026: "after every 6 hours"; it was one per day). The block is that of the out-of-stock event by its real time: `bot_decisions.ts` (the priority check, this Mac's clock) or closing's purchase date (US/Pacific, converted). A new event in a later block alerts again; no new event, no repeat. "on N orders" counts the orders of that block (the priority check names none). The hourly sender sends only a listing's latest block, and never two out-of-stock alerts for one listing within 6 hours (`OOS_SPACING_HOURS`: a sweep across 00/06/12/18 would otherwise give two an hour apart; the skipped block keeps its key and goes out later if the listing is still out). Key `{store}:{asin}:oos:{YYYY-MM-DD}T{00/06/12/18}`. |
+| Alternative SKU used | One per ASIN per day. |
 | Low margin | Placed under 8%: one per ASIN per day, showing the lowest. Rejected orders stay per order. |
 | Zoro shipping rule | List price × qty against the $50 line, and only when Zoro charged more than its rule. |
-| Buyer shipping | Buyer paid on a listing that ships free (70%+ of its last 10 orders), or a paid listing went free. |
+| Buyer shipping | Buyer paid on a listing that ships free (70%+ of its last 10 orders), or a paid listing went free. The paid one ends at "(this listing usually ships free)" — "make sure it goes out fast" was removed (owner, 11 Nov 2026). |
+| Buyer ZIP mismatch | Amazon's ship ZIP and the ZIP on Zoro's order differ in the first 5 digits. The alert line names the order (owner, 11 Nov 2026: "Add order number"), e.g. (made up) "Ship ZIP 75201 on Order 113-0000000-0000000 does not match Zoro's ZIP 75202". |
 | Refunded, Undelivered, Shipped late, WB unmatched | One daily summary per store, from 12:00 local (`ZUHRA_SUMMARY_HOUR`). |
+
+Every hourly alert arrives in one frame (`send_insights_alerts._frame`): the header, then
+"• Title: *…*" — the **first five real words** of the listing title, without the comma, dash or
+connector the cut stops on (owner, 11 Nov 2026: "Make the title short in this alert like max 5
+words"; fix 4 below) — "• SKU", "• ASIN", "• Order", "• Date" (the Amazon order day; with the time
+for Out of stock only, fix 6), a blank line, "• Alert: …". Title and SKU come from the item, else
+the listing's closing / placer rows, else the order's placer row, else Amazon's order report
+(`amazon_report_orders`) or the listing guard's `listing_oos`, the alert's own store first (fix 5)
+(an ASIN the priority check found out of
+stock that never had a placed order). Checked on 11 Nov 2026 over 14 days of real data, all three
+stores: every Buyer shipping, Zoro price, Alternative SKU, Out of stock and Zoro late frame had
+Title, SKU and ASIN; every ZIP mismatch (60 days) had its order. Out of stock frames have no Order
+line: the priority check that finds them names no order.
+
+The keys of Out of stock and Zoro late changed on 11 Nov 2026. `_covered_by_old_key()` in the sender
+keeps what the old keys already announced from going out again (it would have been 26 HOANK and
+13 Hathoro items that day), without writing anything; no `--baseline` was run.
+
+Follow-up fixes, same day (11 Nov 2026):
+
+1. **Zoro late, old-key guard by time.** The guard compared the item's day (Amazon's, US/Pacific)
+   with the date the old weekly alert was recorded (Pakistan clock), so a new day's alert was
+   hidden: a Hathoro listing's order of 10 Nov (13:54 here) counted as covered by the weekly alert
+   of 10 Nov 00:06, which was about 9 Nov. The Zoro-late item now carries `first_seen` and
+   `last_seen` — the day's first and latest late order, Pakistan clock — and is covered only when
+   `first_seen` is at or before the old alert's recorded time. The first, not the latest: the new
+   key is one per listing per day, so later orders of a day already announced would not alert again
+   either (a HOANK listing: first late order 04:19, weekly alert 04:32, two more after). Measured on
+   the live data: of the 39 items the old keys covered, that one Hathoro item now goes out, 38 stay held.
+2. **The guard ends.** `OLD_KEYS_UNTIL = 14 Nov 2026`: after that date `_old_key_times()` returns
+   nothing without reading the table and `_covered_by_old_key()` is always False — the hourly run
+   looks back 2 days, so no item it sees can carry an old key. Both can be deleted after that date.
+   (A manual `--days 7` run after it could re-announce items of 9–11 Nov.)
+3. **Order times.** `insights._order_time()`: closing's purchase_date (US/Pacific, with a time) →
+   Pakistan time; a placer row's purchase_date is the day alone, so its `placed_at` is used —
+   which holds two clocks: `2026-11-11T00:20:13` is this Mac's, `2026-11-11 08:54:31` is UTC (the
+   column's DEFAULT CURRENT_TIMESTAMP on rows inserted without placed_at), read by `_placed_time()`.
+   The Zoro-late "we placed it late" test now puts both days on Amazon's US/Pacific clock
+   (`_pacific_day`); comparing the Pacific purchase day with placed_at's own date dropped ~12 % of
+   late orders (26 of 215 since 28 Oct). Out of stock uses it when a closing row has no time;
+   Zoro late picks the day's latest late order by it (it compared raw text, and placer rows all
+   read `2026-11-10`). No key changed: every key of every category was the same before and after
+   over 2, 14 and 60 days, all three stores.
+4. **Title.** `_short_title()` counts only real words toward the five (a letter or digit; a lone
+   `x`, `-`, `|`, `&` does not count; the `1/2` of `1 1/2` belongs to its number), and the cut never
+   ends on a connector (for, with, and, of, in, x, to, by, the, a, or, on, &; the `in` of `48 in` is a
+   unit and stays): "4 Gallons -Muriatic Acid", "Eagle 55 Gallon Drum", "Hex Cap Screw, 5/8-11 x 1 1/2",
+   "28 x 28 x 20" Corrugated Boxes". A cut that is only sizes goes on to the first product word,
+   up to eight real words (none of 1,832 real titles needed it; real-word counting already reaches
+   the product word in "28 x 28 x 20" Corrugated Boxes").
+5. **Title / SKU lookup by store.** `_lookup_listing()` asks Amazon's report (`account`) and
+   `listing_oos` (`store`) for the alert's own store first — 'HOANK', 'Hathoro', 'Wrenchly' in both
+   tables; 61 ASINs appear under two stores with different SKUs — and any store only when that finds
+   nothing.
+6. **Date with the time — Out of stock only.** An out-of-stock block shows "• Date: Wed, Nov 11,
+   1:54 PM PKT" (the block's latest event), because one listing can alert up to four times a day.
+   Every other alert, Zoro late included, keeps the Amazon order day alone: a Zoro-late item's
+   latest time is often our placement on the next Pakistan day and would not match Seller Central.
+   Keys unchanged.
+
+Measured, not changed (11 Nov 2026): the 6-hour Out of stock repeat almost never fires, because its
+only live source is the priority check (`bot_decisions`, no order ids): 4–10 Nov, HOANK 90 blocks on
+88 listing-days, Hathoro 26 on 23. Amazon's own report has the real out-of-stock orders
+(`amazon_report_orders.merchant_order_id = 'OOS'`). Were they a second source, same 7 days, Pakistan
+days: HOANK 7.6 listings a day with OOS orders, 11.1 blocks a day from them (25 repeats a week),
+12.9 → 23.1 alerts a day with both sources; Hathoro 2.9 listings, 3.0 blocks, 3.7 → 6.7 alerts a
+day; Wrenchly none. Of those listings (HOANK 26, Hathoro 16) the listing guard's `listing_oos` held
+4 and 1 — but it only started on 10 Nov. The priority check never flagged HOANK 13 of 26 and
+Hathoro 11 of 16. Most blocks, 4–10 Nov: HOANK B0FJC6VX29 11, B01LXTQFRD 7, B00TY4AMZQ 7,
+B0GV9GHGQD 6, B0GSSK9ZM8 5; Hathoro B07K51BK2S 3, B000BPLNXC 2, B0095GI1VA 2, B0HGD8DNTT 2. The
+owner decides.
 
 Two more senders, added 10 Nov 2026, each with its own once-only memory. Both message the Insights
 group themselves, at once, and write one row per event to `listing_events`, which
@@ -57,8 +130,10 @@ Things that bit us, do not reintroduce:
 * Never rebuild a Zoro price from order totals: coupons, promos and shipping all look like price changes.
 * Business days skip Sat/Sun only; US holidays are not modelled.
 * Low Zoro stock was removed: Zoro's availability call returned no quantity on any of 26,463 orders.
-* After changing how alerts are keyed, run `scripts/send_insights_alerts.py --baseline --days 30`
-  so old events are not announced again.
+* After changing how alerts are keyed, old events must not be announced again: either a guard like
+  `_covered_by_old_key()` (11 Nov 2026), or `scripts/send_insights_alerts.py --baseline --days 30`
+  — which also marks the items of the daily summary categories as reported, so they never reach
+  a summary.
 
 ---
 

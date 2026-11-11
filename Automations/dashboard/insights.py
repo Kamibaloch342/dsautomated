@@ -6,9 +6,10 @@ Generates real-time, high-accuracy insights across these categories:
   2. Buyer paid for shipping on a free-shipping listing / template went back to free
   3. Zoro Price (Split: Increase ↑ vs Decrease ↓): the Unit Price on Zoro's order e-mails
   4. Zoro Shipping Fee Deviation (Actual ≠ expected $0/free or $5.99)
-  5. Handling time, in business days: Zoro late against Amazon's promise, and a weekly
-     review of the few listings that really have handling days to cut
-  6. Out of Stock (OOS), and Alternative SKU used (one per ASIN per day)
+  5. Handling time, in business days: Zoro late against Amazon's promise (one per listing per
+     day), and a weekly review of the few listings that really have handling days to cut
+  6. Out of Stock (one per listing per 6-hour block of Pakistan time), and Alternative SKU used
+     (one per ASIN per day)
   7. Low Margin Split (Placed < 8%, one per ASIN per day, vs Unplaced 'Loss-Kamran checking')
 Plus critical operational protections (Zip mismatch, Undelivered past due,
 Refunded, Wrong quantity multiplier, Shipped late, WB unmatched).
@@ -28,7 +29,7 @@ import csv
 import sqlite3
 import json
 import statistics
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import Dict, Any, List, Optional, Set, Tuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))   # Development_Unit
@@ -116,6 +117,74 @@ def _short_day(v: Any) -> str:
     """'Sat, Nov 7' for a message; '' when the date cannot be read."""
     d = _d(v)
     return f"{d:%a, %b} {d.day}" if d else ""
+
+
+# Out of stock repeats every 6 hours of the owner's clock (Pakistan, no daylight saving): the
+# blocks 00–06, 06–12, 12–18, 18–24. bot_decisions.ts is the Mac's own clock (Pakistan);
+# closing's purchase_date is Amazon's US/Pacific time.
+_PKT = timezone(timedelta(hours=5), "PKT")
+try:
+    from zoneinfo import ZoneInfo
+    _PACIFIC = ZoneInfo("America/Los_Angeles")
+except Exception:          # no tz database (cloud copy): standard time, an hour off in summer
+    _PACIFIC = timezone(timedelta(hours=-8), "PST")
+_ISO_TIME_RE = re.compile(r"^\s*(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2}))?")
+OOS_BLOCK_HOURS = 6
+
+
+def _pkt_time(v: Any, tz: Any = _PKT) -> Optional[datetime]:
+    """The moment `v` names, on the Pakistan clock (naive). `v` is read in `tz`. Without a clock
+    time the day's midnight is used; None when no date can be read."""
+    s = str(v or "")
+    m = _ISO_TIME_RE.match(s)
+    try:
+        if m:
+            dt = datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                          int(m.group(4) or 0), int(m.group(5) or 0))
+        else:
+            d = _d(s)
+            if not d:
+                return None
+            dt = datetime(d.year, d.month, d.day)
+    except ValueError:
+        return None
+    if tz is _PKT:
+        return dt
+    return dt.replace(tzinfo=tz).astimezone(_PKT).replace(tzinfo=None)
+
+
+def _placed_time(v: Any) -> Optional[datetime]:
+    """order_placer_orders.placed_at on the Pakistan clock. It holds two clocks: '2026-11-11T00:20:13'
+    is this Mac's (the placer writes it), '2026-11-11 08:54:31' is UTC (the column's DEFAULT
+    CURRENT_TIMESTAMP on rows inserted without placed_at) — 13:54 here; order_log.txt agreed on
+    every such row checked (149 of 149 since 20 Oct, 11 Nov 2026)."""
+    s = str(v or "").strip()
+    if len(s) > 10 and s[10] == " ":
+        return _pkt_time(s, timezone.utc)
+    return _pkt_time(s)
+
+
+def _pacific_day(pkt: Optional[datetime]) -> Optional[date]:
+    """A Pakistan-clock moment → its US/Pacific calendar day (the day Amazon's dates are in)."""
+    if not pkt:
+        return None
+    return pkt.replace(tzinfo=_PKT).astimezone(_PACIFIC).date()
+
+
+def _order_time(o: Dict[str, Any]) -> Optional[datetime]:
+    """When an order came in, on the Pakistan clock: closing's purchase_date carries Amazon's
+    US/Pacific time; a placer row's purchase_date is the day alone, so its placed_at is used;
+    the day's Pacific midnight when neither has a time."""
+    p = str(o.get("purchase_date") or "")
+    m = _ISO_TIME_RE.match(p)
+    if m and m.group(4):
+        return _pkt_time(p, _PACIFIC)
+    return _placed_time(o.get("placed_at")) or _pkt_time(p, _PACIFIC)
+
+
+def _oos_block(dt: datetime) -> datetime:
+    """Start of the 6-hour block holding `dt`: 00:00, 06:00, 12:00 or 18:00."""
+    return dt.replace(hour=dt.hour - dt.hour % OOS_BLOCK_HOURS, minute=0, second=0, microsecond=0)
 
 
 def _date_sql(col: str, date_from: Optional[str], date_to: Optional[str]) -> Tuple[str, List[str]]:
@@ -628,15 +697,20 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
     # ═══════════════════════════════════════════════════════════════════════════
     # CATEGORY 6: Out of Stock (OOS) / Supplier Depletion & Alt SKU
     # ═══════════════════════════════════════════════════════════════════════════
-    # One alert per ASIN per day: an out-of-stock listing used to send one for every order.
-    oos_by_day: Dict[tuple, Dict[str, Any]] = {}
+    # One alert per listing per 6-hour block of Pakistan time (owner, 11 Nov 2026: "after every 6
+    # hours"; before, once per listing per day). The block is that of the out-of-stock event, by
+    # its real time: a new event in a later block alerts again, no new event sends nothing.
+    # "on N orders" counts the orders of that block. The hourly sender sends only a listing's
+    # latest block (`block` on the item).
+    oos_by_block: Dict[tuple, Dict[str, Any]] = {}
 
-    def note_oos(acct: str, asin: str, day: str, sku: str, oid: str, ref: str) -> None:
-        if not (asin and day):
+    def note_oos(acct: str, asin: str, when: Optional[datetime], sku: str, oid: str, ref: str) -> None:
+        if not (asin and when):
             return
-        e = oos_by_day.setdefault((acct, asin, day), {"sku": sku, "oids": [], "refs": set()})
+        e = oos_by_block.setdefault((acct, asin, _oos_block(when)), {"sku": sku, "oids": [], "refs": set(), "last": when})
         if not e["sku"] and sku:
             e["sku"] = sku
+        e["last"] = max(e["last"], when)
         if ref not in e["refs"]:
             e["refs"].add(ref)
             if oid:
@@ -646,7 +720,7 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
         if b.get("action") == "OOS":
             asin = b.get("asin") or ""
             oid = b.get("amazon_id") or ""
-            note_oos(b.get("store") or "", asin, _day(b.get("ts")), b.get("sku") or "", oid, oid or asin)
+            note_oos(b.get("store") or "", asin, _pkt_time(b.get("ts")), b.get("sku") or "", oid, oid or asin)
 
     alt_by_day: Dict[tuple, Dict[str, Any]] = {}
     for o in orders:
@@ -658,7 +732,9 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
         sku = o.get("zoro_sku") or o.get("sku") or ""
         d_str = _order_day(o)
         if "OOS" in m_id.upper() or "OOS" in comm.upper():
-            note_oos(acct, asin, d_str, sku, oid, oid or asin)
+            # closing's purchase_date is US/Pacific (a placer row has no Seller Order ID / comments);
+            # without a purchase time, the placement time — not the day's midnight
+            note_oos(acct, asin, _order_time(o), sku, oid, oid or asin)
 
         # Alt SKU Substituted: the order was placed, on the alternative code.
         if o.get("alt_used") == "Yes" and asin and d_str:
@@ -669,13 +745,15 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
                 "oids": []})
             e["oids"].append(oid)
 
-    for (acct, asin, d_str), e in oos_by_day.items():
+    for (acct, asin, blk), e in oos_by_block.items():
         n = max(len(e["oids"]), 1)
         oid = e["oids"][0] if e["oids"] else ""
-        rk = f"{acct}:{asin}:oos:{d_str}"
+        rk = f"{acct}:{asin}:oos:{blk:%Y-%m-%dT%H}"
         on = f" on {n} order{'s' if n > 1 else ''}" if e["oids"] else ""
         msg = f"ASIN {asin} (Zoro {e['sku']}): Supplier is OUT OF STOCK{on} — deactivate listing on Amazon immediately!"
-        add("oos_alert", rk, oid, msg, "high", {"asin": asin, "account": acct, "sku": e["sku"], "orders": n, "date": d_str, "link": "order" if oid else "asin"})
+        add("oos_alert", rk, oid, msg, "high", {"asin": asin, "account": acct, "sku": e["sku"], "orders": n,
+            "date": blk.date().isoformat(), "block": f"{blk:%Y-%m-%d %H:%M}", "last_seen": f"{e['last']:%Y-%m-%d %H:%M}",
+            "link": "order" if oid else "asin"})
 
     for (acct, asin, d_str), e in alt_by_day.items():
         n = len(e["oids"])
@@ -755,6 +833,11 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
     # "Reduce handling" per order is gone: 82% of orders are already at 1 business day, and the
     # days between Zoro's date and Amazon's are Amazon's transit window, which handling time
     # cannot shorten. The listings that can improve come from _handling_review(), weekly.
+    # One alert per listing per day (owner, 11 Nov 2026: "no make this daily"; it was one per
+    # week), carrying the day's latest late order; "(N orders)" counts that day's late orders.
+    # "Latest" by the order's real time (_order_time, Pakistan clock), which goes on the item as
+    # `last_seen` (the sender's Date line shows it); the day's first late order as `first_seen`
+    # (the sender's old-key guard compares it: the day was announced once that order existed).
     late_by_listing: Dict[tuple, Dict[str, Any]] = {}
     for o in orders:
         zdb, adb, asin = _d(o.get("zoro_deliver_by")), _d(o.get("deliver_by_date")), o.get("asin")
@@ -763,26 +846,37 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
         late = _biz_days(adb, zdb)
         if late < 2:
             continue        # one business day is the carrier's normal variance
-        p, placed = _d(o.get("purchase_date")), _d(o.get("placed_at"))
+        # Both days on Amazon's US/Pacific clock: placed_at is the Pakistan or UTC clock, so its own
+        # date ran up to a day ahead and dropped ~12 % of late orders as "placed late" (11 Nov 2026).
+        p, placed = _d(o.get("purchase_date")), _pacific_day(_placed_time(o.get("placed_at")))
         if p and placed and _biz_days(p, placed) > 1:
             continue        # we placed it late; that says nothing about the listing
-        key = (o.get("account") or "", asin)
+        day = _order_day(o)
+        if not day:
+            continue
+        key = (o.get("account") or "", asin, day)
+        when = _order_time(o)
         h = late_by_listing.get(key)
         if h is None:
-            late_by_listing[key] = {"order": o, "late": late, "zdb": zdb, "adb": adb, "n": 1}
+            late_by_listing[key] = {"order": o, "late": late, "zdb": zdb, "adb": adb, "n": 1, "when": when, "first": when}
         else:
             h["n"] += 1
-            if _order_day(o) > _order_day(h["order"]):
-                h.update(order=o, late=late, zdb=zdb, adb=adb)
+            if when and (h["when"] is None or when > h["when"]):
+                h.update(order=o, late=late, zdb=zdb, adb=adb, when=when)
+            if when and (h["first"] is None or when < h["first"]):
+                h["first"] = when
 
-    for (acct, asin), h in late_by_listing.items():
-        o, d_str = h["order"], _order_day(h["order"])
+    for (acct, asin, d_str), h in late_by_listing.items():
+        o = h["order"]
         oid = o.get("amazon_order_id") or ""
-        week = _monday(_d(d_str)).isoformat() if d_str else ""
-        rk = f"{acct}:{asin}:increase_handling:{week}"
-        many = f" ({h['n']} orders)" if h["n"] > 1 else ""
+        rk = f"{acct}:{asin}:late_vs_promise:{d_str}"
+        many = f" ({h['n']} orders that day)" if h["n"] > 1 else ""
         msg = f"ASIN {asin} ({acct}): Zoro delivers {h['zdb']:%a, %b} {h['zdb'].day}, Amazon promised {h['adb']:%a, %b} {h['adb'].day} — {h['late']} business days late{many}. INCREASE handling time on Amazon"
-        add("handling_time_tune", rk, oid, msg, "high", {"asin": asin, "account": acct, "late_business_days": h["late"], "date": d_str, "link": "order"})
+        extra = {"asin": asin, "account": acct, "late_business_days": h["late"], "date": d_str, "link": "order"}
+        if h["when"]:
+            extra["last_seen"] = f"{h['when']:%Y-%m-%d %H:%M}"
+            extra["first_seen"] = f"{h['first']:%Y-%m-%d %H:%M}"
+        add("handling_time_tune", rk, oid, msg, "high", extra)
 
     for r in handling_review:
         add("handling_review", r["ref_key"], "", r["message"], "low", {
@@ -918,7 +1012,7 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
                 prior = [s for _, s in known[max(0, idx - 10):idx]]
                 if len(prior) >= 3 and sum(1 for s in prior if s <= 0.01) >= 0.7 * len(prior) and in_window(d_str):
                     rk = f"{acct}:{asin}:ship_paid:{oid}"
-                    msg = f"ASIN {asin} ({acct}): Buyer paid ${ship:.2f} for faster shipping on Order {oid} (this listing usually ships free) — make sure it goes out fast"
+                    msg = f"ASIN {asin} ({acct}): Buyer paid ${ship:.2f} for faster shipping on Order {oid} (this listing usually ships free)"
                     add("shipping_change", rk, oid, msg, "med", {
                         "asin": asin, "account": acct, "shipping_amt": ship, "date": d_str, "link": "order"
                     })
@@ -966,7 +1060,8 @@ def _compute(account: Optional[str] = None, date_from: Optional[str] = None,
         az, zz = _digits(o.get("ship_postal_code"))[:5], _digits(o.get("zoro_buyer_zip"))[:5]
         if len(az) == 5 and len(zz) == 5 and az != zz:
             rk = f"{oid}:zip_mismatch"
-            msg = f"Ship zip {o.get('ship_postal_code')} != Zoro {o.get('zoro_buyer_zip')}"
+            # The order number is in the line itself as well (owner, 11 Nov 2026: "Add order number")
+            msg = f"Ship ZIP {az} on Order {oid} does not match Zoro's ZIP {zz}"
             add("zip_mismatch", rk, oid, msg, "high", {
                 "asin": asin, "ship_city": o.get("ship_city"), "date": d_str, "link": "order"
             })

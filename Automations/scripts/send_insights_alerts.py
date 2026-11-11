@@ -10,10 +10,14 @@ Sent as they happen (hourly):
   2. Buyer paid for shipping on a free-shipping listing / a paid listing went free
   3. Zoro Price (Increase ↑ vs Decrease ↓), from the Unit Price on Zoro's order e-mails
   4. Zoro Shipping Rule Deviation ($50 free / $5.99)
-  5. Zoro late against Amazon's promise, 2+ business days (increase handling)
-  6. Out of Stock, and Alternative SKU used (one per ASIN per day)
+  5. Zoro late against Amazon's promise, 2+ business days (increase handling), one per listing per day
+  6. Out of Stock (one per listing per 6-hour block, only the latest block goes out, and never two
+     for one listing within 6 hours), and Alternative SKU used (one per ASIN per day)
   7. Low Margin (< 8%, one per ASIN per day; unplaced 'Loss-Kamran' per order)
   8. Zip mismatch, Wrong quantity
+
+Each one arrives in one frame (_frame): header, Title (first five real words), SKU, ASIN, Order,
+Date (the Amazon order day; with the time, Pakistan clock, for Out of Stock only), then the alert line.
 
 Sent as one summary per store:
   • daily, from SUMMARY_HOUR: Refunded, Undelivered past due, Shipped late, WB unmatched. These
@@ -26,6 +30,7 @@ Deduplication:
 """
 
 import os
+import re
 import sys
 import argparse
 import sqlite3
@@ -135,6 +140,89 @@ def _record_many(con: sqlite3.Connection, rows: list):
     con.commit()
 
 
+# The old-key guard below (_old_key_times / _covered_by_old_key) is for the change of 11 Nov 2026
+# only. The hourly run looks 2 days back, so after OLD_KEYS_UNTIL no item it sees can carry an old
+# key: both functions then do nothing (and read nothing), and they can be deleted after that date.
+OLD_KEYS_UNTIL = datetime.date(2026, 11, 14)
+KEYS_CHANGED = "2026-11-11"          # the day the new keys went live
+
+# Out of stock: at most one alert per listing every OOS_SPACING_HOURS (owner, 11 Nov 2026: "after every 6
+# hours"). The key is the fixed 6-hour block of the Pakistan clock, so a priority sweep that runs across
+# 00/06/12/18 would otherwise give one listing two alerts an hour apart. A skipped block keeps its key
+# and goes out at a later run if the listing is still out by then.
+OOS_SPACING_HOURS = 6
+
+
+def _last_oos_sent(con: sqlite3.Connection, account: str) -> dict:
+    """(store, asin) → when its latest out-of-stock alert was recorded (datetime, this Mac's clock)."""
+    since = (datetime.datetime.now() - datetime.timedelta(hours=OOS_SPACING_HOURS)).isoformat()
+    out = {}
+    try:
+        for k, t in con.execute("SELECT ref_key, dispatched_at FROM whatsapp_dispatched_insights "
+                                "WHERE category = 'oos_alert' AND account = ? AND dispatched_at >= ? "
+                                "AND COALESCE(message, '') != ?", (account, since, BASELINE_MESSAGE)):
+            parts = str(k).split(":")
+            if len(parts) >= 3:
+                try:
+                    when = datetime.datetime.fromisoformat(str(t))
+                except ValueError:
+                    continue
+                key = (parts[0], parts[1])
+                out[key] = max(out.get(key, when), when)
+    except sqlite3.Error:
+        pass
+    return out
+
+
+def _old_key_times(con: sqlite3.Connection) -> dict:
+    """ref_key → when it was recorded ('YYYY-MM-DD HH:MM', this Mac's clock = Pakistan), for the
+    out-of-stock and Zoro-late alerts of the last 10 days. See _covered_by_old_key. Empty, without
+    reading the table, after OLD_KEYS_UNTIL."""
+    if datetime.date.today() > OLD_KEYS_UNTIL:
+        return {}
+    since = (datetime.date.today() - datetime.timedelta(days=10)).isoformat()
+    try:
+        return {k: str(t or "")[:16].replace("T", " ") for k, t in con.execute(
+            "SELECT ref_key, dispatched_at FROM whatsapp_dispatched_insights "
+            "WHERE category IN ('oos_alert', 'handling_time_tune') AND dispatched_at >= ?", (since,))}
+    except sqlite3.Error:
+        return {}
+
+
+def _covered_by_old_key(cat: str, item: dict, old: dict) -> bool:
+    """True when the key used before 11 Nov 2026 already announced this item. That day the keys
+    changed — out of stock from one per listing per day to one per 6-hour block, Zoro late from
+    one per listing per week to one per day — and without this every item of the 2-day window
+    would have gone out again (39 on 11 Nov). Writes nothing; always False after OLD_KEYS_UNTIL
+    (14 Nov 2026), when the old keys are out of the window — delete it after that date."""
+    if not old or datetime.date.today() > OLD_KEYS_UNTIL:
+        return False
+    acct, asin = item.get("account") or "", item.get("asin") or ""
+    if cat == "oos_alert" and item.get("block"):
+        day = item["block"][:10]
+        t = old.get(f"{acct}:{asin}:oos:{day}")
+        # A daily alert of a day before the change covered that whole day; on the day of the change
+        # (11 Nov) it covered the blocks up to when it went out — compared by time, also after midnight.
+        return bool(t) and (day < KEYS_CHANGED or str(item.get("last_seen") or "") <= t)
+    if cat == "handling_time_tune":
+        try:
+            d = datetime.date.fromisoformat(str(item.get("date") or "")[:10])
+        except ValueError:
+            return False
+        t = old.get(f"{acct}:{asin}:increase_handling:{(d - datetime.timedelta(days=d.weekday())).isoformat()}")
+        if not t:
+            return False
+        # By time, both on the Pakistan clock: covered when the day's first late order came in
+        # before the weekly alert went out — the new key is one per listing per day, so later
+        # orders of a day already announced would not alert again either (HOANK B0GZX2861K, 10 Nov:
+        # first late order 04:19, weekly alert 04:32, two more after). Comparing the item's day
+        # (Amazon's, US/Pacific) with the record's date hid new alerts: Hathoro B0GXL2JC3V's
+        # order of 10 Nov (13:54 here) against the weekly alert of 10 Nov 00:06, which was about 9 Nov.
+        seen = str(item.get("first_seen") or item.get("last_seen") or "")
+        return seen <= t if seen else d.isoformat() <= t[:10]
+    return False
+
+
 def _pretty_day(iso: str) -> str:
     """'2026-11-07' → 'Sat, Nov 7' for the alert's Date line."""
     try:
@@ -142,6 +230,15 @@ def _pretty_day(iso: str) -> str:
         return f"{d:%a, %b} {d.day}"
     except ValueError:
         return str(iso or "")
+
+
+def _pretty_time(stamp: str) -> str:
+    """'2026-11-11 14:05' (Pakistan clock) → 'Wed, Nov 11, 2:05 PM PKT'; '' when unreadable."""
+    try:
+        t = datetime.datetime.strptime(str(stamp or "")[:16], "%Y-%m-%d %H:%M")
+    except ValueError:
+        return ""
+    return f"{t:%a, %b} {t.day}, {t.hour % 12 or 12}:{t:%M} {'AM' if t.hour < 12 else 'PM'} PKT"
 
 
 def _load_asin_meta(con: sqlite3.Connection) -> dict:
@@ -168,6 +265,153 @@ def _load_asin_meta(con: sqlite3.Connection) -> dict:
     except Exception:
         pass
     return meta
+
+
+TITLE_WORDS = 5
+TITLE_SIZE_WORDS = 8
+_TITLE_TAIL = " ,;:-–—|/&+("
+# Words a cut must not end on: '4 Gallons -Muriatic Acid for', 'Eagle 55 Gallon Drum with'.
+_TITLE_CONNECTORS = frozenset({"for", "with", "and", "of", "in", "x", "to", "by", "the", "a", "or", "on", "&"})
+_TITLE_SIZE_RE = re.compile(r"""^\(?\d[\d.,/-]*(?:"|”|''|'|in\.?|inch(?:es)?|ft\.?|mm|cm|m)?[lwhd]?[,;:)]*$""", re.I)
+_TITLE_FRACTION_RE = re.compile(r"^\d+/\d+\W*$")
+
+
+def _title_word(tok: str) -> bool:
+    """A token that counts toward the five: it has a letter or digit and is not a lone 'x'
+    ('28 x 28 x 20"' is three words, not five). '-', '|', '&' have neither."""
+    return bool(re.search(r"[A-Za-z0-9]", tok)) and tok.lower().strip(_TITLE_TAIL + ".)") != "x"
+
+
+def _short_title(title: str, words: int = TITLE_WORDS) -> str:
+    """The first five real words of a listing title (owner, 11 Nov 2026: "Make the title short in
+    this alert like max 5 words"). A lone 'x', '-', '|', '&' is kept but not counted, and the
+    fraction of '1 1/2' belongs to its number. The cut never ends on a connector ('for', 'with',
+    'x' …; the 'in' of '48 in' is a unit and stays) nor on the comma or dash it stops on. A cut
+    that is only sizes goes on to the first product word, up to eight real words. A bracket the
+    cut leaves open is closed: 'HOANK (6 Gallons - Ultra)'."""
+    toks = str(title or "").split()
+
+    def cut(limit: int) -> list:
+        out, n = [], 0
+        for i, tok in enumerate(toks):
+            joined = i > 0 and _TITLE_FRACTION_RE.match(tok) and toks[i - 1].isdigit()
+            if _title_word(tok) and not joined:
+                if n == limit:
+                    break
+                n += 1
+            out.append(tok)
+        return out
+
+    def product_word(tok: str) -> bool:
+        return _title_word(tok) and not _TITLE_SIZE_RE.match(tok)
+
+    out = cut(words)
+    if out and not any(product_word(t) for t in out):
+        longer = cut(max(TITLE_SIZE_WORDS, words))
+        for j in range(len(out), len(longer)):
+            if product_word(longer[j]):
+                out = longer[:j + 1]
+                break
+
+    def connector_at_end() -> bool:
+        w = out[-1].lower().strip(_TITLE_TAIL + ".")
+        unit = w == "in" and len(out) > 1 and out[-2][-1:].isdigit()
+        return w in _TITLE_CONNECTORS and not unit
+
+    while out and (not _title_word(out[-1]) or connector_at_end()):
+        out.pop()
+    t = " ".join(out).rstrip(_TITLE_TAIL)
+    return t + ")" * max(t.count("(") - t.count(")"), 0) + "]" * max(t.count("[") - t.count("]"), 0)
+
+
+def _lookup_listing(con: sqlite3.Connection, asin: str, store: str = "") -> tuple:
+    """(title, sku) of a listing that has no closing or placer row — an ASIN the priority check
+    found out of stock but that never had a placed order: Amazon's own order report has every
+    order of it, the listing guard's table the ones it worked on. The alert's own store first
+    (amazon_report_orders.account / listing_oos.store hold 'HOANK', 'Hathoro', 'Wrenchly'): one
+    ASIN can be listed by two stores under different SKUs. Any store only when that finds none."""
+    queries = []
+    if store:
+        queries += [("SELECT title, skus FROM amazon_report_orders WHERE asins = ? AND account = ? "
+                     "AND COALESCE(title,'') != '' ORDER BY purchase_date DESC LIMIT 1", (asin, store)),
+                    ("SELECT title, seller_sku FROM listing_oos WHERE asin = ? AND store = ? "
+                     "AND COALESCE(title,'') != '' LIMIT 1", (asin, store))]
+    queries += [("SELECT title, skus FROM amazon_report_orders WHERE asins = ? AND COALESCE(title,'') != '' "
+                 "ORDER BY purchase_date DESC LIMIT 1", (asin,)),
+                ("SELECT title, seller_sku FROM listing_oos WHERE asin = ? AND COALESCE(title,'') != '' LIMIT 1", (asin,))]
+    for q, args in queries:
+        try:
+            r = con.execute(q, args).fetchone()
+        except sqlite3.Error:
+            continue
+        if r:
+            return str(r[0] or "").strip(), str(r[1] or "").strip()
+    return "", ""
+
+
+def _frame(con: sqlite3.Connection, cat: str, item: dict, asin_meta: dict, store: str = "") -> str:
+    """The one frame every hourly alert arrives in: header, Title (first five words), SKU, ASIN,
+    Order, Date, then the alert line. Title / SKU / ASIN come from the item, else the listing's
+    orders, else Amazon's report (the item's store — else `store`, the store being sent — first).
+    The Date line has the time as well for an out-of-stock block ('Wed, Nov 11, 2:05 PM PKT'): it
+    can repeat on one day. Every other alert shows the Amazon order day only — a Zoro-late item's
+    `last_seen` is often our placement time on the next Pakistan day, which would not match the
+    order's date on Seller Central."""
+    header = CATEGORY_HEADERS.get(cat, f"💡 *{cat.upper().replace('_', ' ')}*")
+    d_str = str(item.get("date") or "")[:10]
+    msg_body = item.get("message") or "Insight alert"
+    order_id = item.get("order_id")
+    asin = (item.get("asin") or "").strip().upper()
+    title = str(item.get("title") or "").strip()
+    sku = str(item.get("sku") or item.get("main_sku") or "").strip()
+
+    # Fallback lookup in pre-indexed metadata
+    if asin and asin in asin_meta:
+        if not title:
+            title = asin_meta[asin].get("title", "")
+        if not sku:
+            sku = asin_meta[asin].get("sku", "")
+
+    # If still missing and order_id exists, lookup by order_id
+    if (not title or not sku) and order_id:
+        try:
+            row = con.execute(
+                "SELECT title, sku, asin FROM order_placer_orders WHERE amazon_order_id = ? AND title IS NOT NULL LIMIT 1",
+                (order_id,)
+            ).fetchone()
+            if row:
+                title = title or str(row[0] or "").strip()
+                sku = sku or str(row[1] or "").strip()
+                if not asin and row[2]:
+                    asin = str(row[2]).strip().upper()
+        except Exception:
+            pass
+
+    if (not title or not sku) and asin:
+        t, s = _lookup_listing(con, asin, item.get("account") or store)
+        title, sku = title or t, sku or s
+
+    # Clean up redundant ASIN and Account prefixes from message body if present
+    clean_msg = msg_body
+    if clean_msg.startswith("ASIN "):
+        parts = clean_msg.split(":", 1)
+        if len(parts) == 2:
+            clean_msg = parts[1].strip()
+
+    lines = [header, ""]
+    lines.append(f"• Title: *{_short_title(title) or 'Product Listing'}*")
+    lines.append(f"• SKU: `{sku if sku else 'N/A'}`")
+    if asin:
+        lines.append(f"• ASIN: `{asin}`")
+    if order_id:
+        lines.append(f"• Order: `{order_id}`")
+    when = _pretty_time(item.get("last_seen") or "") if item.get("block") else ""
+    if when or d_str:
+        lines.append(f"• Date: {when or _pretty_day(d_str)}")
+
+    lines.append("")
+    lines.append(f"• Alert: {clean_msg}")
+    return "\n".join(lines)
 
 
 def _summary_lines(label: str, items: list) -> list:
@@ -279,6 +523,8 @@ def dispatch_account_insights(
 
     con = sqlite3.connect(DB_PATH, timeout=10)
     already_sent = _get_dispatched_keys(con)
+    old_keys = _old_key_times(con)
+    last_oos = _last_oos_sent(con, account)
     asin_meta = _load_asin_meta(con)
 
     sent_count = 0
@@ -291,7 +537,14 @@ def dispatch_account_insights(
         if not items:
             continue
 
-        header = CATEGORY_HEADERS.get(cat, f"💡 *{cat.upper().replace('_', ' ')}*")
+        # Out of stock is one item per listing per 6-hour block: only a listing's latest block
+        # goes out, so a run after a gap (or after a key change) sends one per listing, not one
+        # per block it missed.
+        latest_block = {}
+        for it in items:
+            if it.get("block"):
+                k = (it.get("account"), it.get("asin"))
+                latest_block[k] = max(latest_block.get(k, ""), it["block"])
 
         for item in items:
             ref_key = item.get("ref_key")
@@ -303,55 +556,17 @@ def dispatch_account_insights(
             d_str = str(item.get("date") or "")[:10]
             if date_from and d_str and d_str < date_from:
                 continue
+            if item.get("block") and item["block"] < latest_block.get((item.get("account"), item.get("asin")), ""):
+                continue
+            if _covered_by_old_key(cat, item, old_keys):
+                continue
+            if cat == "oos_alert":
+                prev = last_oos.get((item.get("account") or account, item.get("asin") or ""))
+                if prev and datetime.datetime.now() - prev < datetime.timedelta(hours=OOS_SPACING_HOURS):
+                    continue           # this listing's last out-of-stock alert is under 6 hours old
 
             msg_body = item.get("message") or "Insight alert"
-            order_id = item.get("order_id")
-            asin = (item.get("asin") or "").strip().upper()
-            title = str(item.get("title") or "").strip()
-            sku = str(item.get("sku") or item.get("main_sku") or "").strip()
-
-            # Fallback lookup in pre-indexed metadata
-            if asin and asin in asin_meta:
-                if not title:
-                    title = asin_meta[asin].get("title", "")
-                if not sku:
-                    sku = asin_meta[asin].get("sku", "")
-
-            # If still missing and order_id exists, lookup by order_id
-            if (not title or not sku) and order_id:
-                try:
-                    row = con.execute(
-                        "SELECT title, sku, asin FROM order_placer_orders WHERE amazon_order_id = ? AND title IS NOT NULL LIMIT 1",
-                        (order_id,)
-                    ).fetchone()
-                    if row:
-                        title = title or str(row[0] or "").strip()
-                        sku = sku or str(row[1] or "").strip()
-                        if not asin and row[2]:
-                            asin = str(row[2]).strip().upper()
-                except Exception:
-                    pass
-
-            # Clean up redundant ASIN and Account prefixes from message body if present
-            clean_msg = msg_body
-            if clean_msg.startswith("ASIN "):
-                parts = clean_msg.split(":", 1)
-                if len(parts) == 2:
-                    clean_msg = parts[1].strip()
-
-            lines = [header, ""]
-            lines.append(f"• Title: *{title[:80] if title else 'Product Listing'}*")
-            lines.append(f"• SKU: `{sku if sku else 'N/A'}`")
-            if asin:
-                lines.append(f"• ASIN: `{asin}`")
-            if order_id:
-                lines.append(f"• Order: `{order_id}`")
-            if d_str:
-                lines.append(f"• Date: {_pretty_day(d_str)}")
-
-            lines.append("")
-            lines.append(f"• Alert: {clean_msg}")
-            full_text = "\n".join(lines)
+            full_text = _frame(con, cat, item, asin_meta, account)
 
             print(f"  📤 [{cat}] -> {ref_key}")
             if dry_run:
@@ -361,6 +576,8 @@ def dispatch_account_insights(
                 if ok:
                     _record_dispatched(con, ref_key, account, cat, msg_body)
                     already_sent.add(ref_key)
+                    if cat == "oos_alert":
+                        last_oos[(item.get("account") or account, item.get("asin") or "")] = datetime.datetime.now()
                     sent_count += 1
                     time.sleep(0.4)
                 else:
