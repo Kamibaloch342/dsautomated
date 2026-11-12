@@ -288,6 +288,18 @@ def get_historical_zoro_costs(zoro_code: str, limit: int = 10) -> List[Dict[str,
         rows = [dict(r) for r in c.execute(query, (zoro_code, alt_prefix_code, limit)).fetchall()]
 
         wb_ids = [r.get("wb_order_id") for r in rows if r.get("wb_order_id")]
+        # A combined order's WB (one Zoro order for several Amazon orders, 12 Nov 2026): its archive
+        # subtotal is the whole Zoro order, which divided by one order's quantity would read as a price
+        # rise. Those rows keep their own part (zoro_order_total) and are not overlaid.
+        if wb_ids:
+            try:
+                _ph = ",".join("?" * len(wb_ids))
+                _shared = {r[0] for r in c.execute(
+                    f"SELECT wb_order_id FROM order_placer_orders WHERE wb_order_id IN ({_ph}) "
+                    f"AND COALESCE(combined_with, '') <> ''", wb_ids).fetchall()}
+            except Exception:
+                _shared = set()          # the column is added with the first combined order
+            wb_ids = [w for w in wb_ids if w not in _shared]
         if wb_ids:
             placeholders = ",".join("?" * len(wb_ids))
             arch_rows = c.execute(

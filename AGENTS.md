@@ -57,6 +57,12 @@ agent and the dashboard run as macOS LaunchAgents.
   there. Routing/coupon rules: `docs/CLOUD_ARCHITECTURE.md` §5.
   **Ultra mode** (per profile, launcher 🚀Ultra, 2 Nov 2026): the Amazon scraping and WB write-backs run
   on two extra Chrome windows beside the placing (`engine/ultra_crew.py`, `docs/ULTRA_MODE.md`).
+  **Combined order** (reseller profiles, 12 Nov 2026): one buyer's orders to one address in the same
+  cycle are bought as ONE Zoro order when that saves Zoro shipping and each order clears its own margin
+  on its share. Every Amazon order keeps the plain WB, its own `order_log.txt` line (share of the cost,
+  `CombinedWith:`) and `order_placer_orders.combined_with`; closing keeps the share
+  (`closing.placer_share`). `bot_config.json → combine_same_buyer: false` turns it off
+  (docs §5.1 "Combined order").
   **PO boxes** (10 Nov 2026): placed with the box renamed "#number" behind the street
   (`platforms.amazon.rename_po_box`); label BB only when the address has no street at all or Zoro
   still refuses it. **Listing guard** (`engine/listing_guard.py`, 10 Nov 2026): when the Zoro code

@@ -187,6 +187,14 @@ class UltraCrew:
                     return None
                 self._cv.wait(min(left, 0.25))
 
+    def peek_detail(self, amazon_id):
+        """A copy of this order's scraped page if the scraper already has it, without taking it (the
+        order may still be placed on its own later) and without moving the scraper. None otherwise."""
+        import copy
+        with self._cv:
+            d = self._details.get(amazon_id)
+            return copy.deepcopy(d) if d is not None else None
+
     def ahead_details(self):
         """[(order, detail)] for what is scraped past the placer, for the batched duplicate check."""
         with self._cv:

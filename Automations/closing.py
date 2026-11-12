@@ -1005,6 +1005,21 @@ def placer_lookup(amazon_id):
     return out
 
 
+_SHARE_FIELDS = ("zoro_order_total", "zoro_tax", "zoro_subtotal", "zoro_shipping", "coupon_savings")
+
+
+def placer_share(amazon_id):
+    """A combined order (engine/orders.py, 12 Nov 2026): one Zoro order (one WB) bought for several
+    Amazon orders of one buyer to one address. Its placer row carries combined_with (the other orders)
+    and THIS order's part of the Zoro cost. Returns {field: part} for those rows, else None. Every
+    WB-keyed source (archive_zoro, the Zoro cost / issue e-mails) gives the WHOLE Zoro order, which on
+    each Amazon order would count the cost twice and label profitable orders Loss."""
+    row = _PLACER_ROWS.get(amazon_id) if _PLACER_ROWS is not None else get_placer_order(amazon_id)
+    if not row or _empty(row.get("combined_with")):
+        return None
+    return {k: row.get(k) for k in _SHARE_FIELDS if not _empty(row.get(k))}
+
+
 def _gapfill(order, updates, source, prov):
     """Copy non-empty `updates` into `order` only where `order` is empty.
     Records the winning source per field in `prov` for the verbose log."""
@@ -1150,6 +1165,13 @@ def enrich_one(conn, order, run_id, gmail_ok=True, scraper=None):
     if pl:
         _gapfill(order, pl, "placer_db", prov)
         order["enriched_from_placer_db"] = 1
+    # Combined order: this order's part of the Zoro cost wins over anything the WB-keyed sources say.
+    share = placer_share(aid)
+    if share and not _empty(share.get("zoro_order_total")):
+        for k, v in share.items():
+            order[k] = v
+            prov[k] = "placer_share"
+        order["_cost_share"] = 1
 
     # 2a) ARCHIVE — gap-fill
     arc = enrich_from_archive(conn, aid, wb, run_id)
@@ -1224,7 +1246,7 @@ def enrich_one(conn, order, run_id, gmail_ok=True, scraper=None):
     # Split order COST: sum Zoro cost across ALL WB legs (was only wb[0]'s → understated
     # cost / overstated profit). Override happens BEFORE the search_zoro_cost fallback and
     # before profit is computed in the batch loop. (See _sum_leg_costs.)
-    legs = _sum_leg_costs(conn, order)
+    legs = 0 if order.get("_cost_share") else _sum_leg_costs(conn, order)
     if legs >= 2:
         prov["zoro_order_total"] = (prov.get("zoro_order_total", "") + "+legsum").lstrip("+")
 
@@ -1232,7 +1254,8 @@ def enrich_one(conn, order, run_id, gmail_ok=True, scraper=None):
     # (e.g. the salesmercentile account), search the Zoro inboxes by WB (preferred
     # first). A 0.0 cost counts as missing here (the column default), so it still
     # gets recovered.
-    if gmail_ok and order.get("wb_order_id") and not (_safe_float(order.get("zoro_order_total")) or 0):
+    if gmail_ok and order.get("wb_order_id") and not order.get("_cost_share") \
+            and not (_safe_float(order.get("zoro_order_total")) or 0):
         try:
             _gapfill(order, search_zoro_cost(order["wb_order_id"], preferred=PREF["zoro"]),
                      "zoro_cost_gmail", prov)
@@ -1263,7 +1286,13 @@ def enrich_one(conn, order, run_id, gmail_ok=True, scraper=None):
             order.get("return_requested") == "Yes" or order.get("refund_done") == "Yes"):
         if _empty(order.get("zoro_case_number")):
             try:
-                _gapfill(order, search_zoro_issue(order["wb_order_id"]), "zoro_issue", prov)
+                _issue = search_zoro_issue(order["wb_order_id"])
+                if order.get("_cost_share") and isinstance(_issue, dict):
+                    # a credit on a combined order's WB is for the whole Zoro order; counted on each
+                    # Amazon order it would be added twice — the case/RA numbers still go on, the amount
+                    # is left for a person to split
+                    _issue = {k: v for k, v in _issue.items() if k != "zoro_refund_amount"}
+                _gapfill(order, _issue, "zoro_issue", prov)
             except Exception as e:
                 print(f"[CLOSING]   {aid}: zoro issue search error — {e}")
 

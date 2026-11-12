@@ -44,7 +44,9 @@ def _ensure_columns():
         for col, typ in (("zoro_qty", "INTEGER"), ("zoro_deliver_by", "TEXT"), ("zoro_stock", "INTEGER"),
                          ("alt_used", "TEXT"), ("main_sku", "TEXT"),
                          # raw Zoro price facts (see utils.unified_db.PLACER_PRICE_COLUMNS)
-                         ("zoro_list_price", "REAL"), ("zoro_subtotal", "REAL"), ("zoro_shipping", "REAL")):
+                         ("zoro_list_price", "REAL"), ("zoro_subtotal", "REAL"), ("zoro_shipping", "REAL"),
+                         # combined order: the other Amazon orders on the same WB (utils.unified_db)
+                         ("combined_with", "TEXT")):
             if col not in have:
                 conn.execute(f"ALTER TABLE order_placer_orders ADD COLUMN {col} {typ}")
 
@@ -163,6 +165,10 @@ def entry_to_db_data(entry: dict) -> dict | None:
         "main_sku": "" if entry.get("MainSKU", "").strip() in ("", "N/A", "None")
                     else entry.get("MainSKU", "").strip(),
     }
+    # One Zoro order bought for several Amazon orders of one buyer (12 Nov 2026): the line's Cost / Tax /
+    # Subtotal / Shipping are already this order's part; combined_with names the other orders.
+    if entry.get("CombinedWith", "").strip():
+        data["combined_with"] = entry["CombinedWith"].strip()
 
     # Parse placed_at from timestamp
     ts_str = entry.get("_timestamp", "")

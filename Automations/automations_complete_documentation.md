@@ -397,6 +397,39 @@ sequenceDiagram
    - Write formatted seller note (profit, margin, PI suggestion)
    - Log everything to `order_log.txt` + sync to DB + Google Sheet
 
+#### Combined order — one Zoro order for a buyer's orders to one address (12 Nov 2026)
+
+Reseller profiles (DM_RESELLER, HS_RESELLER, WR_RESELLER). When the queue holds two or more orders of one
+buyer (same list-view *Buyer name*), the placer reads the partners' pages before the order's own. They
+are bought in **one Zoro order** only when every one of these holds:
+- same name, street, line 2, city, state and ZIP5;
+- same ship-by and deliver-by dates;
+- none is Manual-tagged, Deciding, supervised, PO box, WB'd or marked;
+- every item is mapped;
+- each order has its own earnings e-mail;
+- each order's own duplicate search finds nothing;
+- every item is in stock, with the partners' delivery dates passing the "Delivery time high" rule;
+- the joint cart is under the big-order line;
+- **it saves Zoro shipping** — at least one order is under the $50 list price alone;
+- **every order clears its own margin on its share**, so a loss-making order never rides on another
+  order's profit.
+
+What happens:
+- **Placement:** each Amazon order is claimed in the placement lock. The checkout
+  (`checkout/true_api.py`, `combined_orders=`) refuses to drop an item and checks the cart against the
+  expected codes just before paying. It has no Vuex/DOM/legacy fallback, because those rebuild the cart
+  from the first item.
+- **Records:** every Amazon order gets the plain WB (the tracker skips `- D`), its own `order_log.txt`
+  line, DB row and seller note, with its share of Cost/Subtotal/Discount/Shipping/Tax.
+  - The cost is split by line cost; the last order takes the rounding remainder.
+  - The log line carries the appended keys `CombinedWith:` and `CombinedTotal:`, and `order_placer_orders.combined_with` holds them.
+- **Downstream:** closing keeps the share (`closing.placer_share`) instead of the WB's whole archive or
+  e-mail total. The tracker writes tracking to every row of the WB.
+- **Stopped before payment** ("uncombined"): claims are released and nothing is written. The order is
+  placed alone at once, and its partners later in the cycle.
+- **Outcome unknown:** every order goes to Locked Orders (FAILED_KEPT).
+- **Off switch:** `bot_config.json → "combine_same_buyer": false` (read at start). Decision log kind `combine`, console 🧺.
+
 #### 5.1.1 Priority ASIN Control & Dynamic Profile Routing (Reseller vs. Coupon)
 
 ##### The Business Rationale & Profile Economics
@@ -1552,6 +1585,8 @@ After placing a Zoro order, the bot writes the WB order ID (e.g. `WB8977496539`)
 - Write a WB ID that doesn't match an actual Zoro order
 - Overwrite an existing WB ID with a different one
 - Remove the `update_amazon_seller_id()` call from the placement flow
+- Write `<WB> - D` on the partner of a **combined order** (one Zoro order for several Amazon orders of one
+  buyer, 12 Nov 2026): each of them carries the plain WB, or the tracker never uploads its tracking
 
 ---
 

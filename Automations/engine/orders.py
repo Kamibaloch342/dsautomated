@@ -522,7 +522,8 @@ def _upsert_unified_db(amazon_id, detail, **extra):
         }
         # Raw Zoro price facts live on order_placer_orders only. insert_order builds its
         # column list from data.keys(), so an unknown key would fail the orders-table write.
-        _placer_only = {k: extra.pop(k, None) for k in ("zoro_list_price", "zoro_subtotal", "zoro_shipping", "zoro_deliver_by")}
+        _placer_only = {k: extra.pop(k, None) for k in ("zoro_list_price", "zoro_subtotal", "zoro_shipping", "zoro_deliver_by",
+                                                         "combined_with")}
         # Merge extra fields (amazon_fees, shipping_amt, coupon, dates, etc.)
         for key, val in extra.items():
             if val is not None and val != "":
@@ -563,6 +564,10 @@ def _upsert_unified_db(amazon_id, detail, **extra):
                 "deliver_by_date": data.get("deliver_by_date", ""),
                 "zoro_qty": data.get("zoro_qty", 0),
             }
+            if _placer_only.get("combined_with"):
+                # one Zoro order bought for several Amazon orders: the other orders' ids (closing keeps
+                # this row's cost as its part instead of the WB's whole total)
+                placer_data["combined_with"] = _placer_only["combined_with"]
             upsert_placer_order(placer_data)
         except Exception:
             pass
@@ -5190,12 +5195,537 @@ def _notify_big_order_20(amazon_id, asin, sku, cart_cost, buyer="", city="", sta
         print(f"  ⚠️ Telegram alert error: {e}")
 
 
+# ══════════════════════════════════════════════════════════════════
+#  COMBINED ORDER — one buyer's orders to one address in ONE Zoro order (owner, 12 Nov 2026)
+# ══════════════════════════════════════════════════════════════════
+# A buyer's two orders to one address, both waiting in the same cycle, were each bought as a Zoro order
+# of their own, and each one under Zoro's $50 list price paid the $5.99 shipping (~$390 in Aug–Nov
+# 2026). The placer now buys them together when that saves shipping: one WB, written PLAIN on every
+# Amazon order (the tracker uploads the shipment's tracking to each; it skips a "- D" label), and one
+# order_log line per Amazon order carrying that order's part of the cost — closing reads cost per Amazon
+# order, so profit and labels stay per order (closing.py: placer rows with combined_with keep their part).
+# Reseller profiles only: a coupon profile works its coupons out per order (ratio coupons even split
+# orders on purpose), so joining carts there could cost more than the shipping saved.
+# Every order passes the checks it would pass alone — mapping, earnings, the duplicate search, stock,
+# Zoro's delivery date, its own margin on its part — and anything that stops the joint checkout before
+# payment returns "uncombined": nothing was bought, and the orders are placed one by one as before.
+# bot_config.json "combine_same_buyer": false switches it off (placers read it at start).
+COMBINE_MAX_ORDERS = 4                   # the order being placed and up to 3 more of the same buyer
+_COMBINE_HANDLED = set()                 # amazon_ids bought inside another order's combined checkout (this run)
+_COMBINE_BAD_STATUS = ("pending", "cancelled", "canceled", "shipped", "cancel_requested")
+_COMBINE_MARKED = ("OOS", "DISCONTINUED", "DUPLICATE", "SR", "NET30", "20")
+# Checkout results that are known to come BEFORE payment (process_order releases the claim on these).
+_SAFE_PREPAYMENT_STATUSES = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED", "DELIVERY_TIME_HIGH",
+                             "DELIVERY_UNKNOWN", "PAYMENT_DECLINED", "CART_BUSY", "ZORO_NET", "SHARED_ACCOUNT",
+                             "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
+
+
+def _combine_enabled():
+    return (IS_RESELLER_PROFILE and not DRY_RUN
+            and bool(((gui_cfg if "gui_cfg" in globals() else {}) or {}).get("combine_same_buyer", True)))
+
+
+def _combine_key(text):
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+
+
+def _combine_partners(order, queue, handled):
+    """Orders of this cycle's queue, not dealt with yet, under the same list-view 'Buyer name' — only
+    candidates: _combine_prepare reads each one's page. Never raises."""
+    try:
+        if not _combine_enabled():
+            return []
+        key = _combine_key(order.get("buyer"))
+        if not key:
+            return []
+        out = [o for o in queue
+               if o.get("amazon_id") and o["amazon_id"] != order.get("amazon_id")
+               and o["amazon_id"] not in handled and o["amazon_id"] not in _COMBINE_HANDLED
+               and _combine_key(o.get("buyer")) == key]
+        return out[:COMBINE_MAX_ORDERS - 1]
+    except Exception:
+        return []
+
+
+def _combine_list_view(order, detail):
+    """The list-view facts the main loop copies onto a scraped page: the seller SKU and the quantity
+    backstop of a one-item order (same rule as the loop)."""
+    items = detail.get("items") or []
+    sku, asin = order.get("sku", ""), order.get("asin", "")
+    qty = _coerce_positive_int(order.get("qty")) or 1
+    if items and len(items) == 1:
+        if sku:
+            items[0]["seller_sku"] = sku
+        if qty > 1 and (_coerce_positive_int(items[0].get("qty")) or 0) <= 1:
+            items[0]["qty"] = qty
+    if not items and asin:
+        detail["items"] = [{"asin": asin, "qty": qty, "title": "", "seller_sku": sku}]
+    return detail
+
+
+def _combine_label_ok(order, detail):
+    """Waiting to be placed with nothing special on it: no WB, no mark, no Manual tag — an empty Seller
+    order ID or exactly the label this profile's queue found it by."""
+    mid = _normalize_merchant_order_id(detail.get("merchant_order_id", ""))
+    if not mid:
+        return True
+    up = mid.upper()
+    if up.startswith(("WB", "WW", "LOSS")) or up in _COMBINE_MARKED or up in (DELIVERY_GAP_LABEL.upper(),
+                                                                                PO_BOX_LABEL.upper()):
+        return False
+    if _parse_manual_tag(mid):
+        return False
+    return up == str(order.get("_label_matched") or "").strip().upper()
+
+
+def _combine_addr_key(addr):
+    a = addr or {}
+    return tuple(_combine_key(a.get(k)) for k in ("original_name", "street_address", "street_address_2",
+                                                  "city", "state_abbr")) + (_zip5(a),)
+
+
+def _combine_items(detail, sku_map):
+    """(resolved items, '') when every item is mapped and none is in a Deciding column, else (None, why)."""
+    resolved, missing = _build_resolved_order_items(detail.get("items") or [], sku_map)
+    if missing or not resolved:
+        return None, "an item is not mapped"
+    dset = {d.strip().upper() for d in DECIDING_ASINS if d and d.strip()}
+    if any((it.get("asin") or "").strip().upper() in dset for it in resolved):
+        return None, "a Deciding ASIN (routed per order)"
+    return resolved, ""
+
+
+def _combine_prepare(order, detail, partners, partner_details, sku_map, earnings_service,
+                     duplicate_services, dup_prefetch=None):
+    """The partners that may join this order's Zoro order, as
+    [{"amazon_id", "order", "detail", "addr", "earnings", "original_sku", "shipping_amt", "amazon_fees"}],
+    or []. Every check is one the order would pass alone; a partner that fails one is simply placed on its
+    own later in the cycle. *partner_details* = {amazon_id: scraped page} — the classic loop reads them
+    BEFORE this order's page, because process_order's duplicate write goes to the page the window stands
+    on. Reads Gmail (earnings, duplicate search); writes nothing anywhere. Never raises."""
+    if not partners:
+        return []
+    aid = order.get("amazon_id")
+    try:
+        a_addr = detail.get("address") or {}
+        why = ""
+        if order.get("_deciding") or order.get("_supervised") or detail.get("_deciding") or detail.get("_supervised"):
+            why = "it is routed per order (Deciding / supervisor)"
+        elif (detail.get("status") or "").strip().lower() in _COMBINE_BAD_STATUS:
+            why = f"its status is {detail.get('status')}"
+        elif not _combine_label_ok(order, detail):
+            why = f"its Seller order ID is '{detail.get('merchant_order_id')}'"
+        elif _HAS_LOCK and plock.already_seen(aid):
+            why = "it is already claimed"
+        elif not a_addr or a_addr.get("skip_order") or a_addr.get("po_box_original"):
+            why = "its address is not a plain street address"
+        elif _sunday_mode():
+            why = "Sunday mode is on"
+        if not why:
+            why = _combine_items(detail, sku_map)[1]
+        if why:
+            print(f"  🧺 Same buyer as {', '.join(p['amazon_id'] for p in partners)} — not combined: {why}")
+            return []
+        key = _combine_addr_key(a_addr)
+        out = []
+        for p in partners:
+            pid = p["amazon_id"]
+            pdet = (partner_details or {}).get(pid)
+            why, items, paddr, ed = "", None, None, None
+            if not pdet:
+                why = "its order page could not be read"
+            else:
+                pdet = _combine_list_view(p, pdet)
+                p_addr = pdet.get("address") or {}
+                if (pdet.get("status") or "").strip().lower() in _COMBINE_BAD_STATUS:
+                    why = f"its status is {pdet.get('status')}"
+                elif p.get("_deciding") or p.get("_supervised"):
+                    why = "it is routed per order (Deciding / supervisor)"
+                elif not _combine_label_ok(p, pdet):
+                    why = f"its Seller order ID is '{pdet.get('merchant_order_id')}'"
+                elif _HAS_LOCK and plock.already_seen(pid):
+                    why = "it is already claimed"
+                elif not p_addr or p_addr.get("skip_order") or p_addr.get("po_box_original"):
+                    why = "its address is not a plain street address"
+                elif _combine_addr_key(p_addr) != key:
+                    why = "it ships to a different name or address"
+                elif (str(pdet.get("deliver_by_date") or "").strip() != str(detail.get("deliver_by_date") or "").strip()
+                      or str(pdet.get("ship_by_date") or "").strip() != str(detail.get("ship_by_date") or "").strip()):
+                    why = "its ship-by / deliver-by dates differ"
+                else:
+                    items, why = _combine_items(pdet, sku_map)
+            if not why:
+                ed = get_amazon_earnings_from_gmail(earnings_service, pid) if earnings_service else None
+                try:
+                    if not (float((ed or {}).get("earnings") or 0) > 0):
+                        why = "its earnings are not known yet ('Sold, ship now' e-mail)"
+                except (TypeError, ValueError):
+                    why = "its earnings could not be read"
+            if not why:
+                paddr = validate_and_prepare_address(dict(pdet.get("address") or {}))
+                if not paddr:
+                    why = "its address did not validate"
+            if not why:
+                _pre = (dup_prefetch or {}).get(pid)
+                if _pre is not None:
+                    existing = _pre or None
+                elif duplicate_services:
+                    a_f, s_f, _q = _order_fields(items)
+                    existing = check_if_address_already_ordered_gmail(
+                        duplicate_services, paddr["street_address"], zip_code=paddr.get("zip_code", ""),
+                        customer_name=paddr.get("name", ""), current_asin=a_f, current_sku=s_f,
+                        current_amazon_id=pid)
+                else:
+                    existing = None
+                if existing == DUP_CHECK_FAILED:
+                    why = "its duplicate search could not complete"
+                elif existing:
+                    why = f"its duplicate search matched {existing} (left to its own check)"
+            if why:
+                print(f"  🧺 {pid} (same buyer) not combined with {aid}: {why}")
+                _DLOG.log("combine", profile=PROFILE_NAME, amazon_id=aid, partner=pid, action="partner_skipped",
+                          reason=why)
+                continue
+            paddr["_purchase_date"] = pdet.get("purchase_date", "")
+            paddr["_ship_by_date"] = pdet.get("ship_by_date", "")
+            paddr["_deliver_by_date"] = pdet.get("deliver_by_date", "")
+            paddr["_ship_service"] = pdet.get("ship_service", "")
+            out.append({"amazon_id": pid, "order": p, "detail": pdet, "addr": paddr,
+                        "earnings": float(ed.get("earnings")), "original_sku": ed.get("original_sku"),
+                        "shipping_amt": ed.get("shipping"), "amazon_fees": ed.get("amazon_fees")})
+        if out:
+            print(f"  🧺 SAME BUYER, SAME ADDRESS: {aid} + {', '.join(c['amazon_id'] for c in out)} — "
+                  f"tried as ONE Zoro order if it saves shipping")
+        return out
+    except Exception as e:
+        print(f"  🧺 combined-order check skipped ({type(e).__name__}: {e}) — orders placed one by one")
+        return []
+
+
+def _combine_partner_details(driver, partners, crew=None, details_map=None):
+    """({amazon_id: page}, read_here) for the partners: the Ultra crew's or the rush batch's page when
+    there is one, else read in this window — which then stands on a partner's page, so the caller reads
+    (or re-opens) the main order's page after this. A page that cannot be read leaves that partner out."""
+    import copy
+    out, read_here = {}, False
+    for p in partners:
+        pid = p["amazon_id"]
+        d = crew.peek_detail(pid) if crew is not None else None
+        if d is None and details_map:
+            d = details_map.get(pid)
+        if d is None:
+            try:
+                d = scrape_order_details(driver, pid, fallback_qty=p.get("qty", 1))
+                read_here = True
+            except Exception as e:
+                print(f"  🧺 {pid}: order page not read ({_first_line(e)}) — not combined")
+                d = None
+        if d:
+            out[pid] = copy.deepcopy(d)
+    return out, read_here
+
+
+def _combine_reopen(driver, amazon_id, qty=1):
+    """Put this window back on the order's own page (its duplicate label is written to the page the
+    window stands on). Never raises."""
+    try:
+        scrape_order_details(driver, amazon_id, fallback_qty=qty)
+    except Exception as e:
+        print(f"  ⚠️  could not re-open {amazon_id}'s page ({_first_line(e)})")
+
+
+def _combine_abort(amazon_id, combo, why, release=()):
+    """Back to one-by-one placement — nothing was bought. Releases the claims this attempt took."""
+    for _aid in release:
+        try:
+            plock.release(_aid, f"combined order not placed (pre-payment): {why[:90]}")
+        except Exception:
+            pass
+    ids = ", ".join(c["amazon_id"] for c in combo)
+    print(f"  🧺 Not combined — {why}. {amazon_id} is placed on its own now; {ids} on its own later in the cycle")
+    _DLOG.log("combine", profile=PROFILE_NAME, amazon_id=amazon_id, action="uncombined", reason=why,
+              partners=[c["amazon_id"] for c in combo])
+    return "uncombined"
+
+
+def _combine_merge(driver, amazon_id, own_items, combo, sku_map):
+    """(this order's items followed by each partner's, each tagged with its Amazon order, '') or
+    (None, why). Zoro Select is read for the partners' items the way process_order reads it."""
+    for it in own_items:
+        it["_order"] = amazon_id
+    merged = list(own_items)
+    for c in combo:
+        items, why = _combine_items(c["detail"], sku_map)
+        if not items:
+            return None, f"{c['amazon_id']}: {why}"
+        for it in items:
+            it["_order"] = c["amazon_id"]
+            brand = str((sku_map.get(it.get("asin")) or {}).get("brand", "") or "").strip().lower()
+            if brand:
+                it["is_zoro_select"] = "zoro select" in brand
+            else:
+                b = get_product_brand(driver, it["sku"])
+                it["is_zoro_select"] = bool(b and "zoro select" in b.lower())
+        c["items"] = items
+        merged.extend(items)
+    return merged, ""
+
+
+def _combine_plan(resolved_items, amazon_id, a_earnings, a_detail, combo, raw_cart_cost,
+                  big_threshold, addr, driver, rush):
+    """(plan, '') or (None, why). Per Amazon order: its Zoro list total, its line cost (Zoro Select
+    already off), its share of the Zoro order and the cost and margin it would carry. No plan when every
+    order already ships free alone (nothing to save), when the joint cart reaches the big-order line (each
+    order keeps its own '20' rule), when an order would fall under its own margin on its share, or when a
+    partner's item would reach the buyer too late by the rule its own placement applies."""
+    from utils.config import ZORO_SMALL_ORDER_FEE as _fee, FREE_SHIPPING_THRESHOLD as _free
+    orders = [{"amazon_id": amazon_id, "earnings": float(a_earnings or 0),
+               "thresh": a_detail.get("_margin_thresh", MIN_MARGIN)}]
+    orders += [{"amazon_id": c["amazon_id"], "earnings": float(c["earnings"]),
+                "thresh": c["detail"].get("_margin_thresh", MIN_MARGIN)} for c in combo]
+    for o in orders:
+        o["items"] = [it for it in resolved_items if it.get("_order") == o["amazon_id"]]
+        o["list"] = round(sum(float(it.get("raw_line") or 0) for it in o["items"]), 2)
+        o["line_cost"] = round(sum(float(it.get("line_cost") or 0) for it in o["items"]), 2)
+    if any(not o["items"] or o["line_cost"] <= 0 for o in orders):
+        return None, "a cart price is missing"
+    if raw_cart_cost >= big_threshold:
+        return None, f"together the cart is ${raw_cart_cost:.2f}, past the big-order line ${big_threshold:.0f}"
+    alone_ship = round(sum(_fee for o in orders if o["list"] < _free), 2)
+    joint_ship = _fee if raw_cart_cost < _free else 0.0
+    saving = round(alone_ship - joint_ship, 2)
+    if saving <= 0:
+        return None, ("each order already ships free on its own — nothing to save" if not alone_ship
+                      else f"together the cart is still under ${_free:.0f} — nothing to save")
+    total_line = sum(o["line_cost"] for o in orders)
+    for o in orders:
+        o["share"] = o["line_cost"] / total_line
+        o["est_cost"] = round(o["line_cost"] + joint_ship * o["share"], 2)
+        o["est_margin"] = (o["earnings"] - o["est_cost"]) / o["est_cost"]
+        if o["est_margin"] < o["thresh"]:
+            return None, (f"{o['amazon_id']} would make {o['est_margin']:.1%} on its part "
+                          f"(${o['earnings']:.2f} − ${o['est_cost']:.2f}), under its {o['thresh']:.0%}")
+    limit = _delivery_gap_block_days()
+    if limit > 0:
+        for c in combo:
+            it = c["items"][0]
+            est, src = _zoro_api_delivery(driver, it["sku"], it["final_qty"], addr), f"Zoro's estimate for ZIP {_zip5(addr)}"
+            if not est and not rush:
+                try:
+                    from platforms.zoro import get_zoro_delivery_date
+                    est, src = get_zoro_delivery_date(driver, it["sku"]) or "", "Zoro product page"
+                except Exception:
+                    est = ""
+            if not est and rush:
+                est, src = _recent_zoro_estimate(it["sku"]) or "", "this SKU's lead time in the last 3 days"
+            hold, gap, _hist = _delivery_gap_hold(c["detail"].get("deliver_by_date", ""), est, limit,
+                                                  lambda _s=it["sku"]: _sku_ships_fast(_s))
+            if hold:
+                return None, (f"{c['amazon_id']}: Zoro delivers {it['sku']} by {est} ({src}), {gap} days after "
+                              f"Amazon's deliver-by — it gets its own 'Delivery time high' check")
+            if est:
+                c["addr"]["_zoro_deliver_by"] = est
+    _print_section("COMBINED ORDER — one Zoro order, same buyer and address")
+    for o in orders:
+        _print_kv(o["amazon_id"], f"list ${o['list']:.2f} | cost ${o['est_cost']:.2f} | earns ${o['earnings']:.2f} "
+                                  f"| {o['est_margin']:.1%} | {', '.join(it['sku'] + ' x' + str(it['final_qty']) for it in o['items'])}")
+    _print_kv("Shipping", f"${alone_ship:.2f} apart → ${joint_ship:.2f} together (saves ${saving:.2f})")
+    return {"orders": orders, "saving": saving, "joint_ship": joint_ship, "alone_ship": alone_ship}, ""
+
+
+def _combine_late_column_hold(combo):
+    """The reseller's last-second column check, for each unlabelled partner's first ASIN: '' or why it must
+    not be bought here now (its own placement then routes it or queues it, as it always has)."""
+    try:
+        from engine import priority_check as _pc_late
+        verdicts = _pc_late.load_verdicts()
+        _cycle_ts = time.strftime("%Y-%m-%d %H:%M", time.localtime(_CYCLE_STARTED_AT[0]))
+        for c in combo:
+            if _normalize_merchant_order_id(c["detail"].get("merchant_order_id", "")):
+                continue
+            a = str(c["items"][0].get("asin") or "").strip().upper()
+            late = verdicts.get(a) or {}
+            if (str(late.get("column") or "").upper().endswith("_COUPON") and late.get("owner") == "bot"
+                    and (late.get("at") or "") >= _cycle_ts):
+                return f"{c['amazon_id']}: {a} was just promoted to the Coupon column"
+            if _pc_late.reseller_must_wait(a, _STORE, sheet_priority_codes=_sheet_priority_codes()):
+                return f"{c['amazon_id']}: {a} waits for the coupon placer's priority-coupon test"
+        return ""
+    except Exception as e:
+        return f"the late column check failed ({type(e).__name__})"
+
+
+def _rush_defer_wb_and_note(amazon_id, label, note_text):
+    """Journal an order's WB and its seller note in one step (a partner of a combined order is not the
+    order the Ultra writer is told to wait for, so both must be there when it reads the entry)."""
+    with _rush_lock:
+        entry = _rush_pending.setdefault(amazon_id, {"amazon_id": amazon_id, "label": "", "notes": []})
+        entry["label"] = label
+        if note_text:
+            entry["notes"].append(note_text)
+        _rush_journal_save()
+    print(f"  ⚡ RUSH: {label} for {amazon_id} journaled — written back after the batch")
+
+
+def _combine_finish(driver, amazon_id, combo, plan, result_status, result_id, checkout_result, ctx):
+    """After the joint checkout. Paid: every Amazon order gets the plain WB, its own log line / DB row /
+    seller note / placed alert with its part of the cost. Stopped before payment: "uncombined" (claims
+    released, nothing written). Outcome unknown: every order is held for review, like a single order."""
+    ids = [o["amazon_id"] for o in plan["orders"]] if plan else [amazon_id] + [c["amazon_id"] for c in combo]
+    res = checkout_result or {}
+    wb = str(result_id or "").strip()
+    if not (result_status == "SUCCESS" and wb.startswith(("WB", "WW")) and " " not in wb):
+        if result_status in _SAFE_PREPAYMENT_STATUSES + ("LOW_PROFIT", "COMBINE_FAILED", "SPLIT_RETRY"):
+            return _combine_abort(amazon_id, combo, f"the joint checkout stopped before payment ({result_status})",
+                                  release=ids if (_HAS_LOCK and not DRY_RUN) else ())
+        note = (f"combined order {' + '.join(ids)}: unknown failure '{result_status}' — verify on Zoro "
+                f"before re-ordering (one Zoro order was meant for all of them)")
+        if _HAS_LOCK and not DRY_RUN:
+            for x in ids:
+                plock.keep_failed(x, note)
+        print(f"  🛑 COMBINED ORDER — outcome unknown ({result_status}): {', '.join(ids)} locked as FAILED_KEPT. "
+              f"Check Zoro's order history, then Unlock in the launcher's 'Locked Orders' tab.")
+        for x in ids:
+            _log_order({"amazon_id": x, "status": result_status or "FAILED", "notes": note})
+        return "failed"
+
+    from checkout.true_api import split_by_shares
+    orders = plan["orders"]
+    shares = [o["share"] for o in orders]
+    others_of = {o["amazon_id"]: ",".join(x for x in ids if x != o["amazon_id"]) for o in orders}
+    if _HAS_LOCK and not DRY_RUN:
+        for o in orders:          # money is spent: every order is blocked from a re-buy first
+            plock.confirm(o["amazon_id"], wb, note=f"placed — combined order with {others_of[o['amazon_id']]}")
+    by_id = {c["amazon_id"]: c for c in combo}
+    defer = ctx.get("defer")
+    label = _fit_seller_label(wb)
+    print(f"\n  ╔══════════════════════════════════════════╗")
+    print(f"  ║  ✅ COMBINED ORDER PLACED: {wb:<15}║")
+    for x in ids:
+        print(f"  ║  Amazon: {x:<32}║")
+    print(f"  ║  Shipping saved: ${plan['saving']:<23.2f}║")
+    print(f"  ╚══════════════════════════════════════════╝")
+    for i, o in enumerate(orders):
+        oid, c = o["amazon_id"], by_id.get(o["amazon_id"])
+        o_addr = ctx["addr"] if c is None else c["addr"]
+        o_det = ctx["order_detail"] if c is None else c["detail"]
+        cost, tax, disc, sub, ship = (split_by_shares(res.get(k), shares, i)
+                                      for k in ("checkout_total", "tax", "discount", "subtotal", "shipping"))
+        earn = o["earnings"]
+        profit = round(earn - cost, 2) if cost else None
+        margin = (profit / cost) if (cost and profit is not None) else None
+        its = o["items"]
+        first = its[0]
+        asin_f, sku_f, qty_f = _order_fields(its)
+        alt = [it for it in its if it.get("alt_used")]
+        notes = [ctx.get("note") or "" if c is None else
+                 (f"Multi-item order ({len(its)} items)" if len(its) > 1 else ""),
+                 (f"ALT: placed {', '.join(it['sku'] + ' for ' + it['main_sku'] for it in alt)} (main OOS)" if alt else ""),
+                 f"Combined order {wb} with {others_of[oid]} — one Zoro order, shipping saved ${plan['saving']:.2f}"]
+        detail = {"amazon_id": oid, "asin": asin_f, "sku": sku_f, "qty": qty_f,
+                  "buyer": o_addr.get("name", ""), "city": o_addr.get("city", ""), "state": o_addr.get("state_abbr", ""),
+                  "zip": o_addr.get("zip_code", ""), "earnings": earn, "zoro_price": cost,
+                  "profit": profit if profit is not None else "", "status": "SUCCESS", "wb_id": wb,
+                  "notes": "; ".join(n for n in notes if n)}
+        _log_order(detail)
+        shipping_amt = ctx.get("shipping_amt") if c is None else c.get("shipping_amt")
+        amazon_fees = ctx.get("amazon_fees") if c is None else c.get("amazon_fees")
+        _upsert_unified_db(oid, detail, amazon_qty=first.get("order_qty"), amazon_fees=amazon_fees,
+                           shipping_amt=shipping_amt, purchase_date=o_det.get("purchase_date", ""),
+                           ship_by_date=o_det.get("ship_by_date", ""), deliver_by_date=o_det.get("deliver_by_date", ""),
+                           zoro_tax=tax, zoro_list_price=first.get("api_price"),
+                           zoro_deliver_by=o_addr.get("_zoro_deliver_by"), zoro_subtotal=sub, zoro_shipping=ship,
+                           coupon_used=None, coupon_savings=disc, combined_with=others_of[oid])
+        note_text, note_data = "", {}
+        try:
+            from utils.seller_notes import format_seller_note, enrich_note_basis
+            seller_sku = ((ctx.get("note_amazon_sku") or "") if c is None else
+                          ((first.get("seller_sku") or "").strip() or (c.get("original_sku") or "")))
+            code = first["sku"] if len(its) == 1 else sku_f
+            note_data = {
+                "title": first.get("title", ""), "asin": asin_f, "sku": seller_sku,
+                "code": (code.replace("G", "K", 1) if code.startswith("G") else code) + (" - ALT" if alt else ""),
+                "qty": qty_f, "tracking_sent": "No", "tc": cost, "tax": tax, "earnings": earn, "pm": profit,
+                "pp": (margin * 100) if margin is not None else None,
+                "ship_by_date": o_det.get("ship_by_date", ""), "deliver_by_date": o_det.get("deliver_by_date", ""),
+                "ship_service": o_det.get("ship_service", ""), "zoro_deliver_by": o_addr.get("_zoro_deliver_by") or "",
+                "shipping_amt": shipping_amt, "amazon_id": oid, "coupon": False, "coupon_code": "", "coupon_off": disc,
+            }
+            enrich_note_basis(note_data, profile_name=PROFILE_NAME,
+                              zoro_select=bool(all(it.get("is_zoro_select") for it in its)),
+                              earnings=earn, amazon_fees=amazon_fees, shipping_amt=shipping_amt, total_cost=cost)
+            note_text = format_seller_note(note_data)
+        except Exception as e:
+            print(f"   [SellerNote] ⚠️  Could not build the note for {oid}: {e}")
+        if defer:
+            _rush_defer_wb_and_note(oid, label, note_text)
+        else:
+            try:
+                ok = update_amazon_seller_id(driver, oid, label, PROFILE_NAME)
+            except Exception as e:
+                ok = False
+                print(f"  ⚠️  {oid}: WB write-back error {e}")
+            if not ok:
+                print(f"  ⚠️  WB write-back to Amazon FAILED for {oid} ({wb}) — the local lock protects it from a "
+                      f"re-buy; set the Seller order ID to {label} by hand.")
+            elif note_text:
+                try:
+                    write_seller_note(driver, oid, note_text=note_text, skip_navigate=True)
+                except Exception as e:
+                    print(f"   [SellerNote] ⚠️  Could not write note for {oid}: {e}")
+        try:
+            from utils.telegram import notify_order_placed
+            tg = dict(detail)
+            tg.update(note_data)
+            tg.update({"ship_by_date": o_det.get("ship_by_date", ""), "deliver_by_date": o_det.get("deliver_by_date", ""),
+                       "ship_service": o_det.get("ship_service", ""),
+                       "zoro_deliver_by": o_addr.get("_zoro_deliver_by") or "", "shipping_amt": shipping_amt})
+            notify_order_placed(tg, driver=None, account=PROFILE_NAME)
+        except Exception as e:
+            print(f"   [Telegram] ⚠️ Notification error: {e}")
+        try:
+            from utils.insights_engine import placer_alerts
+            from utils.whatsapp import notify_insight
+            ins_data = dict(detail)
+            ins_data.update(note_data)
+            ins_data.update({
+                "purchase_date": o_det.get("purchase_date", ""), "ship_by_date": o_det.get("ship_by_date", ""),
+                "deliver_by_date": o_det.get("deliver_by_date", ""), "amazon_fees": amazon_fees,
+                "shipping_amt": shipping_amt, "amazon_qty": first.get("order_qty") or 1,
+                "quantity": first.get("order_qty") or 1, "zoro_qty": first.get("final_qty") or 1,
+                "qty_multiplier": first.get("qty_multiplier") or 1, "alt_used": bool(alt),
+                "alt_of": alt[0].get("main_sku") if alt else None, "main_sku": alt[0].get("main_sku") if alt else None,
+                "zoro_code": first.get("sku") or "", "seller_sku": note_data.get("sku", ""),
+                "zoro_catalog_price": first.get("api_price") or first.get("unit_price"),
+                "unit_cost": first.get("api_price") or first.get("unit_price"),
+                "wb_order_id": wb, "wb_id": wb, "zoro_tax": tax, "coupon_savings": disc, "coupon_used": None,
+                "account": STORE_ACCOUNT, "zoro_deliver_by": o_addr.get("_zoro_deliver_by") or ""})
+            for ins in placer_alerts(ins_data):
+                ins["account"] = STORE_ACCOUNT
+                print(f"   💡 [Insight] Triggered: {ins.get('title')} ({ins.get('code')})")
+                notify_insight(ins, account=STORE_ACCOUNT)
+        except Exception as e:
+            print(f"   💡 [Insight] ⚠️ Analysis error: {e}")
+        _CART_FAILS.pop(oid, None)
+    _alt_mains = [it.get("main_sku") for o in orders for it in o["items"] if it.get("alt_used")]
+    if _alt_mains:
+        _notify_alt_main_oos(driver, _alt_mains, account=PROFILE_NAME)
+    _COMBINE_HANDLED.update(x for x in ids if x != amazon_id)
+    _DLOG.log("combine", profile=PROFILE_NAME, amazon_id=amazon_id, action="placed", wb=wb, partners=ids[1:],
+              saving=plan["saving"], reason=f"one Zoro order for {len(ids)} Amazon orders")
+    return "success"
+
+
 def process_order(driver, amazon_id, order_detail, sku_map,
                   earnings_service, duplicate_services,
                   coupon_codes=None, asin_coupon_cache=None,
-                  defer_amazon_writes=False, dup_prefetch=None):
+                  defer_amazon_writes=False, dup_prefetch=None, companions=None):
     """Process one order through the full pipeline.
-    
+
+    companions: other orders of the same buyer to the same address (from _combine_prepare) to buy in
+    the SAME Zoro order — see "COMBINED ORDER" above. Returns "uncombined" when that did not happen and
+    nothing was bought or written: the caller then places this order alone.
+
     Returns status string: "success", "failed", "skipped", "pending", "duplicate", "low_profit", "api_fail"
     """
     items = order_detail.get("items", [])
@@ -5648,6 +6178,21 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         order_note = "; ".join(order_notes)
         note_amazon_sku = (primary_item.get("seller_sku") or "").strip() or (original_sku or "")
 
+    # ── COMBINED ORDER: this buyer's other order(s) to the same address join this cart ──
+    # Everything above ran on THIS order alone (its lock, earnings, duplicate search, delivery date),
+    # and anything that stops the joint cart from here on returns "uncombined" with nothing written.
+    _combo = list(companions or []) if (manual_override is False and _combine_enabled()) else []
+    _combo_plan_d = None
+    _combo_note = order_note
+    if _combo:
+        _merged, _why = _combine_merge(driver, amazon_id, resolved_items, _combo, sku_map)
+        if _merged is None:
+            return _combine_abort(amazon_id, _combo, _why)
+        resolved_items = _merged
+        is_multi_item = True
+        print(f"  🧺 COMBINED ORDER: {amazon_id} + {', '.join(c['amazon_id'] for c in _combo)} — "
+              f"{len(resolved_items)} item(s) in one cart for {buyer}, {city} {state}")
+
     real_cost = 0.0
     # Undiscounted cart total (pre-Zoro-Select). Deciding-ASIN routing must be
     # judged on this: the coupon profile pays full price, so its coupons' cart
@@ -5809,6 +6354,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 # Zoro did not answer about an alternative, so this is not a clear OOS and nothing
                 # would ever put a stamped order back: no label, the next cycle asks again.
                 inv_status = alt_tried[-1][1]
+        if not cartable and _combo:
+            # each order's own placement labels (or holds) its own out-of-stock item
+            return _combine_abort(amazon_id, _combo, f"{item['sku']} of {item.get('_order')} is not available "
+                                                      f"({inv_status})")
         if not cartable:
             # Only label OOS for genuine out-of-stock, not API/network errors
             is_genuine_oos = inv_status not in ("API_ERROR", "NO_DATA")
@@ -5868,6 +6417,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         else:
             cart_ok, api_price = add_second_item(driver, item["sku"], item["final_qty"])
 
+        if not cart_ok and _combo:
+            return _combine_abort(amazon_id, _combo, f"cart add failed for {item['sku']} of {item.get('_order')}")
         if not cart_ok:
             print(f"  ❌ Cart/Add failed for {item['sku']}")
             _rec = _CART_FAILS.setdefault(amazon_id, {"n": 0, "last": 0.0})
@@ -5896,13 +6447,18 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 
         if item["second_sku"]:
             s_cartable, _ = check_inventory(driver, item["second_sku"], item["final_qty"])
+            s_ok = False
             if s_cartable:
                 s_ok, s_price = add_second_item(driver, item["second_sku"], item["final_qty"])
                 if s_ok:
                     item_unit_price += s_price
                     print(f"  🛒 2nd: {item['second_sku']} x{item['final_qty']} @ ${s_price:.2f} each")
                     log_price_or_status(item["second_sku"], current_price=s_price, status="IN_STOCK")
+            if _combo and not s_ok:
+                return _combine_abort(amazon_id, _combo, f"2nd part {item['second_sku']} of {item.get('_order')} "
+                                                          f"could not be carted")
 
+        item["raw_line"] = item_unit_price * item["final_qty"]       # list price, before Zoro Select
         raw_cart_cost += item_unit_price * item["final_qty"]
 
         # Apply Zoro Select 10% discount to the unit price for margin calculation
@@ -5935,6 +6491,13 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             f"{it['sku']} for {it['main_sku']}" for it in resolved_items if it.get("alt_used"))
         order_note = "; ".join(filter(None, [order_note, f"ALT: placed {_alt_pairs} (main OOS)",
                                              *(it.get("alt_passed_over") for it in resolved_items)]))
+    if _combo:
+        # this order's own log fields again (the ALT rebuild above listed every order's items)
+        asin_field, sku_field, qty_field = _order_fields([it for it in resolved_items if it.get("_order") == amazon_id])
+        _own_alt = [it for it in resolved_items if it.get("_order") == amazon_id and it.get("alt_used")]
+        _combo_note = "; ".join(filter(None, [_combo_note] + (
+            [f"ALT: placed {', '.join(it['sku'] + ' for ' + it['main_sku'] for it in _own_alt)} (main OOS)"]
+            if _own_alt else [])))
 
     # ── DECIDING-ASIN ROUTING (reseller profiles only) ──────────────
     # ASINs in the sheet's *_Deciding columns can't be statically assigned to a
@@ -5953,6 +6516,11 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # Big Order Gate ($800+) for Reseller profile: never buy $800+ orders at reseller price.
     # Mark '20' on Amazon and alert so Kamran can call Zoro for 20% manual discount.
     big_threshold = float(((gui_cfg if "gui_cfg" in globals() else {}).get("big_order_threshold", 800.0) or 800.0))
+    if _combo:
+        _combo_plan_d, _why = _combine_plan(resolved_items, amazon_id, earnings, order_detail, _combo, raw_cart_cost,
+                                            big_threshold, addr, driver, bool(defer_amazon_writes))
+        if not _combo_plan_d:
+            return _combine_abort(amazon_id, _combo, _why)
     if IS_RESELLER_PROFILE and raw_cart_cost >= big_threshold and not manual_override:
         ok = update_amazon_seller_id(driver, amazon_id, "20", PROFILE_NAME)
         reason = f"Big Order (${raw_cart_cost:.2f} >= ${big_threshold:.0f}) on Reseller profile — marked '20' for manual 20% Zoro phone discount"
@@ -5970,6 +6538,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         _dset = {d.strip().upper() for d in DECIDING_ASINS if d and d.strip()}
         _is_deciding_order = any((it.get("asin") or "").strip().upper() in _dset
                                  for it in resolved_items)
+    if _combo and _is_deciding_order:
+        return _combine_abort(amazon_id, _combo, "a Deciding ASIN is in the cart (routed per order)")
     if _is_deciding_order and IS_RESELLER_PROFILE and HAS_COUPON_SIBLING and not manual_override:
         # Aliased on purpose: a plain `from … import ZORO_SMALL_ORDER_FEE` here would make
         # that name LOCAL to the whole function and break its module-level use further
@@ -6348,7 +6918,36 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             (item["sku"], item["final_qty"])
             for item in resolved_items[1:]
         ]
+        if _combo:
+            # a later item's 2nd part rides along too (the checkout re-adds only the first item's)
+            extra_skus += [(it["second_sku"], it["final_qty"]) for it in resolved_items[1:] if it.get("second_sku")]
         print(f"  📦 Multi-item order: passing {len(extra_skus)} extra SKU(s) to checkout")
+
+    # Combined order: what each Amazon order's own order_log line says (checkout writes one per order).
+    _combo_lines = None
+    if _combo and _combo_plan_d:
+        _cby = {c["amazon_id"]: c for c in _combo}
+        _combo_lines = []
+        for _o in _combo_plan_d["orders"]:
+            _c = _cby.get(_o["amazon_id"])
+            _f = _o["items"][0]
+            _alts = [it for it in _o["items"] if it.get("alt_used")]
+            _combo_lines.append({
+                "amazon_id": _o["amazon_id"], "share": _o["share"], "sku": _f["sku"], "qty": _f["final_qty"],
+                "asin": _f["asin"], "item_title": _f.get("title", ""), "amazon_order_qty": _f.get("order_qty"),
+                "zoro_multiple": _f.get("zoro_multiple"), "qty_multiplier": _f.get("qty_multiplier"),
+                "earnings": _o["earnings"], "est_margin": _o["est_margin"],
+                "original_sku": (note_amazon_sku if _c is None else
+                                 ((_f.get("seller_sku") or "").strip() or (_c.get("original_sku") or ""))),
+                "shipping_amt": shipping_amt if _c is None else _c.get("shipping_amt"),
+                "amazon_fees": amazon_fees if _c is None else _c.get("amazon_fees"),
+                "alt_of": _alts[0].get("main_sku") if _alts else None,
+                "zoro_select": bool(all(it.get("is_zoro_select") for it in _o["items"])),
+                "list_price": _f.get("api_price"),
+                "address": addr if _c is None else _c["addr"],
+                "merchant_id": merchant_id if _c is None else _normalize_merchant_order_id(
+                    _c["detail"].get("merchant_order_id", "")),
+            })
 
     # DEBUG: trace coupon list sizes
     print(f"   [DEBUG] coupon_arg len={len(coupon_arg) if coupon_arg else 0} (priority={len(priority_codes_for_checkout)}, regular={len(regular_coupon_codes)})")
@@ -6417,11 +7016,17 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     # Zoro Select brand detection: True if the item is Zoro Select
                     zoro_select=bool(all(it.get("is_zoro_select") for it in resolved_items)),
                     only_coupon=_manual_coupon or None,
+                    **({"combined_orders": _combo_lines} if _combo_lines else {}),
                     **filter_kwargs_for_callee(place_order_fast_true_api,
                                                checkout_kwargs, warn_label="ENGINE"))
             except Exception as true_api_err:
                 print(f"   [ENGINE] True API failed: {true_api_err}")
                 result = None
+        if result is None and _combo:
+            # The Vuex and page checkouts below rebuild the cart from the first item: they would buy one
+            # order and the lines would record them all. Nothing was bought; one by one instead.
+            print("   [ENGINE] combined order: no Vuex/page-checkout fallback — the orders are placed one by one")
+            return {"status": "COMBINE_FAILED"}
         if result is None and _manual_coupon:
             # The two page checkouts below keep whatever promo is already on the cart when the code
             # they try fails. An order with a coupon in its tag may only be bought with that coupon.
@@ -6484,6 +7089,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 return "skipped"
         except Exception as _e:
             print(f"  ⚠️ late column check skipped: {_e}")
+    if _combo and IS_RESELLER_PROFILE and HAS_COUPON_SIBLING:
+        _why = _combine_late_column_hold(_combo)
+        if _why:
+            return _combine_abort(amazon_id, _combo, _why)
 
     # ── RESERVE the claim BEFORE spending a single cent ───────────
     # This is the atomic gate. If a claim already exists (placed this run, in history,
@@ -6509,6 +7118,17 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         if _lock_state == plock.ERROR:
             print(f"  🛑 LOCK DB unreachable — FAIL CLOSED, refusing to place {amazon_id}")
             return "failed"
+        if _combo:
+            # every Amazon order in the joint cart is claimed before a cent is spent; one that cannot be
+            # claimed sends them all back to one-by-one placement (only the claims taken here are released)
+            _taken = [amazon_id]
+            for _c in _combo:
+                _cst, _cinf = plock.reserve(_c["amazon_id"], PROFILE_NAME)
+                if _cst != plock.NEW:
+                    return _combine_abort(amazon_id, _combo, f"{_c['amazon_id']} could not be claimed "
+                                                              f"({_cst} {(_cinf or {}).get('status', '')})".strip(),
+                                          release=_taken)
+                _taken.append(_c["amazon_id"])
 
     # ── Execute checkout (single or split) ────────────────────────
     all_wb_ids = []
@@ -6574,7 +7194,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         result_status = checkout_result.get("status") or "FAILED"
 
         # ── Checkout-time split retry: ratio coupon says splitting saves money ──
-        if result_status == "SPLIT_RETRY":
+        # (never for a combined order: its parts are other buyers' orders, not a quantity to split)
+        if result_status == "SPLIT_RETRY" and not _combo:
             split_orders = checkout_result.get("split_plan", [])
             # If the split plan is just a single order, retrying is pointless.
             if len(split_orders) <= 1:
@@ -6643,6 +7264,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             logged_cost = checkout_total if checkout_total is not None else estimated_total_cost
 
     # ── Result handling ───────────────────────────────────────────
+    if _combo:
+        return _combine_finish(driver, amazon_id, _combo, _combo_plan_d, result_status, result_id,
+                               last_checkout_result,
+                               {"defer": defer_amazon_writes, "addr": addr, "order_detail": order_detail,
+                                "note": _combo_note, "note_amazon_sku": note_amazon_sku,
+                                "shipping_amt": shipping_amt, "amazon_fees": amazon_fees})
     margin_str = str(int(round(margin * 100))) if earnings else "0"
     _cf_route = None            # set when a COUPON FAIL means "the reseller should place this"
     _cf_action_20 = False       # set when cart >= $800 and coupons fail -> mark '20' for phone discount
@@ -7232,8 +7859,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     # ── Reconcile the local claim on failure ──────────────────────
     # These statuses are all detected BEFORE Zoro payment, so it is safe to release the
     # claim and let the order retry next cycle (matches the pre-existing retry intent).
-    _SAFE_PREPAYMENT = ("OOS", "STATE_RESTRICTED", "PO_BOX_RESTRICTED", "NET30_RESTRICTED", "DELIVERY_TIME_HIGH", "DELIVERY_UNKNOWN", "PAYMENT_DECLINED",
-                        "CART_BUSY", "ZORO_NET", "SHARED_ACCOUNT", "NO_COUPONS_SKIP", "COUPON FAIL", "COUPON_RETRY")
+    _SAFE_PREPAYMENT = _SAFE_PREPAYMENT_STATUSES
     if _HAS_LOCK and not DRY_RUN:
         if result_status in _SAFE_PREPAYMENT:
             plock.release(amazon_id, f"pre-payment failure: {result_status}")
@@ -7984,6 +8610,10 @@ def main():
             # Hard safety ceiling on placements per cycle — applies even when the configured
             # caps are 0 (unlimited), so a runaway loop can never rack up dozens of buys again.
             _cycle_cap = MAX_ORDERS_PER_CYCLE if MAX_ORDERS_PER_CYCLE > 0 else SAFETY_MAX_ORDERS_PER_CYCLE
+            _cycle_done = set()     # orders taken up this cycle (a combined order's partners must be later ones)
+            # Partners bought this cycle are skipped when the queue reaches them. Next cycle they are not:
+            # one whose WB never reached Amazon then gets it from the placement lock like any other order.
+            _COMBINE_HANDLED.clear()
 
             if RUSH_MODE:
                 # ═══ RUSH MODE: phase-batched processing ═══════════════════
@@ -8075,6 +8705,10 @@ def main():
                         asin = order.get("asin", "")
                         sku = order.get("sku", "")
                         qty = order.get("qty", 1)
+                        if amazon_id in _COMBINE_HANDLED:
+                            print(f"  🧺 {amazon_id}: bought in a combined order earlier in this cycle — skipped")
+                            continue
+                        _cycle_done.add(amazon_id)
                         if ULTRA_MODE and _ultra_is_held(order):
                             # Its listing ran out earlier in this cycle: no page, no check, no label.
                             print(f"  ⏸️  {amazon_id}: {asin} is out of stock — held, not marked")
@@ -8088,7 +8722,14 @@ def main():
                             print(f"  List ASIN: {asin}  Qty: {qty}")
                         print(f"{'─'*60}")
 
+                        # Same buyer further on in the queue → their pages first (combined order)
+                        _partners = _combine_partners(order, _rq, _cycle_done)
+                        _pdetails, _p_read_here = (_combine_partner_details(driver, _partners, crew=_crew,
+                                                                            details_map=details_map)
+                                                   if _partners else ({}, False))
+
                         detail = _crew.get_detail(amazon_id) if _crew else details_map.get(amazon_id)
+                        _a_read_here = detail is None
                         if detail is None:
                             try:
                                 detail = scrape_order_details(driver, amazon_id, fallback_qty=qty)
@@ -8158,6 +8799,15 @@ def main():
                             if _rn % 10 == 0:
                                 print(f"  ⚡⚡ ULTRA: {_crew.status_line()} | {len(_rush_pending)} write-back(s) queued")
 
+                        _companions = []
+                        if _partners:
+                            if _p_read_here and not _a_read_here:
+                                # this window stands on a partner's page; a duplicate label is written to the
+                                # page the window stands on, so it goes back to this order's own page first
+                                _combine_reopen(driver, amazon_id, qty)
+                            _companions = _combine_prepare(order, detail, _partners, _pdetails, sku_map,
+                                                           earnings_service, duplicate_services, dup_prefetch=dup_map)
+
                         try:
                             status = process_order(
                                 driver, amazon_id, detail, sku_map,
@@ -8166,7 +8816,21 @@ def main():
                                 asin_coupon_cache=asin_coupon_cache,
                                 defer_amazon_writes=True,
                                 dup_prefetch=dup_map,
+                                companions=_companions or None,
                             )
+                            if status == "uncombined":
+                                _companions = []
+                                status = process_order(
+                                    driver, amazon_id, detail, sku_map,
+                                    earnings_service, duplicate_services,
+                                    coupon_codes=coupon_codes,
+                                    asin_coupon_cache=asin_coupon_cache,
+                                    defer_amazon_writes=True,
+                                    dup_prefetch=dup_map,
+                                )
+                            if status == "success" and _companions:
+                                success_count += len(_companions)        # bought in the same Zoro order
+                                cycle_order_count += len(_companions)
                             _run_log["orders_processed"] += 1
                             if (order.get("_supervised") or order.get("_deciding")) and not (
                                     status == "skipped" and str(detail.get("merchant_order_id") or "").strip().upper().startswith("WB")):
@@ -8255,6 +8919,15 @@ def main():
                 sku = order.get("sku", "")
                 qty = order.get("qty", 1)
                 buyer = order.get("buyer", "")
+                if amazon_id in _COMBINE_HANDLED:
+                    print(f"  🧺 {amazon_id}: bought in a combined order earlier in this cycle — skipped")
+                    continue
+                _cycle_done.add(amazon_id)
+
+                # Same buyer further on in the queue → read their pages BEFORE this order's, so the window
+                # ends on this order's page (its duplicate label is written to the page it stands on)
+                _partners = _combine_partners(order, scraped_orders, _cycle_done)
+                _pdetails = _combine_partner_details(driver, _partners)[0] if _partners else {}
 
                 # Dashboard line
                 label = f"Processing {amazon_id}"
@@ -8359,6 +9032,9 @@ def main():
                 if order.get("_supervised"):
                     detail["_supervised"] = True
 
+                _companions = (_combine_prepare(order, detail, _partners, _pdetails, sku_map,
+                                                earnings_service, duplicate_services) if _partners else [])
+
                 # ── Place order ───────────────────────────────────
                 try:
                     status = process_order(
@@ -8367,7 +9043,23 @@ def main():
                         coupon_codes=coupon_codes,
                         asin_coupon_cache=asin_coupon_cache,
                         defer_amazon_writes=RUSH_MODE,
+                        companions=_companions or None,
                     )
+                    if status == "uncombined":
+                        # nothing bought: this order alone, from its own page again
+                        _companions = []
+                        if not RUSH_MODE:
+                            _combine_reopen(driver, amazon_id, qty)
+                        status = process_order(
+                            driver, amazon_id, detail, sku_map,
+                            earnings_service, duplicate_services,
+                            coupon_codes=coupon_codes,
+                            asin_coupon_cache=asin_coupon_cache,
+                            defer_amazon_writes=RUSH_MODE,
+                        )
+                    if status == "success" and _companions:
+                        success_count += len(_companions)        # bought in the same Zoro order
+                        cycle_order_count += len(_companions)
 
                     _run_log["orders_processed"] += 1
                     if (order.get("_supervised") or order.get("_deciding")) and not (

@@ -1215,6 +1215,51 @@ def _ship_from_address(address):
     return out if any(v for v in out.values()) else {}
 
 
+def split_by_shares(total, shares, idx):
+    """Part *idx* of a money *total* split by *shares* (fractions summing to 1): every part is rounded
+    to the cent and the last one takes the remainder, so the parts always add up to the total.
+    None stays None. Used for one Zoro order bought for several Amazon orders (combined order)."""
+    if total is None:
+        return None
+    try:
+        total = float(total)
+    except (TypeError, ValueError):
+        return None
+    parts = [round(total * float(s), 2) for s in shares[:-1]]
+    parts.append(round(total - sum(parts), 2))
+    return parts[idx]
+
+
+def _combined_cart_mismatch(driver, expected):
+    """A combined order (several Amazon orders in one Zoro order) is bought only when the cart holds
+    every order's items. *expected* = {zoro code: total quantity}. Returns '' when the cart holds
+    exactly that (the shipping filler may sit beside it), else what is wrong."""
+    try:
+        from utils.config import SHIPPING_FILLER_SKU as _filler
+    except Exception:
+        _filler = ""
+    cart = _get_cart(driver)
+    if not cart:
+        return "cart could not be read"
+    held = {}
+    for it in cart.get("items") or []:
+        code = it.get("zoroNo") or it.get("sku")
+        q = None
+        for k in ("qty", "quantity", "requestedQuantity", "cartQuantity"):
+            if k in it:
+                try:
+                    q = int(float(it[k]))
+                    break
+                except (TypeError, ValueError):
+                    pass
+        held[code] = held.get(code, 0) + (q or 0)
+    wrong = [f"{c} x{held.get(c, 0)} (want x{q})" for c, q in expected.items() if held.get(c, 0) != q]
+    wrong += [f"{c} x{q} (not ours)" for c, q in held.items() if c not in expected and c != _filler]
+    if cart.get("invalidItems"):
+        wrong.append("Zoro marks an item invalid")
+    return "; ".join(wrong)
+
+
 def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
                        earnings, checkout_total, profit, margin,
                        used_coupon, profile, address, timing_seconds,
@@ -1224,7 +1269,8 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
                        est_profit=None, est_margin=None,
                        original_sku=None, shipping_amt=None,
                        amazon_fees=None, alt_of=None, zoro_select=None,
-                       tax=None, discount=None, list_price=None, page_summary=None):
+                       tax=None, discount=None, list_price=None, page_summary=None,
+                       shares=None, share_idx=0, extra_keys=""):
     """Append a detailed multi-line order audit block to a single master log file.
     Cost falls back to the cart total we computed at checkout when the order was placed by
     the DOM fallback (no API order response): 16–36 rows/day were landing in the DB with
@@ -1233,7 +1279,12 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
     (main was OOS); None for a normal placement.
     zoro_select = True/False when known — whether the Zoro Select discount is
     already baked into this order's cost (reseller profiles only). Recorded so
-    the seller note can state whether the margin includes it; None = unknown."""
+    the seller note can state whether the margin includes it; None = unknown.
+    shares / share_idx: a combined order (one Zoro order for several Amazon orders of one buyer,
+    12 Nov 2026) writes one line per Amazon order; its Cost / Subtotal / Discount / Shipping / Tax
+    are that order's part (split_by_shares) and Profit / FinalMargin are worked out on it, so
+    closing never gives one order the whole Zoro total. extra_keys is appended at the end of the
+    line (" | CombinedWith:… | CombinedTotal:…") — keys are only ever appended."""
     try:
         log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "rajar_logs")
         os.makedirs(log_dir, exist_ok=True)
@@ -1304,6 +1355,13 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
         # What Zoro charged: order response total, else the page total, else the cart total.
         _charged = (summary.get('total') if summary.get('total') is not None
                     else (_pg.get('total') if _pg.get('total') else checkout_total))
+        if shares:
+            # Combined order: this Amazon order's part of each Zoro number, and its own profit.
+            _charged, _subtotal, _discount, _shipping, _tax = (
+                split_by_shares(v, shares, share_idx) for v in (_charged, _subtotal, _discount, _shipping, _tax))
+            if earnings is not None and _charged:
+                profit = round(float(earnings) - _charged, 2)
+                margin = profit / _charged if _charged > 0 else None
 
         one_liner = (
             f"[{now}] | WB:{s(wb_id)} | Profile:{s(profile)} | Amazon:{s(amazon_id)}"
@@ -1323,7 +1381,8 @@ def _save_order_audit(wb_id, zoro_response, amazon_id, sku, qty, asin,
             f" | TrackingIDs:{s(address.get('_tracking_ids',''))} | ShippedEmailTime:{s(address.get('_shipped_email_time',''))}"
             f" | ZoroDeliverBy:{s(address.get('_zoro_deliver_by',''))} | ZoroStock:{s(address.get('_zoro_stock',''))}"
             f" | AltUsed:{'Yes' if alt_of else 'No'} | MainSKU:{s(alt_of) if alt_of else 'N/A'}"
-            f" | ZSelect:{'Yes' if zoro_select else ('No' if zoro_select is not None else 'Unknown')}\n"
+            f" | ZSelect:{'Yes' if zoro_select else ('No' if zoro_select is not None else 'Unknown')}"
+            f"{extra_keys or ''}\n"
         )
 
         with open(log_path, "a", encoding="utf-8") as f:
@@ -1441,7 +1500,7 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                                coupon_meta_by_code=None, alt_of=None,
                                payment_method="CREDIT_CARD",
                                split_coupon_only=None, zoro_select=None,
-                               only_coupon=None):
+                               only_coupon=None, combined_orders=None):
     """Fast checkout using true REST APIs for all steps.
 
     Splitting is decided AT CHECKOUT TIME: after a ratio/fixed-amount coupon
@@ -1451,6 +1510,14 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
     only_coupon: the coupon a person wrote in the order's tag ("Manual-C SAVE20NOW"). The caller
     passes it as the whole coupon list; here it only stops the page-checkout fallback, which keeps
     whatever promo it finds on the cart.
+
+    combined_orders: one Zoro order for several Amazon orders of the same buyer and address
+    (engine/orders.py, 12 Nov 2026). A list of one dict per Amazon order — amazon_id, share and the
+    fields of its own log line. Every item must reach the cart (no "continuing with primary only"),
+    the cart is checked against the expected codes just before paying, nothing falls back to a
+    checkout that rebuilds the cart from the first item, and one order_log line is written per
+    Amazon order with its part of the cost. Anything that stops it before payment returns
+    COMBINE_FAILED: nothing bought, and the placer then places the orders one by one.
     """
     t_start = time.perf_counter()
     print(f"\n{'='*60}")
@@ -1532,6 +1599,11 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
             if s_ok:
                 price += s_price
                 print(f"   2nd item added ok, price=${s_price}")
+            elif combined_orders:
+                print(f"   🛑 COMBINED ORDER: 2nd part {second_sku} did not reach the cart — nothing bought; "
+                      f"the orders are placed one by one")
+                _clear_cart_api(driver)
+                return _format_checkout_result("COMBINE_FAILED", return_details=return_details)
             else:
                 print(f"   ⚠️ 2nd item failed to add, continuing with primary only")
 
@@ -1542,6 +1614,11 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                 if e_ok:
                     price += e_price
                     print(f"   extra item added ok, price=${e_price}")
+                elif combined_orders:
+                    print(f"   🛑 COMBINED ORDER: {extra_sku} x{extra_qty} did not reach the cart — nothing "
+                          f"bought; the orders are placed one by one")
+                    _clear_cart_api(driver)
+                    return _format_checkout_result("COMBINE_FAILED", return_details=return_details)
                 else:
                     print(f"   ⚠️ extra item failed to add, continuing")
 
@@ -1693,6 +1770,19 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                         profit=profit, margin=margin, return_details=return_details)
         else:
             print("  ⚠️  Checkout total not found in cart API")
+
+        # ── 6b. Combined order: the cart must hold every Amazon order's items, nothing else ──
+        if combined_orders:
+            _want = {}
+            for _c, _q in [(sku, qty)] + ([(second_sku, qty)] if second_sku else []) + list(extra_skus or []):
+                _want[_c] = _want.get(_c, 0) + int(_q)
+            _bad = _combined_cart_mismatch(driver, _want)
+            if _bad:
+                print(f"   🛑 COMBINED ORDER: the cart is not exactly the orders' items ({_bad}) — nothing "
+                      f"bought; the orders are placed one by one")
+                return _format_checkout_result("COMBINE_FAILED", return_details=return_details)
+            print(f"   ✅ Combined order: cart holds every order's items "
+                  f"({', '.join(f'{c} x{q}' for c, q in _want.items())})")
 
         # ── 7. Place Order ──
         print(f"\n[12] PLACE ORDER — profile={active_profile}")
@@ -1856,38 +1946,66 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                     qty=qty, total=checkout_total, profit=profit, margin=margin)
             if used_coupon_code and used_coupon_code != "AUTO_APPLIED":
                 update_coupon_status(used_coupon_code, "USED")
-            # Save comprehensive audit
-            _save_order_audit(
-                wb_id=zoro_id,
-                zoro_response=zoro_response,
-                amazon_id=amazon_id,
-                sku=sku,
-                qty=qty,
-                asin=asin,
-                earnings=earnings,
-                checkout_total=checkout_total,
-                profit=profit,
-                margin=margin,
-                used_coupon=used_coupon_code,
-                profile=active_profile,
-                address=address,
-                timing_seconds=time.perf_counter() - t_start,
-                merchant_id=merchant_id,
-                amazon_order_qty=amazon_order_qty,
-                zoro_multiple=zoro_multiple,
-                qty_multiplier=qty_multiplier,
-                item_title=item_title,
-                est_shipping=est_shipping,
-                est_profit=est_profit,
-                est_margin=est_margin,
-                original_sku=original_sku,
-                shipping_amt=shipping_amt,
-                amazon_fees=amazon_fees,
-                alt_of=alt_of,
-                zoro_select=zoro_select,
-                list_price=list_price,
-                page_summary=getattr(driver, "_zuhra_checkout_summary", None),
-            )
+            if combined_orders:
+                # One line per Amazon order, each with its part of the cost (closing reads it per order).
+                _shares = [float(c.get("share") or 0) for c in combined_orders]
+                _ids = [str(c.get("amazon_id") or "") for c in combined_orders]
+                _page = getattr(driver, "_zuhra_checkout_summary", None)
+                _summ = (zoro_response or {}).get("orderSummary", {}) if isinstance(zoro_response, dict) else {}
+                _whole = (_summ.get("total") if _summ.get("total") is not None
+                          else ((_page or {}).get("total") if (_page or {}).get("total") else checkout_total))
+                for _i, _c in enumerate(combined_orders):
+                    _others = ",".join(x for x in _ids if x != _ids[_i])
+                    _save_order_audit(
+                        wb_id=zoro_id, zoro_response=zoro_response, amazon_id=_c.get("amazon_id"),
+                        sku=_c.get("sku"), qty=_c.get("qty"), asin=_c.get("asin"),
+                        earnings=_c.get("earnings"), checkout_total=checkout_total,
+                        profit=None, margin=None, used_coupon=used_coupon_code, profile=active_profile,
+                        address=_c.get("address") or address,
+                        timing_seconds=time.perf_counter() - t_start,
+                        merchant_id=_c.get("merchant_id", ""), amazon_order_qty=_c.get("amazon_order_qty"),
+                        zoro_multiple=_c.get("zoro_multiple"), qty_multiplier=_c.get("qty_multiplier"),
+                        item_title=_c.get("item_title", ""), est_shipping=est_shipping,
+                        est_profit=None, est_margin=_c.get("est_margin"),
+                        original_sku=_c.get("original_sku"), shipping_amt=_c.get("shipping_amt"),
+                        amazon_fees=_c.get("amazon_fees"), alt_of=_c.get("alt_of"),
+                        zoro_select=_c.get("zoro_select"), list_price=_c.get("list_price"),
+                        page_summary=_page, shares=_shares, share_idx=_i,
+                        extra_keys=(f" | CombinedWith:{_others}"
+                                    + (f" | CombinedTotal:${float(_whole):.2f}" if _whole else "")))
+            else:
+                # Save comprehensive audit
+                _save_order_audit(
+                    wb_id=zoro_id,
+                    zoro_response=zoro_response,
+                    amazon_id=amazon_id,
+                    sku=sku,
+                    qty=qty,
+                    asin=asin,
+                    earnings=earnings,
+                    checkout_total=checkout_total,
+                    profit=profit,
+                    margin=margin,
+                    used_coupon=used_coupon_code,
+                    profile=active_profile,
+                    address=address,
+                    timing_seconds=time.perf_counter() - t_start,
+                    merchant_id=merchant_id,
+                    amazon_order_qty=amazon_order_qty,
+                    zoro_multiple=zoro_multiple,
+                    qty_multiplier=qty_multiplier,
+                    item_title=item_title,
+                    est_shipping=est_shipping,
+                    est_profit=est_profit,
+                    est_margin=est_margin,
+                    original_sku=original_sku,
+                    shipping_amt=shipping_amt,
+                    amazon_fees=amazon_fees,
+                    alt_of=alt_of,
+                    zoro_select=zoro_select,
+                    list_price=list_price,
+                    page_summary=getattr(driver, "_zuhra_checkout_summary", None),
+                )
         else:
             print(f"  ❌ ORDER FAILED")
             bot_log("error", "Place order FAILED (True API + fallback)", sku=sku)
@@ -1986,6 +2104,12 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
             print(f"  ↪️  No page-checkout fallback: this order may only be bought with the coupon from "
                   f"its tag ({only_coupon}). Nothing was bought; it is tried again next cycle.")
             return _format_checkout_result("COUPON_RETRY", return_details=return_details)
+        # A combined order: the legacy checkout rebuilds the cart from the first item only, so it
+        # would buy one order and record all of them. The order was never sent (checked above).
+        if combined_orders:
+            print("  ↪️  No legacy fallback for a combined order — nothing was bought; the orders are "
+                  "placed one by one")
+            return _format_checkout_result("COMBINE_FAILED", return_details=return_details)
         print(f"  ↪️  Falling back to legacy checkout...")
         try:
             from checkout.dom import place_order_fast

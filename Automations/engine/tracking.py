@@ -1737,16 +1737,26 @@ def _update_unified_db_tracking(wb_id, tracking_ids, shipped_email_time):
     if not _HAS_UNIFIED_DB:
         return
     tids_str = ", ".join(tracking_ids) if tracking_ids else ""
+    # A combined order (one Zoro order for several Amazon orders of one buyer, 12 Nov 2026) has one row
+    # per Amazon order under the same WB; the by-WB lookups return one of them, whose combined_with names
+    # the others — every one of them gets the tracking.
+    combined = []
+    try:
+        from utils.unified_db import get_placer_order_by_wb
+        _p = get_placer_order_by_wb(wb_id) or {}
+        combined = [x.strip() for x in str(_p.get("combined_with") or "").split(",") if x.strip()]
+    except Exception:
+        combined = []
     try:
         from utils.unified_db import update_order, get_order_by_wb
         row = get_order_by_wb(wb_id)
         if row:
-            amazon_id = row["amazon_order_id"]
             updates = {
                 "tracking_ids": tids_str,
                 "shipped_email_time": shipped_email_time or "",
             }
-            update_order(amazon_id, updates, changed_by="tracking_uploader")
+            for amazon_id in dict.fromkeys([row["amazon_order_id"]] + combined):
+                update_order(amazon_id, dict(updates), changed_by="tracking_uploader")
             print(f"     📝 Updated unified DB with tracking for {wb_id}")
     except Exception:
         pass
@@ -1754,8 +1764,9 @@ def _update_unified_db_tracking(wb_id, tracking_ids, shipped_email_time):
         from utils.unified_db import get_placer_order_by_wb, upsert_placer_order
         prow = get_placer_order_by_wb(wb_id)
         if prow and tids_str:
-            upsert_placer_order({"amazon_order_id": prow["amazon_order_id"], "tracking_ids": tids_str,
-                                 "shipped_email_time": shipped_email_time or ""})
+            for amazon_id in dict.fromkeys([prow["amazon_order_id"]] + combined):
+                upsert_placer_order({"amazon_order_id": amazon_id, "tracking_ids": tids_str,
+                                     "shipped_email_time": shipped_email_time or ""})
     except Exception:
         pass
 

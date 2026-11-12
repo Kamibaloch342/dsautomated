@@ -946,6 +946,10 @@ PLACER_PRICE_COLUMNS = {"zoro_list_price": "REAL", "zoro_subtotal": "REAL", "zor
 # time so closing never has to load the Seller Central order page to learn it.
 PLACER_UPLOAD_COLUMNS = {"tracking_id_uploaded": "TEXT", "tracking_upload_date": "TEXT",
                          "tracking_carrier_uploaded": "TEXT"}
+# A combined order (12 Nov 2026): one Zoro order bought for several Amazon orders of one buyer to one
+# address. combined_with = the OTHER Amazon order ids on the same WB ("112-…,113-…"); this row's
+# zoro_order_total / tax / subtotal / shipping are its own part, and closing keeps them as they are.
+PLACER_COMBINE_COLUMNS = {"combined_with": "TEXT"}
 _placer_cols_ensured_for: set = set()
 
 
@@ -959,7 +963,7 @@ def ensure_placer_price_columns(db_path=None, conn=None) -> list:
 
     def _do(c):
         have = {r[1] for r in c.execute("PRAGMA table_info(order_placer_orders)")}
-        for col, typ in {**PLACER_PRICE_COLUMNS, **PLACER_UPLOAD_COLUMNS}.items():
+        for col, typ in {**PLACER_PRICE_COLUMNS, **PLACER_UPLOAD_COLUMNS, **PLACER_COMBINE_COLUMNS}.items():
             if col not in have:
                 c.execute(f"ALTER TABLE order_placer_orders ADD COLUMN {col} {typ}")
                 added.append(col)
@@ -1019,7 +1023,8 @@ def upsert_placer_order(data: dict, db_path=None) -> bool:
     data = {k: (_iso_order_date(v) if k in _PLACER_DATE_COLUMNS else v) for k, v in data.items()}
     # The table predates these columns; make sure they exist before a row that carries them.
     try:
-        if any(k in data for k in PLACER_PRICE_COLUMNS) or any(k in data for k in PLACER_UPLOAD_COLUMNS):
+        if (any(k in data for k in PLACER_PRICE_COLUMNS) or any(k in data for k in PLACER_UPLOAD_COLUMNS)
+                or any(k in data for k in PLACER_COMBINE_COLUMNS)):
             ensure_placer_price_columns(db_path)
     except Exception:
         pass
