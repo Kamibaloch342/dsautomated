@@ -562,6 +562,10 @@ During order checkout and cart testing:
    - **Tracking confirmation** — order shipped with tracking link [**Other** only; never "Notify of a
      problem", which filed every shipped message as a shipping problem until then]
    - **Stock delay** — item backordered, expected ship date [Notify of a problem → Other]
+     For an **OOS** order only after its ship-by date is at most `messaging.oos_message_days_before_ship_by`
+     (default 1) days away (US/Pacific; date from the "Sold, ship now" e-mail, `archive_earnings`): until
+     then Zoro may restock and the order is placed in time (owner, 12 Nov 2026). No date known → messaged
+     as before. SR / Discontinued / Loss / NS / Unfulfillable are messaged as before.
    - **Cancel denial** — order already shipped [Other → Notify of a problem]
 8. Persist to `message_log.json` and `tracking_upload_log.json`
 

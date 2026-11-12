@@ -82,6 +82,8 @@ agent and the dashboard run as macOS LaunchAgents.
   (reused for 30 min), `archive_tracking` → one batched Gmail sweep → PDF, upload on Confirm
   Shipment, "shipped" buyer message. Since 26 Sep 2026 it records what it uploaded in
   `order_placer_orders.tracking_id_uploaded` and `action_log` (`action_type='tracking_upload'`).
+  An **OOS** order gets the out-of-stock buyer message only once its ship-by date is at most 1 day away
+  (`messaging.oos_message_days_before_ship_by`, 12 Nov 2026) — Zoro may restock before then.
   **Fast mode** (whenever Skip messages is ticked, 3 Nov 2026): one finder thread and two upload windows
   run side by side (`engine/tracking_crew.py`); no buyer message, seller note or WhatsApp alert, no
   1,000-order cap. `TRACKING_FAST=0` keeps the normal cycle.

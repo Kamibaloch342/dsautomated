@@ -500,8 +500,11 @@ def notify_low_profit_rejected(amazon_id: str, title: str, asin: str, sku: str,
 
 
 def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
-               zoro_code: str, account: str = "", driver=None, screenshot_bytes: bytes = None):
-    """Alert when an item is genuine Out of Stock and marked on Amazon, with screenshot."""
+               zoro_code: str, account: str = "", driver=None, screenshot_bytes: bytes = None,
+               quiet_minutes: int = 0):
+    """Alert when an item is genuine Out of Stock and marked on Amazon, with screenshot.
+    quiet_minutes: the placer sends one alert per Zoro code per store in that many minutes (12 Nov 2026);
+    the alert then says the item's other orders are marked OOS without a new alert until then."""
     title = str(title or "").strip()
     sku = str(sku or "").strip()
     if (not title or not sku or sku in ("N/A", "None", "")) and asin:
@@ -524,6 +527,8 @@ def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
             f"<b>Zoro Code:</b> <code>{zoro_code}</code>\n"
             f"<b>Amazon Order:</b> <code>{amazon_id}</code>\n\n"
             f"<b>Action:</b> Marked 'OOS' on Amazon Seller Central"
+            + (f"\n<b>Next:</b> this item's other orders are marked OOS without a new alert for "
+               f"{int(quiet_minutes)} min" if quiet_minutes else "")
         )
         if screenshot_bytes:
             send_telegram_photo(screenshot_bytes, caption=msg, background=True)
@@ -542,6 +547,8 @@ def notify_oos(amazon_id: str, title: str, asin: str, sku: str,
                 f"• Zoro Code: `{zoro_code}`\n"
                 f"• Order: `{amazon_id}`\n\n"
                 f"• Action: Marked 'OOS' on Amazon Seller Central"
+                + (f"\n• Next: this item's other orders are marked OOS without a new alert for "
+                   f"{int(quiet_minutes)} min" if quiet_minutes else "")
             )
             if screenshot_bytes:
                 send_whatsapp_photo(screenshot_bytes, caption=wa_msg, to=target_wa_group, background=True)

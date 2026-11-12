@@ -1319,6 +1319,67 @@ def _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=N
     return True
 
 
+# ── OOS: no delay message while Zoro can still restock in time (owner, 12 Nov 2026) ──
+# An order marked OOS whose ship-by date is days away (the listing guard raised the handling time, so
+# Wrenchly's barrel orders of 11 Nov ship by 18 Nov) is NOT told "out of stock, 10–15 business days" yet:
+# Zoro may restock and the order is placed in time. The message goes once the ship-by date is at most
+# messaging.oos_message_days_before_ship_by (default 1) days away (US/Pacific, Seller Central's dates).
+# The date comes from the "Sold, ship now" e-mail (archive_earnings.ship_by_date); with no date known the
+# order is messaged as before. SR / Discontinued / Loss / NS / Unfulfillable are not waiting for a
+# restock and are messaged as before.
+
+def _oos_message_days():
+    try:
+        from utils.config import load_gui_config
+        return int(((load_gui_config() or {}).get("messaging") or {}).get("oos_message_days_before_ship_by", 1))
+    except Exception:
+        return 1
+
+
+def _parse_ship_by(text):
+    s = str(text or "").split("|")[0].strip()
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%a, %b %d, %Y", "%b %d, %Y", "%A, %B %d, %Y"):
+        try:
+            return datetime.strptime(s[:10] if fmt == "%Y-%m-%d" else s, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def _ship_by_dates(amazon_ids):
+    """{amazon_id: ship-by date} from the 'Sold, ship now' e-mails, read-only. Missing ids are left out."""
+    out = {}
+    ids = [a for a in dict.fromkeys(amazon_ids) if a]
+    if not ids:
+        return out
+    try:
+        import sqlite3
+        from utils.unified_db import DB_PATH
+        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=30)
+        try:
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                for aid, sb in conn.execute(
+                        f"SELECT amazon_order_id, ship_by_date FROM archive_earnings "
+                        f"WHERE amazon_order_id IN ({','.join('?' * len(chunk))})", chunk):
+                    d = _parse_ship_by(sb)
+                    if d:
+                        out[aid] = d
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"  ⚠️  ship-by dates not readable ({e}) — OOS orders are messaged as before")
+    return out
+
+
+def _pacific_today():
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/Los_Angeles")).date()
+    except Exception:
+        return datetime.utcnow().date()
+
+
 def send_delay_message(driver, wait, order_id, store_name):
     """Sends a stock delay message for SR/OOS/Discontinued orders."""
     CONTACT_URL = f"https://sellercentral.amazon.com/messaging/contact?orderID={order_id}&marketplaceID=ATVPDKIKX0DER"
@@ -2592,6 +2653,10 @@ def main_workflow(account_config, passed_driver=None):
                 print(f"\n  {'─'*54}")
                 print(f"  🔴  SR/LOSS/NS ORDERS — {len(sr_orders_df)} to process (delay message, no upload)")
                 print(f"  {'─'*54}")
+                _oos_days = _oos_message_days()
+                _oos_today = _pacific_today()
+                _oos_ship_by = _ship_by_dates([str(r['amazon-order-id']).strip() for _, r in sr_orders_df.iterrows()
+                                               if 'OOS' in str(r['merchant-order-id']).upper()])
                 for idx, (_, row) in enumerate(sr_orders_df.iterrows(), 1):
                     merchant_id = str(row['merchant-order-id']).strip()
                     amazon_id = str(row['amazon-order-id']).strip()
@@ -2600,7 +2665,17 @@ def main_workflow(account_config, passed_driver=None):
                     if should_send_messages:
                         if amazon_id in message_log and message_log[amazon_id].get('sent'):
                             print(f"     ⏩  Already messaged ({message_log[amazon_id].get('message_type')}). Skipping.")
+                        elif ('OOS' in merchant_id.upper() and amazon_id in _oos_ship_by
+                              and (_oos_ship_by[amazon_id] - _oos_today).days > _oos_days):
+                            # Zoro may restock before this order has to ship: no "out of stock" message yet
+                            _sb = _oos_ship_by[amazon_id]
+                            _from = _sb.fromordinal(_sb.toordinal() - max(_oos_days, 0))
+                            print(f"     ⏳  OOS — ships by {_sb:%a %b %d}, {(_sb - _oos_today).days} days away: no delay "
+                                  f"message yet (Zoro may restock); it goes on {_from:%a %b %d} if the order is "
+                                  f"still OOS then.")
                         else:
+                            if 'OOS' in merchant_id.upper() and amazon_id not in _oos_ship_by:
+                                print(f"     ℹ️  OOS — ship-by date not known (no 'Sold, ship now' e-mail in the archive): messaged as before")
                             # Check for cancellation request first
                             has_cancellation_request = False
                             try:

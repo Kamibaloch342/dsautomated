@@ -1323,6 +1323,51 @@ def _ultra_hold_oos(driver, orders, sku_map):
     return keep
 
 
+_OOS_ALERT_STATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data",
+                                "oos_alert_state.json")
+
+
+def _oos_alert_every_min():
+    """Minutes between two OOS alerts for the same Zoro code of a store — bot_config.json
+    "oos_alert_every_min" (default 60; 0 = an alert for every order, as before 12 Nov 2026)."""
+    try:
+        return max(0, int(((gui_cfg if "gui_cfg" in globals() else {}) or {}).get("oos_alert_every_min", 60)))
+    except (TypeError, ValueError):
+        return 60
+
+
+def _oos_alert_due(zoro_code, now=None):
+    """(True, '') when this store's OOS alert for *zoro_code* may go now — the time is recorded at once —
+    else (False, 'HH:MM' of the last one). A queue of one listing's orders that all run out (28 orders
+    of one Wrenchly barrel, 12 Nov 2026) gives one alert, not one per order; after the window the next
+    order alerts again. Shared by the store's profiles and kept across restarts in
+    data/oos_alert_state.json. Never raises: on any error the alert goes."""
+    every = _oos_alert_every_min()
+    code = str(zoro_code or "").strip().upper()
+    if every <= 0 or not code:
+        return True, ""
+    now = time.time() if now is None else now
+    key = f"{STORE_ACCOUNT}|{code}"
+    try:
+        try:
+            with open(_OOS_ALERT_STATE, encoding="utf-8") as f:
+                state = json.load(f) or {}
+        except (OSError, ValueError):
+            state = {}
+        last = float(state.get(key) or 0)
+        if now - last < every * 60:
+            return False, datetime.fromtimestamp(last).strftime("%H:%M")
+        state = {k: v for k, v in state.items() if now - float(v or 0) < 2 * 86400}
+        state[key] = now
+        tmp = _OOS_ALERT_STATE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=1)
+        os.replace(tmp, _OOS_ALERT_STATE)
+    except Exception as e:
+        print(f"  ⚠️  OOS alert state not readable ({e}) — alerting")
+    return True, ""
+
+
 def _listing_out_note(driver, item, amazon_id, alt_tried=None):
     """Tell the listing guard (engine/listing_guard.py) that this listing's Zoro code and every
     alternative are out of stock, so the Amazon listing stops selling (DS) or gets a longer handling
@@ -6384,20 +6429,28 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                 # Main and every alternative out: the listing itself must stop taking orders. Noted
                 # here (one row); dealt with at the end of the cycle (engine/listing_guard.py).
                 _listing_out_note(driver, item, amazon_id, alt_tried)
-                try:
-                    from utils.telegram import notify_oos
-                    item_title = primary_item.get("title", "") if "primary_item" in locals() else (items[0].get("title", "") if items else "")
-                    notify_oos(
-                        amazon_id=amazon_id,
-                        title=item_title,
-                        asin=asin_field,
-                        sku=sku_field,
-                        zoro_code=item.get("sku", ""),
-                        account=PROFILE_NAME,
-                        driver=None if defer_amazon_writes else driver,   # rush: text only (wrong page)
-                    )
-                except Exception as _oose:
-                    print(f"   [Telegram] ⚠️ OOS alert error: {_oose}")
+                # One alert per Zoro code per store per hour (owner, 12 Nov 2026: 28 orders of one Wrenchly
+                # barrel sent 28 identical alerts). Every order is still marked OOS on Amazon.
+                _oos_due, _oos_last = _oos_alert_due(item.get("sku", ""))
+                if not _oos_due:
+                    print(f"  🔕 OOS alert for {item.get('sku', '')} already sent at {_oos_last} — {amazon_id} is "
+                          f"marked OOS without another alert (next one after {_oos_alert_every_min()} min)")
+                else:
+                    try:
+                        from utils.telegram import notify_oos
+                        item_title = primary_item.get("title", "") if "primary_item" in locals() else (items[0].get("title", "") if items else "")
+                        notify_oos(
+                            amazon_id=amazon_id,
+                            title=item_title,
+                            asin=asin_field,
+                            sku=sku_field,
+                            zoro_code=item.get("sku", ""),
+                            account=PROFILE_NAME,
+                            driver=None if defer_amazon_writes else driver,   # rush: text only (wrong page)
+                            quiet_minutes=_oos_alert_every_min(),
+                        )
+                    except Exception as _oose:
+                        print(f"   [Telegram] ⚠️ OOS alert error: {_oose}")
             _log_order({
                 "amazon_id": amazon_id,
                 "asin": asin_field,
