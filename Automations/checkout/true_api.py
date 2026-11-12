@@ -1500,7 +1500,7 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
                                coupon_meta_by_code=None, alt_of=None,
                                payment_method="CREDIT_CARD",
                                split_coupon_only=None, zoro_select=None,
-                               only_coupon=None, combined_orders=None):
+                               only_coupon=None, combined_orders=None, allow_ratio_split=True):
     """Fast checkout using true REST APIs for all steps.
 
     Splitting is decided AT CHECKOUT TIME: after a ratio/fixed-amount coupon
@@ -1702,7 +1702,9 @@ def place_order_fast_true_api(driver, sku, qty, address, po_number, active_profi
         # Percentage coupons NEVER trigger splits. Never re-triggers inside a
         # split sub-order (split_coupon_only set) — the split loop would treat
         # a nested SPLIT_RETRY as a failed split and abort the remaining parts.
-        if used_coupon_code and qty > 1 and not split_coupon_only:
+        # allow_ratio_split=False: this checkout is one part of a Zoro-limit split (engine/orders.py,
+        # 13 Nov 2026) — its quantity is already fixed by Zoro's per-order limit.
+        if used_coupon_code and qty > 1 and not split_coupon_only and allow_ratio_split:
             meta = coupon_meta_by_code.get(used_coupon_code)
             if meta and isinstance(meta, list) and any("fixed_amount" in m for m in meta):
                 tiers = [m for m in meta if "fixed_amount" in m]

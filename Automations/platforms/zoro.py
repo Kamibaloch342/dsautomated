@@ -3,6 +3,7 @@ order_zoro.py — Zoro.com API layer: inventory, cart, address CRUD, restriction
 All operations use in-browser fetch() via Selenium — no direct HTTP requests.
 """
 
+import os
 import re
 import json
 import time
@@ -275,6 +276,79 @@ def is_backordered(avail):
     avail = avail or {}
     return (str(avail.get('availabilityStatus') or '').strip().lower() == 'backordered'
             or str(avail.get('availabilityType') or '').strip().lower() == 'backorder')
+
+
+# ── Zoro's per-order quantity limit ("Limit 10 per order" on the product page, owner 13 Nov 2026) ──
+# G3983996 (Sakrete cold patch) sells at most 10 per order: an Amazon order for 4 six-packs (24 bags) got
+# HTTP 400 "Item(s) not available for sale" on every cart add and was parked again and again. The limit
+# is the product's maxOrderQty in the data embedded in its page (no API the placer uses returns it); an
+# item without a limit has no maxOrderQty there. Read inside the placer's own Zoro session, cached on disk.
+_MAX_QTY_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data",
+                             "zoro_max_order_qty.json")
+_MAX_QTY_TTL_S = 3 * 86400
+_MAX_QTY_CACHE = {}
+_MAX_QTY_RE = re.compile(r'maxOrderQty\\?"\s*:\s*(\d+)')
+
+
+def _max_qty_from_page(text):
+    """(limit or 0, read): 0 = the product data is there and has no limit; read False = not a product page."""
+    m = _MAX_QTY_RE.search(text or "")
+    if m:
+        return int(m.group(1)), True
+    return 0, ("minRetailQty" in (text or ""))
+
+
+def max_order_qty(driver, sku):
+    """Zoro's 'Limit N per order' for *sku*: N, or None when there is none or it cannot be read (the
+    order then goes on as before). Cached 3 days per code in data/zoro_max_order_qty.json. Never raises."""
+    code = str(sku or "").strip().upper()
+    if not code:
+        return None
+    now = time.time()
+    try:
+        if not _MAX_QTY_CACHE:
+            with open(_MAX_QTY_PATH, encoding="utf-8") as f:
+                _MAX_QTY_CACHE.update(json.load(f) or {})
+    except (OSError, ValueError):
+        pass
+    hit = _MAX_QTY_CACHE.get(code)
+    if hit and now - float(hit[1]) < _MAX_QTY_TTL_S:
+        return int(hit[0]) or None
+    limit, read = 0, False
+    try:                                   # this Chrome's own Zoro session (same origin, no navigation)
+        r = driver.execute_script("""
+            return fetch('https://www.zoro.com/i/' + arguments[0] + '/', {credentials: 'include'})
+                .then(function(r){ return r.text(); })
+                .then(function(t){
+                    var m = t.match(/maxOrderQty\\\\?"\\s*:\\s*(\\d+)/);
+                    return m ? parseInt(m[1], 10) : (t.indexOf('minRetailQty') >= 0 ? 0 : -1);
+                }).catch(function(e){ return -1; });
+        """, code)
+        if isinstance(r, (int, float)) and r >= 0:
+            limit, read = int(r), True
+    except Exception:
+        pass
+    if not read:                           # plain request, as a browser would ask for the page
+        try:
+            import urllib.request
+            req = urllib.request.Request(f"https://www.zoro.com/i/{code}/", headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/130.0 Safari/537.36", "Accept-Language": "en-US"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                limit, read = _max_qty_from_page(resp.read().decode("utf-8", "replace"))
+        except Exception:
+            pass
+    if not read:
+        return None
+    _MAX_QTY_CACHE[code] = [limit, now]
+    try:
+        tmp = _MAX_QTY_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({k: v for k, v in _MAX_QTY_CACHE.items() if now - float(v[1]) < _MAX_QTY_TTL_S}, f)
+        os.replace(tmp, _MAX_QTY_PATH)
+    except Exception:
+        pass
+    return limit or None
 
 
 def last_inventory_qty(sku):

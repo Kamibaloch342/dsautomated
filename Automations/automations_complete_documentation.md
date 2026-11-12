@@ -450,6 +450,39 @@ Orders with less time or no known ship-by stay `OOS` for a person; those are the
 messages about the delay. Decision log kind `oos_restock`, console 🔓 / 🔒. Labels-only placers have no
 favorites discovery, so they never release.
 
+#### Zoro's "Limit N per order" — one Amazon order in several Zoro orders (13 Nov 2026)
+
+Some Zoro items sell at most N per order: the product page says "Limit 10 per order", and its embedded
+data has `maxOrderQty`. A cart with more units fails with HTTP 400 "Item(s) not available for sale". The
+cold patch G3983996 × 24 (4 six-packs) was parked again and again because of this.
+
+Before the cart add, the placer reads the limit for any item with a quantity above 1
+(`platforms.zoro.max_order_qty`):
+- It reads it inside its own Zoro session, with a plain request as fallback.
+- The answer is cached for 3 days in `data/zoro_max_order_qty.json`.
+- No limit, or a page it can't read, means the order goes on as before.
+
+Over the limit, the order is bought as several Zoro orders (`_zoro_limit_chunks`): 24 with limit 10 → 10 + 10 + 4. Each part stays a whole number of Zoro packs.
+- **How each part checks out:**
+  - It gets its share of the earnings by quantity for the profit check.
+  - It runs the normal coupon flow; no single "split coupon".
+  - It never starts a ratio split of its own (`allow_ratio_split=False`).
+  - It is tried up to 3 times when Zoro answers CART_BUSY or ZORO_NET right after the previous part.
+- **What the order records:**
+  - The Amazon order gets all the WBs ("WB… WB… WB…").
+  - Each part has its own `order_log.txt` line.
+  - Closing sums the legs (`_sum_leg_costs`) and the tracker uploads every leg's tracking, as for any multi-WB order.
+  - Every part's single-use sheet coupon is deleted from the Coupons tab.
+- **When it is not split** (left for a person, with a 📏 console line):
+  - more than **3** parts — Amazon's 40-character Seller order ID holds 3 WBs;
+  - multi-item and combined orders;
+  - quantities that can't be cut into whole packs.
+- **Partial result:** if a later part fails, the parts already bought keep their WBs. The order is
+  noted `PARTIAL … place the other N by hand` (run log, DB notes, decision log `zoro_limit_split`).
+
+The split path itself was fixed at the same time: `logged_subtotal` / `logged_shipping` were unset there
+and a paid split crashed before its DB row, note and alert.
+
 #### 5.1.1 Priority ASIN Control & Dynamic Profile Routing (Reseller vs. Coupon)
 
 ##### The Business Rationale & Profile Economics

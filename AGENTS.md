@@ -68,6 +68,10 @@ agent and the dashboard run as macOS LaunchAgents.
   are released (earliest first, as many as Zoro's stock covers) and go through every normal check
   (`_oos_restock_release`, `oos_restock_check_min`, `oos_restock_min_hours`). The sheet's
   `OOS_Release_<store>` column still releases anything by hand.
+  **Zoro per-order limit** (13 Nov 2026): an item whose Zoro page says "Limit N per order"
+  (`maxOrderQty`, `platforms.zoro.max_order_qty`) is bought in up to 3 Zoro orders (24 at limit 10 →
+  10 + 10 + 4, `_zoro_limit_chunks`); all WBs go on the Amazon order; more parts, multi-item or combined
+  orders are left for a person.
   **PO boxes** (10 Nov 2026): placed with the box renamed "#number" behind the street
   (`platforms.amazon.rename_po_box`); label BB only when the address has no street at all or Zoro
   still refuses it. **Listing guard** (`engine/listing_guard.py`, 10 Nov 2026): when the Zoro code

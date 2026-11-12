@@ -86,6 +86,7 @@ from platforms.zoro import (
     get_product_brand,
     check_pdp_promo,
     pdp_promo_ineligible,
+    max_order_qty,
 )
 from checkout.dom import place_order_fast
 from utils import decision_log as _DLOG      # structured log of every routing decision
@@ -5181,6 +5182,25 @@ def _estimate_best_coupon_pct(priority_coupons_with_pct, zoro_code, asin_coupon_
     return None
 
 
+# Amazon's Seller order ID holds 40 characters: three WBs ("WB… WB… WB…", 38) — a fourth would be cut to "+1",
+# and the tracker and closing read the WBs from that field, so its tracking and cost would be lost.
+ZORO_LIMIT_MAX_PARTS = 3
+
+
+def _zoro_limit_chunks(total, limit, multiple=1):
+    """Quantities of the Zoro orders an over-limit item is bought in: as many full orders of the limit
+    as fit, then the rest (24 with 'Limit 10 per order' → [10, 10, 4]). Each part stays a whole multiple of
+    the item's Zoro pack (zoro_multiple). [] when no split is needed or none is possible."""
+    total, limit, multiple = int(total or 0), int(limit or 0), max(1, int(multiple or 1))
+    step = (limit // multiple) * multiple
+    if total <= 0 or limit <= 0 or total <= limit or step <= 0 or total % multiple:
+        return []
+    chunks = [step] * (total // step)
+    if total % step:
+        chunks.append(total % step)
+    return chunks
+
+
 def _evaluate_order_strategy(resolved_items, priority_coupons, unit_price, list_total=None):
     """Estimate profit with the best percentage coupon.  
     
@@ -6564,8 +6584,27 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             })
             return "failed"
 
+        # Zoro's "Limit N per order" (owner, 13 Nov 2026): 24 bags of a limit-10 item are bought as Zoro
+        # orders of 10 + 10 + 4. The cart is tried with the first part; the checkout places each part.
+        _add_qty = item["final_qty"]
+        if item["final_qty"] > 1:
+            _mx = max_order_qty(driver, item["sku"])
+            if _mx and item["final_qty"] > _mx:
+                _chunks = _zoro_limit_chunks(item["final_qty"], _mx, item.get("zoro_multiple") or 1)
+                if is_multi_item or _combo or not _chunks or len(_chunks) > ZORO_LIMIT_MAX_PARTS:
+                    print(f"  📏 Zoro sells at most {_mx} of {item['sku']} per order and this order needs "
+                          f"{item['final_qty']} — " + (
+                              "it cannot be split into whole packs" if not _chunks else
+                              f"{len(_chunks)} Zoro orders would not fit Amazon's Seller order ID (3 WBs at most)"
+                              if len(_chunks) > ZORO_LIMIT_MAX_PARTS else
+                              "a multi-item / combined order is not split") + ": place it by hand")
+                else:
+                    item["_limit_chunks"] = _chunks
+                    _add_qty = _chunks[0]
+                    print(f"  📏 Zoro sells at most {_mx} of {item['sku']} per order — {item['final_qty']} are bought "
+                          f"as {len(_chunks)} Zoro orders: {' + '.join(str(q) for q in _chunks)}")
         if first_cart_item:
-            cart_ok, api_price = clear_cart_and_add(driver, item["sku"], item["final_qty"])
+            cart_ok, api_price = clear_cart_and_add(driver, item["sku"], _add_qty)
             first_cart_item = False
         else:
             cart_ok, api_price = add_second_item(driver, item["sku"], item["final_qty"])
@@ -6751,6 +6790,18 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     strategy = _evaluate_order_strategy(
         resolved_items, priority_coupons_with_pct, primary_item.get("unit_price", 0),
         list_total=raw_cart_cost)
+    # Over Zoro's per-order limit: one Zoro order per part, each judged for shipping on its own list total
+    _limit_chunks = primary_item.get("_limit_chunks") if not is_multi_item else None
+    if _limit_chunks:
+        from utils.config import ZORO_SMALL_ORDER_FEE as _lfee, FREE_SHIPPING_THRESHOLD as _lfree
+        _lunit = float(primary_item.get("raw_line") or 0) / max(1, int(primary_item.get("final_qty") or 1))
+        _lship = round(sum(_lfee for q in _limit_chunks if _lunit * q < _lfree), 2)
+        strategy["estimated_cost"] = (float(strategy.get("estimated_cost") or 0)
+                                      - float(strategy.get("estimated_shipping") or 0) + _lship)
+        strategy["estimated_shipping"] = _lship
+        strategy["orders"] = [{"qty": q} for q in _limit_chunks]
+        strategy["discount_description"] = (f"Zoro limit per order — {len(_limit_chunks)} orders "
+                                            f"({' + '.join(str(q) for q in _limit_chunks)})")
     orders = strategy["orders"]
     is_split_order = len(orders) > 1
     split_count = len(orders)
@@ -7127,8 +7178,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
         second_sku=primary_item.get("second_sku") or None,
     )
 
-    def _run_single_checkout(qty_override=None, earnings_override=None, split_coupon=None):
+    def _run_single_checkout(qty_override=None, earnings_override=None, split_coupon=None, ratio_split=True):
         """Attempt checkout once. Returns checkout_result dict or None.
+
+        ratio_split=False: a part of a Zoro-limit split — the checkout never starts a ratio split of its own.
 
         split_coupon: set for split sub-orders — the ONLY coupon this checkout
         may use (the one whose ratio discount justified the split). If it can't
@@ -7170,6 +7223,7 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     zoro_select=bool(all(it.get("is_zoro_select") for it in resolved_items)),
                     only_coupon=_manual_coupon or None,
                     **({"combined_orders": _combo_lines} if _combo_lines else {}),
+                    **({} if ratio_split else {"allow_ratio_split": False}),
                     **filter_kwargs_for_callee(place_order_fast_true_api,
                                                checkout_kwargs, warn_label="ENGINE"))
             except Exception as true_api_err:
@@ -7293,19 +7347,35 @@ def process_order(driver, amazon_id, order_detail, sku_map,
     last_checkout_result = None
     logged_tax = None
     logged_discount = None
+    # Set by the single checkout only; the split paths below log them too (they were unset there — a split
+    # that paid then failed with UnboundLocalError before its DB row, note and alert were written).
+    logged_subtotal = None
+    logged_shipping = None
+    split_subtotals, split_shippings, split_coupons_used = [], [], []
 
     if is_split_order:
-        # Place orders according to the optimal partition. Sub-orders are locked
-        # to the strategy's coupon (when known) so no split can raid the wider
-        # coupon book — see _run_single_checkout(split_coupon=...).
+        # Place orders according to the plan. Today the only planned split is Zoro's per-order quantity
+        # limit (_limit_chunks; ratio-coupon splits are decided at checkout, SPLIT_RETRY below). Each part
+        # carries its share of the earnings by quantity, runs the normal coupon flow (no single "split
+        # coupon"), never starts a ratio split of its own, and a part refused because the cart was still
+        # busy with the previous part is tried again.
         _plan_coupon = strategy.get("preferred_coupon") or None
-        split_earnings = earnings / split_count if earnings else None
+        _qty_all = sum(int(o.get("qty") or 0) for o in orders) or 1
         for split_idx, order_cfg in enumerate(orders):
             split_qty = order_cfg["qty"]
+            split_earnings = (earnings * split_qty / _qty_all) if earnings else None
             print(f"\n  [SPLIT {split_idx + 1}/{split_count}] Placing qty={split_qty} order...")
-            checkout_result = _run_single_checkout(
-                qty_override=split_qty, earnings_override=split_earnings,
-                split_coupon=_plan_coupon)
+            for _try in range(3 if _limit_chunks else 1):
+                checkout_result = _run_single_checkout(
+                    qty_override=split_qty, earnings_override=split_earnings,
+                    split_coupon=None if _limit_chunks else _plan_coupon,
+                    ratio_split=not _limit_chunks)
+                if (_limit_chunks and _try < 2 and checkout_result
+                        and checkout_result.get("status") in ("CART_BUSY", "ZORO_NET")):
+                    print(f"  ⏳ Part {split_idx + 1}: Zoro {checkout_result.get('status')} — tried again in 20 s")
+                    time.sleep(20)
+                    continue
+                break
             last_checkout_result = checkout_result
 
             if checkout_result and checkout_result.get("status") == "SUCCESS":
@@ -7316,6 +7386,9 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     split_costs.append(checkout_result.get("checkout_total", 0))
                     split_taxes.append(checkout_result.get("tax"))
                     split_discounts.append(checkout_result.get("discount"))
+                    split_subtotals.append(checkout_result.get("subtotal"))
+                    split_shippings.append(checkout_result.get("shipping"))
+                    split_coupons_used.append(checkout_result.get("used_coupon_code"))
                     print(f"  ✅ Split {split_idx + 1} placed: {wb_id}")
                     # Small delay between split orders to avoid rate limits
                     if split_idx < split_count - 1:
@@ -7326,6 +7399,16 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             final_result_status = checkout_result.get("status") if checkout_result else "FAILED"
             print(f"  ❌ Split {split_idx + 1} failed: {final_result_status}")
             break
+
+        if _limit_chunks and all_wb_ids and len(all_wb_ids) < split_count:
+            _got = sum(int(o["qty"]) for o in orders[:len(all_wb_ids)])
+            _short = (f"PARTIAL: Zoro limit split — {len(all_wb_ids)} of {split_count} Zoro orders placed "
+                      f"({_got} of {_qty_all} units); part {len(all_wb_ids) + 1} stopped ({final_result_status}) — "
+                      f"place the other {_qty_all - _got} by hand")
+            print(f"  🛑 {amazon_id}: {_short}")
+            order_note = "; ".join(filter(None, [order_note, _short]))
+            _DLOG.log("zoro_limit_split", profile=PROFILE_NAME, amazon_id=amazon_id, sku=primary_item.get("sku"),
+                      action="partial", reason=_short, wbs=all_wb_ids)
 
         # Aggregate results
         if all_wb_ids:
@@ -7485,8 +7568,8 @@ def process_order(driver, amazon_id, order_detail, sku_map,
                     zoro_tax=split_taxes[idx] if idx < len(split_taxes) else (logged_tax / len(all_wb_ids) if logged_tax else None),
                     zoro_list_price=primary_item.get("api_price"),
                 zoro_deliver_by=(addr.get("_zoro_deliver_by") if isinstance(addr, dict) else None),
-                    zoro_subtotal=logged_subtotal,
-                    zoro_shipping=logged_shipping,
+                    zoro_subtotal=split_subtotals[idx] if idx < len(split_subtotals) else logged_subtotal,
+                    zoro_shipping=split_shippings[idx] if idx < len(split_shippings) else logged_shipping,
                     coupon_used=(last_checkout_result.get("used_coupon_code") if last_checkout_result else None),
                     coupon_savings=split_discounts[idx] if idx < len(split_discounts) else (logged_discount / len(all_wb_ids) if logged_discount else None))
             # Write seller note for split order (driver already on Amazon page)
@@ -7740,8 +7823,10 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             # a single-use sheet code written in the tag is used up like any other (its row goes);
             # a code that is not in the sheet stays in this set and has no row to delete
             _all_priority_codes -= _sheet_regular_codes
-        if used_coupon and used_coupon != "AUTO_APPLIED" and used_coupon not in _all_priority_codes:
-            _delete_coupon_from_sheet(used_coupon)
+        # every part of a split order may have used its own single-use code (Zoro-limit split, 13 Nov 2026)
+        for _uc in dict.fromkeys([c for c in split_coupons_used if c] + ([used_coupon] if used_coupon else [])):
+            if _uc != "AUTO_APPLIED" and _uc not in _all_priority_codes:
+                _delete_coupon_from_sheet(_uc)
         # a code a person picked for one order says nothing about the item: no strikes are cleared
         if used_coupon and IS_COUPON_PROFILE and not _manual_coupon:
             _learn_promo_outcome(primary_item.get("sku"), primary_item.get("asin"), True,
