@@ -2284,6 +2284,21 @@ class App(tk.Tk):
                   "then Completed labels. Feeds the dashboard's Attention → Delivery lists\n"
                   "(late / stalled) and the messaging run (check-in on delivery, delay\n"
                   "notice after 3 days without movement). No Chrome, ~0.5 s per order.")
+        # Undelivered list (12 Nov 2026): the undelivered orders of chosen Zoro accounts as an
+        # Excel file, each order first re-checked: found (delivered now), cancelled, refunded.
+        und_btn = self._btn(ctrl, "📋 Undelivered", self.AMBER,
+                            self._open_undelivered_dialog, small=True)
+        und_btn.pack(side="left", padx=(8, 0))
+        self._tip(und_btn,
+                  "UNDELIVERED LIST — the orders a Zoro account bought (robstark771,\n"
+                  "abecomllc26, …) in a date range that are not delivered, as an Excel file.\n\n"
+                  "Before an order goes on the list it is checked:\n"
+                  "  • FOUND — Zoro's tracking is asked again now (delivered → own sheet)\n"
+                  "  • CANCELLED — at Zoro or on Amazon (own sheet)\n"
+                  "  • REFUNDED — Zoro 'Cash Refund' e-mails in that account's Gmail\n"
+                  "    (own sheet); Amazon's refund to the buyer is shown as a column.\n\n"
+                  "The file opens when it is ready (reports/undelivered/). No Chrome;\n"
+                  "~1 s per order to ask Zoro.")
 
         self.lbl_cls = tk.Label(ctrl, text="Idle", font=(self.MONO, 9),
                                 bg=self.CARD, fg=self.MUTED)
@@ -2425,6 +2440,131 @@ class App(tk.Tk):
         self._filter.set("All")
         self._launch(name, cmd, "both", extra_env=extra_env)
         self._feed_line("Delivery check started (Zoro tracking, both stores)", "ok")
+        self._update_hdr()
+
+    _UNDELIVERED_PREFS = os.path.join(SCRIPT_DIR, "data", "undelivered_report.json")
+    _UNDELIVERED_DEFAULT = [{"account": "robstark771", "from": "2026-10-01", "to": ""},
+                            {"account": "abecomllc26", "from": "2026-09-01", "to": ""}]
+
+    def _open_undelivered_dialog(self):
+        """📋 Undelivered: pick the Zoro accounts and purchase-date ranges, then run
+        scripts/undelivered_report.py. The ranges are kept in data/undelivered_report.json
+        (the script reads the same file when run without arguments)."""
+        if "undelivered_report" in self._procs:
+            messagebox.showinfo("Info", "The undelivered list is already being made — it opens when ready.")
+            return
+        try:
+            with open(self._UNDELIVERED_PREFS, "r", encoding="utf-8") as f:
+                prefs = json.load(f) or {}
+        except Exception:
+            prefs = {}
+        saved = prefs.get("ranges") or self._UNDELIVERED_DEFAULT
+        win = tk.Toplevel(self)
+        win.title("Undelivered orders list")
+        win.configure(bg=self.BG)
+        win.transient(self)
+        po, pi = self._panel(win)
+        po.pack(fill="both", expand=True, padx=8, pady=8)
+        self._heading(pi, "UNDELIVERED ORDERS — per Zoro account", self.AMBER)
+        tk.Label(pi, text="Zoro account = its Gmail name (robstark771) or address; Amazon purchase dates. "
+                          "Leave a row's account empty to skip it.",
+                 font=(self.FONT, 9), bg=self.CARD, fg=self.MUTED, justify="left").pack(anchor="w", padx=14, pady=(0, 6))
+        grid = tk.Frame(pi, bg=self.CARD)
+        grid.pack(fill="x", padx=14, pady=(0, 6))
+        for c, h in enumerate(("Zoro account", "From", "To")):
+            tk.Label(grid, text=h, font=(self.FONT, 9, "bold"), bg=self.CARD, fg=self.DIM).grid(
+                row=0, column=c, sticky="w", padx=(0, 8))
+
+        def date_box(value):
+            de = DateEntry(grid, width=11, background=self.CARD, foreground=self.TEXT,
+                           borderwidth=1, date_pattern='y-mm-dd',
+                           selectbackground=self.ACCENT, selectforeground=self.BG,
+                           normalbackground=self.INP_BG, normalforeground=self.TEXT,
+                           weekendbackground=self.INP_BG, weekendforeground=self.TEXT,
+                           othermonthbackground=self.INP_BG, othermonthforeground=self.DIM)
+            try:
+                de.set_date(datetime.strptime(value, "%Y-%m-%d").date())
+            except Exception:
+                de.set_date(datetime.now().date())
+            return de
+
+        rows = []
+        for i in range(4):
+            r = saved[i] if i < len(saved) else {}
+            acct_v = tk.StringVar(value=str(r.get("account") or ""))
+            self._entry(grid, acct_v, 20).grid(row=i + 1, column=0, sticky="w", padx=(0, 8), pady=2, ipady=3)
+            frm = date_box(str(r.get("from") or ""))
+            frm.grid(row=i + 1, column=1, sticky="w", padx=(0, 8), pady=2)
+            to = date_box(str(r.get("to") or ""))       # no saved end date → today
+            to.grid(row=i + 1, column=2, sticky="w", padx=(0, 8), pady=2)
+            rows.append((acct_v, frm, to))
+        live_var = tk.BooleanVar(value=prefs.get("live", True))
+        gmail_var = tk.BooleanVar(value=prefs.get("gmail", True))
+        opts = tk.Frame(pi, bg=self.CARD)
+        opts.pack(fill="x", padx=14, pady=(2, 6))
+        ttk.Checkbutton(opts, text="Ask Zoro first (found / cancelled)", variable=live_var).pack(anchor="w")
+        ttk.Checkbutton(opts, text="Read Zoro refund e-mails (already refunded)", variable=gmail_var).pack(anchor="w")
+        bar = tk.Frame(pi, bg=self.CARD)
+        bar.pack(fill="x", padx=14, pady=(4, 10))
+
+        def run():
+            ranges, bad = [], []
+            today = datetime.now().date()
+            for acct_v, frm_box, to_box in rows:
+                acct = acct_v.get().strip()
+                if not acct:
+                    continue
+                try:
+                    frm, to = frm_box.get_date(), to_box.get_date()
+                except Exception:
+                    bad.append(acct)
+                    continue
+                if frm > to:
+                    bad.append(acct)
+                    continue
+                # an end date of today is saved as "" so the next run ends on ITS today
+                ranges.append({"account": acct, "from": frm.isoformat(),
+                               "to": "" if to >= today else to.isoformat()})
+            if bad:
+                messagebox.showerror("Undelivered list", f"Check the dates of: {', '.join(bad)} "
+                                     "('From' must not be after 'To').", parent=win)
+                return
+            if not ranges:
+                messagebox.showerror("Undelivered list", "Enter at least one Zoro account.", parent=win)
+                return
+            data = {"ranges": ranges, "live": bool(live_var.get()), "gmail": bool(gmail_var.get())}
+            try:
+                tmp = self._UNDELIVERED_PREFS + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=1)
+                os.replace(tmp, self._UNDELIVERED_PREFS)
+            except Exception:
+                pass
+            win.destroy()
+            self._start_undelivered_report(ranges, data["live"], data["gmail"])
+
+        self._btn(bar, "▶ Make list", self.GREEN, run, small=True).pack(side="left")
+        self._btn(bar, "Cancel", self.MUTED, win.destroy, small=True).pack(side="left", padx=(8, 0))
+        try:
+            win.geometry(f"+{self.winfo_rootx() + 80}+{self.winfo_rooty() + 80}")
+        except Exception:
+            pass
+
+    def _start_undelivered_report(self, ranges, live=True, gmail=True):
+        name = "undelivered_report"
+        if name in self._procs:
+            messagebox.showinfo("Info", "The undelivered list is already being made.")
+            return
+        specs = [f"{r['account']}:{r.get('from') or ''}:{r.get('to') or ''}" for r in ranges]
+        cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "scripts", "undelivered_report.py"), *specs, "--open"]
+        if not live:
+            cmd.append("--no-live")
+        if not gmail:
+            cmd.append("--no-gmail")
+        self._filter.set("All")
+        self._launch(name, cmd)
+        self._feed_line("Undelivered list started (" + ", ".join(
+            f"{r['account']} {r.get('from') or '…'} → {r.get('to') or 'today'}" for r in ranges) + ")", "ok")
         self._update_hdr()
 
     def _start_messaging(self, account):
