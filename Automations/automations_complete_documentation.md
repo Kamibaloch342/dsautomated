@@ -400,7 +400,9 @@ sequenceDiagram
 #### Combined order — one Zoro order for a buyer's orders to one address (12 Nov 2026)
 
 Reseller profiles (DM_RESELLER, HS_RESELLER, WR_RESELLER). When the queue holds two or more orders of one
-buyer (same list-view *Buyer name*), the placer reads the partners' pages before the order's own. They
+buyer (same list-view *Buyer name*, read from the line under "Buyer name:" into `buyer_name` — the old
+`buyer` field was always empty, so until 13 Nov 2026 no pair was ever found), the placer reads the partners'
+pages before the order's own. They
 are bought in **one Zoro order** only when every one of these holds:
 - same name, street, line 2, city, state and ZIP5;
 - same ship-by and deliver-by dates;

@@ -2839,14 +2839,31 @@ def scrape_order_ids(driver, label=TARGET_LABEL, max_pages=20, asin_search=None,
                         sku: '',
                         qty: 1,
                         buyer: '',
+                        buyer_name: '',
                         status: ''
                     };
                 } else if (current) {
                     var m;
                     if ((m = line.match(/Seller order ID:\\s*(.+)/))) {
                         current.seller_order_id = m[1].trim();
-                    } else if ((m = line.match(/Buyer name:\\s*(.+)/))) {
-                        current.buyer = m[1].trim();
+                    } else if ((m = line.match(/Buyer name:\\s*(.*)$/))) {
+                        // Seller Central puts the name on the NEXT line ("Buyer name:" / "Gazmend"), so `buyer`
+                        // — read only from the same line — has always been empty. It stays exactly as it was
+                        // (the batched Gmail duplicate check reads it); the name for the combined order goes
+                        // into buyer_name (owner, 13 Nov 2026: two Gazmend orders were bought apart).
+                        var bn = m[1].trim();
+                        if (bn) {
+                            current.buyer = bn;
+                        } else {
+                            for (var j = i + 1; j < lines.length; j++) {
+                                var nx = lines[j].trim();
+                                if (!nx) continue;
+                                if (!/^(Fulfillment method|Sales channel|Seller order ID|Buyer name)\\s*:/i.test(nx)
+                                        && !/^\\d{3}-\\d{7}-\\d{7}$/.test(nx)) bn = nx;
+                                break;
+                            }
+                        }
+                        current.buyer_name = bn;
                     } else if ((m = line.match(/ASIN:\\s*(B[0-9][A-Z0-9]{8})/))) {
                         current.asin = m[1];
                     } else if ((m = line.match(/SKU:\\s*(.+)/))) {
@@ -5400,13 +5417,14 @@ def _combine_partners(order, queue, handled):
     try:
         if not _combine_enabled():
             return []
-        key = _combine_key(order.get("buyer"))
+        # buyer_name: the list's "Buyer name:" read from the line under it (buyer is always empty there)
+        key = _combine_key(order.get("buyer_name") or order.get("buyer"))
         if not key:
             return []
         out = [o for o in queue
                if o.get("amazon_id") and o["amazon_id"] != order.get("amazon_id")
                and o["amazon_id"] not in handled and o["amazon_id"] not in _COMBINE_HANDLED
-               and _combine_key(o.get("buyer")) == key]
+               and _combine_key(o.get("buyer_name") or o.get("buyer")) == key]
         return out[:COMBINE_MAX_ORDERS - 1]
     except Exception:
         return []
