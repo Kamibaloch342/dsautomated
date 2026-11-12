@@ -63,6 +63,11 @@ agent and the dashboard run as macOS LaunchAgents.
   `CombinedWith:`) and `order_placer_orders.combined_with`; closing keeps the share
   (`closing.placer_share`). `bot_config.json → combine_same_buyer: false` turns it off
   (docs §5.1 "Combined order").
+  **OOS orders on restock** (12 Nov 2026): once an hour per item the placer asks Zoro about the items of
+  OOS-stamped orders; when one is back, its OOS orders with 24+ h left before Amazon's ship-by deadline
+  are released (earliest first, as many as Zoro's stock covers) and go through every normal check
+  (`_oos_restock_release`, `oos_restock_check_min`, `oos_restock_min_hours`). The sheet's
+  `OOS_Release_<store>` column still releases anything by hand.
   **PO boxes** (10 Nov 2026): placed with the box renamed "#number" behind the street
   (`platforms.amazon.rename_po_box`); label BB only when the address has no street at all or Zoro
   still refuses it. **Listing guard** (`engine/listing_guard.py`, 10 Nov 2026): when the Zoro code

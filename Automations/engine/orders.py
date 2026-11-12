@@ -4201,10 +4201,110 @@ def _oos_released_asins():
     return {a.strip().upper() for a in (_load_asin_column_from_sheet(f"OOS_Release_{_STORE}", "OOS release") or [])}
 
 
-def _oos_release_mark(order, released):
-    """An order stamped OOS whose ASIN was released is treated from here on exactly as if it had never been
-    stamped, so routing and every check apply as for any unlabelled order. Any other label stays."""
-    if (str(order.get("asin") or "").strip().upper() in released
+# ── OOS orders go back to work when Zoro restocks (owner, 12 Nov 2026) ──
+# An order stamped OOS used to wait for a person to write its ASIN in OOS_Release_<store>. Now, at most once
+# an hour per item (bot_config.json "oos_restock_check_min", default 60; 0 = off), the placer asks Zoro about
+# the items of the OOS orders in the buyer-action view; when the main code or an alternative is buyable,
+# the orders with at least 24 hours left before Amazon's ship-by deadline (end of the ship-by day, US/Pacific;
+# date from the "Sold, ship now" e-mail) are released — Zoro needs that day to ship, or Amazon's "ship by
+# this deadline or the order is cancelled" notice comes first (owner, 12 Nov 2026; "oos_restock_min_hours").
+# Earliest ship-by first, as many as Zoro's stock covers; each then goes through every normal check, the
+# "Delivery time high" date check included. Orders with less time, or no ship-by known, stay OOS for a person
+# (the sheet column still releases anything) — those are the ones the tracker tells about the delay.
+_OOS_RESTOCK_ASKED = {}                 # asin -> when Zoro was last asked about it (this process)
+
+
+def _oos_restock_check_min():
+    try:
+        return max(0, int(((gui_cfg if "gui_cfg" in globals() else {}) or {}).get("oos_restock_check_min", 60)))
+    except (TypeError, ValueError):
+        return 60
+
+
+def _oos_restock_min_hours():
+    try:
+        return max(0.0, float(((gui_cfg if "gui_cfg" in globals() else {}) or {}).get("oos_restock_min_hours", 24)))
+    except (TypeError, ValueError):
+        return 24.0
+
+
+def _oos_restock_release(driver, view_orders, sku_map, sheet_released=(), now=None, now_pacific=None):
+    """Amazon ids of OOS-stamped orders to release this cycle because Zoro has their item again (see above).
+    Asks Zoro only about items that have an order with enough time left before its ship-by deadline, at most
+    once an hour each. Never raises; any trouble releases nothing (the next cycle tries again)."""
+    every = _oos_restock_check_min()
+    if every <= 0 or not view_orders:
+        return set()
+    now = time.time() if now is None else now
+    try:
+        by_asin = {}
+        for o in view_orders:
+            asin = str(o.get("asin") or "").strip().upper()
+            if (asin and asin not in sheet_released
+                    and _normalize_merchant_order_id(o.get("seller_order_id")).upper() == "OOS"
+                    and str((sku_map.get(asin) or {}).get("zoro_code") or "").strip()):
+                by_asin.setdefault(asin, []).append(o)
+        due = {a: os_ for a, os_ in by_asin.items()
+               if a not in _OOS_RESTOCK_ASKED or now - _OOS_RESTOCK_ASKED[a] >= every * 60}
+        if not due:
+            return set()
+        from utils.unified_db import archive_ship_by_dates, ship_by_hours_left
+        ship_by = archive_ship_by_dates([o["amazon_id"] for os_ in due.values() for o in os_])
+        min_h = _oos_restock_min_hours()
+        released, on_site = set(), False
+        for asin, os_ in due.items():
+            live = sorted((o for o in os_ if ship_by.get(o["amazon_id"])
+                           and ship_by_hours_left(ship_by[o["amazon_id"]], now_pacific) >= min_h),
+                          key=lambda o: ship_by[o["amazon_id"]])
+            late = len(os_) - len(live)
+            if not live:
+                continue                       # nothing could still ship in time: Zoro is not asked
+            info = sku_map.get(asin) or {}
+            unit = max(1, int(float(info.get("qty_multiplier") or 1) * int(info.get("zoro_multiple") or 1)))
+            if not on_site:
+                ensure_on_site(driver)
+                ensure_token(driver)
+                on_site = True
+            main = str(info.get("zoro_code") or "").strip()
+            code, (ok, status) = main, check_inventory(driver, main, unit)
+            if not ok and status not in ("API_ERROR", "NO_DATA") and info.get("alt_skus"):
+                alt, status, _tried = first_alt_in_stock(driver, info.get("alt_skus") or [], unit)
+                code, ok = (alt, True) if alt else (code, False)
+            if status in ("API_ERROR", "NO_DATA") and not ok:
+                continue                       # no answer: asked again next cycle, not in an hour
+            _OOS_RESTOCK_ASKED[asin] = now
+            if not ok:
+                print(f"  🔒 {asin}: {main} still out of stock on Zoro — {len(os_)} OOS order(s) wait "
+                      f"(asked again in {every} min)")
+                continue
+            from platforms.zoro import last_inventory_qty
+            avail = last_inventory_qty(code)       # None = Zoro reports plenty
+            take, used = [], 0
+            for o in live:
+                need = unit * (_coerce_positive_int(o.get("qty")) or 1)
+                if avail is not None and used + need > int(avail):
+                    break
+                take.append(o)
+                used += need
+            released.update(o["amazon_id"] for o in take)
+            print(f"  🔓 {asin}: {code} is back on Zoro" + (f" ({avail} in stock)" if avail is not None else "")
+                  + f" — {len(take)} OOS order(s) released ({min_h:.0f}+ h before ship-by, earliest first)"
+                  + (f"; {len(live) - len(take)} more wait for stock" if len(live) > len(take) else "")
+                  + (f"; {late} with under {min_h:.0f} h to ship-by or no ship-by date stay OOS" if late else ""))
+            _DLOG.log("oos_restock", profile=PROFILE_NAME, asin=asin, sku=code, action="released",
+                      reason=f"{len(take)} released, {len(live) - len(take)} wait for stock, {late} late/undated",
+                      orders=[o["amazon_id"] for o in take], stock=avail)
+        return released
+    except Exception as e:
+        print(f"  ⚠️  OOS restock check skipped ({type(e).__name__}: {e}) — OOS orders stay as they are")
+        return set()
+
+
+def _oos_release_mark(order, released, released_ids=()):
+    """An order stamped OOS whose ASIN was released (sheet column) or which _oos_restock_release let go is
+    treated from here on exactly as if it had never been stamped, so routing and every check apply as for
+    any unlabelled order. Any other label stays."""
+    if ((str(order.get("asin") or "").strip().upper() in released or order.get("amazon_id") in released_ids)
             and _normalize_merchant_order_id(order.get("seller_order_id")).upper() == "OOS"):
         order["seller_order_id"] = ""
         order["_oos_released"] = True
@@ -8430,6 +8530,8 @@ def main():
                           f"{len(deciding_set)} deciding ASIN(s)…")
                     fav_orders = scrape_order_ids(driver, favorites=True)
                     _released_asins = _oos_released_asins()
+                    # OOS orders whose item Zoro has again, still inside their ship-by date (hourly per item)
+                    _released_ids = _oos_restock_release(driver, fav_orders, sku_map, _released_asins)
                     _released_n = Counter()
                     matched = skipped_label = skipped_asin = 0
                     deciding_matched = 0
@@ -8450,7 +8552,7 @@ def main():
                         if _queue_manual_from_view(fo, scraped_orders, seen_ids):
                             continue
                         _fo_asin = (fo.get("asin") or "").strip().upper()
-                        if _oos_release_mark(fo, _released_asins):
+                        if _oos_release_mark(fo, _released_asins, _released_ids):
                             _released_n[_fo_asin] += 1
                         is_deciding = _fo_asin in deciding_set
                         if _fo_asin not in priority_set and not is_deciding:
@@ -8530,7 +8632,7 @@ def main():
                         seen_ids.add(fo["amazon_id"])
                         matched += 1
                     if _released_n:
-                        print(f"    🔓 Released from OOS by the sheet: {sum(_released_n.values())} order(s) — "
+                        print(f"    🔓 Released from OOS (sheet column or Zoro restock): {sum(_released_n.values())} order(s) — "
                               + ", ".join(f"{a} x{n}" for a, n in _released_n.most_common(8))
                               + ". Handled as unlabelled orders from here.")
                     print(f"    ✅ {matched} priority order(s) added "

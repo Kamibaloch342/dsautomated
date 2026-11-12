@@ -1336,48 +1336,20 @@ def _oos_message_days():
         return 1
 
 
-def _parse_ship_by(text):
-    s = str(text or "").split("|")[0].strip()
-    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%a, %b %d, %Y", "%b %d, %Y", "%A, %B %d, %Y"):
-        try:
-            return datetime.strptime(s[:10] if fmt == "%Y-%m-%d" else s, fmt).date()
-        except ValueError:
-            pass
-    return None
-
-
 def _ship_by_dates(amazon_ids):
-    """{amazon_id: ship-by date} from the 'Sold, ship now' e-mails, read-only. Missing ids are left out."""
-    out = {}
-    ids = [a for a in dict.fromkeys(amazon_ids) if a]
-    if not ids:
-        return out
+    """{amazon_id: ship-by date} from the 'Sold, ship now' e-mails, read-only (utils.unified_db, shared
+    with the placer's restock release). Missing ids are left out."""
     try:
-        import sqlite3
-        from utils.unified_db import DB_PATH
-        conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True, timeout=30)
-        try:
-            for i in range(0, len(ids), 500):
-                chunk = ids[i:i + 500]
-                for aid, sb in conn.execute(
-                        f"SELECT amazon_order_id, ship_by_date FROM archive_earnings "
-                        f"WHERE amazon_order_id IN ({','.join('?' * len(chunk))})", chunk):
-                    d = _parse_ship_by(sb)
-                    if d:
-                        out[aid] = d
-        finally:
-            conn.close()
+        from utils.unified_db import archive_ship_by_dates
+        return archive_ship_by_dates(amazon_ids)
     except Exception as e:
         print(f"  ⚠️  ship-by dates not readable ({e}) — OOS orders are messaged as before")
-    return out
+        return {}
 
 
 def _pacific_today():
-    try:
-        from zoneinfo import ZoneInfo
-        return datetime.now(ZoneInfo("America/Los_Angeles")).date()
-    except Exception:
-        return datetime.utcnow().date()
+    from utils.unified_db import pacific_today
+    return pacific_today()
 
 
 def send_delay_message(driver, wait, order_id, store_name):

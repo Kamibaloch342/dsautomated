@@ -1057,6 +1057,59 @@ def get_placer_order(amazon_order_id: str, db_path=None) -> dict | None:
         return dict(row) if row else None
 
 
+def parse_ship_by(text):
+    """A ship-by date as Amazon writes it ('11/18/2026' in the 'Sold, ship now' e-mail, 'Wed, Nov 18,
+    2026' on the order page, '2026-11-18') → date, else None."""
+    s = str(text or "").split("|")[0].strip()
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%a, %b %d, %Y", "%b %d, %Y", "%A, %B %d, %Y"):
+        try:
+            return datetime.strptime(s[:10] if fmt == "%Y-%m-%d" else s, fmt).date()
+        except ValueError:
+            pass
+    return None
+
+
+def archive_ship_by_dates(amazon_ids, db_path=None) -> dict:
+    """{amazon_id: ship-by date} from the 'Sold, ship now' e-mails (archive_earnings), read-only.
+    Ids without an e-mail or a readable date are left out. Raises on a DB error (callers decide)."""
+    out = {}
+    ids = [a for a in dict.fromkeys(amazon_ids or []) if a]
+    if not ids:
+        return out
+    conn = sqlite3.connect(f"file:{db_path or DB_PATH}?mode=ro", uri=True, timeout=30)
+    try:
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            for aid, sb in conn.execute(
+                    f"SELECT amazon_order_id, ship_by_date FROM archive_earnings "
+                    f"WHERE amazon_order_id IN ({','.join('?' * len(chunk))})", chunk):
+                d = parse_ship_by(sb)
+                if d:
+                    out[aid] = d
+    finally:
+        conn.close()
+    return out
+
+
+def pacific_today():
+    """Today in US/Pacific — the calendar Seller Central's ship-by dates are written in."""
+    try:
+        from zoneinfo import ZoneInfo
+        return datetime.now(ZoneInfo("America/Los_Angeles")).date()
+    except Exception:
+        return datetime.utcnow().date()
+
+
+def ship_by_hours_left(ship_by, now=None):
+    """Hours from *now* to the end of the ship-by day (23:59:59 US/Pacific — Seller Central's 'Ship by
+    date: Wed, Nov 18, 2026 PST'). Negative once it has passed. *now* = an aware datetime (tests)."""
+    from datetime import time as _t
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo("America/Los_Angeles")
+    end = datetime.combine(ship_by, _t(23, 59, 59), tzinfo=tz)
+    return (end - (now or datetime.now(tz))).total_seconds() / 3600.0
+
+
 def get_placer_order_by_wb(wb_order_id: str, db_path=None) -> dict | None:
     with get_conn(db_path) as conn:
         row = conn.execute(

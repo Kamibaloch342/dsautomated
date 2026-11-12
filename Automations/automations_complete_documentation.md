@@ -430,6 +430,26 @@ What happens:
 - **Outcome unknown:** every order goes to Locked Orders (FAILED_KEPT).
 - **Off switch:** `bot_config.json → "combine_same_buyer": false` (read at start). Decision log kind `combine`, console 🧺.
 
+#### OOS orders come back by themselves when Zoro restocks (12 Nov 2026)
+
+An order stamped `OOS` used to wait until a person wrote its ASIN in `OOS_Release_<store>` on the
+Priority_ASIN_Control sheet. Now favorites discovery (`_oos_restock_release`) runs once an hour per item
+(`bot_config.json → oos_restock_check_min`, default 60; 0 = off). It asks Zoro about the items of the OOS
+orders in the buyer-action view: first the main code, then the sheet's alternatives, each for one listing unit.
+
+When Zoro has the item again, it releases the OOS orders that still have **at least 24 hours before
+Amazon's ship-by deadline** (`oos_restock_min_hours`):
+- The deadline is the end of the ship-by day, US/Pacific. The date comes from the "Sold, ship now"
+  e-mail (`archive_earnings`).
+- Zoro needs that day to ship before Amazon's "ship by this deadline or the order is cancelled" notice.
+- Orders go earliest ship-by first, as many as Zoro's reported stock covers.
+- Each released order goes through every normal check, including "Delivery time high", exactly like a
+  sheet release.
+
+Orders with less time or no known ship-by stay `OOS` for a person; those are the orders the tracker
+messages about the delay. Decision log kind `oos_restock`, console 🔓 / 🔒. Labels-only placers have no
+favorites discovery, so they never release.
+
 #### 5.1.1 Priority ASIN Control & Dynamic Profile Routing (Reseller vs. Coupon)
 
 ##### The Business Rationale & Profile Economics
