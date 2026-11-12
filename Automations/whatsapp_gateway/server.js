@@ -49,9 +49,9 @@ try { fs.mkdirSync(MEDIA_DIR, { recursive: true }); } catch (e) { /* exists */ }
 // ── Lanes: which number sends what ────────────────────────────────────────────────────────────
 // A lane is found from the group an alert goes to, so callers do not have to know about senders.
 // Since 11 Nov 2026 placer notices go to the store's Insights group (utils/whatsapp._notice_target).
-// Only Wrenchly's (no Insights group) and sends from processes that set no store still use the mixed
-// group (bot_config recipient_phone) = 'general'; 'hathoro_notices' is used only if Hathoro Insights
-// were missing.
+// Wrenchly has its Insights group since 12 Nov 2026 (bot_config whatsapp.groups.wrenchly_insights).
+// Only sends from processes that set no store still use the mixed group (bot_config recipient_phone)
+// = 'general'; 'hathoro_notices' is used only if Hathoro Insights were missing.
 // `normal` is the owner's setup of 9 Nov 2026: all of HS and DM closing from Kamran, the rest of DM
 // from Hifza. Same ids as DEFAULT_GROUPS in utils/whatsapp.py; bot_config whatsapp.groups overrides.
 const DEFAULT_GROUPS = {
@@ -77,7 +77,8 @@ const LANES = [
     { id: 'wrenchly_orders',   store: 'WR', label: 'Order alerts (WR Reseller)', normal: 'kamran' },
     { id: 'wrenchly_tracking', store: 'WR', label: 'Tracking ID alerts', normal: 'kamran' },
     { id: 'wrenchly_messages', store: 'WR', label: 'Closing (delivery messages + review requests)', normal: 'kamran' },
-    { id: 'general',          store: 'Other', label: 'WR placer notices, WR insights and anything else', normal: 'kamran', mixedGroup: true },
+    { id: 'wrenchly_insights', store: 'WR', label: 'Insights + WR placer notices', normal: 'kamran' },
+    { id: 'general',          store: 'Other', label: 'Anything without a store group (processes that set no store)', normal: 'kamran', mixedGroup: true },
 ];
 const laneById = id => LANES.find(l => l.id === id);
 

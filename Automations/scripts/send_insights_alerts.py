@@ -3,7 +3,7 @@
 send_insights_alerts.py — Dispatch operational insights directly to WhatsApp groups.
 
 Routes insights with strict account separation, one Insights group per store
-(Wrenchly has none yet, so its alerts go to the default group — utils.whatsapp.get_whatsapp_group).
+(Wrenchly's since 12 Nov 2026: bot_config whatsapp.groups.wrenchly_insights).
 
 Sent as they happen (hourly):
   1. Amazon Earnings/Unit (Increase ↑ vs Decrease ↓), once per real change

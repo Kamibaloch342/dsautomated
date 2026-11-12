@@ -12,7 +12,8 @@ shows both QR codes and one Kamran / Hifza switch per lane.
 | DM closing (delivery messages + review requests) | `hathoro_messages` | Kamran |
 | All HS lanes; HS placer notices go to `hoank_insights` since 11 Nov 2026 | `hoank_*` | Kamran |
 | Wrenchly orders, tracking, closing | `wrenchly_orders`, `wrenchly_tracking`, `wrenchly_messages` | Kamran |
-| WR placer notices, WR insights (no `wrenchly_insights` group yet), anything else | `recipient_phone` | Kamran |
+| WR insights and WR placer notices (since 12 Nov 2026) | `wrenchly_insights` ("Wrenchly Insights") | Kamran |
+| Anything sent with no group by a process that sets no store | `recipient_phone` | Kamran |
 | Buyer requested cancel | DM: `hathoro_orders`, WR: `wrenchly_orders`, HS: `hoank_insights` | as the group's lane |
 
 ## How it works
@@ -35,11 +36,12 @@ shows both QR codes and one Kamran / Hifza switch per lane.
   Insights from Kamran, so the DM Insights switch on the page now also moves DM placer notices.
   `hathoro_notices` is used only if Hathoro had no Insights group (the notice would fall back to
   `recipient_phone`).
-* Wrenchly has no `wrenchly_insights` group, so its placer notices still go to `recipient_phone`.
-  Adding `wrenchly_insights` under `whatsapp.groups` in `bot_config.json` moves them there with no
-  code change (the gateway then sends them on its `general` lane until it gets a Wrenchly Insights
-  lane). The tracker, closing, the dashboard and the launcher never set a store: their sends without
-  a group still go to `recipient_phone`.
+* Wrenchly Insights (12 Nov 2026, the owner created the group; Kamran and Hifza are both in it):
+  `whatsapp.groups.wrenchly_insights` in `bot_config.json` = `120363415245678916@g.us`, read on every
+  send, so the hourly Wrenchly insights, the low-profit and Zoro-late alerts and WR placer notices go
+  there at once. server.js has a `wrenchly_insights` lane (Kamran) from its next start; until then the
+  gateway sends them on its `general` lane, also Kamran. The tracker, closing, the dashboard and the
+  launcher never set a store: their sends without a group still go to `recipient_phone`.
 * The sender is decided when an alert leaves the queue, not when it is queued, so a switch also
   moves what is already waiting. Switches are saved in `whatsapp_gateway/routes.json`.
 * Each number has its own pacing, and one number being offline does not stop the other.

@@ -154,7 +154,7 @@ def set_alert_store(store: str) -> None:
 def _notice_target(to: str = None) -> str:
     """Where an alert goes. The caller's own group always wins. A send with no group from a placer
     (set_alert_store) goes to that store's Insights group instead of the general group (owner,
-    11 Nov 2026: "General group > send to insights"). A store with no Insights group (Wrenchly today)
+    11 Nov 2026: "General group > send to insights"). A store with no Insights group (none since Wrenchly's on 12 Nov 2026)
     and every process that never set a store keep bot_config whatsapp.recipient_phone."""
     if to:
         return to
