@@ -106,15 +106,13 @@ h4, .h4 {
   padding: 0.65rem 1rem !important;
 }
 
-/* Sticky Header Group */
-.hathoro-sticky-header-shell,
-.section-header {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 1000 !important;
-  background: rgba(255, 255, 255, 0.98) !important;
-  backdrop-filter: blur(12px);
-  box-shadow: 0 4px 20px rgba(15, 35, 66, 0.06);
+/* Header scrolls away with the page; only the navy category bar below stays pinned.
+   (13 Nov 2026: the whole 252px header used to stay pinned and covered the top of banners.)
+   The header sits above the bar so the cart pop-up and the menu drawer open over it. */
+.hathoro-sticky-header-shell {
+  position: relative;
+  z-index: 1001;
+  background: var(--hathoro-white);
 }
 
 .header-wrapper {
@@ -130,6 +128,9 @@ h4, .h4 {
 
 /* Clean Minimalist Category Nav Bar (Sticks with Header) */
 .hathoro-minimal-nav {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
   background: var(--hathoro-navy);
   color: var(--hathoro-white);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -328,9 +329,10 @@ h4, .h4 {
 /* --------------------------------------------------------------------------
    4. PRODUCT CARDS ("YOU MAY ALSO LIKE" & TOP SELLING)
    -------------------------------------------------------------------------- */
+/* Row gap only: the column gap must stay the theme's own (Theme settings > Layout), because
+   Shopify sizes each card from it — a different gap here made 5-per-row grids wrap at 4. */
 .product-grid {
   row-gap: 2.4rem !important;
-  column-gap: 2rem !important;
 }
 
 .card-wrapper.product-card-wrapper {
@@ -2089,3 +2091,542 @@ h4, .h4 {
 }
 
 
+
+/* Footer newsletter: real Shopify customer form (13 Nov 2026) */
+.hathoro-zoro-footer__form {
+  flex-wrap: wrap;
+}
+
+.hathoro-zoro-footer__form input[type='email'] {
+  min-width: 0;
+}
+
+.hathoro-zoro-footer__form-msg {
+  flex-basis: 100%;
+  margin: 0.4rem 0 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: #bbf7d0;
+}
+
+.hathoro-zoro-footer__form-msg--error {
+  color: #fecaca;
+}
+
+/* Info-page forms: sent message banner */
+.hathoro-info-form__sent {
+  margin: 0 0 1.6rem;
+  padding: 1.2rem 1.6rem;
+  border-radius: 8px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  font-weight: 700;
+}
+
+/* Collection-page and info-page breadcrumb (Home / Collections / Title) — was unstyled */
+.hathoro-breadcrumb {
+  padding: 1.6rem 0 0;
+  font-size: 1.25rem;
+  color: var(--hathoro-muted);
+}
+
+.hathoro-breadcrumb__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.hathoro-breadcrumb__list li {
+  margin: 0;
+}
+
+.hathoro-breadcrumb__list a {
+  color: var(--hathoro-navy);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.hathoro-breadcrumb__list a:hover {
+  text-decoration: underline;
+}
+
+.hathoro-breadcrumb__list [aria-current='page'] {
+  color: var(--hathoro-body);
+  font-weight: 500;
+}
+
+/* Category bar: "More" menu for the categories that do not fit in one row */
+.hathoro-minimal-nav__links {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.hathoro-minimal-nav__inner > .hathoro-minimal-search {
+  margin-left: auto;
+}
+
+.hathoro-minimal-nav__inner {
+  gap: 0.4rem !important;
+}
+
+.hathoro-minimal-nav__more {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.hathoro-minimal-nav__more > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.hathoro-minimal-nav__more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.hathoro-minimal-nav__more[open] > summary {
+  color: var(--hathoro-white);
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.hathoro-minimal-nav__more-panel {
+  position: absolute;
+  top: calc(100% + 0.8rem);
+  right: 0;
+  min-width: 22rem;
+  padding: 0.6rem;
+  background: var(--hathoro-white);
+  border: 1px solid var(--hathoro-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(15, 35, 66, 0.18);
+  display: grid;
+  gap: 0.2rem;
+  z-index: 1002;
+}
+
+.hathoro-minimal-nav__more-link {
+  display: block;
+  padding: 0.8rem 1.2rem;
+  border-radius: 6px;
+  color: var(--hathoro-ink);
+  font-size: 1.3rem;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.hathoro-minimal-nav__more-link:hover,
+.hathoro-minimal-nav__more-link--active {
+  background: var(--hathoro-navy-soft);
+  color: var(--hathoro-navy);
+  font-weight: 600;
+}
+
+/* Product page: the sticky info column starts below the pinned category bar */
+@media screen and (min-width: 750px) {
+  .product__column-sticky {
+    top: 8rem;
+  }
+}
+
+/* Product cards: out-of-stock line in grey */
+.hathoro-card-stock--out {
+  color: var(--hathoro-muted);
+}
+
+.hathoro-card-stock--out .hathoro-card-stock__dot {
+  background: #94a3b8;
+  box-shadow: none;
+}
+
+/* Product page: add-to-cart bar pinned to the bottom once the main button is scrolled past
+   (it had no styles and showed as plain text under the FAQ). */
+.hathoro-sticky-atc {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 990;
+  background: var(--hathoro-white);
+  border-top: 1px solid var(--hathoro-border);
+  box-shadow: 0 -8px 24px rgba(15, 35, 66, 0.12);
+  transform: translateY(110%);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.hathoro-sticky-atc.is-visible {
+  transform: translateY(0);
+  visibility: visible;
+  transition: transform 0.25s ease, visibility 0s;
+}
+
+.hathoro-sticky-atc__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.6rem;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+.hathoro-sticky-atc__product {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  min-width: 0;
+}
+
+.hathoro-sticky-atc__img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  border: 1px solid var(--hathoro-border);
+  border-radius: 6px;
+  background: var(--hathoro-white);
+  flex-shrink: 0;
+}
+
+.hathoro-sticky-atc__info {
+  min-width: 0;
+}
+
+.hathoro-sticky-atc__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--hathoro-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60rem;
+}
+
+.hathoro-sticky-atc__meta {
+  margin: 0.2rem 0 0;
+  font-size: 1.15rem;
+  color: var(--hathoro-muted);
+}
+
+.hathoro-sticky-atc__actions {
+  display: flex;
+  align-items: center;
+  gap: 1.4rem;
+  flex-shrink: 0;
+}
+
+.hathoro-sticky-atc__price {
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--hathoro-ink);
+}
+
+.hathoro-sticky-atc__btn {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+  border: none;
+  border-radius: 6px;
+  padding: 1.1rem 2.4rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.hathoro-sticky-atc__btn:hover {
+  filter: brightness(1.15);
+}
+
+@media screen and (max-width: 749px) {
+  .hathoro-sticky-atc__img,
+  .hathoro-sticky-atc__meta {
+    display: none;
+  }
+
+  .hathoro-sticky-atc__title {
+    max-width: 18rem;
+    font-size: 1.25rem;
+  }
+
+  .hathoro-sticky-atc__btn {
+    padding: 1rem 1.6rem;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   CAMPAIGN BANNERS (sections/hathoro-campaign-banners.liquid, 13 Nov 2026)
+   Replace the image slideshows: real text + product photos, sharp at any size.
+   -------------------------------------------------------------------------- */
+.hathoro-campaigns {
+  padding: 0.4rem 0 3.6rem;
+}
+
+.hathoro-campaigns__heading {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: 2.4rem;
+  color: var(--hathoro-ink);
+  margin: 0 0 1.6rem;
+}
+
+.hathoro-campaigns__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.8rem;
+}
+
+@media screen and (min-width: 750px) {
+  .hathoro-campaigns__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .hathoro-campaigns__grid--1 {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-campaigns__grid--3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .hathoro-campaigns__grid--4 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.hathoro-campaign {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2.2rem;
+  min-height: 34rem;
+  padding: 2.8rem 2.6rem 2.4rem;
+  border-radius: var(--hathoro-radius-lg);
+  border: 1px solid var(--hathoro-border);
+  box-shadow: var(--hathoro-shadow);
+  overflow: hidden;
+  text-decoration: none;
+  isolation: isolate;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hathoro-campaign:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--hathoro-shadow-hover);
+}
+
+.hathoro-campaign:focus-visible {
+  outline: 3px solid var(--hathoro-navy);
+  outline-offset: 3px;
+}
+
+.hathoro-campaign__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+}
+
+.hathoro-campaign__title {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: 2.5rem;
+  line-height: 1.18;
+  letter-spacing: -0.01em;
+  margin: 1.4rem 0 1rem;
+  color: inherit;
+}
+
+.hathoro-campaign__highlight {
+  display: table;
+  margin-top: 0.5rem;
+  padding: 0.25rem 1rem 0.35rem;
+  border-radius: 4px;
+  transform: rotate(-1.2deg);
+  transform-origin: left center;
+}
+
+.hathoro-campaign__sub {
+  font-size: 1.38rem;
+  line-height: 1.55;
+  margin: 0 0 1.8rem;
+  max-width: 36rem;
+}
+
+.hathoro-campaign__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: 'Montserrat', sans-serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  padding: 1.05rem 1.9rem;
+  border-radius: var(--hathoro-radius-sm);
+  transition: filter 0.18s ease;
+}
+
+.hathoro-campaign:hover .hathoro-campaign__btn {
+  filter: brightness(1.12);
+}
+
+.hathoro-campaign__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.hathoro-campaign__tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  padding: 0.9rem;
+  border-radius: var(--hathoro-radius);
+  background: var(--hathoro-white);
+  box-shadow: 0 6px 16px rgba(15, 35, 66, 0.1);
+}
+
+.hathoro-campaign__tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Winter: ice blue with a light snow dot pattern */
+.hathoro-campaign--winter {
+  color: var(--hathoro-navy);
+  background-color: #dcebf9;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.85) 1.3px, transparent 1.8px),
+    linear-gradient(160deg, #eef5fd 0%, #d9e9f8 55%, #c5dcf3 100%);
+  background-size: 24px 24px, 100% 100%;
+  border-color: #c9ddf1;
+}
+
+.hathoro-campaign--winter .hathoro-campaign__eyebrow {
+  background: rgba(15, 35, 66, 0.09);
+  color: var(--hathoro-navy);
+}
+
+.hathoro-campaign--winter .hathoro-campaign__highlight {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+}
+
+.hathoro-campaign--winter .hathoro-campaign__sub {
+  color: #334155;
+}
+
+.hathoro-campaign--winter .hathoro-campaign__btn {
+  background: var(--hathoro-navy);
+  color: var(--hathoro-white);
+}
+
+/* Tools: black and red, like the old "Get the best" artwork */
+.hathoro-campaign--tools {
+  color: var(--hathoro-white);
+  background:
+    radial-gradient(120% 80% at 100% 0%, rgba(225, 29, 46, 0.32) 0%, transparent 55%),
+    linear-gradient(155deg, #1c1c20 0%, #111114 65%, #0b0b0d 100%);
+  border-color: #2a2a30;
+}
+
+.hathoro-campaign--tools .hathoro-campaign__eyebrow {
+  background: rgba(225, 29, 46, 0.18);
+  color: #ff8a8a;
+}
+
+.hathoro-campaign--tools .hathoro-campaign__highlight {
+  background: #e11d2e;
+  color: var(--hathoro-white);
+}
+
+.hathoro-campaign--tools .hathoro-campaign__sub {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.hathoro-campaign--tools .hathoro-campaign__btn {
+  background: #e11d2e;
+  color: var(--hathoro-white);
+}
+
+/* Cleaning: light red with a black-and-red highlight, like the old "Spotless spaces" artwork */
+.hathoro-campaign--cleaning {
+  color: #2b0b0a;
+  background:
+    radial-gradient(90% 70% at 100% 100%, rgba(239, 68, 68, 0.16) 0%, transparent 60%),
+    linear-gradient(160deg, #fff7f6 0%, #ffe6e2 100%);
+  border-color: #fbd0ca;
+}
+
+.hathoro-campaign--cleaning .hathoro-campaign__eyebrow {
+  background: rgba(220, 38, 38, 0.1);
+  color: #b91c1c;
+}
+
+.hathoro-campaign--cleaning .hathoro-campaign__highlight {
+  background: #141414;
+  color: #ff4d4d;
+}
+
+.hathoro-campaign--cleaning .hathoro-campaign__sub {
+  color: #4b2a28;
+}
+
+.hathoro-campaign--cleaning .hathoro-campaign__btn {
+  background: #dc2626;
+  color: var(--hathoro-white);
+}
+
+/* Navy: same look as the top banner */
+.hathoro-campaign--navy {
+  color: var(--hathoro-white);
+  background: linear-gradient(135deg, #09172e 0%, #0f2342 58%, #16325c 100%);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.hathoro-campaign--navy .hathoro-campaign__eyebrow {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--hathoro-white);
+}
+
+.hathoro-campaign--navy .hathoro-campaign__highlight {
+  background: var(--hathoro-white);
+  color: var(--hathoro-navy);
+}
+
+.hathoro-campaign--navy .hathoro-campaign__sub {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.hathoro-campaign--navy .hathoro-campaign__btn {
+  background: var(--hathoro-white);
+  color: var(--hathoro-navy);
+}
+
+@media screen and (max-width: 749px) {
+  .hathoro-campaign {
+    min-height: 0;
+    padding: 2.2rem 2rem 2rem;
+  }
+
+  .hathoro-campaign__title {
+    font-size: 2.2rem;
+  }
+}

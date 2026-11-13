@@ -314,40 +314,83 @@
       {%- render 'cart-drawer' -%}
     {%- endif -%}
 
+    {%- liquid
+      comment
+        Collections shown in the menu, the homepage grid and the footer come from the
+        store itself: the preferred order below first, then any other collection that
+        has products (so one added later in the admin appears without a theme edit).
+        A handle that no longer exists or has no products is skipped, never a 404.
+      endcomment
+      assign hathoro_preferred = 'best-sellers,shipping-packaging-office-supplies,material-handling,plumbing,hvac,footwear-safety,cleaning-janitorial,storage-workspace,vehicle-maintenance-automotive,grounds-outdoors,home-kitchen,winter-essentials' | split: ','
+      assign hathoro_list = ''
+      for h in hathoro_preferred
+        if collections[h].all_products_count > 0
+          assign hathoro_list = hathoro_list | append: h | append: ','
+        endif
+      endfor
+      for col in collections
+        if col.handle == 'frontpage' or col.handle == 'all' or col.all_products_count == 0
+          continue
+        endif
+        unless hathoro_preferred contains col.handle
+          assign hathoro_list = hathoro_list | append: col.handle | append: ','
+        endunless
+      endfor
+      assign hathoro_handles = hathoro_list | split: ','
+      assign hathoro_best_url = routes.all_products_collection_url
+      if collections['best-sellers'].all_products_count > 0
+        assign hathoro_best_url = collections['best-sellers'].url
+      endif
+    -%}
+
     <div class="hathoro-sticky-header-shell">
       {% sections 'header-group' %}
-
-      <!-- Sticky Minimalist Category Navigation & Search Bar -->
-      <nav class="hathoro-minimal-nav" aria-label="Categories">
-        <div class="page-width hathoro-minimal-nav__inner">
-          <div class="hathoro-minimal-nav__links">
-            <a href="/collections/all" class="hathoro-minimal-nav__link hathoro-minimal-nav__link--active">All Categories</a>
-            <a href="/collections/best-sellers" class="hathoro-minimal-nav__link">Top Selling</a>
-            <a href="/collections/hardware-and-tools-example-products" class="hathoro-minimal-nav__link">Hardware &amp; Tools</a>
-            <a href="/collections/material-handling" class="hathoro-minimal-nav__link">Tools &amp; Machining</a>
-            <a href="/collections/plumbing" class="hathoro-minimal-nav__link">Plumbing &amp; HVAC</a>
-            <a href="/collections/footwear-safety" class="hathoro-minimal-nav__link">Footwear &amp; Safety</a>
-            <a href="/collections/grounds-outdoors" class="hathoro-minimal-nav__link">Outdoors</a>
-            <a href="/collections/cleaning-janitorial" class="hathoro-minimal-nav__link">Cleaning</a>
-            <a href="/collections/storage-workspace" class="hathoro-minimal-nav__link">Storage</a>
-            <a href="/collections/vehicle-maintenance-automotive" class="hathoro-minimal-nav__link">Automotive</a>
-          </div>
-          <form action="{{ routes.search_url }}" method="get" role="search" class="hathoro-minimal-search">
-            <input
-              type="search"
-              name="q"
-              value="{{ search.terms | escape }}"
-              placeholder="Search products, brand, or part #..."
-              aria-label="Search products"
-            >
-            <input type="hidden" name="options[prefix]" value="last">
-            <button type="submit" aria-label="Search">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-            </button>
-          </form>
-        </div>
-      </nav>
     </div>
+
+    <!-- Category bar + search: the one row that stays pinned while scrolling -->
+    <nav class="hathoro-minimal-nav" aria-label="Categories">
+      <div class="page-width hathoro-minimal-nav__inner">
+        <div class="hathoro-minimal-nav__links">
+          <a href="{{ routes.all_products_collection_url }}" class="hathoro-minimal-nav__link{% if request.page_type == 'index' or collection.handle == 'all' %} hathoro-minimal-nav__link--active{% endif %}">All Categories</a>
+          {%- for h in hathoro_handles limit: 6 -%}
+            {%- assign col = collections[h] -%}
+            <a href="{{ col.url }}" class="hathoro-minimal-nav__link{% if collection and collection.handle == h %} hathoro-minimal-nav__link--active{% endif %}">
+              {%- render 'hathoro-collection-label', handle: h, title: col.title -%}
+            </a>
+          {%- endfor -%}
+        </div>
+        {%- if hathoro_handles.size > 6 -%}
+          {%- assign hathoro_more_active = false -%}
+          {%- for h in hathoro_handles offset: 6 -%}
+            {%- if collection and collection.handle == h -%}{%- assign hathoro_more_active = true -%}{%- endif -%}
+          {%- endfor -%}
+          <details class="hathoro-minimal-nav__more">
+            <summary class="hathoro-minimal-nav__link{% if hathoro_more_active %} hathoro-minimal-nav__link--active{% endif %}">More <span aria-hidden="true">&#9662;</span></summary>
+            <div class="hathoro-minimal-nav__more-panel">
+              {%- for h in hathoro_handles offset: 6 -%}
+                {%- assign col = collections[h] -%}
+                <a href="{{ col.url }}" class="hathoro-minimal-nav__more-link{% if collection and collection.handle == h %} hathoro-minimal-nav__more-link--active{% endif %}">
+                  {%- render 'hathoro-collection-label', handle: h, title: col.title -%}
+                </a>
+              {%- endfor -%}
+            </div>
+          </details>
+        {%- endif -%}
+        <form action="{{ routes.search_url }}" method="get" role="search" class="hathoro-minimal-search">
+          <input
+            type="search"
+            name="q"
+            value="{{ search.terms | escape }}"
+            placeholder="Search products, brand, or part #..."
+            aria-label="Search products"
+          >
+          <input type="hidden" name="options[prefix]" value="last">
+          <button type="submit" aria-label="Search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </button>
+        </form>
+      </div>
+    </nav>
 
     <main id="MainContent" class="content-for-layout focus-none" role="main" tabindex="-1">
       {%- if request.page_type == 'index' -%}
@@ -360,10 +403,11 @@
                 <div class="hathoro-hero-main__content">
                   <span class="hathoro-hero-main__eyebrow">● Commercial &amp; Industrial Supply • Direct Pricing</span>
                   <h1 class="hathoro-hero-main__title">Industrial-Grade Tools, PPE &amp; Facility Supplies — Shipped Same Day.</h1>
-                  <p class="hathoro-hero-main__subtitle">Over 10,000+ authentic OEM parts, fasteners, safety gear, and shop equipment ready to dispatch. Order before 3:00 PM CT for same-day fulfillment.</p>
+                  {%- assign hathoro_count = collections.all.all_products_count | divided_by: 100 | times: 100 -%}
+                  <p class="hathoro-hero-main__subtitle">{% if hathoro_count >= 100 %}Over {{ hathoro_count }} {% endif %}industrial supplies, shipping boxes, safety gear, and shop equipment ready to dispatch. Order before 3:00 PM CT for same-day fulfillment.</p>
                   <div class="hathoro-hero-main__actions">
-                    <a href="/collections/best-sellers" class="hathoro-hero-btn hathoro-hero-btn--primary">Shop Top Selling →</a>
-                    <a href="#ShopByCategory" class="hathoro-hero-btn hathoro-hero-btn--secondary">Browse All Categories</a>
+                    <a href="{{ hathoro_best_url }}" class="hathoro-hero-btn hathoro-hero-btn--primary">Shop Top Selling →</a>
+                    <a href="{{ routes.collections_url }}" class="hathoro-hero-btn hathoro-hero-btn--secondary">Browse All Categories</a>
                   </div>
                 </div>
                 <div class="hathoro-hero-main__showcase">
@@ -372,22 +416,16 @@
                     <span class="hathoro-hero-main__showcase-sku">100% OEM Brands</span>
                   </div>
                   <div class="hathoro-hero-main__showcase-grid">
-                    <a href="/collections/material-handling" class="hathoro-hero-main__showcase-item">
-                      <div style="font-size:2.4rem;">🔧</div>
-                      <span>Tools &amp; Machining</span>
-                    </a>
-                    <a href="/collections/footwear-safety" class="hathoro-hero-main__showcase-item">
-                      <div style="font-size:2.4rem;">🦺</div>
-                      <span>Safety &amp; PPE</span>
-                    </a>
-                    <a href="/collections/hardware-and-tools-example-products" class="hathoro-hero-main__showcase-item">
-                      <div style="font-size:2.4rem;">🔩</div>
-                      <span>Hardware &amp; Studs</span>
-                    </a>
-                    <a href="/collections/vehicle-maintenance-automotive" class="hathoro-hero-main__showcase-item">
-                      <div style="font-size:2.4rem;">🛢️</div>
-                      <span>Fleet &amp; Automotive</span>
-                    </a>
+                    {%- assign hathoro_showcase = 'material-handling,footwear-safety,shipping-packaging-office-supplies,vehicle-maintenance-automotive' | split: ',' -%}
+                    {%- for h in hathoro_showcase -%}
+                      {%- assign col = collections[h] -%}
+                      {%- if col.all_products_count > 0 -%}
+                        <a href="{{ col.url }}" class="hathoro-hero-main__showcase-item">
+                          <div style="font-size:2.4rem;">{% render 'hathoro-collection-icon', handle: h %}</div>
+                          <span>{% render 'hathoro-collection-label', handle: h, title: col.title %}</span>
+                        </a>
+                      {%- endif -%}
+                    {%- endfor -%}
                   </div>
                   <div class="hathoro-hero-main__showcase-footer">
                     <span>Up to 25% Off Trade Catalog</span>
@@ -404,7 +442,7 @@
                     <h3 class="hathoro-promo-card__title">Fleet, Shop &amp; Hardware Essentials</h3>
                     <p class="hathoro-promo-card__desc">Direct commercial markdowns on synthetic lubricants, precision fasteners &amp; heavy-duty hand tools.</p>
                   </div>
-                  <a href="/collections/hardware-and-tools-example-products" class="hathoro-promo-card__link">Shop Trade Deals →</a>
+                  <a href="{{ routes.all_products_collection_url }}" class="hathoro-promo-card__link">Shop Trade Deals →</a>
                 </div>
                 <div class="hathoro-promo-card hathoro-promo-card--accent-tint">
                   <div>
@@ -412,7 +450,7 @@
                     <h3 class="hathoro-promo-card__title">Free Shipping Over $50 + Price Match</h3>
                     <p class="hathoro-promo-card__desc">Backed by our 30-Day No-Hassle Guarantee and dedicated U.S. commercial support desk.</p>
                   </div>
-                  <a href="/collections/best-sellers" class="hathoro-promo-card__link">Explore Best Sellers →</a>
+                  <a href="{{ hathoro_best_url }}" class="hathoro-promo-card__link">Explore Best Sellers →</a>
                 </div>
               </div>
             </div>
@@ -451,156 +489,6 @@
           </div>
         </section>
 
-        <!-- Zoro-Style Shop All Categories Explorer (First on Homepage) -->
-        <section class="hathoro-category-explorer" id="ShopByCategory">
-          <div class="page-width">
-            <div class="hathoro-section-header">
-              <div>
-                <span class="hathoro-section-eyebrow">Industrial &amp; Commercial Catalog</span>
-                <h2 class="related-products__heading">Shop by Category</h2>
-              </div>
-              <a href="/collections/all" class="hathoro-pdp-jump-link">View All Departments →</a>
-            </div>
-            <div class="hathoro-category-grid">
-              <div class="hathoro-category-card">
-                <div>
-                  <a href="/collections/material-handling" class="hathoro-category-card__title-link">
-                    <div class="hathoro-category-card__top">
-                      <span class="hathoro-category-card__icon">🔧</span>
-                      <h3 class="hathoro-category-card__title">Tools &amp; Machining</h3>
-                    </div>
-                  </a>
-                  <ul class="hathoro-category-card__sublist">
-                    <li><a href="/collections/material-handling?sub=hand-power-tools">Hand &amp; Power Tools</a></li>
-                    <li><a href="/collections/material-handling?sub=sockets-wrenches">Sockets, Wrenches &amp; Drivers</a></li>
-                    <li><a href="/collections/material-handling?sub=cutting-drilling">Cutting &amp; Drilling Tools</a></li>
-                    <li><a href="/collections/material-handling?sub=measuring-layout">Measuring &amp; Layout</a></li>
-                  </ul>
-                </div>
-                <a href="/collections/material-handling" class="hathoro-category-card__cta">Shop Tools →</a>
-              </div>
-              <div class="hathoro-category-card">
-                <div>
-                  <a href="/collections/hardware-and-tools-example-products" class="hathoro-category-card__title-link">
-                    <div class="hathoro-category-card__top">
-                      <span class="hathoro-category-card__icon">🔩</span>
-                      <h3 class="hathoro-category-card__title">Hardware &amp; Fasteners</h3>
-                    </div>
-                  </a>
-                  <ul class="hathoro-category-card__sublist">
-                    <li><a href="/collections/hardware-and-tools-example-products?sub=bolts-screws-studs">Bolts, Screws &amp; Studs</a></li>
-                    <li><a href="/collections/hardware-and-tools-example-products?sub=nuts-washers-anchors">Nuts, Washers &amp; Anchors</a></li>
-                    <li><a href="/collections/hardware-and-tools-example-products?sub=latches-hinges-locks">Latches, Hinges &amp; Locks</a></li>
-                    <li><a href="/collections/hardware-and-tools-example-products?sub=strut-mounting">Strut &amp; Mounting Hardware</a></li>
-                  </ul>
-                </div>
-                <a href="/collections/hardware-and-tools-example-products" class="hathoro-category-card__cta">Shop Hardware →</a>
-              </div>
-              <div class="hathoro-category-card">
-                <div>
-                  <a href="/collections/plumbing" class="hathoro-category-card__title-link">
-                    <div class="hathoro-category-card__top">
-                      <span class="hathoro-category-card__icon">🚰</span>
-                      <h3 class="hathoro-category-card__title">Plumbing &amp; HVAC</h3>
-                    </div>
-                  </a>
-                  <ul class="hathoro-category-card__sublist">
-                    <li><a href="/collections/plumbing?sub=pipe-tubing-fittings">Pipe, Tubing &amp; Fittings</a></li>
-                    <li><a href="/collections/plumbing?sub=valves-actuators">Valves &amp; Actuators</a></li>
-                    <li><a href="/collections/plumbing?sub=pumps-filtration">Pumps &amp; Filtration</a></li>
-                    <li><a href="/collections/plumbing?sub=hvac-controls">HVAC Controls &amp; Blowers</a></li>
-                  </ul>
-                </div>
-                <a href="/collections/plumbing" class="hathoro-category-card__cta">Shop Plumbing →</a>
-              </div>
-              <div class="hathoro-category-card">
-                <div>
-                  <a href="/collections/footwear-safety" class="hathoro-category-card__title-link">
-                    <div class="hathoro-category-card__top">
-                      <span class="hathoro-category-card__icon">🦺</span>
-                      <h3 class="hathoro-category-card__title">Footwear &amp; Safety (PPE)</h3>
-                    </div>
-                  </a>
-                  <ul class="hathoro-category-card__sublist">
-                    <li><a href="/collections/footwear-safety?sub=steel-toe-boots">Steel-Toe Boots &amp; Rainwear</a></li>
-                    <li><a href="/collections/footwear-safety?sub=work-gloves">Work Gloves &amp; Hand Protection</a></li>
-                    <li><a href="/collections/footwear-safety?sub=eye-face-hearing">Eye, Face &amp; Hearing PPE</a></li>
-                    <li><a href="/collections/footwear-safety?sub=high-vis-fall">High-Vis &amp; Fall Protection</a></li>
-                  </ul>
-                </div>
-                <a href="/collections/footwear-safety" class="hathoro-category-card__cta">Shop Safety →</a>
-              </div>
-              <div class="hathoro-category-card">
-                <div>
-                  <a href="/collections/storage-workspace" class="hathoro-category-card__title-link">
-                    <div class="hathoro-category-card__top">
-                      <span class="hathoro-category-card__icon">📦</span>
-                      <h3 class="hathoro-category-card__title">Storage &amp; Material Handling</h3>
-                    </div>
-                  </a>
-                  <ul class="hathoro-category-card__sublist">
-                    <li><a href="/collections/storage-workspace?sub=industrial-shelving">Industrial Shelving &amp; Racks</a></li>
-                    <li><a href="/collections/storage-workspace?sub=utility-carts">Utility Carts &amp; Hand Trucks</a></li>
-                    <li><a href="/collections/storage-workspace?sub=bins-totes-cabinets">Bins, Totes &amp; Cabinets</a></li>
-                    <li><a href="/collections/storage-workspace?sub=casters-hoists">Casters, Hoists &amp; Slings</a></li>
-                  </ul>
-                </div>
-                <a href="/collections/storage-workspace" class="hathoro-category-card__cta">Shop Storage →</a>
-              </div>
-              <div class="hathoro-category-card">
-                <div>
-                  <a href="/collections/cleaning-janitorial" class="hathoro-category-card__title-link">
-                    <div class="hathoro-category-card__top">
-                      <span class="hathoro-category-card__icon">🧹</span>
-                      <h3 class="hathoro-category-card__title">Cleaning &amp; Janitorial</h3>
-                    </div>
-                  </a>
-                  <ul class="hathoro-category-card__sublist">
-                    <li><a href="/collections/cleaning-janitorial?sub=degreasers-cleaners">Degreasers &amp; Surface Cleaners</a></li>
-                    <li><a href="/collections/cleaning-janitorial?sub=trash-cans-liners">Trash Cans, Liners &amp; Carts</a></li>
-                    <li><a href="/collections/cleaning-janitorial?sub=mops-brooms-brushes">Mops, Brooms &amp; Brushes</a></li>
-                    <li><a href="/collections/cleaning-janitorial?sub=paper-towels-dispensers">Paper Towels &amp; Dispensers</a></li>
-                  </ul>
-                </div>
-                <a href="/collections/cleaning-janitorial" class="hathoro-category-card__cta">Shop Janitorial →</a>
-              </div>
-              <div class="hathoro-category-card">
-                <div>
-                  <a href="/collections/grounds-outdoors" class="hathoro-category-card__title-link">
-                    <div class="hathoro-category-card__top">
-                      <span class="hathoro-category-card__icon">🌲</span>
-                      <h3 class="hathoro-category-card__title">Landscape &amp; Outdoors</h3>
-                    </div>
-                  </a>
-                  <ul class="hathoro-category-card__sublist">
-                    <li><a href="/collections/grounds-outdoors?sub=commercial-grounds">Commercial Grounds Tools</a></li>
-                    <li><a href="/collections/grounds-outdoors?sub=sprayers-hoses">Sprayers, Hoses &amp; Nozzles</a></li>
-                    <li><a href="/collections/grounds-outdoors?sub=tarps-tie-downs">Tarps, Tie-Downs &amp; Covers</a></li>
-                    <li><a href="/collections/grounds-outdoors?sub=pest-weed-control">Pest &amp; Weed Control</a></li>
-                  </ul>
-                </div>
-                <a href="/collections/grounds-outdoors" class="hathoro-category-card__cta">Shop Outdoors →</a>
-              </div>
-              <div class="hathoro-category-card">
-                <div>
-                  <a href="/collections/vehicle-maintenance-automotive" class="hathoro-category-card__title-link">
-                    <div class="hathoro-category-card__top">
-                      <span class="hathoro-category-card__icon">🛢️</span>
-                      <h3 class="hathoro-category-card__title">Fleet &amp; Automotive</h3>
-                    </div>
-                  </a>
-                  <ul class="hathoro-category-card__sublist">
-                    <li><a href="/collections/vehicle-maintenance-automotive?sub=synthetic-motor-oils">Synthetic Motor Oils &amp; ATF</a></li>
-                    <li><a href="/collections/vehicle-maintenance-automotive?sub=lubricants-greases">Lubricants, Greases &amp; Fluids</a></li>
-                    <li><a href="/collections/vehicle-maintenance-automotive?sub=battery-electrical">Battery &amp; Electrical Service</a></li>
-                    <li><a href="/collections/vehicle-maintenance-automotive?sub=shop-garage">Shop &amp; Garage Equipment</a></li>
-                  </ul>
-                </div>
-                <a href="/collections/vehicle-maintenance-automotive" class="hathoro-category-card__cta">Shop Automotive →</a>
-              </div>
-            </div>
-          </div>
-        </section>
       {%- endif -%}
 
       {{ content_for_layout }}
@@ -613,10 +501,16 @@
           <div class="hathoro-zoro-footer__newsletter">
             <h3>Get Exclusive Trade Pricing &amp; Catalog Updates</h3>
             <p>Sign up for Hathoro commercial alerts, new industrial arrivals, and seasonal bulk offers.</p>
-            <form action="/contact#contact_form" method="post" class="hathoro-zoro-footer__form">
-              <input type="email" name="contact[email]" placeholder="Enter your business or personal email..." required>
+            {%- form 'customer', id: 'HathoroFooterNewsletter', class: 'hathoro-zoro-footer__form' -%}
+              <input type="hidden" name="contact[tags]" value="newsletter">
+              <input type="email" name="contact[email]" placeholder="Enter your business or personal email..." autocomplete="email" aria-label="Email" required>
               <button type="submit">Subscribe</button>
-            </form>
+              {%- if form.posted_successfully? -%}
+                <p class="hathoro-zoro-footer__form-msg" role="status">✓ Thanks for subscribing!</p>
+              {%- elsif form.errors -%}
+                <p class="hathoro-zoro-footer__form-msg hathoro-zoro-footer__form-msg--error" role="alert">{{ form.errors.translated_fields.email | capitalize }} {{ form.errors.messages.email }}</p>
+              {%- endif -%}
+            {%- endform -%}
           </div>
           <div class="hathoro-zoro-footer__hotline">
             <div class="hathoro-zoro-footer__hotline-box">
@@ -653,7 +547,6 @@
               <li><a href="/?hathoro_page=price-match" data-hathoro-page="price-match">Price Match Promise</a></li>
               <li><a href="/?hathoro_page=satisfaction-guarantee" data-hathoro-page="satisfaction-guarantee">30-Day Satisfaction Guarantee</a></li>
               <li><a href="/?hathoro_page=brands" data-hathoro-page="brands">Brands We Carry</a></li>
-              <li><a href="/?hathoro_page=customer-reviews" data-hathoro-page="customer-reviews">Customer Reviews</a></li>
             </ul>
           </div>
 
@@ -662,8 +555,8 @@
             <ul>
               <li><a href="/?hathoro_page=help-faqs" data-hathoro-page="help-faqs">Help Center &amp; FAQs</a></li>
               <li><a href="/?hathoro_page=track-order" data-hathoro-page="track-order">Track Your Order</a></li>
-              <li><a href="/?hathoro_page=shipping-policy" data-hathoro-page="shipping-policy">Shipping &amp; Delivery Policy</a></li>
-              <li><a href="/?hathoro_page=returns-exchanges" data-hathoro-page="returns-exchanges">Returns &amp; Exchanges</a></li>
+              {%- if shop.shipping_policy -%}<li><a href="{{ shop.shipping_policy.url }}">Shipping &amp; Delivery Policy</a></li>{%- endif -%}
+              {%- if shop.refund_policy -%}<li><a href="{{ shop.refund_policy.url }}">Returns &amp; Exchanges</a></li>{%- endif -%}
               <li><a href="/?hathoro_page=damaged-missing" data-hathoro-page="damaged-missing">Damaged or Missing Items</a></li>
               <li><a href="/?hathoro_page=contact-us" data-hathoro-page="contact-us">Contact Customer Service</a></li>
             </ul>
@@ -672,14 +565,10 @@
           <div class="hathoro-zoro-footer__col">
             <h4>Top Categories</h4>
             <ul>
-              <li><a href="/collections/material-handling">Tools &amp; Machining</a></li>
-              <li><a href="/collections/hardware-and-tools-example-products">Hardware &amp; Fasteners</a></li>
-              <li><a href="/collections/plumbing">Plumbing &amp; HVAC</a></li>
-              <li><a href="/collections/footwear-safety">Footwear &amp; Safety (PPE)</a></li>
-              <li><a href="/collections/storage-workspace">Storage &amp; Material Handling</a></li>
-              <li><a href="/collections/cleaning-janitorial">Cleaning &amp; Janitorial</a></li>
-              <li><a href="/collections/vehicle-maintenance-automotive">Fleet &amp; Automotive</a></li>
-              <li><a href="/collections/shipping-packaging-office-supplies">Packaging &amp; Office</a></li>
+              {%- for h in hathoro_handles -%}
+                {%- if h == 'best-sellers' -%}{%- continue -%}{%- endif -%}
+                <li><a href="{{ collections[h].url }}">{{ collections[h].title | escape }}</a></li>
+              {%- endfor -%}
             </ul>
           </div>
 
@@ -702,10 +591,10 @@
             © {{ 'now' | date: '%Y' }} <strong>Hathoro</strong>. All Rights Reserved.
           </div>
           <div class="hathoro-zoro-footer__legal-links">
-            <a href="/?hathoro_page=privacy-policy" data-hathoro-page="privacy-policy">Privacy Policy</a>
-            <a href="/?hathoro_page=terms-of-service" data-hathoro-page="terms-of-service">Terms of Service</a>
-            <a href="/?hathoro_page=shipping-policy" data-hathoro-page="shipping-policy">Shipping Policy</a>
-            <a href="/?hathoro_page=returns-exchanges" data-hathoro-page="returns-exchanges">Refund Policy</a>
+            {%- if shop.privacy_policy -%}<a href="{{ shop.privacy_policy.url }}">Privacy Policy</a>{%- endif -%}
+            {%- if shop.terms_of_service -%}<a href="{{ shop.terms_of_service.url }}">Terms of Service</a>{%- endif -%}
+            {%- if shop.shipping_policy -%}<a href="{{ shop.shipping_policy.url }}">Shipping Policy</a>{%- endif -%}
+            {%- if shop.refund_policy -%}<a href="{{ shop.refund_policy.url }}">Refund Policy</a>{%- endif -%}
           </div>
           <div class="hathoro-zoro-footer__payments">
             <span class="hathoro-zoro-footer__pay-pill">VISA</span>

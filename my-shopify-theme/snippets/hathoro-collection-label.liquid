@@ -1,0 +1,20 @@
+{%- comment -%}
+  Short menu label for a collection. Falls back to the collection's own title,
+  so a collection added later in the admin still shows with its real name.
+  Usage: {% render 'hathoro-collection-label', handle: col.handle, title: col.title %}
+{%- endcomment -%}
+{%- case handle -%}
+  {%- when 'best-sellers' -%}Top Selling
+  {%- when 'shipping-packaging-office-supplies' -%}Packaging &amp; Office
+  {%- when 'material-handling' -%}Tools &amp; Machining
+  {%- when 'plumbing' -%}Plumbing
+  {%- when 'hvac' -%}HVAC
+  {%- when 'footwear-safety' -%}Footwear &amp; Safety
+  {%- when 'cleaning-janitorial' -%}Cleaning
+  {%- when 'storage-workspace' -%}Storage
+  {%- when 'vehicle-maintenance-automotive' -%}Automotive
+  {%- when 'grounds-outdoors' -%}Outdoors
+  {%- when 'home-kitchen' -%}Home &amp; Kitchen
+  {%- when 'winter-essentials' -%}Winter
+  {%- else -%}{{ title | escape }}
+{%- endcase -%}

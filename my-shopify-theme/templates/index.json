@@ -85,7 +85,8 @@
         "image_behavior": "none",
         "show_text_below": false,
         "accessibility_info": ""
-      }
+      },
+      "disabled": true
     },
     "slideshow_gipB4a": {
       "type": "slideshow",
@@ -163,7 +164,8 @@
         "image_behavior": "none",
         "show_text_below": false,
         "accessibility_info": ""
-      }
+      },
+      "disabled": true
     },
     "multicolumn": {
       "type": "multicolumn",
@@ -214,8 +216,8 @@
             "image": "shopify://shop_images/pngtree-project-tools-3d-illustration-tools-bag-png-image_11589177.png",
             "title": "",
             "text": "",
-            "link_label": "Hardware Tools",
-            "link": "shopify://collections/hardware-and-tools-example-products"
+            "link_label": "All Products",
+            "link": "shopify://collections/all"
           }
         },
         "column6": {
@@ -348,7 +350,7 @@
         "description_style": "body",
         "columns_desktop": 5,
         "enable_desktop_slider": false,
-        "full_width": true,
+        "full_width": false,
         "show_view_all": false,
         "view_all_style": "solid",
         "color_scheme": "scheme-1",
@@ -376,7 +378,7 @@
         "description_style": "body",
         "columns_desktop": 5,
         "enable_desktop_slider": false,
-        "full_width": true,
+        "full_width": false,
         "show_view_all": false,
         "view_all_style": "solid",
         "color_scheme": "scheme-1",
@@ -440,7 +442,7 @@
         "description_style": "body",
         "columns_desktop": 5,
         "enable_desktop_slider": false,
-        "full_width": true,
+        "full_width": false,
         "show_view_all": false,
         "view_all_style": "solid",
         "color_scheme": "scheme-1",
@@ -542,7 +544,7 @@
         "description_style": "body",
         "columns_desktop": 5,
         "enable_desktop_slider": false,
-        "full_width": true,
+        "full_width": false,
         "show_view_all": false,
         "view_all_style": "solid",
         "color_scheme": "scheme-1",
@@ -628,7 +630,8 @@
         "image_behavior": "none",
         "show_text_below": false,
         "accessibility_info": ""
-      }
+      },
+      "disabled": true
     },
     "slideshow_R7Yd4j": {
       "type": "slideshow",
@@ -668,7 +671,8 @@
         "image_behavior": "none",
         "show_text_below": false,
         "accessibility_info": ""
-      }
+      },
+      "disabled": true
     },
     "multicolumn_ME4mha": {
       "type": "multicolumn",
@@ -861,9 +865,77 @@
         "padding_top": 40,
         "padding_bottom": 52
       }
+    },
+    "hathoro_campaigns": {
+      "type": "hathoro-campaign-banners",
+      "blocks": {
+        "winter": {
+          "type": "campaign",
+          "settings": {
+            "style": "winter",
+            "eyebrow": "❄ Seasonal pick",
+            "title": "Winter Essentials,",
+            "highlight": "Best Prices",
+            "text": "Get ready for winter without overspending: ice melt, snow shovels and washer fluid.",
+            "button_label": "Shop Winter Essentials",
+            "collection": "winter-essentials",
+            "link": "",
+            "products": [
+              "ice-and-snow-melter-effective-to-8-f-blue-50-lbs",
+              "snow-shovel-poly-blade-material-19-17-25-in-blade-width-39-in-steel-d-grip-handle",
+              "6-gallons-20f-power-blast-windshield-washer-fluid-all-season-formula-20-f-protection"
+            ]
+          }
+        },
+        "tools": {
+          "type": "campaign",
+          "settings": {
+            "style": "tools",
+            "eyebrow": "Tools & Machining",
+            "title": "Get the Best",
+            "highlight": "Tools for the Job",
+            "text": "Pliers, multi-bit drivers, grinder attachments and shop supplies from Milwaukee, Channellock and more.",
+            "button_label": "Shop Tools",
+            "collection": "material-handling",
+            "link": "",
+            "products": [
+              "channellock-480-20-14-tongue-groove-pliers",
+              "milwaukee-electric-tool-49-22-8510-milwaukee-kit-right-angle-attachment-95-x-175",
+              "48-22-2330-for-milwaukee-8-in-1-compact-ratcheting-multi-bit-screwdriver"
+            ]
+          }
+        },
+        "cleaning": {
+          "type": "campaign",
+          "settings": {
+            "style": "cleaning",
+            "eyebrow": "Cleaning & Janitorial",
+            "title": "Spotless Spaces,",
+            "highlight": "Happier Places",
+            "text": "Degreasers, disinfectants and janitorial supplies for shops, offices and facilities.",
+            "button_label": "Shop Cleaning",
+            "collection": "cleaning-janitorial",
+            "link": "",
+            "products": [
+              "tough-guy-heavy-duty-industrial-purple-cleaner-degreaser-concentrate-h4883789",
+              "simple-green-concentrated-all-purpose-cleaner-degreaser",
+              "6-gallons-ultra-germicidal-liquid-bleach-for-laundry-disinfecting-sanitizing-deodorizing-mold-mildew-stain-remover-1-gallon-jugs"
+            ]
+          }
+        }
+      },
+      "block_order": [
+        "winter",
+        "tools",
+        "cleaning"
+      ],
+      "settings": {
+        "heading": ""
+      }
     }
   },
   "order": [
+    "hathoro_campaigns",
     "slideshow_EtMKrn",
     "slideshow_gipB4a",
     "multicolumn",

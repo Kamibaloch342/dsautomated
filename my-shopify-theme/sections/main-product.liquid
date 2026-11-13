@@ -81,10 +81,10 @@
         <a href="{{ routes.root_url }}">Home</a>
         <span class="hathoro-breadcrumbs__sep">/</span>
         {%- if collection -%}
-          <a href="{{ collection.url }}">{{ collection.title }}</a>
+          <a href="{{ collection.url }}">{{ collection.title | escape }}</a>
           <span class="hathoro-breadcrumbs__sep">/</span>
         {%- elsif product.collections.first -%}
-          <a href="{{ product.collections.first.url }}">{{ product.collections.first.title }}</a>
+          <a href="{{ product.collections.first.url }}">{{ product.collections.first.title | escape }}</a>
           <span class="hathoro-breadcrumbs__sep">/</span>
         {%- endif -%}
         <span class="hathoro-breadcrumbs__current">{{ product.title | escape }}</span>
@@ -153,7 +153,6 @@
                 </div>
                 <div class="hathoro-pdp-submeta">
                   <span class="hathoro-pdp-rating">
-                    <span class="hathoro-pdp-rating__stars" aria-hidden="true">★★★★★</span>
                     <span>Commercial &amp; Industrial Grade</span>
                   </span>
                   <a href="#HathoroProductDetailsHub" class="hathoro-pdp-jump-link" data-hathoro-scroll>
@@ -171,12 +170,14 @@
                     -%}
                   </div>
                 </div>
+                {%- if product.selected_or_first_available_variant.available -%}
                 <div class="hathoro-shipping-promise">
                   <svg class="hathoro-shipping-promise__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
                   <div>
                     <strong>In Stock &amp; Ready to Ship:</strong> Orders placed before <strong>3:00 PM CT</strong> ship same business day (Mon–Fri). <strong>Free shipping</strong> on orders $50+.
                   </div>
                 </div>
+                {%- endif -%}
                 {%- if product.quantity_price_breaks_configured? -%}
                   <div class="volume-pricing-note" id="Volume-Note-{{ section.id }}">
                     <span>{{ 'products.product.volume_pricing.note' | t }}</span>
@@ -824,7 +825,13 @@
                 {%- endif -%}
                 <tr>
                   <th>Availability</th>
-                  <td>In Stock — Ships Same Day Before 3:00 PM CT</td>
+                  <td>
+                    {%- if product.selected_or_first_available_variant.available -%}
+                      In Stock — Ships Same Day Before 3:00 PM CT
+                    {%- else -%}
+                      Out of Stock
+                    {%- endif -%}
+                  </td>
                 </tr>
                 <tr>
                   <th>Condition</th>
@@ -832,7 +839,13 @@
                 </tr>
                 <tr>
                   <th>Warranty &amp; Returns</th>
-                  <td>30-Day Hathoro Satisfaction Guarantee</td>
+                  <td>
+                    {%- if shop.refund_policy -%}
+                      30-day returns — <a href="{{ shop.refund_policy.url }}">see our Refund Policy</a>
+                    {%- else -%}
+                      30-day returns
+                    {%- endif -%}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -851,63 +864,12 @@
           <p>Every item is brand new, factory-sealed, and sourced directly from authorized industrial distributors.</p>
         </div>
         <div class="hathoro-navy-banner__item">
-          <h4>🔄 30-Day Hathoro Guarantee</h4>
-          <p>If a tool or supply doesn't perform on the job, return it within 30 days for a fast replacement or full refund.</p>
+          <h4>🔄 30-Day Returns</h4>
+          <p>Unused items in their original packaging can be returned within 30 days of delivery{% if shop.refund_policy %} — <a href="{{ shop.refund_policy.url }}" style="color:inherit;text-decoration:underline;">see our Refund Policy</a>{% endif %}.</p>
         </div>
         <div class="hathoro-navy-banner__item">
           <h4>🏷️ Commercial Price Match</h4>
           <p>Found a lower delivered price? Call (727) 609-8404 or email sales@hathoro.com and we'll match it.</p>
-        </div>
-      </div>
-
-      <!-- Verified Customer Reviews Section -->
-      <div class="hathoro-reviews-section">
-        <div class="hathoro-section-header">
-          <div>
-            <span class="hathoro-section-eyebrow">Verified Buyers</span>
-            <h2 class="related-products__heading">Customer Reviews &amp; Field Feedback</h2>
-          </div>
-        </div>
-        <div class="hathoro-reviews-grid">
-          <div class="hathoro-reviews-summary">
-            <div class="hathoro-reviews-summary__score">4.9</div>
-            <div class="hathoro-reviews-summary__stars">★★★★★</div>
-            <p style="margin:0 0 1.2rem;font-size:1.28rem;font-weight:600;color:#0f2342;">Based on Verified Commercial Orders</p>
-            <div style="font-size:1.2rem;color:#475569;text-align:left;display:grid;gap:0.45rem;">
-              <div style="display:flex;align-items:center;gap:0.6rem;"><span>5 ★</span><div style="flex:1;height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;"><div style="width:92%;height:100%;background:#0f2342;"></div></div><span>92%</span></div>
-              <div style="display:flex;align-items:center;gap:0.6rem;"><span>4 ★</span><div style="flex:1;height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;"><div style="width:8%;height:100%;background:#0f2342;"></div></div><span>8%</span></div>
-              <div style="display:flex;align-items:center;gap:0.6rem;"><span>3 ★</span><div style="flex:1;height:7px;background:#e2e8f0;border-radius:99px;overflow:hidden;"></div><span>0%</span></div>
-            </div>
-          </div>
-          <div class="hathoro-reviews-cards">
-            <div class="hathoro-review-card">
-              <div class="hathoro-review-card__top">
-                <span style="color:#f59e0b;font-size:1.4rem;">★★★★★</span>
-                <span class="hathoro-review-card__verified">✓ Verified Buyer</span>
-              </div>
-              <h4>Exact OEM spec &amp; shipped same afternoon</h4>
-              <p>"Ordered at 1:30 PM for our maintenance shop and had a FedEx tracking number before 4:00 PM. Arrived factory-sealed and beat our local supplier's price."</p>
-              <div class="hathoro-review-card__author">Marcus R. — Fleet Maintenance Supervisor</div>
-            </div>
-            <div class="hathoro-review-card">
-              <div class="hathoro-review-card__top">
-                <span style="color:#f59e0b;font-size:1.4rem;">★★★★★</span>
-                <span class="hathoro-review-card__verified">✓ Verified Buyer</span>
-              </div>
-              <h4>Reliable commercial quality</h4>
-              <p>"We stock up through Hathoro every month. Packaging is heavy-duty, part numbers always match up accurately, and customer service responds immediately."</p>
-              <div class="hathoro-review-card__author">David K. — Facility Operations Manager</div>
-            </div>
-            <div class="hathoro-review-card">
-              <div class="hathoro-review-card__top">
-                <span style="color:#f59e0b;font-size:1.4rem;">★★★★★</span>
-                <span class="hathoro-review-card__verified">✓ Verified Buyer</span>
-              </div>
-              <h4>Great pricing and free shipping over $50</h4>
-              <p>"Hard to find genuine industrial supplies without paying huge freight markups. Hathoro delivered in 2 days with zero issues. Will definitely reorder."</p>
-              <div class="hathoro-review-card__author">Jason T. — Commercial Contractor</div>
-            </div>
-          </div>
         </div>
       </div>
 

@@ -56,7 +56,7 @@
           <li><strong>In-Stock &amp; New Condition:</strong> The competitor item must be brand new, factory sealed, and currently in stock for immediate shipping.</li>
           <li><strong>Total Delivered Price:</strong> Price comparison includes the item price plus any applicable shipping or handling charges.</li>
         </ul>
-        <form class="hathoro-info-form" onsubmit="event.preventDefault();this.innerHTML='<p style=\\'color:#15803d;font-weight:700;margin:0;\\'>✓ Price Match Request Submitted! Our commercial desk at sales@hathoro.com will reply within 1 business day.</p>';">
+        <form class="hathoro-info-form">
           <div>
             <label>Hathoro Item # or Product Name</label>
             <input type="text" required placeholder="e.g. G2525128 or Valvoline SynPower...">
@@ -106,28 +106,6 @@
         </table>
       `
     },
-    'customer-reviews': {
-      group: 'Company Information',
-      title: 'Verified Customer Reviews & Commercial Feedback',
-      subtitle: 'Rated 4.9 / 5.0 by facility managers, contractors, fleet mechanics, and shop owners nationwide.',
-      html: `
-        <h3>What Commercial Buyers Say About Hathoro</h3>
-        <div style="display:grid;gap:1.6rem;margin-top:1.6rem;">
-          <div style="padding:2rem;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
-            <div style="color:#f59e0b;font-size:1.5rem;margin-bottom:0.6rem;">★★★★★</div>
-            <p style="margin:0 0 0.8rem;font-weight:600;color:#0f2342;">"Fastest MRO supplier we've used this year."</p>
-            <p style="margin:0 0 0.8rem;">Ordered hardware, safety glasses, and shop fluids at 1:30 PM CT—had a FedEx tracking number before 4:00 PM and the boxes were on our dock two days later.</p>
-            <span style="font-size:1.2rem;color:#64748b;font-weight:700;">— Marcus T., Facility Maintenance Lead (Verified Buyer)</span>
-          </div>
-          <div style="padding:2rem;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
-            <div style="color:#f59e0b;font-size:1.5rem;margin-bottom:0.6rem;">★★★★★</div>
-            <p style="margin:0 0 0.8rem;font-weight:600;color:#0f2342;">"Exact OEM part numbers and clean packaging."</p>
-            <p style="margin:0 0 0.8rem;">Everything arrived factory sealed and matched the technical specifications table on the product page 100%. Will definitely keep ordering for our fleet shop.</p>
-            <span style="font-size:1.2rem;color:#64748b;font-weight:700;">— David R., Fleet Operations Supervisor (Verified Buyer)</span>
-          </div>
-        </div>
-      `
-    },
     'help-faqs': {
       group: 'Customer Support',
       title: 'Help Center & Frequently Asked Questions',
@@ -147,8 +125,9 @@
       subtitle: 'Look up real-time FedEx / UPS carrier status for your Hathoro shipment.',
       html: `
         <h3>Real-Time Shipment Lookup</h3>
-        <p>Enter your Hathoro Order Number and the email address used at checkout to check your dispatch status and live carrier tracking link.</p>
-        <form class="hathoro-info-form" onsubmit="event.preventDefault();this.innerHTML='<p style=\\'color:#15803d;font-weight:700;margin:0;\\'>✓ Order Lookup Sent! If your order was placed today before 3:00 PM CT, your FedEx/UPS tracking link is being generated and emailed to you now. For immediate assistance call (727) 609-8404.</p>';">
+        <p>Your tracking link is in the shipping confirmation e-mail we send when your order leaves. If you have an account, <a href="/account">sign in to see your orders and their tracking</a>.</p>
+        <p>Can't find it? Send us your order number and the e-mail used at checkout and we will reply with the tracking link.</p>
+        <form class="hathoro-info-form">
           <div>
             <label>Order Number</label>
             <input type="text" required placeholder="e.g. #1048">
@@ -164,36 +143,12 @@
     'shipping-policy': {
       group: 'Customer Support',
       title: 'Shipping & Delivery Policy',
-      subtitle: 'Same-day dispatch before 3:00 PM CT and free ground shipping on qualifying orders over $50.',
-      html: `
-        <h3>Shipping Cutoffs &amp; Transit Times</h3>
-        <table class="hathoro-specs-table" style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin:1.6rem 0;">
-          <tbody>
-            <tr><th>Same-Day Dispatch Cutoff</th><td>3:00 PM Central Time (Monday – Friday, excluding federal holidays)</td></tr>
-            <tr><th>Free Ground Shipping</th><td>Automatically applied at checkout on orders of $50.00 or more</td></tr>
-            <tr><th>Standard Transit Time</th><td>1–5 Business Days across the contiguous United States</td></tr>
-            <tr><th>Primary Carriers</th><td>FedEx Ground, UPS Ground &amp; Authorized LTL Freight Carriers</td></tr>
-            <tr><th>Tracking Notifications</th><td>Sent via email immediately upon carrier manifest scan</td></tr>
-          </tbody>
-        </table>
-        <h3>Commercial &amp; Street Addresses</h3>
-        <p>Because our orders ship via FedEx and UPS commercial networks, please provide a physical street address for fastest delivery.</p>
-      `
+      url: '/policies/shipping-policy'
     },
     'returns-exchanges': {
       group: 'Customer Support',
       title: 'Returns, Refunds & Exchanges Policy',
-      subtitle: 'Backed by our 30-Day Hathoro Satisfaction Guarantee.',
-      html: `
-        <h3>30-Day Return Window</h3>
-        <p>You may return most new, unopened items within <strong>30 days of delivery</strong> for a full refund or exchange. We also pay the return shipping costs if the return is a result of our error (you received an incorrect or defective item).</p>
-        <h3>How to Initiate a Return</h3>
-        <ol>
-          <li>Contact our Customer Service team at <strong>sales@hathoro.com</strong> or call <strong>(727) 609-8404</strong> with your Order Number.</li>
-          <li>Receive your Return Merchandise Authorization (RMA) and return shipping label within 1 business day.</li>
-          <li>Once your return is received and inspected, your refund is processed within 2–3 business days back to your original payment method.</li>
-        </ol>
-      `
+      url: '/policies/refund-policy'
     },
     'damaged-missing': {
       group: 'Customer Support',
@@ -202,7 +157,7 @@
       html: `
         <h3>Priority Replacement Guarantee</h3>
         <p>If your shipment arrives with visible carrier damage or a missing item, notify us within 7 business days of delivery. We will immediately dispatch a replacement shipment or issue a full credit—no waiting on lengthy carrier claims.</p>
-        <form class="hathoro-info-form" onsubmit="event.preventDefault();this.innerHTML='<p style=\\'color:#15803d;font-weight:700;margin:0;\\'>✓ Priority Claim Logged! Our fulfillment desk will dispatch your replacement or contact you within 1 business day.</p>';">
+        <form class="hathoro-info-form">
           <div>
             <label>Order Number</label>
             <input type="text" required placeholder="e.g. #1048">
@@ -237,7 +192,7 @@
           </tbody>
         </table>
         <h3>Send Us a Message</h3>
-        <form class="hathoro-info-form" onsubmit="event.preventDefault();this.innerHTML='<p style=\\'color:#15803d;font-weight:700;margin:0;\\'>✓ Thank you for contacting Hathoro! Our team at sales@hathoro.com will reply within 1 business day.</p>';">
+        <form class="hathoro-info-form">
           <div>
             <label>Your Name &amp; Company</label>
             <input type="text" required placeholder="John Smith — Acme Facilities">
@@ -269,7 +224,7 @@
           <li><strong>Dedicated Account Representative:</strong> Direct phone and email line for fast sourcing and multi-location shipping.</li>
           <li><strong>Tax-Exempt Checkout:</strong> Link your state resale or manufacturing tax-exemption certificate directly to your profile.</li>
         </ul>
-        <form class="hathoro-info-form" onsubmit="event.preventDefault();this.innerHTML='<p style=\\'color:#15803d;font-weight:700;margin:0;\\'>✓ Business Account Application Received! A Hathoro commercial specialist will activate your B2B profile within 1 business day.</p>';">
+        <form class="hathoro-info-form">
           <div>
             <label>Company / Organization Name</label>
             <input type="text" required placeholder="Enter legal business name...">
@@ -297,7 +252,7 @@
       html: `
         <h3>Fast 1-Business-Day Quote Turnaround</h3>
         <p>Ordering multiple units, full cases, or outfitting an entire crew? Submit your part numbers and quantities below and our commercial desk will return a custom volume quote within 1 business day.</p>
-        <form class="hathoro-info-form" onsubmit="event.preventDefault();this.innerHTML='<p style=\\'color:#15803d;font-weight:700;margin:0;\\'>✓ Bulk Quote Request Received! We will email your custom commercial pricing within 1 business day.</p>';">
+        <form class="hathoro-info-form">
           <div>
             <label>Company &amp; Contact Name</label>
             <input type="text" required placeholder="Your name and company...">
@@ -344,7 +299,7 @@
       html: `
         <h3>Access Over 1,000,000+ Industrial SKUs</h3>
         <p>Even if a specific manufacturer part number isn't displayed in our online catalog yet, our industrial distribution network likely has it in stock for immediate dispatch. Tell us the Brand and MFR Part # below and we will source it for you.</p>
-        <form class="hathoro-info-form" onsubmit="event.preventDefault();this.innerHTML='<p style=\\'color:#15803d;font-weight:700;margin:0;\\'>✓ Sourcing Request Submitted! Our catalog team will check warehouse stock and email your quote within 1 business day.</p>';">
+        <form class="hathoro-info-form">
           <div>
             <label>Manufacturer Brand &amp; Part Number (MFR #)</label>
             <input type="text" required placeholder="e.g. 3M 8210 or Klein D213-9NE...">
@@ -364,30 +319,19 @@
     'privacy-policy': {
       group: 'Legal & Policies',
       title: 'Privacy Policy',
-      subtitle: 'How Hathoro protects your personal and commercial account information.',
-      html: `
-        <h3>Information We Collect &amp; Protect</h3>
-        <p>Hathoro collects only the information necessary to process, fulfill, and support your orders—including your name, company name, billing and shipping addresses, email address, and phone number. Payment transactions are encrypted and processed securely through Shopify PCI-DSS compliant payment gateways.</p>
-        <h3>Zero Data Selling Guarantee</h3>
-        <p>We never sell, rent, or trade your personal or business contact information to third-party marketers. Your data is used strictly for order fulfillment, carrier tracking notifications, and customer support.</p>
-      `
+      url: '/policies/privacy-policy'
     },
     'terms-of-service': {
       group: 'Legal & Policies',
       title: 'Terms of Service',
-      subtitle: 'Commercial terms and conditions governing purchases on Hathoro.',
-      html: `
-        <h3>1. Order Acceptance &amp; Pricing</h3>
-        <p>All orders placed on Hathoro are subject to product availability and verification. While we strive for 100% catalog accuracy, Hathoro reserves the right to correct typographical or pricing errors prior to dispatch.</p>
-        <h3>2. Title, Risk of Loss &amp; Returns</h3>
-        <p>All shipments are covered against transit damage under our 30-Day Hathoro Satisfaction Guarantee. Returns are accepted within 30 days of delivery in accordance with our Returns &amp; Exchanges Policy.</p>
-      `
+      url: '/policies/terms-of-service'
     }
   };
 
   function renderInfoHub(slug) {
-    const page = HATHORO_INFO_PAGES[slug] || HATHORO_INFO_PAGES['about-hathoro'];
-    const activeSlug = HATHORO_INFO_PAGES[slug] ? slug : 'about-hathoro';
+    const known = HATHORO_INFO_PAGES[slug] && !HATHORO_INFO_PAGES[slug].url;
+    const page = known ? HATHORO_INFO_PAGES[slug] : HATHORO_INFO_PAGES['about-hathoro'];
+    const activeSlug = known ? slug : 'about-hathoro';
     const groups = ['Company Information', 'Customer Support', 'Business & B2B Services', 'Legal & Policies'];
 
     const sidebarHtml = groups
@@ -396,7 +340,11 @@
           .filter(([, p]) => p.group === grp)
           .map(([k, p]) => {
             const activeCls = k === activeSlug ? ' hathoro-info-sidebar__link--active' : '';
-            return `<li><a href="?hathoro_page=${k}" data-hathoro-page="${k}" class="hathoro-info-sidebar__link${activeCls}">${p.title.replace('Hathoro Industrial & Commercial Supply', 'About Hathoro')}</a></li>`;
+            const label = p.title.replace('Hathoro Industrial & Commercial Supply', 'About Hathoro');
+            if (p.url) {
+              return `<li><a href="${p.url}" class="hathoro-info-sidebar__link">${label}</a></li>`;
+            }
+            return `<li><a href="?hathoro_page=${k}" data-hathoro-page="${k}" class="hathoro-info-sidebar__link${activeCls}">${label}</a></li>`;
           })
           .join('');
         return `
@@ -440,13 +388,109 @@
     `;
   }
 
+  // The info-page forms are posted to Shopify's own contact form (/contact, form_type=contact),
+  // so every message lands in the store's e-mail like the Contact page does. Each field is
+  // sent under its label; the page title says which form it came from.
+  function wireRealForms(root, pageTitle) {
+    root.querySelectorAll('form.hathoro-info-form').forEach((form, formIdx) => {
+      form.setAttribute('method', 'post');
+      form.setAttribute('action', '/contact#HathoroInfoForm');
+      form.setAttribute('accept-charset', 'UTF-8');
+      form.id = formIdx === 0 ? 'HathoroInfoForm' : 'HathoroInfoForm-' + formIdx;
+
+      const addHidden = (name, value) => {
+        const el = document.createElement('input');
+        el.type = 'hidden';
+        el.name = name;
+        el.value = value;
+        form.prepend(el);
+      };
+      addHidden('contact[Form]', pageTitle);
+      addHidden('utf8', '\u2713');
+      addHidden('form_type', 'contact');
+
+      let hasEmail = false;
+      let hasBody = false;
+      form.querySelectorAll('input:not([type="hidden"]), textarea, select').forEach((field, fieldIdx) => {
+        if (field.name) return;
+        const wrap = field.closest('div');
+        const label = wrap ? wrap.querySelector('label') : null;
+        const labelText = ((label && label.textContent) || field.placeholder || 'Field').replace(/[\[\]]/g, '').trim();
+        if (field.type === 'email' && !hasEmail) {
+          field.name = 'contact[email]';
+          field.autocomplete = 'email';
+          hasEmail = true;
+        } else if (field.type === 'tel') {
+          field.name = 'contact[phone]';
+        } else if (field.tagName === 'TEXTAREA' && !hasBody) {
+          field.name = 'contact[body]';
+          hasBody = true;
+        } else {
+          field.name = 'contact[' + labelText + ']';
+        }
+        if (label && !field.id) {
+          field.id = form.id + '-field-' + fieldIdx;
+          label.htmlFor = field.id;
+        }
+      });
+
+      // Shopify needs an e-mail to reply to; add one where the form had none.
+      if (!hasEmail) {
+        const div = document.createElement('div');
+        const fieldId = form.id + '-email';
+        div.innerHTML =
+          '<label for="' + fieldId + '">Your Email Address</label>' +
+          '<input id="' + fieldId + '" type="email" name="contact[email]" autocomplete="email" required placeholder="you@company.com">';
+        const submit = form.querySelector('button[type="submit"], button:not([type])');
+        form.insertBefore(div, submit || null);
+      }
+    });
+  }
+
+  function showSentBanner(mainEl) {
+    // The stock Contact page shows its own Shopify message.
+    if (document.getElementById('ContactForm')) return;
+    const msg = document.createElement('p');
+    msg.className = 'hathoro-info-form__sent';
+    msg.setAttribute('role', 'status');
+    msg.textContent = '\u2713 Thank you \u2014 your message was sent to the Hathoro team. We will reply by e-mail.';
+    const form = document.getElementById('HathoroInfoForm');
+    if (form) {
+      form.parentNode.insertBefore(msg, form);
+      msg.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (mainEl) {
+      const wrap = document.createElement('div');
+      wrap.className = 'page-width';
+      wrap.style.paddingTop = '2rem';
+      wrap.appendChild(msg);
+      mainEl.prepend(wrap);
+    }
+  }
+
+  function openInfoPage(mainEl, slug) {
+    const page = HATHORO_INFO_PAGES[slug];
+    if (page.url) {
+      window.location.href = page.url;
+      return;
+    }
+    mainEl.innerHTML = renderInfoHub(slug);
+    wireRealForms(mainEl, page.title);
+  }
+
   function initHathoroRouter() {
     const params = new URLSearchParams(window.location.search);
     const requestedPage = params.get('hathoro_page');
     const mainEl = document.getElementById('MainContent');
     if (requestedPage && mainEl && HATHORO_INFO_PAGES[requestedPage]) {
-      mainEl.innerHTML = renderInfoHub(requestedPage);
+      if (HATHORO_INFO_PAGES[requestedPage].url) {
+        window.location.replace(HATHORO_INFO_PAGES[requestedPage].url);
+        return;
+      }
+      openInfoPage(mainEl, requestedPage);
       window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    if (params.get('contact_posted') === 'true') {
+      showSentBanner(mainEl);
     }
 
     document.addEventListener('click', (e) => {
@@ -462,10 +506,15 @@
       }
       if (slug && HATHORO_INFO_PAGES[slug] && mainEl) {
         e.preventDefault();
+        if (HATHORO_INFO_PAGES[slug].url) {
+          window.location.href = HATHORO_INFO_PAGES[slug].url;
+          return;
+        }
         const url = new URL(window.location.href);
         url.searchParams.set('hathoro_page', slug);
+        url.searchParams.delete('contact_posted');
         window.history.pushState({ hathoro_page: slug }, '', url.toString());
-        mainEl.innerHTML = renderInfoHub(slug);
+        openInfoPage(mainEl, slug);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     });
@@ -473,7 +522,7 @@
     window.addEventListener('popstate', () => {
       const p = new URLSearchParams(window.location.search).get('hathoro_page');
       if (p && HATHORO_INFO_PAGES[p] && mainEl) {
-        mainEl.innerHTML = renderInfoHub(p);
+        openInfoPage(mainEl, p);
       } else if (!p) {
         window.location.reload();
       }
@@ -482,6 +531,17 @@
 
   function initHathoroPDP() {
     initHathoroRouter();
+
+    // Category bar "More" menu: close it on a click elsewhere or on Escape.
+    const moreMenu = document.querySelector('.hathoro-minimal-nav__more');
+    if (moreMenu) {
+      document.addEventListener('click', (e) => {
+        if (moreMenu.open && !moreMenu.contains(e.target)) moreMenu.open = false;
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && moreMenu.open) moreMenu.open = false;
+      });
+    }
 
     const descContainer = document.getElementById('HathoroFormattedDescription');
     const specsBody = document.getElementById('HathoroSpecsTableBody');
@@ -515,7 +575,9 @@
       embeddedTables.forEach((table) => {
         table.querySelectorAll('tr').forEach((tr) => {
           const cells = tr.querySelectorAll('th, td');
-          if (cells.length === 2) {
+          // A header row ("Specification | Value") is not a spec.
+          const isHeaderRow = tr.closest('thead') || (cells.length === 2 && cells[0].tagName === 'TH' && cells[1].tagName === 'TH');
+          if (cells.length === 2 && !isHeaderRow) {
             const key = cells[0].textContent.trim().replace(/:$/, '');
             const val = cells[1].textContent.trim();
             if (key && val && key.length <= 45 && !existingKeys.has(key.toLowerCase())) {

@@ -1,0 +1,19 @@
+{%- comment -%}
+  Emoji icon for a collection card. Unknown collections get a box.
+  Usage: {% render 'hathoro-collection-icon', handle: col.handle %}
+{%- endcomment -%}
+{%- case handle -%}
+  {%- when 'best-sellers' -%}⭐
+  {%- when 'shipping-packaging-office-supplies' -%}📦
+  {%- when 'material-handling' -%}🔧
+  {%- when 'plumbing' -%}🚰
+  {%- when 'hvac' -%}🌡️
+  {%- when 'footwear-safety' -%}🦺
+  {%- when 'cleaning-janitorial' -%}🧹
+  {%- when 'storage-workspace' -%}🗄️
+  {%- when 'vehicle-maintenance-automotive' -%}🛢️
+  {%- when 'grounds-outdoors' -%}🌲
+  {%- when 'home-kitchen' -%}🏠
+  {%- when 'winter-essentials' -%}❄️
+  {%- else -%}📦
+{%- endcase -%}

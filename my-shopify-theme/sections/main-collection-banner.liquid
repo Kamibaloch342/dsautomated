@@ -49,8 +49,8 @@
         <a href="{{ routes.all_products_collection_url }}" class="hathoro-collection-pill{% if collection.handle == 'all' %} hathoro-collection-pill--active{% endif %}">
           All Products
         </a>
-        {%- for col in collections limit: 12 -%}
-          {%- unless col.handle == 'frontpage' or col.all_products_count == 0 -%}
+        {%- for col in collections -%}
+          {%- unless col.handle == 'frontpage' or col.handle == 'all' or col.all_products_count == 0 -%}
             <a href="{{ col.url }}" class="hathoro-collection-pill{% if collection.handle == col.handle %} hathoro-collection-pill--active{% endif %}">
               {{ col.title | escape }}
               <span class="hathoro-collection-pill__num">({{ col.all_products_count }})</span>

@@ -1,0 +1,162 @@
+{%- comment -%}
+  Campaign banners in the style of the homepage hero (13 Nov 2026).
+  Text is real text and the pictures are the products' own photos, so the banners stay sharp
+  at every screen size (the old slideshow images were 360-1880 px pictures with the words
+  baked in, stretched to full width). Each banner: words, a collection, and up to 3 products
+  (when no products are picked, the collection's first 3 are shown). Edit in the theme editor.
+{%- endcomment -%}
+
+{%- if section.blocks.size > 0 -%}
+  <section class="hathoro-campaigns" aria-label="{{ section.settings.heading | default: 'Featured departments' | escape }}">
+    <div class="page-width">
+      {%- if section.settings.heading != blank -%}
+        <h2 class="hathoro-campaigns__heading">{{ section.settings.heading | escape }}</h2>
+      {%- endif -%}
+      <div class="hathoro-campaigns__grid hathoro-campaigns__grid--{{ section.blocks.size }}">
+        {%- for block in section.blocks -%}
+          {%- liquid
+            assign col = block.settings.collection
+            assign url = block.settings.link
+            if url == blank and col != blank
+              assign url = col.url
+            endif
+            if url == blank
+              assign url = routes.all_products_collection_url
+            endif
+            assign picks = block.settings.products
+            if picks == blank or picks.size == 0
+              assign picks = col.products
+            endif
+          -%}
+          <a href="{{ url }}" class="hathoro-campaign hathoro-campaign--{{ block.settings.style }}" {{ block.shopify_attributes }}>
+            <div class="hathoro-campaign__text">
+              {%- if block.settings.eyebrow != blank -%}
+                <span class="hathoro-campaign__eyebrow">{{ block.settings.eyebrow | escape }}</span>
+              {%- endif -%}
+              <h3 class="hathoro-campaign__title">
+                {{- block.settings.title | escape -}}
+                {%- if block.settings.highlight != blank %} <span class="hathoro-campaign__highlight">{{ block.settings.highlight | escape }}</span>
+                {%- endif -%}
+              </h3>
+              {%- if block.settings.text != blank -%}
+                <p class="hathoro-campaign__sub">{{ block.settings.text | escape }}</p>
+              {%- endif -%}
+              {%- if block.settings.button_label != blank -%}
+                <span class="hathoro-campaign__btn">{{ block.settings.button_label | escape }} <span aria-hidden="true">&rarr;</span></span>
+              {%- endif -%}
+            </div>
+            {%- if picks != blank -%}
+              <div class="hathoro-campaign__tiles" aria-hidden="true">
+                {%- for p in picks limit: 3 -%}
+                  {%- if p.featured_image -%}
+                    <span class="hathoro-campaign__tile">
+                      <img
+                        src="{{ p.featured_image | image_url: width: 320 }}"
+                        srcset="{{ p.featured_image | image_url: width: 160 }} 160w, {{ p.featured_image | image_url: width: 320 }} 320w, {{ p.featured_image | image_url: width: 480 }} 480w"
+                        sizes="(min-width: 990px) 140px, (min-width: 750px) 18vw, 28vw"
+                        width="{{ p.featured_image.width }}"
+                        height="{{ p.featured_image.height }}"
+                        alt=""
+                        loading="lazy"
+                      >
+                    </span>
+                  {%- endif -%}
+                {%- endfor -%}
+              </div>
+            {%- endif -%}
+          </a>
+        {%- endfor -%}
+      </div>
+    </div>
+  </section>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Campaign banners",
+  "tag": "div",
+  "class": "section-hathoro-campaigns",
+  "max_blocks": 4,
+  "settings": [
+    {
+      "type": "text",
+      "id": "heading",
+      "label": "Heading (optional)"
+    }
+  ],
+  "blocks": [
+    {
+      "type": "campaign",
+      "name": "Banner",
+      "settings": [
+        {
+          "type": "select",
+          "id": "style",
+          "label": "Style",
+          "options": [
+            { "value": "winter", "label": "Winter (ice blue)" },
+            { "value": "tools", "label": "Tools (black and red)" },
+            { "value": "cleaning", "label": "Cleaning (light red)" },
+            { "value": "navy", "label": "Navy (like the top banner)" }
+          ],
+          "default": "navy"
+        },
+        {
+          "type": "text",
+          "id": "eyebrow",
+          "label": "Small label above the title"
+        },
+        {
+          "type": "text",
+          "id": "title",
+          "label": "Title",
+          "default": "Shop the collection"
+        },
+        {
+          "type": "text",
+          "id": "highlight",
+          "label": "Highlighted words (second line)"
+        },
+        {
+          "type": "text",
+          "id": "text",
+          "label": "Text"
+        },
+        {
+          "type": "text",
+          "id": "button_label",
+          "label": "Button label",
+          "default": "Shop now"
+        },
+        {
+          "type": "collection",
+          "id": "collection",
+          "label": "Collection"
+        },
+        {
+          "type": "url",
+          "id": "link",
+          "label": "Link (leave empty to open the collection)"
+        },
+        {
+          "type": "product_list",
+          "id": "products",
+          "label": "Products shown (up to 3)",
+          "info": "Leave empty to show the collection's first 3 products.",
+          "limit": 3
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Campaign banners",
+      "blocks": [
+        { "type": "campaign", "settings": { "style": "winter" } },
+        { "type": "campaign", "settings": { "style": "tools" } },
+        { "type": "campaign", "settings": { "style": "cleaning" } }
+      ]
+    }
+  ]
+}
+{% endschema %}
