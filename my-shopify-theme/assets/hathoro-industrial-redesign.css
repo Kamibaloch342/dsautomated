@@ -2361,11 +2361,14 @@ h4, .h4 {
 }
 
 /* --------------------------------------------------------------------------
-   CAMPAIGN BANNERS (sections/hathoro-campaign-banners.liquid, 13 Nov 2026)
-   Replace the image slideshows: real text + product photos, sharp at any size.
+   CAMPAIGN BANNERS (sections/hathoro-campaign-banners.liquid)
+   13 Nov 2026: replaced the blurry image slideshows. 14 Nov 2026 redesign: a bright
+   "product stage" on top (3 products cut out from their white photo backgrounds with
+   mix-blend-mode, centre one in front, two behind at an angle, soft floor shadow),
+   text + button + product count below.
    -------------------------------------------------------------------------- */
 .hathoro-campaigns {
-  padding: 0.4rem 0 3.6rem;
+  padding: 1.2rem 0 4.4rem;
 }
 
 .hathoro-campaigns__heading {
@@ -2373,13 +2376,13 @@ h4, .h4 {
   font-weight: 800;
   font-size: 2.4rem;
   color: var(--hathoro-ink);
-  margin: 0 0 1.6rem;
+  margin: 0 0 1.8rem;
 }
 
 .hathoro-campaigns__grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 1.8rem;
+  gap: 2.2rem;
 }
 
 @media screen and (min-width: 750px) {
@@ -2406,22 +2409,17 @@ h4, .h4 {
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 2.2rem;
-  min-height: 34rem;
-  padding: 2.8rem 2.6rem 2.4rem;
-  border-radius: var(--hathoro-radius-lg);
-  border: 1px solid var(--hathoro-border);
-  box-shadow: var(--hathoro-shadow);
+  border-radius: 18px;
   overflow: hidden;
   text-decoration: none;
   isolation: isolate;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 2px rgba(15, 35, 66, 0.06), 0 10px 28px rgba(15, 35, 66, 0.08);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
 }
 
 .hathoro-campaign:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--hathoro-shadow-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 2px 4px rgba(15, 35, 66, 0.06), 0 22px 44px rgba(15, 35, 66, 0.16);
 }
 
 .hathoro-campaign:focus-visible {
@@ -2429,7 +2427,91 @@ h4, .h4 {
   outline-offset: 3px;
 }
 
+/* Product stage */
+.hathoro-campaign__stage {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  margin: 1.2rem 1.2rem 0;
+  border-radius: 12px;
+  overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(120% 90% at 50% 100%, #ffffff 0%, #f1f5f9 70%);
+}
+
+.hathoro-campaign__stage::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: 7%;
+  height: 9%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(15, 23, 42, 0.22), transparent);
+  z-index: 0;
+}
+
+/* The blend sits on the wrapper: the wrapper is transformed (its own stacking context),
+   so a blend on the <img> inside it would only mix with the wrapper, not the stage. */
+.hathoro-campaign__product {
+  position: absolute;
+  bottom: 10%;
+  display: block;
+  z-index: 1;
+  mix-blend-mode: multiply;
+  transition: transform 0.35s ease;
+}
+
+.hathoro-campaign__product img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.hathoro-campaign__product--1 {
+  left: 6%;
+  width: 34%;
+  bottom: 14%;
+  transform: rotate(-7deg);
+}
+
+.hathoro-campaign__product--2 {
+  left: 50%;
+  width: 44%;
+  z-index: 2;
+  transform: translateX(-50%);
+}
+
+.hathoro-campaign__product--3 {
+  right: 6%;
+  width: 34%;
+  bottom: 14%;
+  transform: rotate(7deg);
+}
+
+.hathoro-campaign:hover .hathoro-campaign__product--1 {
+  transform: rotate(-10deg) translate(-4%, -4%);
+}
+
+.hathoro-campaign:hover .hathoro-campaign__product--2 {
+  transform: translateX(-50%) translateY(-5%) scale(1.04);
+}
+
+.hathoro-campaign:hover .hathoro-campaign__product--3 {
+  transform: rotate(10deg) translate(4%, -4%);
+}
+
+/* Text */
+.hathoro-campaign__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 2.2rem 2.4rem 2.4rem;
+}
+
 .hathoro-campaign__eyebrow {
+  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -2446,77 +2528,73 @@ h4, .h4 {
 .hathoro-campaign__title {
   font-family: 'Montserrat', sans-serif;
   font-weight: 800;
-  font-size: 2.5rem;
+  font-size: 2.6rem;
   line-height: 1.18;
-  letter-spacing: -0.01em;
-  margin: 1.4rem 0 1rem;
+  letter-spacing: -0.015em;
+  margin: 1.2rem 0 1rem;
   color: inherit;
 }
 
 .hathoro-campaign__highlight {
   display: table;
   margin-top: 0.5rem;
-  padding: 0.25rem 1rem 0.35rem;
-  border-radius: 4px;
+  padding: 0.2rem 1rem 0.35rem;
+  border-radius: 5px;
   transform: rotate(-1.2deg);
   transform-origin: left center;
 }
 
 .hathoro-campaign__sub {
-  font-size: 1.38rem;
-  line-height: 1.55;
-  margin: 0 0 1.8rem;
-  max-width: 36rem;
+  font-size: 1.4rem;
+  line-height: 1.6;
+  margin: 0 0 2rem;
+}
+
+.hathoro-campaign__footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2rem;
+  flex-wrap: wrap;
 }
 
 .hathoro-campaign__btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.7rem;
   font-family: 'Montserrat', sans-serif;
-  font-size: 1.3rem;
+  font-size: 1.32rem;
   font-weight: 700;
-  padding: 1.05rem 1.9rem;
-  border-radius: var(--hathoro-radius-sm);
-  transition: filter 0.18s ease;
+  padding: 1.1rem 2rem;
+  border-radius: 8px;
+  transition: gap 0.2s ease, filter 0.2s ease;
 }
 
 .hathoro-campaign:hover .hathoro-campaign__btn {
-  filter: brightness(1.12);
+  gap: 1.1rem;
+  filter: brightness(1.1);
 }
 
-.hathoro-campaign__tiles {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
+.hathoro-campaign__count {
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
 }
 
-.hathoro-campaign__tile {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  aspect-ratio: 1 / 1;
-  padding: 0.9rem;
-  border-radius: var(--hathoro-radius);
-  background: var(--hathoro-white);
-  box-shadow: 0 6px 16px rgba(15, 35, 66, 0.1);
-}
-
-.hathoro-campaign__tile img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-/* Winter: ice blue with a light snow dot pattern */
+/* Winter: ice blue */
 .hathoro-campaign--winter {
   color: var(--hathoro-navy);
-  background-color: #dcebf9;
-  background-image:
-    radial-gradient(rgba(255, 255, 255, 0.85) 1.3px, transparent 1.8px),
-    linear-gradient(160deg, #eef5fd 0%, #d9e9f8 55%, #c5dcf3 100%);
-  background-size: 24px 24px, 100% 100%;
-  border-color: #c9ddf1;
+  background: linear-gradient(170deg, #eef5fd 0%, #dbeafa 100%);
+  border: 1px solid #cfe1f5;
+}
+
+.hathoro-campaign--winter .hathoro-campaign__stage {
+  background:
+    radial-gradient(rgba(255, 255, 255, 0.95) 1.4px, transparent 1.9px),
+    radial-gradient(120% 90% at 50% 100%, #ffffff 0%, #e6f0fb 75%);
+  background-size: 20px 20px, 100% 100%;
 }
 
 .hathoro-campaign--winter .hathoro-campaign__eyebrow {
@@ -2538,18 +2616,22 @@ h4, .h4 {
   color: var(--hathoro-white);
 }
 
-/* Tools: black and red, like the old "Get the best" artwork */
+/* Tools: black and red */
 .hathoro-campaign--tools {
   color: var(--hathoro-white);
   background:
-    radial-gradient(120% 80% at 100% 0%, rgba(225, 29, 46, 0.32) 0%, transparent 55%),
-    linear-gradient(155deg, #1c1c20 0%, #111114 65%, #0b0b0d 100%);
-  border-color: #2a2a30;
+    radial-gradient(120% 70% at 100% 100%, rgba(225, 29, 46, 0.3) 0%, transparent 60%),
+    linear-gradient(170deg, #1d1d22 0%, #0e0e11 100%);
+  border: 1px solid #26262c;
+}
+
+.hathoro-campaign--tools .hathoro-campaign__stage {
+  background: radial-gradient(120% 90% at 50% 100%, #ffffff 0%, #ececef 75%);
 }
 
 .hathoro-campaign--tools .hathoro-campaign__eyebrow {
-  background: rgba(225, 29, 46, 0.18);
-  color: #ff8a8a;
+  background: rgba(225, 29, 46, 0.2);
+  color: #ff9a9a;
 }
 
 .hathoro-campaign--tools .hathoro-campaign__highlight {
@@ -2566,13 +2648,15 @@ h4, .h4 {
   color: var(--hathoro-white);
 }
 
-/* Cleaning: light red with a black-and-red highlight, like the old "Spotless spaces" artwork */
+/* Cleaning: light red */
 .hathoro-campaign--cleaning {
   color: #2b0b0a;
-  background:
-    radial-gradient(90% 70% at 100% 100%, rgba(239, 68, 68, 0.16) 0%, transparent 60%),
-    linear-gradient(160deg, #fff7f6 0%, #ffe6e2 100%);
-  border-color: #fbd0ca;
+  background: linear-gradient(170deg, #fff7f6 0%, #ffe3df 100%);
+  border: 1px solid #fbd3cd;
+}
+
+.hathoro-campaign--cleaning .hathoro-campaign__stage {
+  background: radial-gradient(120% 90% at 50% 100%, #ffffff 0%, #fdecea 75%);
 }
 
 .hathoro-campaign--cleaning .hathoro-campaign__eyebrow {
@@ -2598,7 +2682,11 @@ h4, .h4 {
 .hathoro-campaign--navy {
   color: var(--hathoro-white);
   background: linear-gradient(135deg, #09172e 0%, #0f2342 58%, #16325c 100%);
-  border-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.hathoro-campaign--navy .hathoro-campaign__stage {
+  background: radial-gradient(120% 90% at 50% 100%, #ffffff 0%, #e8eef7 75%);
 }
 
 .hathoro-campaign--navy .hathoro-campaign__eyebrow {
@@ -2621,12 +2709,160 @@ h4, .h4 {
 }
 
 @media screen and (max-width: 749px) {
-  .hathoro-campaign {
-    min-height: 0;
-    padding: 2.2rem 2rem 2rem;
+  .hathoro-campaign__body {
+    padding: 1.8rem 1.8rem 2rem;
   }
 
   .hathoro-campaign__title {
-    font-size: 2.2rem;
+    font-size: 2.3rem;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hathoro-campaign,
+  .hathoro-campaign__product {
+    transition: none;
+  }
+}
+
+/* Top banner on its own, full width (14 Nov 2026: side promo cards and trust strip removed) */
+.hathoro-top-banners__grid--single {
+  grid-template-columns: 1fr !important;
+}
+
+/* Campaign banners now sit at the end of the homepage, just above the footer */
+.section-hathoro-campaigns .hathoro-campaigns {
+  padding-top: 3.6rem;
+}
+
+/* Homepage order (14 Nov 2026): top banner -> campaign banners -> trust strip -> looping products.
+   Campaigns now follow the top banner directly, so less space above them. */
+.section-hathoro-campaigns .hathoro-campaigns {
+  padding-top: 2.4rem;
+  padding-bottom: 0;
+}
+
+/* Trust strip as its own section */
+.hathoro-trust-section {
+  padding: 0.4rem 0 1.2rem;
+}
+
+.hathoro-trust-section .hathoro-top-trust-bar {
+  margin-top: 1.8rem;
+}
+
+/* --------------------------------------------------------------------------
+   LOOPING PRODUCT ROW (sections/hathoro-product-marquee.liquid, assets/hathoro-marquee.js)
+   -------------------------------------------------------------------------- */
+.hathoro-marquee-section {
+  padding: 2.4rem 0 3.6rem;
+}
+
+.hathoro-marquee__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.6rem;
+  margin-bottom: 1.6rem;
+}
+
+.hathoro-marquee__heading {
+  font-family: 'Montserrat', sans-serif;
+  font-weight: 800;
+  font-size: 2.4rem;
+  color: var(--hathoro-ink);
+  margin: 0;
+}
+
+.hathoro-marquee__all {
+  font-weight: 700;
+  font-size: 1.3rem;
+  color: var(--hathoro-navy);
+  text-decoration: none;
+}
+
+/* The row runs inside the page margins, lined up with the trust strip and banners above
+   (owner, 14 Nov 2026): cards slide in at the right edge and out at the left edge. */
+.hathoro-marquee {
+  display: block;
+  overflow: hidden;
+  padding: 1rem 0 1.4rem;
+}
+
+.hathoro-marquee__track {
+  display: flex;
+  gap: 1.8rem;
+  width: max-content;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  will-change: transform;
+}
+
+.hathoro-marquee__item {
+  flex: 0 0 23rem;
+  display: flex;
+}
+
+.hathoro-marquee__item > .card-wrapper {
+  width: 100%;
+}
+
+@media screen and (min-width: 990px) {
+  .hathoro-marquee__item {
+    flex-basis: 25rem;
+  }
+}
+
+/* Fewer products than the screen is wide: no motion, centred */
+.hathoro-marquee.is-static .hathoro-marquee__track {
+  margin: 0 auto;
+}
+
+/* Reduced motion: a row the visitor scrolls by hand */
+.hathoro-marquee.is-manual {
+  overflow-x: auto;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+/* Top banner category box: every category, 3 across (14 Nov 2026) */
+.hathoro-hero-main__showcase-grid--all {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.7rem;
+}
+
+.hathoro-hero-main__showcase-grid--all .hathoro-hero-main__showcase-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 7.4rem;
+  padding: 0.8rem 0.5rem;
+}
+
+.hathoro-hero-main__showcase-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.hathoro-hero-main__showcase-grid--all .hathoro-hero-main__showcase-item span {
+  font-size: 1.1rem;
+  line-height: 1.25;
+  margin-top: 0.5rem;
+}
+
+@media screen and (min-width: 750px) {
+  .hathoro-hero-main {
+    grid-template-columns: 1.2fr 1fr;
+  }
+}
+
+.hathoro-hero-main__showcase-item--all {
+  background: var(--hathoro-navy) !important;
+  border-color: var(--hathoro-navy) !important;
+}
+
+.hathoro-hero-main__showcase-item--all span {
+  color: var(--hathoro-white) !important;
 }

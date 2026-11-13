@@ -1,0 +1,59 @@
+{%- comment -%}
+  Trust strip (Same-Day Dispatch / OEM / Price Match / Support). Was hard-coded under the
+  homepage hero; a section since 14 Nov 2026 so it can sit anywhere on the homepage and its
+  four items can be edited in the theme editor.
+{%- endcomment -%}
+
+{%- if section.blocks.size > 0 -%}
+  <div class="hathoro-trust-section">
+    <div class="page-width">
+      <div class="hathoro-top-trust-bar">
+        {%- for block in section.blocks -%}
+          <div class="hathoro-top-trust-bar__item" {{ block.shopify_attributes }}>
+            {%- if block.settings.icon != blank -%}
+              <div class="hathoro-top-trust-bar__icon" aria-hidden="true">{{ block.settings.icon }}</div>
+            {%- endif -%}
+            <div>
+              <strong>{{ block.settings.title | escape }}</strong>
+              {%- if block.settings.text != blank -%}
+                <span>{{ block.settings.text | escape }}</span>
+              {%- endif -%}
+            </div>
+          </div>
+        {%- endfor -%}
+      </div>
+    </div>
+  </div>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Trust strip",
+  "tag": "div",
+  "class": "section-hathoro-trust",
+  "max_blocks": 4,
+  "settings": [],
+  "blocks": [
+    {
+      "type": "item",
+      "name": "Item",
+      "settings": [
+        { "type": "text", "id": "icon", "label": "Icon (an emoji)", "default": "⚡" },
+        { "type": "text", "id": "title", "label": "Title", "default": "Same-Day Dispatch" },
+        { "type": "text", "id": "text", "label": "Text", "default": "Orders placed before 3:00 PM CT" }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Trust strip",
+      "blocks": [
+        { "type": "item" },
+        { "type": "item" },
+        { "type": "item" },
+        { "type": "item" }
+      ]
+    }
+  ]
+}
+{% endschema %}

@@ -89,8 +89,8 @@ function accountCard(a) {
   const body = a.qr
     ? `<img class="qr" src="${esc(a.qr)}" alt="QR code to link ${esc(a.label)}'s WhatsApp">
        <p class="steps">On ${esc(a.label)}'s phone: WhatsApp → Linked Devices → Link a Device, then scan this code.</p>`
-    : `<p class="muted">Preparing the QR code…</p>`;
-  return `<div class="card"><h2>${dot}${esc(a.label)}<span class="status off">Not linked</span></h2>${body}</div>`;
+    : `<p class="muted">${a.reconnecting ? 'This number is linked. Reconnecting to WhatsApp…' : 'Preparing the QR code…'}</p>`;
+  return `<div class="card"><h2>${dot}${esc(a.label)}<span class="status off">${a.reconnecting ? 'Reconnecting' : 'Not linked'}</span></h2>${body}</div>`;
 }
 
 function buildAccounts(accounts) {

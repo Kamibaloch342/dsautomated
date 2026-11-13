@@ -21,43 +21,17 @@
       </ol>
     </nav>
 
+    {%- comment -%}
+      Title and description only (owner, 14 Nov 2026): no catalog label, badges or category
+      pills here; the navy menu bar above already lists every category.
+    {%- endcomment -%}
     <div class="hathoro-collection-header__card">
-      <div class="hathoro-collection-header__main">
-        <div>
-          <span class="hathoro-section-eyebrow">Hathoro Commercial &amp; Industrial Catalog</span>
-          <h1 class="hathoro-collection-header__title">
-            {{- collection.title | escape -}}
-          </h1>
-          {%- if section.settings.show_collection_description and collection.description != blank -%}
-            <div class="hathoro-collection-header__description rte">{{ collection.description }}</div>
-          {%- else -%}
-            <p class="hathoro-collection-header__description">
-              Authentic OEM supplies, commercial tools, and facility equipment in stock and ready for same-day dispatch before 3:00 PM CT.
-            </p>
-          {%- endif -%}
-        </div>
-        <div class="hathoro-collection-header__meta">
-          <span class="hathoro-collection-header__count">
-            ● {{ collection.all_products_count }} {{ collection.all_products_count | pluralize: 'Product', 'Products' }} Available
-          </span>
-          <span class="hathoro-collection-header__ship">⚡ Ships Same Day Before 3PM CT</span>
-        </div>
-      </div>
-
-      <!-- Dynamic Collection / Category Quick Switcher Pills -->
-      <div class="hathoro-collection-pills" role="navigation" aria-label="Departments">
-        <a href="{{ routes.all_products_collection_url }}" class="hathoro-collection-pill{% if collection.handle == 'all' %} hathoro-collection-pill--active{% endif %}">
-          All Products
-        </a>
-        {%- for col in collections -%}
-          {%- unless col.handle == 'frontpage' or col.handle == 'all' or col.all_products_count == 0 -%}
-            <a href="{{ col.url }}" class="hathoro-collection-pill{% if collection.handle == col.handle %} hathoro-collection-pill--active{% endif %}">
-              {{ col.title | escape }}
-              <span class="hathoro-collection-pill__num">({{ col.all_products_count }})</span>
-            </a>
-          {%- endunless -%}
-        {%- endfor -%}
-      </div>
+      <h1 class="hathoro-collection-header__title">
+        {{- collection.title | escape -}}
+      </h1>
+      {%- if section.settings.show_collection_description and collection.description != blank -%}
+        <div class="hathoro-collection-header__description rte">{{ collection.description }}</div>
+      {%- endif -%}
     </div>
   </div>
 </div>

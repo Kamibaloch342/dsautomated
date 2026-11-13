@@ -1,4 +1,5 @@
 {
+    "gmail_organizer": {"enabled": false},
     "profiles": {
         "DM_COUPON": {
             "target_label": "MR",
@@ -115,7 +116,7 @@
         "worker_url": "https://dark-meadow-74d3.kamibaloch342.workers.dev"
     },
     "whatsapp": {
-        "enabled": false,
+        "enabled": true,
         "recipient_phone": "120363419946377042@g.us",
         "server_url": "http://127.0.0.1:3005",
         "groups": {

@@ -397,7 +397,7 @@
         <!-- Top Industrial Hero & Promo Banners Showcase -->
         <section class="hathoro-top-banners">
           <div class="page-width">
-            <div class="hathoro-top-banners__grid">
+            <div class="hathoro-top-banners__grid hathoro-top-banners__grid--single">
               <!-- Left Main Hero Banner -->
               <div class="hathoro-hero-main">
                 <div class="hathoro-hero-main__content">
@@ -415,17 +415,20 @@
                     <span class="hathoro-hero-main__showcase-badge">● In Stock &amp; Ready</span>
                     <span class="hathoro-hero-main__showcase-sku">100% OEM Brands</span>
                   </div>
-                  <div class="hathoro-hero-main__showcase-grid">
-                    {%- assign hathoro_showcase = 'material-handling,footwear-safety,shipping-packaging-office-supplies,vehicle-maintenance-automotive' | split: ',' -%}
-                    {%- for h in hathoro_showcase -%}
+                  {%- comment -%} Every category with products, read from the store (owner, 14 Nov 2026) {%- endcomment -%}
+                  <div class="hathoro-hero-main__showcase-grid hathoro-hero-main__showcase-grid--all">
+                    {%- for h in hathoro_handles -%}
+                      {%- if h == 'best-sellers' -%}{%- continue -%}{%- endif -%}
                       {%- assign col = collections[h] -%}
-                      {%- if col.all_products_count > 0 -%}
-                        <a href="{{ col.url }}" class="hathoro-hero-main__showcase-item">
-                          <div style="font-size:2.4rem;">{% render 'hathoro-collection-icon', handle: h %}</div>
-                          <span>{% render 'hathoro-collection-label', handle: h, title: col.title %}</span>
-                        </a>
-                      {%- endif -%}
+                      <a href="{{ col.url }}" class="hathoro-hero-main__showcase-item" title="{{ col.title | escape }} ({{ col.all_products_count }})">
+                        <div class="hathoro-hero-main__showcase-icon" aria-hidden="true">{% render 'hathoro-collection-icon', handle: h %}</div>
+                        <span>{% render 'hathoro-collection-label', handle: h, title: col.title %}</span>
+                      </a>
                     {%- endfor -%}
+                    <a href="{{ routes.all_products_collection_url }}" class="hathoro-hero-main__showcase-item hathoro-hero-main__showcase-item--all">
+                      <div class="hathoro-hero-main__showcase-icon" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"></circle><circle cx="20" cy="21" r="1"></circle><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"></path></svg></div>
+                      <span>All Products</span>
+                    </a>
                   </div>
                   <div class="hathoro-hero-main__showcase-footer">
                     <span>Up to 25% Off Trade Catalog</span>
@@ -434,58 +437,8 @@
                 </div>
               </div>
 
-              <!-- Right Stacked Promo Banners -->
-              <div class="hathoro-hero-side">
-                <div class="hathoro-promo-card hathoro-promo-card--navy-tint">
-                  <div>
-                    <span class="hathoro-promo-card__badge">Save Up to 25%</span>
-                    <h3 class="hathoro-promo-card__title">Fleet, Shop &amp; Hardware Essentials</h3>
-                    <p class="hathoro-promo-card__desc">Direct commercial markdowns on synthetic lubricants, precision fasteners &amp; heavy-duty hand tools.</p>
-                  </div>
-                  <a href="{{ routes.all_products_collection_url }}" class="hathoro-promo-card__link">Shop Trade Deals →</a>
-                </div>
-                <div class="hathoro-promo-card hathoro-promo-card--accent-tint">
-                  <div>
-                    <span class="hathoro-promo-card__badge">Hathoro Pro Advantage</span>
-                    <h3 class="hathoro-promo-card__title">Free Shipping Over $50 + Price Match</h3>
-                    <p class="hathoro-promo-card__desc">Backed by our 30-Day No-Hassle Guarantee and dedicated U.S. commercial support desk.</p>
-                  </div>
-                  <a href="{{ hathoro_best_url }}" class="hathoro-promo-card__link">Explore Best Sellers →</a>
-                </div>
-              </div>
             </div>
 
-            <!-- 4-Pillar Top Trust Strip -->
-            <div class="hathoro-top-trust-bar">
-              <div class="hathoro-top-trust-bar__item">
-                <div class="hathoro-top-trust-bar__icon">⚡</div>
-                <div>
-                  <strong>Same-Day Dispatch</strong>
-                  <span>Orders placed before 3:00 PM CT</span>
-                </div>
-              </div>
-              <div class="hathoro-top-trust-bar__item">
-                <div class="hathoro-top-trust-bar__icon">🛡️</div>
-                <div>
-                  <strong>100% Authentic OEM</strong>
-                  <span>Factory-sealed commercial supply</span>
-                </div>
-              </div>
-              <div class="hathoro-top-trust-bar__item">
-                <div class="hathoro-top-trust-bar__icon">🏷️</div>
-                <div>
-                  <strong>Price Match Promise</strong>
-                  <span>We match any authorized dealer</span>
-                </div>
-              </div>
-              <div class="hathoro-top-trust-bar__item">
-                <div class="hathoro-top-trust-bar__icon">📞</div>
-                <div>
-                  <strong>U.S. Trade Support</strong>
-                  <span>Call (727) 609-8404 Mon–Fri</span>
-                </div>
-              </div>
-            </div>
           </div>
         </section>
 

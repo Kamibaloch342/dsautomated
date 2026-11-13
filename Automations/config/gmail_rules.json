@@ -1,57 +1,248 @@
 {
-  "_comment": "Gmail organizer rules (scripts/gmail_organizer.py). Rules are tried top to bottom and the FIRST match wins, so a mail gets exactly one label. 'query' is ordinary Gmail search syntax. archive=true takes the mail out of the inbox once it is older than archive_after_days (it keeps its label and stays searchable; the automations search all mail, never the inbox). archive=false = label only, the mail stays in the inbox because a person has to look at it. Nothing is ever deleted or marked read. A mail the organizer already archived is never archived again, so moving one back to the inbox sticks.",
-  "label_prefix": "Kamran",
-  "archive_after_days": 1,
+  "_comment": "Gmail organizer rules (scripts/gmail_organizer.py). Owner's tree, 14 Nov 2026: ONLY Amazon (10 labels), Zoro (8, Tax Zoro added 14 Nov) and MaxWarehouse (2); all of them skip the inbox, everything else comes into the inbox unlabelled. Each rule is also a Gmail filter (--sync-filters); the hourly run labels what no filter did (first matching rule wins). Gmail applies EVERY matching filter, so queries must not overlap (--dry-run prints overlaps). read=true: marked read (routine records); without it the mail stays unread so the label's count is a to-do list. Nothing is ever deleted; no automation reads the inbox, labels or unread state.",
   "hub_inbox": "mkamrankhan342",
-  "_hub_comment": "Every store Gmail forwards into the hub inbox. There each mail is labelled under the Gmail it was delivered to first (ZUHRA/<source>/<rule label>, matched with Gmail's deliveredto: search), and the hub's own mail under ZUHRA/mkamrankhan342/... source_names renames a source's folder; any inbox not listed uses its token name.",
-  "source_names": {"qurtdis": "qurtdis (HOANK)", "abecomllc26": "abecomllc26 (Hathoro)"},
+  "mailbox_label": "",
+  "_hub_comment": "14 Nov 2026: owner wants no per-source Mailbox/… folders in the hub — mailbox_label empty = off.",
+  "old_label_roots": [
+    "Kamran",
+    "ZUHRA"
+  ],
+  "read_older_than_days": 7,
   "rules": [
-    {"label": "Amazon/Customer messages", "archive": false,
-     "query": "from:marketplace.amazon.com -subject:\"Your e-mail to\""},
-    {"label": "Amazon/Cancel requests", "archive": false,
-     "query": "from:donotreply@amazon.com subject:\"Order cancelation request\""},
-    {"label": "Amazon/Account health", "archive": false,
-     "query": "from:amazon.com subject:(\"at risk of\" OR \"Action Required\" OR \"Take action\" OR \"Reactivate listings\" OR \"Performance Notification\" OR \"policy violation\" OR \"deactivat\")"},
-    {"label": "Amazon/Cases", "archive": false,
-     "query": "from:(merch.service05@amazon.com OR seller-performance@amazon.com) OR subject:(\"CaseID\" OR \"CASE #\")"},
-    {"label": "Zoro/Support", "archive": false,
-     "query": "from:(askzoro@zoro.com OR resolution_team@zoro.com)"},
-    {"label": "Zoro/Cash refunds", "archive": false,
-     "query": "from:do-not-reply@zoro.com subject:\"Cash Refund\""},
-    {"label": "Money", "archive": false,
-     "query": "from:(payoneer.com OR revolut.com OR wise.com) -subject:\"daily update on\""},
-
-    {"label": "Amazon/Sold - Ship now", "archive": true,
-     "query": "subject:\"Sold, ship now\""},
-    {"label": "Amazon/Messages sent to customers", "archive": true,
-     "query": "subject:\"Your e-mail to\""},
-    {"label": "Amazon/Cancelled", "archive": true,
-     "query": "from:amazon.com subject:(\"has been cancelled as per\" OR \"has been canceled\")"},
-    {"label": "Amazon/Returns", "archive": true,
-     "query": "subject:(\"Return authorization notification\" OR \"Refund Initiated\")"},
-    {"label": "Amazon/Listings", "archive": true,
-     "query": "from:donotreply@amazon.com subject:(\"Listing Created\" OR \"New Product Success\" OR \"peak season\")"},
-    {"label": "Zoro/Receipts", "archive": true,
-     "query": "from:do-not-reply@zoro.com subject:(\"Your Receipt for Order\" OR \"Sales Order\")"},
-    {"label": "Zoro/Order received", "archive": true,
-     "query": "from:zoro@e.zoro.com subject:\"has been received\""},
-    {"label": "Zoro/Shipped", "archive": true,
-     "query": "from:zoro@e.zoro.com subject:\"has shipped\""},
-    {"label": "Zoro/Delivered", "archive": true,
-     "query": "from:zoro@e.zoro.com subject:\"Delivered\""},
-    {"label": "Zoro/Returns", "archive": true,
-     "query": "from:zoro@zoro.narvar.com OR (from:do-not-reply@zoro.com subject:\"Return Auth\")"},
-    {"label": "Zoro/Case receipts", "archive": true,
-     "query": "from:do-not-reply@zoro.com subject:\"Case\""},
-    {"label": "Walmart", "archive": false,
-     "query": "from:relay.walmart.com -subject:\"New Walmart Marketplace orders received\""},
-    {"label": "Walmart/New orders", "archive": true,
-     "query": "from:relay.walmart.com subject:\"New Walmart Marketplace orders received\""},
-    {"label": "Shopify", "archive": false,
-     "query": "from:(shopify.com OR shopifyemail.com OR matrixify.app)"},
-    {"label": "Reports", "archive": true,
-     "query": "from:lonesomelabs.com OR (from:wise.com subject:\"daily update on\")"},
-    {"label": "Promotions", "archive": true,
-     "query": "category:promotions OR category:social"}
-  ]
+    {
+      "label": "Amazon/Sold, Ship Now",
+      "read": true,
+      "query": "subject:\"Sold, ship now\"",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Returns",
+      "read": true,
+      "query": "subject:(\"Return authorization notification\" OR \"Return authorization request\")",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Refunds",
+      "read": true,
+      "query": "subject:\"Refund Initiated\"",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Customer Messages Sent",
+      "read": true,
+      "query": "subject:\"Your e-mail to\"",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Customer Messages Received",
+      "query": "from:marketplace.amazon.com -subject:\"Your e-mail to\"",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Listings Created & Updates",
+      "read": true,
+      "query": "((from:amazon.com -from:(marketplace.amazon.com OR atoz-guarantee-no-reply@amazon.com OR cb-seller-notification@amazon.com) subject:(listing OR listings OR \"New Product Success\" OR \"Featured Offer\" OR \"peak season\" OR \"price recommendation\" OR \"List Price\" OR \"Shipping options suppressed\") -subject:(\"Sold, ship now\" OR \"Your e-mail to\" OR \"Order cancelation request\" OR CaseID OR CASE OR \"Return authorization\" OR \"Refund Initiated\")) OR from:(price-recommendations-us@amazon.com OR buyability-improvement-na@amazon.com)) -from:(sell.amazon.com OR ads.amazon.com)",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Cancelled Orders",
+      "query": "from:amazon.com subject:\"Order cancelation request\"",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Cancelled Orders",
+      "read": true,
+      "query": "from:amazon.com -from:(marketplace.amazon.com OR atoz-guarantee-no-reply@amazon.com OR cb-seller-notification@amazon.com) subject:(\"has been cancelled\" OR \"has been canceled\") -subject:(\"Order cancelation request\" OR \"Sold, ship now\" OR \"Your e-mail to\")",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Cases",
+      "read": true,
+      "query": "from:amazon.com -from:marketplace.amazon.com subject:\"Thank you for submitting a new contact\"",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Cases",
+      "query": "(from:(merch.service05@amazon.com OR seller-performance@amazon.com) OR (from:(do-not-reply@amazon.com OR donotreply@amazon.com) subject:(CaseID OR CASE) -subject:(\"Sold, ship now\" OR \"Your e-mail to\" OR \"Listing Created\" OR \"Order cancelation request\"))) -subject:\"Thank you for submitting a new contact\"",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Account Health",
+      "query": "from:order-update@amazon.com subject:(\"at risk of\" OR \"Action Required\")",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Account Health",
+      "query": "(from:amazon.com -from:(order-update@amazon.com OR cb-seller-notification@amazon.com OR atoz-guarantee-no-reply@amazon.com OR marketplace.amazon.com OR merch.service05@amazon.com OR seller-performance@amazon.com) subject:(\"Performance Notification\" OR \"policy violation\" OR deactivated OR deactivation OR suspended OR \"Rights Infringement\" OR \"Infringement Complaint\" OR \"account health\" OR \"selling account\" OR \"Revision to Your Amazon.com Account\") -subject:(listing OR listings OR \"New Product Success\" OR \"Featured Offer\" OR \"peak season\" OR \"price recommendation\" OR \"List Price\" OR \"Shipping options suppressed\") -subject:(CaseID OR CASE OR \"Sold, ship now\" OR \"Your e-mail to\")) -from:(sell.amazon.com OR ads.amazon.com)",
+      "inbox": false
+    },
+    {
+      "label": "Amazon/Claims (A-to-z & Chargebacks)",
+      "query": "(from:(atoz-guarantee-no-reply@amazon.com OR cb-seller-notification@amazon.com) OR (from:amazon.com -from:marketplace.amazon.com subject:(chargeback OR chargebacks OR \"A-to-z\") -subject:(\"Sold, ship now\" OR \"Your e-mail to\"))) -from:(sell.amazon.com OR ads.amazon.com)",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Orders Received",
+      "read": true,
+      "query": "from:zoro@e.zoro.com subject:\"has been received\"",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Orders Shipped",
+      "read": true,
+      "query": "from:zoro@e.zoro.com subject:\"has shipped\"",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Invoices & Cash Sales Receipts",
+      "read": true,
+      "query": "from:do-not-reply@zoro.com subject:(Receipt OR \"Sales Order\" OR Invoice) -subject:(\"Cash Refund\" OR \"Credit Memo\" OR Case)",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Delivered",
+      "read": true,
+      "query": "from:zoro@e.zoro.com subject:Delivered",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Order Cancellations",
+      "query": "(from:zoro@e.zoro.com subject:(\"important change\" OR cancelled OR canceled OR cancellation OR cancelation) -subject:(\"has been received\" OR \"has shipped\" OR Delivered)) OR (from:(askzoro@zoro.com OR resolution_team@zoro.com) subject:(cancel OR cancels OR cancelled OR canceled OR cancellation OR cancelation)) OR (from:do-not-reply@zoro.com subject:Case subject:(cancel OR cancels OR cancelled OR canceled OR cancellation OR cancelation))",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Refunds & Credit Memos",
+      "read": true,
+      "query": "from:do-not-reply@zoro.com (subject:(\"Cash Refund\" OR \"Credit Memo\") OR (subject:Case subject:(refund OR refunds))) -subject:(cancel OR cancels OR cancelled OR canceled OR cancellation OR cancelation) -subject:(return OR returns OR \"Return Authorization\" OR \"Return Auth\" OR \"Return Confirmation\")",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Refunds & Credit Memos",
+      "query": "from:(askzoro@zoro.com OR resolution_team@zoro.com) subject:(refund OR refunds) -subject:(cancel OR cancels OR cancelled OR canceled OR cancellation OR cancelation) -subject:(return OR returns OR \"Return Authorization\" OR \"Return Auth\" OR \"Return Confirmation\")",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Returns",
+      "read": true,
+      "query": "from:(zoro.narvar.com OR zoro.narvarnotify.com OR rxo.com) OR (from:do-not-reply@zoro.com subject:(return OR returns OR \"Return Authorization\" OR \"Return Auth\" OR \"Return Confirmation\") -subject:(cancel OR cancels OR cancelled OR canceled OR cancellation OR cancelation) -subject:(\"Cash Refund\" OR \"Credit Memo\"))",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Returns",
+      "query": "from:(askzoro@zoro.com OR resolution_team@zoro.com) subject:(return OR returns OR \"Return Authorization\" OR \"Return Auth\" OR \"Return Confirmation\") -subject:(cancel OR cancels OR cancelled OR canceled OR cancellation OR cancelation)",
+      "inbox": false
+    },
+    {
+      "label": "Zoro/Tax Zoro",
+      "inbox": false,
+      "query": "from:(salestaxzoro@zoro.com OR salestax@zoro.com)"
+    },
+    {
+      "label": "MaxWarehouse/Orders Received",
+      "read": true,
+      "query": "from:maxwarehouse.com subject:\"order has been received\"",
+      "inbox": false
+    },
+    {
+      "label": "MaxWarehouse/Orders Shipped",
+      "read": true,
+      "query": "from:maxwarehouse.com subject:(shipment OR shipped) -subject:(canceled OR cancelled OR \"order has been received\")",
+      "inbox": false
+    }
+  ],
+  "label_colors": {
+    "Amazon": {
+      "backgroundColor": "#ff7537",
+      "textColor": "#ffffff"
+    },
+    "Zoro": {
+      "backgroundColor": "#285bac",
+      "textColor": "#ffffff"
+    },
+    "MaxWarehouse": {
+      "backgroundColor": "#464646",
+      "textColor": "#ffffff"
+    },
+    "Amazon/Sold, Ship Now": {
+      "backgroundColor": "#fad165",
+      "textColor": "#000000"
+    },
+    "Amazon/Returns": {
+      "backgroundColor": "#ffad46",
+      "textColor": "#000000"
+    },
+    "Amazon/Refunds": {
+      "backgroundColor": "#f691b2",
+      "textColor": "#000000"
+    },
+    "Amazon/Customer Messages Sent": {
+      "backgroundColor": "#a4c2f4",
+      "textColor": "#000000"
+    },
+    "Amazon/Customer Messages Received": {
+      "backgroundColor": "#3c78d8",
+      "textColor": "#ffffff"
+    },
+    "Amazon/Listings Created & Updates": {
+      "backgroundColor": "#b99aff",
+      "textColor": "#000000"
+    },
+    "Amazon/Cancelled Orders": {
+      "backgroundColor": "#cc3a21",
+      "textColor": "#ffffff"
+    },
+    "Amazon/Cases": {
+      "backgroundColor": "#8e63ce",
+      "textColor": "#ffffff"
+    },
+    "Amazon/Account Health": {
+      "backgroundColor": "#fb4c2f",
+      "textColor": "#ffffff"
+    },
+    "Amazon/Claims (A-to-z & Chargebacks)": {
+      "backgroundColor": "#e07798",
+      "textColor": "#ffffff"
+    },
+    "Zoro/Orders Received": {
+      "backgroundColor": "#98d7e4",
+      "textColor": "#000000"
+    },
+    "Zoro/Orders Shipped": {
+      "backgroundColor": "#2da2bb",
+      "textColor": "#ffffff"
+    },
+    "Zoro/Invoices & Cash Sales Receipts": {
+      "backgroundColor": "#b3efd3",
+      "textColor": "#000000"
+    },
+    "Zoro/Delivered": {
+      "backgroundColor": "#149e60",
+      "textColor": "#ffffff"
+    },
+    "Zoro/Order Cancellations": {
+      "backgroundColor": "#eaa041",
+      "textColor": "#000000"
+    },
+    "Zoro/Refunds & Credit Memos": {
+      "backgroundColor": "#d5ae49",
+      "textColor": "#000000"
+    },
+    "Zoro/Returns": {
+      "backgroundColor": "#653e9b",
+      "textColor": "#ffffff"
+    },
+    "MaxWarehouse/Orders Received": {
+      "backgroundColor": "#43d692",
+      "textColor": "#000000"
+    },
+    "MaxWarehouse/Orders Shipped": {
+      "backgroundColor": "#0b804b",
+      "textColor": "#ffffff"
+    },
+    "Zoro/Tax Zoro": {
+      "backgroundColor": "#994a64",
+      "textColor": "#ffffff"
+    }
+  },
+  "_colors_comment": "14 Nov 2026, owner: every label its own colour (Gmail's palette only), the same in every inbox; --sync-colors applies them."
 }

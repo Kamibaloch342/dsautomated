@@ -138,10 +138,20 @@ agent and the dashboard run as macOS LaunchAgents.
   `scripts/generate_<store>_offers_report.py` over the listings that sold in 30 days; since 10 Nov
   2026 `utils/listing_watch.py` reads brand, rating, number of ratings and category off the same
   page and sends one WhatsApp message per store with what changed on the own-brand (PL) listings,
-  other sellers included (`data/pl_watch_state.json`). **Gmail organizer** `scripts/gmail_organizer.py` (31 Oct 2026): ZUHRA/…
-  labels on every inbox from `config/gmail_rules.json`, routine mail archived; in the forwarding hub
-  mkamrankhan342 one folder per source Gmail. Acts only on inboxes with a
-  `<inbox>_modify_token.json` (`--authorize`); never deletes; no reader searches by inbox or label.
+  other sellers included (`data/pl_watch_state.json`). **Gmail organizer** `scripts/gmail_organizer.py` (rebuilt
+  13 Nov 2026; owner's tree since 14 Nov): ONLY **Amazon** (Sold, Ship Now · Returns · Refunds ·
+  Customer Messages Sent / Received · Listings Created & Updates · Cancelled Orders · Cases · Account
+  Health · Claims (A-to-z & Chargebacks)), **Zoro** (Orders Received / Shipped · Invoices & Cash Sales
+  Receipts · Delivered · Order Cancellations · Refunds & Credit Memos · Returns) and **MaxWarehouse**
+  (Orders Received / Shipped), from `config/gmail_rules.json`, the same in every inbox, each label its
+  own colour (`label_colors`, `--sync-colors`). All of it skips the inbox; everything else comes into
+  the inbox unlabelled (owner's rule — no Money/Walmart/Newsletters/Mailbox labels). The rules are also
+  **Gmail filters** in qurtdis, abecomllc26, asad_amazon_us and the hub mkamrankhan342
+  (`--sync-filters`); action labels (customer messages received, claims, cases, account health, cancel
+  requests, Zoro cancellations) stay unread as a to-do count. The hourly run only labels what no filter
+  did. Changes need `<inbox>_modify_token.json` (`--authorize`: modify + filters); never deletes mail;
+  no reader searches by inbox, label or unread. Rule change → `--dry-run --days 14` (overlaps) →
+  `--sync-filters`. 14 Nov move: `scripts/archive/gmail_restructure_2026_11_14.py`.
 * **Data** — `data/automations_unified.db` (master, WAL), `data/gmail_archive.db` (email archive),
   the Google Sheet (SKU map / coupons / priority — team-edited, sacred), `config/accounts.json`
   (accounts, inboxes, carrier API keys), `bot_config.json` (runtime knobs).

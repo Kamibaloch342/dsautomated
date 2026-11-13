@@ -26,6 +26,19 @@ const MEDIA_DIR = path.join(__dirname, 'queue_media');
 const BOT_CONFIG = path.join(__dirname, '..', 'bot_config.json');
 const PID_FILE = path.join(__dirname, 'gateway.pid');
 const INBOX_FILE = path.join(__dirname, 'inbox.json');
+const EVENTS_FILE = path.join(__dirname, 'gateway_events.log');
+
+// The gateway is started with its output thrown away (utils/whatsapp.py), so what happened to a
+// WhatsApp login could not be read afterwards. Link / close / restart lines are kept here.
+function note(line) {
+    console.log(line);
+    try {
+        if (fs.existsSync(EVENTS_FILE) && fs.statSync(EVENTS_FILE).size > 1024 * 1024) {
+            fs.renameSync(EVENTS_FILE, EVENTS_FILE + '.1');
+        }
+        fs.appendFileSync(EVENTS_FILE, `${new Date().toISOString()} ${String(line).trim()}\n`);
+    } catch (e) { /* the log is a convenience */ }
+}
 
 // A library rejection nobody caught must not take both WhatsApp logins down with it.
 process.on('unhandledRejection', (e) => console.error('  [Gateway] ⚠️ unhandled rejection:', e && e.message));
@@ -37,6 +50,8 @@ const ACCOUNTS = [
     { id: 'hifza',  label: 'Hifza',  authDir: path.join(__dirname, 'auth_session_hifza') },
 ].map(a => Object.assign(a, {
     sock: null, generation: 0, startTimer: null,
+    startedAt: 0, settled: false,                      // settled: this start reached a QR code or a login
+    hasLogin: false,                                   // a saved login is on disk: it reconnects, no QR is due
     qr: null, qrDataURL: null, connected: false, userJid: null, phone: null,
     ids: new Set(),                                    // this number's phone + LID; kept while it reconnects
     groups: null, groupsAt: 0, groupsBusy: false,      // groups: Map jid → name; null until fetched
@@ -218,6 +233,7 @@ app.post('/inbox/seen', (req, res) => {
 function scheduleStart(acc, ms) {
     clearTimeout(acc.startTimer);          // one pending start per number, or two sockets fight
     acc.startTimer = setTimeout(() => {
+        acc.startTimer = null;
         startWhatsApp(acc).catch((e) => {
             console.error(`  [${acc.label}] ⚠️ could not start:`, e.message);
             scheduleStart(acc, 5000);
@@ -255,7 +271,10 @@ async function refreshGroups(acc) {
 async function startWhatsApp(acc) {
     const generation = ++acc.generation;
     const isCurrent = () => generation === acc.generation;   // events of a replaced socket are ignored
+    acc.startedAt = Date.now();
+    acc.settled = false;
     const { state, saveCreds } = await useMultiFileAuthState(acc.authDir);
+    if (isCurrent()) acc.hasLogin = !!(state.creds && state.creds.me);
     const { version } = await fetchLatestBaileysVersion();
     if (!isCurrent()) return;
 
@@ -283,6 +302,8 @@ async function startWhatsApp(acc) {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
+            acc.settled = true;
+            acc.hasLogin = false;
             acc.qr = qr;
             try {
                 acc.qrDataURL = await QRCode.toDataURL(qr, { margin: 2, width: 280 });
@@ -301,17 +322,19 @@ async function startWhatsApp(acc) {
             markOffline(acc);
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const loggedOut = statusCode === DisconnectReason.loggedOut;
-            console.log(`\n⚠️  [${acc.label}] connection closed (code ${statusCode}). Logged out: ${loggedOut}`);
-            if (loggedOut) purgeSession(acc);
+            note(`⚠️  [${acc.label}] connection closed (code ${statusCode}). Logged out: ${loggedOut}`);
+            if (loggedOut) { purgeSession(acc); acc.hasLogin = false; }
             scheduleStart(acc, loggedOut ? 2000 : 3000);
         } else if (connection === 'open') {
             acc.connected = true;
+            acc.settled = true;
+            acc.hasLogin = true;
             acc.qr = null;
             acc.qrDataURL = null;
             acc.phone = sock.user.id.split(':')[0].split('@')[0];
             acc.userJid = `${acc.phone}@s.whatsapp.net`;
             acc.ids = new Set([acc.phone, jidUser(sock.user.lid)].filter(Boolean));
-            console.log(`\n✅ [${acc.label}] WhatsApp linked: +${acc.phone}\n`);
+            note(`✅ [${acc.label}] WhatsApp linked: +${acc.phone}`);
             setTimeout(() => { if (isCurrent()) refreshGroups(acc); }, 3000);
         }
     });
@@ -330,8 +353,33 @@ async function unlink(acc) {
         try { await old.end(undefined); } catch (e) { /* already closed */ }
     }
     purgeSession(acc);
+    acc.hasLogin = false;
     scheduleStart(acc, 1000);
 }
+
+// ── A start that never finishes (13 Nov 2026) ─────────────────────────────────────────────────
+// The numbers reconnect about every ten minutes. On 13 Nov at 19:30 Kamran's new connection never
+// opened and never failed: the WebSocket stayed "connecting" with no network connection behind it,
+// the library's 20 s timeout did not fire, so no "close" came and nothing started it again. The page
+// said "Preparing the QR code…" for 3 h 45 min while the saved login was fine, and 248 alerts
+// waited. A start that has reached neither a QR code nor a login after STUCK_MS is dropped and
+// started again; the saved login is not touched.
+const STUCK_MS = 60 * 1000;
+function restartIfStuck(acc) {
+    if (acc.connected || acc.settled || acc.startTimer || !acc.startedAt) return;
+    if (Date.now() - acc.startedAt < STUCK_MS) return;
+    note(`⚠️  [${acc.label}] no connection ${Math.round((Date.now() - acc.startedAt) / 1000)} s after starting — starting again`);
+    acc.generation += 1;               // whatever the stuck socket does later is ignored
+    const old = acc.sock;
+    acc.sock = null;
+    markOffline(acc);
+    acc.qr = null;
+    acc.qrDataURL = null;
+    acc.startedAt = 0;
+    if (old) Promise.resolve().then(() => old.end(new Error('stuck while connecting'))).catch(() => { /* already gone */ });
+    scheduleStart(acc, 1000);
+}
+setInterval(() => ACCOUNTS.forEach(restartIfStuck), 15 * 1000);
 
 setInterval(() => ACCOUNTS.forEach(refreshGroups), 5 * 60 * 1000);
 
@@ -362,6 +410,7 @@ app.get('/state', (req, res) => {
         accounts: ACCOUNTS.map(a => ({
             id: a.id, label: a.label, connected: a.connected, phone: a.phone,
             qr: a.connected ? null : a.qrDataURL,
+            reconnecting: !a.connected && a.hasLogin,
             waiting: queue.filter(m => senderOf(m) === a).length,
         })),
         lanes: LANES.map(l => {
@@ -673,7 +722,7 @@ try {
 
 const server = app.listen(PORT, '127.0.0.1', () => {
     fs.writeFileSync(PID_FILE, String(process.pid));
-    console.log(`\n🚀 ZUHRA WhatsApp Gateway listening on http://127.0.0.1:${PORT}`);
+    note(`🚀 ZUHRA WhatsApp Gateway listening on http://127.0.0.1:${PORT} (pid ${process.pid})`);
     readConfig();
     ACCOUNTS.forEach(a => scheduleStart(a, 0));
 });

@@ -29,7 +29,26 @@
             endif
           -%}
           <a href="{{ url }}" class="hathoro-campaign hathoro-campaign--{{ block.settings.style }}" {{ block.shopify_attributes }}>
-            <div class="hathoro-campaign__text">
+            {%- if picks != blank -%}
+              <div class="hathoro-campaign__stage" aria-hidden="true">
+                {%- for p in picks limit: 3 -%}
+                  {%- if p.featured_image -%}
+                    <span class="hathoro-campaign__product hathoro-campaign__product--{{ forloop.index }}">
+                      <img
+                        src="{{ p.featured_image | image_url: width: 400 }}"
+                        srcset="{{ p.featured_image | image_url: width: 200 }} 200w, {{ p.featured_image | image_url: width: 400 }} 400w, {{ p.featured_image | image_url: width: 600 }} 600w"
+                        sizes="(min-width: 990px) 200px, (min-width: 750px) 22vw, 45vw"
+                        width="{{ p.featured_image.width }}"
+                        height="{{ p.featured_image.height }}"
+                        alt=""
+                        loading="lazy"
+                      >
+                    </span>
+                  {%- endif -%}
+                {%- endfor -%}
+              </div>
+            {%- endif -%}
+            <div class="hathoro-campaign__body">
               {%- if block.settings.eyebrow != blank -%}
                 <span class="hathoro-campaign__eyebrow">{{ block.settings.eyebrow | escape }}</span>
               {%- endif -%}
@@ -41,29 +60,15 @@
               {%- if block.settings.text != blank -%}
                 <p class="hathoro-campaign__sub">{{ block.settings.text | escape }}</p>
               {%- endif -%}
-              {%- if block.settings.button_label != blank -%}
-                <span class="hathoro-campaign__btn">{{ block.settings.button_label | escape }} <span aria-hidden="true">&rarr;</span></span>
-              {%- endif -%}
-            </div>
-            {%- if picks != blank -%}
-              <div class="hathoro-campaign__tiles" aria-hidden="true">
-                {%- for p in picks limit: 3 -%}
-                  {%- if p.featured_image -%}
-                    <span class="hathoro-campaign__tile">
-                      <img
-                        src="{{ p.featured_image | image_url: width: 320 }}"
-                        srcset="{{ p.featured_image | image_url: width: 160 }} 160w, {{ p.featured_image | image_url: width: 320 }} 320w, {{ p.featured_image | image_url: width: 480 }} 480w"
-                        sizes="(min-width: 990px) 140px, (min-width: 750px) 18vw, 28vw"
-                        width="{{ p.featured_image.width }}"
-                        height="{{ p.featured_image.height }}"
-                        alt=""
-                        loading="lazy"
-                      >
-                    </span>
-                  {%- endif -%}
-                {%- endfor -%}
+              <div class="hathoro-campaign__footer">
+                {%- if block.settings.button_label != blank -%}
+                  <span class="hathoro-campaign__btn">{{ block.settings.button_label | escape }} <span aria-hidden="true">&rarr;</span></span>
+                {%- endif -%}
+                {%- if col != blank and col.all_products_count > 0 -%}
+                  <span class="hathoro-campaign__count">{{ col.all_products_count }} products</span>
+                {%- endif -%}
               </div>
-            {%- endif -%}
+            </div>
           </a>
         {%- endfor -%}
       </div>

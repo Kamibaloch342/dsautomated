@@ -301,7 +301,8 @@
         "swipe_on_mobile": false,
         "padding_top": 12,
         "padding_bottom": 12
-      }
+      },
+      "disabled": true
     },
     "rich_text": {
       "type": "rich-text",
@@ -336,7 +337,8 @@
         "full_width": true,
         "padding_top": 32,
         "padding_bottom": 0
-      }
+      },
+      "disabled": true
     },
     "featured_collection1": {
       "type": "featured-collection",
@@ -364,7 +366,8 @@
         "swipe_on_mobile": true,
         "padding_top": 16,
         "padding_bottom": 24
-      }
+      },
+      "disabled": true
     },
     "featured_collection_YMXyAr": {
       "type": "featured-collection",
@@ -392,7 +395,8 @@
         "swipe_on_mobile": true,
         "padding_top": 16,
         "padding_bottom": 24
-      }
+      },
+      "disabled": true
     },
     "rich_text_UQDAyy": {
       "type": "rich-text",
@@ -428,7 +432,8 @@
         "full_width": true,
         "padding_top": 16,
         "padding_bottom": 0
-      }
+      },
+      "disabled": true
     },
     "featured_collection_8mGN7q": {
       "type": "featured-collection",
@@ -456,7 +461,8 @@
         "swipe_on_mobile": true,
         "padding_top": 16,
         "padding_bottom": 24
-      }
+      },
+      "disabled": true
     },
     "rich_text_eCVQhC": {
       "type": "rich-text",
@@ -492,7 +498,8 @@
         "full_width": true,
         "padding_top": 16,
         "padding_bottom": 0
-      }
+      },
+      "disabled": true
     },
     "rich_text_kF6w9j": {
       "type": "rich-text",
@@ -769,10 +776,10 @@
       "settings": {
         "desktop_content_position": "center",
         "content_alignment": "center",
-        "color_scheme": "scheme-2",
+        "color_scheme": "scheme-1",
         "full_width": false,
-        "padding_top": 68,
-        "padding_bottom": 0
+        "padding_top": 44,
+        "padding_bottom": 4
       }
     },
     "multicolumn_MmfRyB": {
@@ -864,7 +871,8 @@
         "full_width": true,
         "padding_top": 40,
         "padding_bottom": 52
-      }
+      },
+      "disabled": true
     },
     "hathoro_campaigns": {
       "type": "hathoro-campaign-banners",
@@ -932,10 +940,66 @@
       "settings": {
         "heading": ""
       }
+    },
+    "hathoro_trust": {
+      "type": "hathoro-trust-strip",
+      "blocks": {
+        "dispatch": {
+          "type": "item",
+          "settings": {
+            "icon": "⚡",
+            "title": "Same-Day Dispatch",
+            "text": "Orders placed before 3:00 PM CT"
+          }
+        },
+        "oem": {
+          "type": "item",
+          "settings": {
+            "icon": "🛡️",
+            "title": "100% Authentic OEM",
+            "text": "Factory-sealed commercial supply"
+          }
+        },
+        "match": {
+          "type": "item",
+          "settings": {
+            "icon": "🏷️",
+            "title": "Price Match Promise",
+            "text": "We match any authorized dealer"
+          }
+        },
+        "support": {
+          "type": "item",
+          "settings": {
+            "icon": "📞",
+            "title": "U.S. Trade Support",
+            "text": "Call (727) 609-8404 Mon–Fri"
+          }
+        }
+      },
+      "block_order": [
+        "dispatch",
+        "oem",
+        "match",
+        "support"
+      ],
+      "settings": {}
+    },
+    "hathoro_marquee": {
+      "type": "hathoro-product-marquee",
+      "settings": {
+        "heading": "",
+        "collection": "best-sellers",
+        "max_products": 30,
+        "speed": 40,
+        "quick_add": "standard"
+      }
     }
   },
   "order": [
     "hathoro_campaigns",
+    "hathoro_trust",
+    "hathoro_marquee",
     "slideshow_EtMKrn",
     "slideshow_gipB4a",
     "multicolumn",

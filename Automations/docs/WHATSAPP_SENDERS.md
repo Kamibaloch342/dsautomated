@@ -69,6 +69,21 @@ notification. Closing the window marks them read (`POST /inbox/seen`).
   without a popup. While the gateway itself is down, WhatsApp delivers them when it reconnects.
 * To watch more groups, add the lane to `INBOX_LANES`.
 
+## A linked number that shows "Not linked" (13 Nov 2026)
+
+Both numbers reconnect to WhatsApp about every ten minutes. On 13 Nov at 19:30 Kamran's new
+connection never opened and never failed (the WebSocket stayed "connecting" with no network
+connection behind it, and the library's 20 s timeout did not fire), so nothing started it again:
+the page said "Not linked — Preparing the QR code…" for 3 h 45 min with the saved login intact,
+and 248 alerts waited.
+
+* `restartIfStuck` in `server.js`: a start that has reached neither a QR code nor a login after
+  60 s is dropped and started again. The saved login is not touched.
+* The page says **Reconnecting** for a number whose login is saved; a QR code is due only for a
+  number with no saved login. Do not unlink or re-scan a number that says Reconnecting.
+* `whatsapp_gateway/gateway_events.log` (the gateway's own output is thrown away): gateway start,
+  every link, every close with its code, every stuck restart. Rolls over at 1 MB.
+
 ## Restarting
 
 Kill node on :3005. The next alert, or the launcher's **📲 Senders** button, starts it again through
