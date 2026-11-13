@@ -255,14 +255,20 @@ def check_inventory(driver, sku, qty):
     return avail.get('isCartable', False), status
 
 
-def first_alt_in_stock(driver, alts, qty):
+def first_alt_in_stock(driver, alts, qty, refuse=None):
     """The sheet's alternative codes, left to right: the first one in stock for *qty*.
     Returns (code, status, tried); code is '' when none is, tried = [(code, status)] for the ones
     passed over. A check that errors stops the walk, so a code further right is never bought only
-    because Zoro did not answer about the one the sheet prefers."""
+    because Zoro did not answer about the one the sheet prefers.
+    refuse(code) → a reason ('Extended lead time') to pass over an in-stock code, or '' to take it."""
     tried = []
     for alt in alts or []:
         cartable, status = check_inventory(driver, alt, qty)
+        if cartable and refuse:
+            why = refuse(alt)
+            if why:
+                tried.append((alt, why))
+                continue
         if cartable:
             return alt, status, tried
         tried.append((alt, status))
@@ -395,6 +401,24 @@ def get_expected_delivery(driver, items, zip_code):
 
     It answers for ANY SKU, in stock or not (27 Oct 2026: 'tomorrow' for the backordered G7467735 and the
     out-of-stock G7467787), so only ask it about SKUs check_inventory() said are in stock."""
+    detail = get_expected_delivery_detail(driver, items, zip_code)
+    return {s: v["date"] for s, v in detail.items() if v.get("date")}
+
+
+# Zoro's own "Extended lead time" (owner, 13 Nov 2026 — G5522807, a 55 gal drum: "This item is estimated to
+# take more than a month to ship"). Zoro's product page (AvlLeadTimeBadge, base bundle) writes it when the
+# expected-date answer for the ZIP is 31+ calendar days after the customer's own date (deliveryDate −
+# customerDateTime; 30 or less reads "Delivery on or before …"), when that answer lists the SKU under
+# "errors", or when the stock type is outOfStock / backOrder. Checked live 12 Nov 2026: G5522807 to 98802 →
+# shipDate 2026-12-03, deliveryDate 2026-12-14, customer date 2026-11-12 = 32 days.
+ZORO_EXTENDED_LEAD_DAYS = 31
+
+
+def get_expected_delivery_detail(driver, items, zip_code):
+    """Zoro's expected-date answer for [(sku, qty), …] to *zip_code*, per SKU:
+    {'date': deliveryDate 'YYYY-MM-DD' or '', 'ship': shipDate or '', 'days': deliveryDate − the customer's
+    date (Zoro's calculationInDeliveryDays) or None, 'error': True when Zoro listed the SKU under errors}.
+    {} on any failure (nothing is known). Driver must be on zoro.com."""
     import datetime
     zip5 = re.sub(r"\D", "", str(zip_code or ""))[:5]
     items = [(s, max(1, int(q or 1))) for s, q in (items or []) if s]
@@ -409,13 +433,32 @@ def get_expected_delivery(driver, items, zip_code):
             return {}
         out = {}
         for p in r["d"].get("payload") or []:
-            d = str((p or {}).get("deliveryDate") or "")[:10]
-            if p.get("zoroNo") and re.match(r"^\d{4}-\d{2}-\d{2}$", d):
-                out[p["zoroNo"]] = d
+            p = p or {}
+            d = str(p.get("deliveryDate") or "")[:10]
+            if not p.get("zoroNo") or not re.match(r"^\d{4}-\d{2}-\d{2}$", d):
+                continue
+            days = None
+            try:
+                cust = str(p.get("customerDateTime") or "")[:10] or datetime.date.today().isoformat()
+                days = (datetime.date.fromisoformat(d) - datetime.date.fromisoformat(cust)).days
+            except ValueError:
+                pass
+            out[p["zoroNo"]] = {"date": d, "ship": str(p.get("shipDate") or "")[:10], "days": days, "error": False}
+        for e in r["d"].get("errors") or []:
+            code = (e or {}).get("zoroNo") if isinstance(e, dict) else None
+            if code and code not in out:
+                out[code] = {"date": "", "ship": "", "days": None, "error": True}
         return out
     except Exception as e:
         print(f"  ⚠️ Zoro expected-date API failed: {type(e).__name__}: {e}")
         return {}
+
+
+def is_extended_lead(entry, limit_days=ZORO_EXTENDED_LEAD_DAYS):
+    """True when Zoro would show 'Extended lead time' for this expected-date entry (see above)."""
+    if not entry or limit_days <= 0:
+        return False
+    return bool(entry.get("error")) or (entry.get("days") is not None and entry["days"] >= limit_days)
 
 
 def get_zoro_delivery_date(driver, sku):

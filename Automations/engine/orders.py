@@ -4246,6 +4246,16 @@ def _oos_restock_min_hours():
         return 24.0
 
 
+def _restock_zip():
+    """A ZIP for the restock check's lead-time question: this profile's billing ZIP, else central US."""
+    try:
+        from utils.config import PROFILES
+        z = re.sub(r"\D", "", str(((PROFILES.get(PROFILE_NAME) or {}).get("billing_address") or {}).get("zip") or ""))[:5]
+        return z if len(z) == 5 else "66101"
+    except Exception:
+        return "66101"
+
+
 def _oos_restock_release(driver, view_orders, sku_map, sheet_released=(), now=None, now_pacific=None):
     """Amazon ids of OOS-stamped orders to release this cycle because Zoro has their item again (see above).
     Asks Zoro only about items that have an order with enough time left before its ship-by deadline, at most
@@ -4290,6 +4300,13 @@ def _oos_restock_release(driver, view_orders, sku_map, sheet_released=(), now=No
                 code, ok = (alt, True) if alt else (code, False)
             if status in ("API_ERROR", "NO_DATA") and not ok:
                 continue                       # no answer: asked again next cycle, not in an hour
+            if ok:
+                # in stock but Zoro's "Extended lead time" (31+ days): still out for us (13 Nov 2026). The
+                # orders' ZIPs are not known here; the lead time is Zoro's, so the profile's billing ZIP stands in.
+                _ext = _zoro_extended_lead(driver, code, unit, {"zip_code": _restock_zip()})
+                if _ext:
+                    ok = False
+                    print(f"  🐌 {asin}: {code} — {_ext}")
             _OOS_RESTOCK_ASKED[asin] = now
             if not ok:
                 print(f"  🔒 {asin}: {main} still out of stock on Zoro — {len(os_)} OOS order(s) wait "
@@ -4627,6 +4644,46 @@ def _delivery_gap_days(amazon_deliver_by, zoro_deliver_by):
 
 def _zip5(addr):
     return re.sub(r"\D", "", str((addr or {}).get("zip_code") or ""))[:5]
+
+
+_EXT_LEAD_CACHE = {}     # (sku, qty, zip5) -> (asked at, reason or '')
+
+
+def _extended_lead_days():
+    """bot_config.json "extended_lead_days" (default 31 — Zoro's own line; 0 = off)."""
+    try:
+        return max(0, int(((gui_cfg if "gui_cfg" in globals() else {}) or {}).get("extended_lead_days", 31)))
+    except (TypeError, ValueError):
+        return 31
+
+
+def _zoro_extended_lead(driver, sku, qty, addr):
+    """Why Zoro shows "Extended lead time" for *sku* × *qty* to the buyer's ZIP, or '' (owner, 13 Nov 2026:
+    "whenever Zoro shows this, don't place the order" — G5522807, a 55 gal drum Zoro ships in three weeks
+    and delivers in a month). Zoro's rule: its delivery date is 31+ days after the customer's date, or it
+    has no date for the item (platforms.zoro.is_extended_lead). Asked only for an item check_inventory
+    called in stock; cached 10 min. Never raises; '' when Zoro does not answer (the order goes on as before)."""
+    limit = _extended_lead_days()
+    z = _zip5(addr)
+    if limit <= 0 or not sku or len(z) != 5:
+        return ""
+    key = (str(sku).upper(), int(qty or 1), z)
+    hit = _EXT_LEAD_CACHE.get(key)
+    if hit and time.time() - hit[0] < 600:
+        return hit[1]
+    why = ""
+    try:
+        from platforms.zoro import get_expected_delivery_detail, is_extended_lead
+        e = get_expected_delivery_detail(driver, [(sku, qty)], z).get(sku)
+        if e and is_extended_lead(e, limit):
+            why = ("Extended lead time — Zoro gives no delivery date for it" if e.get("error") else
+                   f"Extended lead time — Zoro ships {e.get('ship') or '?'} and delivers {e['date']} to {z}, "
+                   f"{e['days']} days out")
+    except Exception as ex:
+        print(f"  ⚠️ Zoro lead-time check for {sku} skipped: {type(ex).__name__}: {ex}")
+        return ""
+    _EXT_LEAD_CACHE[key] = (time.time(), why)
+    return why
 
 
 def _zoro_api_delivery(driver, sku, qty, addr):
@@ -6498,6 +6555,14 @@ def process_order(driver, amazon_id, order_detail, sku_map,
 
     for item in resolved_items:
         cartable, inv_status = check_inventory(driver, item["sku"], item["final_qty"])
+        # Zoro's "Extended lead time" (31+ days to the buyer, or no date): not bought — treated exactly like
+        # out of stock (the sheet's alternatives are tried, else the order is marked OOS). A Manual-C/-R
+        # tag places it anyway, as it does past the delivery-date check.
+        if cartable and not manual_override:
+            _ext = _zoro_extended_lead(driver, item["sku"], item["final_qty"], addr)
+            if _ext:
+                print(f"  🐌 {item['sku']}: {_ext} — not bought")
+                cartable, inv_status = False, "Extended lead time"
         alt_fail_note = ""
         alt_tried = []
         if not cartable and item.get("alt_skus") and inv_status not in ("API_ERROR", "NO_DATA"):
@@ -6505,8 +6570,12 @@ def process_order(driver, amazon_id, order_detail, sku_map,
             # before marking the order OOS. The main SKU's OOS still goes to the price tracker
             # so "is the main back in stock?" stays answerable from price_tracker.json.
             log_price_or_status(item["sku"], current_price=0.0, status="OOS")
-            print(f"  🔄 {item['sku']} OOS — checking alternative(s) {', '.join(item['alt_skus'])}")
-            alt_code, alt_status, alt_tried = first_alt_in_stock(driver, item["alt_skus"], item["final_qty"])
+            print(f"  🔄 {item['sku']} {inv_status if inv_status == 'Extended lead time' else 'OOS'} — "
+                  f"checking alternative(s) {', '.join(item['alt_skus'])}")
+            alt_code, alt_status, alt_tried = first_alt_in_stock(
+                driver, item["alt_skus"], item["final_qty"],
+                refuse=None if manual_override else (
+                    lambda c, _q=item["final_qty"]: "Extended lead time" if _zoro_extended_lead(driver, c, _q, addr) else ""))
             for _tried, _tried_status in alt_tried:
                 if _tried_status not in ("API_ERROR", "NO_DATA"):
                     log_price_or_status(_tried, current_price=0.0, status="OOS")

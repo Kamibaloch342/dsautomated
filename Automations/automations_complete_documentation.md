@@ -485,6 +485,33 @@ Over the limit, the order is bought as several Zoro orders (`_zoro_limit_chunks`
 The split path itself was fixed at the same time: `logged_subtotal` / `logged_shipping` were unset there
 and a paid split crashed before its DB row, note and alert.
 
+#### Zoro's "Extended lead time" — never bought (13 Nov 2026)
+
+Some in-stock Zoro items read "Extended lead time — This item is estimated to take more than a month to
+ship". Example: G5522807, a 55 gal drum, bought 5 times on 9–12 Nov as the ALT of G9084824. Zoro's page
+(component AvlLeadTimeBadge) shows the badge in three cases:
+- the expected-date answer for the ZIP is **31+ days** after the customer's date (deliveryDate −
+  customerDateTime);
+- that answer lists the item under `errors`;
+- the stock type is outOfStock / backOrder.
+
+The stock API alone still says `inStock` / `isCartable`. The live answer on 12 Nov 2026 for G5522807 to ZIP 98802 was ships 12-03, delivers 12-14: 32 days.
+
+What the placer does:
+- **The question:** for every in-stock item it asks that question for the buyer's ZIP and quantity
+  (`platforms.zoro.get_expected_delivery_detail` / `is_extended_lead`, `engine.orders._zoro_extended_lead`,
+  cached 10 min).
+- **When the answer is "extended",** the item counts as not available:
+  - the sheet's alternatives are tried, and an alternative with extended lead time is passed over too
+    (`first_alt_in_stock(refuse=…)`);
+  - otherwise the order is marked OOS like any out-of-stock item, with the hourly OOS alert and the
+    listing guard.
+- **Restock release:** the hourly check doesn't release such an item. Its ZIP stand-in is the
+  profile's billing ZIP.
+- **Exceptions:** a Manual-C/-R tag places it anyway. If Zoro doesn't answer, the order goes on as before.
+
+`bot_config.json → extended_lead_days` (31; 0 = off).
+
 #### 5.1.1 Priority ASIN Control & Dynamic Profile Routing (Reseller vs. Coupon)
 
 ##### The Business Rationale & Profile Economics
