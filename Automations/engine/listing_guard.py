@@ -33,7 +33,25 @@ What the restore will and will not do:
     back on Zoro's shelf would put the listing on sale for one order and off again;
   • a handling time that was empty before goes back to the store's own default, read from Seller
     Central's shipping settings — emptying the field does nothing on Amazon;
-  • a restore that fails is announced once and then left to a person. It is not retried in a loop.
+  • a restore that fails is announced once and then left to a person. It is not retried in a loop;
+  • an item Zoro shows with "Extended lead time" is not back, whatever the stock API says — the placer
+    would not buy it (engine.orders._zoro_extended_lead, asked for one listing unit at the profile's ZIP).
+
+Own-brand (PL) listings — owner, 13 Nov 2026: "we never inactivate the PL listing", "if PL listing is OOS
+never activate it", "I do want to have the manual control". DS listings are unchanged ("no issue with
+the DS, we can take it off and take back in by the script").
+  • own brands are HOANK, Hathoro and Wrenchly (utils/listing_watch.PL_BRANDS). A brand that is not ours
+    on a listing whose SKU looks like ours (HOA- / HO- / hath / Wrench-) changes nothing: a person is asked;
+  • the quantity of a PL listing is never written;
+  • a PL listing at quantity 0 on Amazon is not touched at all — not when Zoro runs out, not at the restock;
+  • the handling time is raised to 7 days only from empty or the store's default (HOANK: 1 day). Any
+    other value (2, 3, 5 days …) was set by a person and is left as it is;
+  • put back only what the guard set, only while the field still shows it (as for DS), and only once
+    Zoro has had pl_restock_depth units on every check for pl_restock_confirm_minutes;
+  • a PL listing that runs out again within pl_flap_hours of being put back is not put back by the guard
+    a second time: the restock is announced with the value to set, and a person sets it.
+(10 Nov–13 Nov 2026 before this: the Wrenchly-brand B0HR7QZ18R was set 492 → 0, and B0FHSQ12HJ's
+hand-set 2 days went 2 → 7 → 2 → 7 in 7 hours while our own placers emptied Zoro's few units.)
 
 Two placers of one store (COUPON and RESELLER) both call handle_pending(): a row is taken with one
 atomic UPDATE (status 'new' → 'working', 'changed' → 'restoring'), so only one of them handles it.
@@ -52,6 +70,9 @@ Settings — bot_config.json → "listing_guard" (all optional):
                                stuck). A listing that still holds what the guard set is not announced
                                again; one that could not be changed is.
   max_per_cycle         3      listings changed or restored at the end of one placer cycle (about a minute each)
+  pl_restock_depth      10     own-brand listing: units that must be buyable before its handling time goes back
+  pl_restock_confirm_minutes 60  own-brand listing: Zoro must still have them this long after first seen back
+  pl_flap_hours         24     own-brand listing out again this soon after a put-back → not put back automatically
 """
 from __future__ import annotations
 
@@ -91,10 +112,14 @@ CREATE TABLE IF NOT EXISTS listing_oos (
     PRIMARY KEY (store, asin)
 )"""
 _LATER_COLUMNS = {"prev_value": "TEXT", "changed_to": "TEXT", "unit_qty": "INTEGER DEFAULT 1",
-                  "restock_checked_at": "TEXT", "restored_at": "TEXT"}
+                  "restock_checked_at": "TEXT", "restored_at": "TEXT",
+                  "kept": "TEXT",                       # own-brand listing left as a person set it: off_sale | hand_set
+                  "restock_seen_at": "TEXT",            # own-brand: first check that found Zoro stock again
+                  "hold_restore": "INTEGER DEFAULT 0"}  # own-brand: ran out again within pl_flap_hours of a put-back
 
 _DEFAULTS = {"enabled": True, "armed": True, "pl_handling_days": 7, "restore": True, "restock_check_minutes": 30,
-             "restock_depth": 3, "realert_hours": 24, "max_per_cycle": 3}
+             "restock_depth": 3, "realert_hours": 24, "max_per_cycle": 3,
+             "pl_restock_depth": 10, "pl_restock_confirm_minutes": 60, "pl_flap_hours": 24}
 REALERT_AFTER_CHANGE_HOURS = 2      # quantity set to 0 and orders still arriving this long after: look again
 STALE_CLAIM_MINUTES = 20            # a row left 'working' / 'restoring' by a placer that died goes back
 RESTOCK_CHECKS_PER_CYCLE = 10
@@ -167,12 +192,17 @@ def _claim(store: str, asin: str, from_status: str, to_status: str) -> bool:
 
 
 # ── step 1: the placer says "this listing is out" ──────────────────────────────────────────────
-def _write_note(ev: Dict[str, Any], realert_hours: int) -> None:
+def _sku_key(s: Optional[str]) -> str:
+    return "".join(str(s or "").split()).upper()
+
+
+def _write_note(ev: Dict[str, Any], cfg: Dict[str, Any]) -> None:
+    realert_hours = cfg["realert_hours"]
     c = _conn()
     try:
         with c:
-            row = c.execute("SELECT status, action_at, action FROM listing_oos WHERE store=? AND asin=?",
-                            (ev["store"], ev["asin"])).fetchone()
+            row = c.execute("SELECT status, action_at, action, seller_sku, restored_at FROM listing_oos "
+                            "WHERE store=? AND asin=?", (ev["store"], ev["asin"])).fetchone()
             held = ev.get("held_now")                 # Ultra mode: orders held right now, not one more order
             if row is None:
                 c.execute("INSERT INTO listing_oos (store, asin, seller_sku, title, zoro_code, alt_codes, orders, "
@@ -190,14 +220,25 @@ def _write_note(ev: Dict[str, Any], realert_hours: int) -> None:
             #   • after realert_hours when it was only announced.
             # A 'recheck' sends a message only if something had to be changed again (_handle_new).
             st = row["status"]
+            # The order page's SKU reader stops at a space ("HOA- G006569386" → "HOA-"): never let such a
+            # cut SKU replace the full one already on the row.
+            sku = ev["seller_sku"]
+            old = row["seller_sku"] or ""
+            if sku and len(_sku_key(old)) > len(_sku_key(sku)) and _sku_key(old).startswith(_sku_key(sku)):
+                sku = old
             fresh_args: tuple = ()
             if st in _CLOSED:
                 # A new round for this listing: it starts afresh, so the launcher's watch list shows when it
                 # went out THIS time and no note, action or brand verdict left from the last round.
+                # An own-brand listing put back less than pl_flap_hours ago is not put back on its own a
+                # second time (owner, 13 Nov 2026: B0FHSQ12HJ went 2 → 7 → 2 → 7 days in 7 hours).
+                hold = int(st == "restored" and (row["action"] or "") == "handling"
+                           and _hours_since(row["restored_at"]) < float(cfg["pl_flap_hours"]))
                 again = "new"
                 fresh = (", prev_value=NULL, changed_to=NULL, restock_checked_at=NULL, restored_at=NULL, "
-                         "first_seen=?, note=NULL, action=NULL, action_at=NULL")
-                fresh_args = (ev["at"],)
+                         "first_seen=?, note=NULL, action=NULL, action_at=NULL, kept=NULL, restock_seen_at=NULL, "
+                         "hold_restore=?")
+                fresh_args = (ev["at"], hold)
             else:
                 wait_h = (REALERT_AFTER_CHANGE_HOURS if st == "changed" and (row["action"] or "") != "handling"
                           else realert_hours)
@@ -208,7 +249,7 @@ def _write_note(ev: Dict[str, Any], realert_hours: int) -> None:
                       "zoro_code=?, alt_codes=?, unit_qty=?" + (f", status='{again}'" if again else "") + fresh
                       + ", orders = " + ("?" if st in _CLOSED else "MAX(orders, ?)" if held else "orders + ?")
                       + " WHERE store=? AND asin=?",
-                      (ev["amazon_id"], ev["at"], ev["seller_sku"], ev["title"], ev["zoro_code"], ev["alt_codes"],
+                      (ev["amazon_id"], ev["at"], sku, ev["title"], ev["zoro_code"], ev["alt_codes"],
                        ev["unit_qty"]) + fresh_args + (int(held or 1), ev["store"], ev["asin"]))
     finally:
         c.close()
@@ -233,7 +274,7 @@ def note_out(store: str, asin: str, seller_sku: str = "", zoro_code: str = "", a
               "alt_codes": ", ".join(str(a).strip() for a in (alt_codes or []) if str(a).strip()),
               "amazon_id": str(amazon_id or "").strip(), "at": _now(), "held_now": held_now, "unit_qty": unit}
         try:
-            _write_note(ev, cfg["realert_hours"])
+            _write_note(ev, cfg)
         except sqlite3.Error as e:
             _MISSED.append(ev)                                    # database busy: keep it for the cycle end
             print(f"  ⚠️  listing guard: note kept in memory ({type(e).__name__})")
@@ -264,8 +305,14 @@ def _brand_from_page(driver, asin: str) -> Optional[str]:
     return None
 
 
+CLASH = "brand and SKU disagree"      # kind_from of a listing left alone because of that
+
+
 def classify(driver, store: str, asin: str, seller_sku: str) -> Tuple[str, str, str]:
-    """('PL' | 'DS' | '', brand, where the answer came from)."""
+    """('PL' | 'DS' | '', brand, where the answer came from).
+    A brand that is not ours on a listing whose SKU looks like ours (HOA- / HO- / hath / Wrench-) gives
+    '' — nothing is changed and a person is asked (owner, 13 Nov 2026: an own-brand listing must never
+    be taken off sale; a wrong brand read had done it). A brand that is ours always gives PL."""
     from utils import listing_watch as lw
     brand, src = None, ""
     try:
@@ -278,7 +325,11 @@ def classify(driver, store: str, asin: str, seller_sku: str) -> Tuple[str, str, 
         brand = _brand_from_page(driver, asin)
         src = "product page" if brand else ""
     if brand:
-        return ("PL" if lw.brand_is_ours(brand) else "DS"), brand, src
+        if lw.brand_is_ours(brand):
+            return "PL", brand, src
+        if seller_sku and lw.sku_is_pl(seller_sku, store):
+            return "", brand, CLASH
+        return "DS", brand, src
     if seller_sku:
         return ("PL" if lw.sku_is_pl(seller_sku, store) else "DS"), "", "SKU prefix (brand not readable)"
     return "", "", "no brand and no SKU"
@@ -289,12 +340,31 @@ def listing_url(asin: str) -> str:
             f"&searchField=all&searchTerm={urllib.parse.quote(asin)}&sort=date_created_desc&status=all")
 
 
+_DEFAULT_DAYS: Dict[str, Tuple[Optional[int], float]] = {}     # store → (default handling days, read at)
+
+
+def store_default_days(driver, store: str) -> Optional[int]:
+    """The store's own default handling time (Seller Central → Shipping settings; HOANK: 1 day), read
+    once a day per placer — once an hour while it cannot be read. None when the page does not say."""
+    hit = _DEFAULT_DAYS.get(store)
+    if hit and time.time() - hit[1] < (24 * 3600 if hit[0] is not None else 3600):
+        return hit[0]
+    from engine import offer_edit
+    v = offer_edit.account_default_handling_days(driver)
+    _DEFAULT_DAYS[store] = (v, time.time())
+    return v
+
+
 def change_on_amazon(driver, store: str, row: Dict[str, Any], action: str, profile: str = "") -> Dict[str, Any]:
     """Set the quantity to 0 (action 'qty0') or raise the handling time ('handling') on Seller Central,
-    in the placer's own Chrome. Returns {'done', 'changed', 'note', 'previous', 'set_to'}: done is True
-    when Amazon now holds the wanted value; changed only when the guard itself just set it. See
-    engine/offer_edit.py for how the page is driven and what was tried on the live page."""
-    out = {"done": False, "changed": False, "note": "", "previous": "", "set_to": "", "found": ""}
+    in the placer's own Chrome. Returns {'done', 'changed', 'kept', 'note', 'previous', 'set_to', 'found',
+    'sku'}: done is True when there is nothing more to do on Amazon; changed only when the guard itself
+    just set the value. See engine/offer_edit.py for how the page is driven and what was tried live.
+
+    An own-brand listing is left as a person set it (owner, 13 Nov 2026) — kept says which:
+      'off_sale'  its Amazon quantity is 0: nothing is touched, it is the owner's to turn back on;
+      'hand_set'  its handling time is neither empty nor the store's default (say 2 days): not raised."""
+    out = {"done": False, "changed": False, "kept": "", "note": "", "previous": "", "set_to": "", "found": "", "sku": ""}
     cfg = settings()
     if not cfg["armed"]:
         out["note"] = "the automatic change is switched off (listing_guard.armed)"
@@ -303,10 +373,17 @@ def change_on_amazon(driver, store: str, row: Dict[str, Any], action: str, profi
         out["note"] = "no browser to make the change with"
         return out
     from engine import offer_edit
-    field, value = ("quantity", 0) if action == "qty0" else ("handling_days", int(cfg["pl_handling_days"]))
+    if action == "qty0":
+        field, value, extra = "quantity", 0, {}
+    else:
+        d = store_default_days(driver, store)
+        field, value = "handling_days", int(cfg["pl_handling_days"])
+        extra = {"skip_if_off_sale": True, "raise_from": ["", str(d if d is not None else 1)]}
     res = offer_edit.set_offer_field(driver, row["asin"], row.get("seller_sku") or "", field, value,
-                                     login_profile=profile or None)
-    out.update(done=bool(res.get("ok")), changed=bool(res.get("changed")), note=str(res.get("note") or ""),
+                                     login_profile=profile or None, **extra)
+    kept = str(res.get("kept") or "")
+    out.update(done=bool(res.get("ok")) or bool(kept), changed=bool(res.get("changed")), kept=kept,
+               note=str(res.get("note") or ""), sku=str(res.get("sku") or ""),
                found=str(res.get("previous") or ""))   # what the field held on the page (for the message)
     if out["changed"]:          # only a real change is something to undo later
         out.update(previous=str(res.get("previous") or ""), set_to=str(value))
@@ -388,14 +465,14 @@ def _days(v: str) -> str:
 def _message(row: Dict[str, Any], kind: str, brand: str, src: str, action: str, res: Dict[str, Any],
              watching: bool, restore_on: bool, cfg: Optional[Dict[str, Any]] = None) -> str:
     """The message when the placer finds a listing's Zoro item, and every alternative, out of stock.
-    Example (owner's wording):
-        🛑 Zoro is out of stock for Eagle Plastic Drum, 30 Gallon Drum, DOT Compliant.
-        • ASIN B001DSIEL0 · SKU Imran-G0673644
-        • I couldn't find an alternative in the sheet for Zoro item G0673644.
+    Example (owner's wording, 12 Nov 2026):
+        🛑 Zoro is out of stock for Transport Drum, Closed Head, 55 gal., Black.
+        • ASIN B01M0FGOOK · SKU Kam-18nov25-G5546344-1
+        • Please let me know if there is any alternative
         • One order has been marked out of stock.
-        • ✅ The Amazon quantity was already 0, so I left it as is.
-        • I added it to the list to recheck stock every 30 minutes. I'll let you know when Zoro has it back
-          in stock. The Amazon quantity will need to be updated."""
+        • ✅ I set the Amazon quantity from 499 to 0, so the listing is OOS on Amazon now.
+    The restock check and the automatic restore still run when quantity was set to 0; the owner
+    asked for the line announcing them ("I'll check Zoro every 30 minutes…") to go."""
     cfg = cfg or settings()
     code = row.get("zoro_code") or "?"
     alts = (row.get("alt_codes") or "").strip()
@@ -408,19 +485,24 @@ def _message(row: Dict[str, Any], kind: str, brand: str, src: str, action: str, 
 
     lines = [f"🛑 *Zoro is out of stock for {short_name(row.get('title'), row['asin'])}.*", _ids(row)]
     lines.append(f"• Zoro item {code} is out, and so is every alternative in the sheet ({alts})." if alts
-                 else f"• I couldn't find an alternative in the sheet for Zoro item {code}.")
+                 else "• Please let me know if there is any alternative")
     lines.append("• One order has been marked out of stock." if n == 1 else f"• {n} orders have been marked out of stock.")
 
     # what was done on Amazon
     if action == "qty0":
         if done and changed:
-            lines.append(f"• ✅ I set the Amazon quantity from {prev or '?'} to 0, so the listing is off sale.")
+            lines.append(f"• ✅ I set the Amazon quantity from {prev or '?'} to 0, so the listing is OOS on Amazon now.")
         elif done:
             lines.append(f"• ✅ The Amazon quantity was already {found or '0'}, so I left it as is.")
         else:
             lines.append(f"• ⚠️ I couldn't set the Amazon quantity to 0 because {why}. Please set it to 0 by hand: {url}")
     elif action == "handling":
-        if done and changed:
+        if res.get("kept") == "off_sale":
+            lines.append(f"• ✅ {ours}. Its Amazon quantity is 0, so it isn't on sale, and I left it as it is.")
+        elif res.get("kept") == "hand_set":
+            lines.append(f"• ✅ {ours}, so it stays on sale. Its handling time is "
+                         f"{_days(found) if found.isdigit() else found or '?'}, which was set by hand, so I left it as it is.")
+        elif done and changed:
             lines.append(f"• ✅ {ours}, so it stays on sale. I raised the handling time from "
                          + (_days(prev) if prev.isdigit() else "the store's default") + f" to {_days(pl_days)}.")
         elif done:
@@ -430,6 +512,9 @@ def _message(row: Dict[str, Any], kind: str, brand: str, src: str, action: str, 
             lines.append(f"• ⚠️ {ours}, so it should stay on sale with a longer handling time, but I couldn't change it "
                          f"because {why}. Please raise the handling time to {_days(pl_days)} by hand, and don't set the "
                          f"quantity to 0: {url}")
+    elif src == CLASH:
+        lines.append(f"• ⚠️ The product page says the brand is {brand}, but the SKU looks like one of ours, so I "
+                     f"changed nothing on Amazon. Please check it: {url}")
     else:
         lines.append(f"• ⚠️ I couldn't tell whether this is our own brand, so I changed nothing on Amazon. "
                      f"Please check it: {url}")
@@ -439,6 +524,13 @@ def _message(row: Dict[str, Any], kind: str, brand: str, src: str, action: str, 
     every = f"every {int(cfg['restock_check_minutes'])} minutes"
     if not restore_on:
         lines.append(f"• Automatic restore is switched off: when Zoro has it again, please put the Amazon {what} back by hand.")
+    elif done and changed and action == "qty0":
+        pass                # owner, 12 Nov 2026: no restock line here (the restore still happens)
+    elif done and changed and row.get("hold_restore"):
+        lines.append(f"• It ran out again less than a day after I last put it back, so this time I won't put the "
+                     f"handling time back myself. I'll let you know when Zoro has it again.")
+    elif res.get("kept"):
+        lines.append(f"• I'll check Zoro {every} and let you know when it's back in stock.")
     elif done and changed:
         back = (f"the quantity back to {prev}" if action == "qty0" and prev.isdigit()
                 else "the quantity back" if action == "qty0"
@@ -472,32 +564,95 @@ def _handle_new(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict
           f"{kind or '?'}{' / ' + brand if brand else ''} — "
           + (f"on Amazon: {res['note']}" if res["done"] else f"NOT changed on Amazon ({res['note']})"))
     short = (f"Zoro {row.get('zoro_code') or '?'} is out of stock — " + (
-        f"{'quantity set to 0' if action == 'qty0' else 'handling time raised'} on Amazon ({res['note']})" if res["done"]
+        f"left as it is on Amazon ({res['note']})" if res.get("kept")
+        else f"{'quantity set to 0' if action == 'qty0' else 'handling time raised'} on Amazon ({res['note']})" if res["done"]
         else f"NOT changed on Amazon: {res['note']}"))
     if not quiet:
         _tell(store, _message(row, kind, brand, src, action, res, watching, bool(cfg["restore"]), cfg), row,
               "listing_off_sale", short)
     cols = dict(kind=kind, brand=brand, kind_from=src, action=action, status="changed" if res["done"] else "alerted",
-                action_at=_now(), note=res["note"][:300], restock_checked_at=None)
+                action_at=_now(), note=res["note"][:300], restock_checked_at=None, restock_seen_at=None,
+                kept=res.get("kept") or "")
     if res["changed"]:
         cols.update(prev_value=res["previous"], changed_to=res["set_to"])
+    if res.get("sku") and res["sku"] != (row.get("seller_sku") or ""):
+        cols["seller_sku"] = res["sku"]           # the full SKU from Manage Inventory (a cut one is completed)
     _update(store, row["asin"], **cols)
 
 
 # ── step 2b: Zoro has it again → put the listing back ──────────────────────────────────────────
+def _sheet_codes(asin: str) -> Tuple[str, List[str]]:
+    """(main Zoro code, [alternatives]) the Google Sheet holds for this ASIN NOW — through the placer's
+    own load_sku_map() (cached 5 min). The placer runs engine/orders.py as __main__, so it is looked
+    up there rather than imported again. ('', []) when the sheet cannot be read."""
+    import sys
+    for name in ("__main__", "engine.orders"):
+        fn = getattr(sys.modules.get(name), "load_sku_map", None)
+        if callable(fn):
+            try:
+                m = fn().get(asin) or {}
+                return str(m.get("zoro_code") or "").strip(), [str(a).strip() for a in (m.get("alt_skus") or []) if str(a).strip()]
+            except Exception:
+                return "", []
+    return "", []
+
+
 def _back_in_stock(driver, row: Dict[str, Any], depth: int) -> Optional[str]:
     """The Zoro code (main or an alternative) that is buyable again for `depth` units of the listing,
-    '' when none is, None when Zoro did not answer for one of them (no decision this time)."""
+    '' when none is, None when Zoro did not answer for one of them (no decision this time).
+    Asked: the codes the guard saw out, then whatever the sheet says NOW — owner, 12 Nov 2026: "I put
+    an alternative SKU of Zoro [in the sheet], the script should detect that we do have the
+    alternative and change the handling time back". row['_new_alt'] names a code the sheet added
+    after the guard fired, for the message."""
     from platforms.zoro import check_inventory
     qty = max(1, int(row.get("unit_qty") or 1)) * max(1, int(depth))
-    codes = [str(row.get("zoro_code") or "").strip()] + [a.strip() for a in str(row.get("alt_codes") or "").split(",")]
-    for code in [c for c in codes if c]:
+    known = [str(row.get("zoro_code") or "").strip()] + [a.strip() for a in str(row.get("alt_codes") or "").split(",")]
+    known = [c for c in known if c]
+    s_main, s_alts = _sheet_codes(row["asin"])
+    added = [c for c in [s_main] + s_alts if c and c not in known]
+    row["_sheet_added"] = added
+    codes = []
+    for c in known + added:
+        if c not in codes:
+            codes.append(c)
+    # The placer treats Zoro's "Extended lead time" as out of stock (13 Nov 2026) while the stock API still
+    # says in stock — asked here too, or the listing would go back on sale for orders the placer refuses.
+    lead = _placer_fn("_zoro_extended_lead")
+    zip_fn = _placer_fn("_restock_zip")
+    one = max(1, int(row.get("unit_qty") or 1))
+    for code in codes:
         cartable, status = check_inventory(driver, code, qty)
         if status in _UNKNOWN:
             return None
         if cartable:
+            if lead and zip_fn:
+                try:
+                    why = lead(driver, code, one, {"zip_code": zip_fn()})
+                except Exception:
+                    why = ""
+                if why:
+                    print(f"  ⏳ listing guard: {row['asin']} — {code} is in stock but not back yet: {why}")
+                    continue
             return code
     return ""
+
+
+def _placer_fn(name: str):
+    """A function of the running placer (engine/orders.py runs as __main__), or None outside a placer."""
+    import sys
+    for mod in ("__main__", "engine.orders"):
+        fn = getattr(sys.modules.get(mod), name, None)
+        if callable(fn):
+            return fn
+    return None
+
+
+def _brand_now_ours(brand: Optional[str]) -> bool:
+    try:
+        from utils.listing_watch import brand_is_ours
+        return brand_is_ours(brand)
+    except Exception:
+        return False
 
 
 def _restore(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[str, Any], code: str) -> None:
@@ -508,15 +663,39 @@ def _restore(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[st
     main = str(row.get("zoro_code") or "").strip()
     url = listing_url(asin)
     status, note = "restock_told", ""
+    added = code in (row.get("_sheet_added") or [])
     lines = [f"✅ *Zoro has {short_name(row.get('title'), asin)} back in stock.*", _ids(row),
-             f"• Zoro item {code} can be bought again." if code == main or not main
+             f"• The sheet now has the alternative {code}, and Zoro has it in stock." if added
+             else f"• Zoro item {code} can be bought again." if code == main or not main
              else f"• Zoro has the alternative {code} in stock again (the main item {main} is still out)."]
 
+    kept = str(row.get("kept") or "")
     if not set_to:
-        # The guard changed nothing here (the value was already there, or the change failed): tell, don't touch.
+        # The guard changed nothing here (the value was already there, a person's value was kept, or the
+        # change failed): tell, don't touch.
         note = f"Zoro {code} is in stock again; the placer had not changed this listing, so it is left as it is"
-        lines.append(f"• I hadn't changed this listing, so I left it alone. Please update the Amazon {what} "
-                     f"by hand: {url}")
+        if action == "handling" and kept == "off_sale":
+            lines.append(f"• Its Amazon quantity was 0 when I looked, so I left it alone. It's yours to put back on "
+                         f"sale: {url}")
+        elif action == "handling" and kept == "hand_set":
+            lines.append("• I hadn't changed its handling time (it was set by hand), so I left it as it is.")
+        else:
+            lines.append(f"• I hadn't changed this listing, so I left it alone. Please update the Amazon {what} "
+                         f"by hand: {url}")
+    elif action == "qty0" and _brand_now_ours(row.get("brand")):
+        # Set to 0 before its brand was known as ours (Wrenchly, 13 Nov 2026: B0HR7QZ18R 492 → 0). The
+        # quantity of an own-brand listing is never written by the guard — a person puts it back.
+        note = f"Zoro {code} is in stock again; own-brand listing ({row.get('brand')}), quantity left for a person"
+        lines.append(f"• This is our own brand ({row.get('brand')}). I had set its quantity from "
+                     f"{prev or '?'} to 0 by mistake, so please put it back by hand: {url}")
+    elif action == "handling" and row.get("hold_restore"):
+        # Own-brand listing that ran out again soon after the last put-back: Zoro's stock is too thin to
+        # trust, so a person decides (owner, 13 Nov 2026).
+        before = _days(prev) if prev.isdigit() else "the store's default"
+        note = (f"Zoro {code} is in stock again; it had run out again within {int(cfg['pl_flap_hours'])} h of the "
+                f"last put-back, so the handling time is left at {set_to} days for a person")
+        lines.append(f"• It ran out again less than a day after I last put it back, so I left the handling time at "
+                     f"{_days(set_to)}. Set it back to {before} when you're happy with Zoro's stock: {url}")
     else:
         target: Optional[int] = None
         if action == "qty0":
@@ -524,13 +703,14 @@ def _restore(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[st
         elif prev.isdigit():
             target = int(prev)
         else:                                   # it was empty before = the store's own default
-            target = offer_edit.account_default_handling_days(driver)
+            target = store_default_days(driver, store)
         if target is None:
             note = f"Zoro {code} is in stock again; the {what} it had before is not known"
             lines.append(f"• ⚠️ I don't know what the {what} was before, so please set it by hand: {url}")
         else:
             res = offer_edit.set_offer_field(driver, asin, sku, "quantity" if action == "qty0" else "handling_days",
-                                             target, login_profile=profile or None, lower_ok=True, only_if=set_to)
+                                             target, login_profile=profile or None, lower_ok=True, only_if=set_to,
+                                             skip_if_off_sale=(action == "handling"))
             was = set_to if action == "qty0" else _days(set_to)
             now = str(target) if action == "qty0" else _days(str(target))
             if res.get("ok"):
@@ -538,6 +718,10 @@ def _restore(driver, store: str, profile: str, cfg: Dict[str, Any], row: Dict[st
                 note = f"Zoro {code} is in stock again — {res.get('note')}"
                 lines.append(f"• ✅ I set the Amazon quantity back from {was} to {now}, so the listing is on sale again."
                              if action == "qty0" else f"• ✅ I set the handling time back from {was} to {now}.")
+            elif res.get("kept") == "off_sale":
+                note = f"Zoro {code} is in stock again; the Amazon quantity is 0, so the listing was left alone"
+                lines.append(f"• Its Amazon quantity is 0, so I didn't touch it. The handling time is still {was}; "
+                             f"please set it back to {now} when you put it on sale again: {url}")
             elif res.get("skipped"):
                 note = f"Zoro {code} is in stock again; {res.get('note')}"
                 lines.append(f"• Someone changed the {what} after I did (it is {res.get('previous') or 'empty'} now, "
@@ -585,13 +769,32 @@ def _restock_pass(driver, store: str, profile: str, cfg: Dict[str, Any], room: i
             c.close()
         if not mine:
             continue
+        # An own-brand listing needs more stock, and needs it to last: Zoro must have pl_restock_depth units
+        # on every check for pl_restock_confirm_minutes (owner, 13 Nov 2026 — with 3 units it was put back,
+        # our own placers bought them within the hour, and it went out again). A DS listing as before.
+        pl = (row.get("action") or "") == "handling"
         try:
-            code = _back_in_stock(driver, row, int(cfg["restock_depth"]))
+            code = _back_in_stock(driver, row, int(cfg["pl_restock_depth"] if pl else cfg["restock_depth"]))
         except Exception as e:
             print(f"  ⚠️  listing guard: stock question failed for {row['asin']} ({type(e).__name__})")
             continue
-        if not code:                              # still out, or Zoro did not answer
+        if code is None:                          # Zoro did not answer: no decision this time
             continue
+        if not code:                              # still out
+            if pl and row.get("restock_seen_at"):
+                _update(store, row["asin"], restock_seen_at=None)
+                print(f"  ⏳ listing guard: {row['asin']} — Zoro is out again, the hour starts over next time")
+            continue
+        if pl:
+            wait = max(0, int(cfg["pl_restock_confirm_minutes"]))
+            seen = row.get("restock_seen_at")
+            if not seen and wait:
+                _update(store, row["asin"], restock_seen_at=_now())
+                print(f"  ⏳ listing guard: {row['asin']} — Zoro has {code} again; put back if it is still there "
+                      f"in {wait} min")
+                continue
+            if seen and _hours_since(seen) * 60 < wait:
+                continue
         if room <= 0:                             # this cycle's time is used up: ask again next cycle
             _update(store, row["asin"], restock_checked_at=None)
             continue
@@ -636,7 +839,7 @@ def handle_pending(driver, store: str, profile: str = ""):
         while _MISSED:                                   # notes the database was too busy to take
             ev = _MISSED.pop(0)
             try:
-                _write_note(ev, cfg["realert_hours"])
+                _write_note(ev, cfg)
             except sqlite3.Error:
                 _MISSED.insert(0, ev)
                 break

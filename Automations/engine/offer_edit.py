@@ -238,15 +238,9 @@ return {path: location.pathname, signin: /\/ap\/(signin|mfa|cvf)/.test(location.
 """
 
 
-def find_listing(driver, asin: str, sku: str = "", login_profile: Optional[str] = None) -> Dict[str, Any]:
-    """Look the listing up on Manage All Inventory. Returns {'ok', 'sku', 'asin', 'qty', 'status', 'note'}.
-
-    This is what ties a seller SKU to its ASIN: each inventory row is the element whose id is the SKU
-    and it links to amazon.com/dp/<ASIN>. With a SKU, that row must show this ASIN. Without one, the
-    ASIN must have exactly one row — two SKUs on one ASIN is a choice for a person."""
-    out = {"ok": False, "sku": "", "asin": "", "qty": "", "status": "", "note": ""}
-    asin, sku = str(asin or "").strip().upper(), str(sku or "").strip()
-    url = INVENTORY_URL.format(term=urllib.parse.quote(sku or asin))
+def _inventory_rows(driver, term: str, login_profile: Optional[str] = None) -> Dict[str, Any]:
+    """Search Manage All Inventory for `term` (a SKU or an ASIN): {'rows': [...], 'signin': bool, …}."""
+    url = INVENTORY_URL.format(term=urllib.parse.quote(term))
     st: Dict[str, Any] = {}
     for attempt in (1, 2):
         driver.get(url)
@@ -264,11 +258,31 @@ def find_listing(driver, asin: str, sku: str = "", login_profile: Optional[str] 
             auto_login(driver, login_profile)
             continue
         break
+    return st
+
+
+def find_listing(driver, asin: str, sku: str = "", login_profile: Optional[str] = None) -> Dict[str, Any]:
+    """Look the listing up on Manage All Inventory. Returns {'ok', 'sku', 'asin', 'qty', 'status', 'note'}.
+
+    This is what ties a seller SKU to its ASIN: each inventory row is the element whose id is the SKU
+    and it links to amazon.com/dp/<ASIN>. With a SKU, that row must show this ASIN. Without one, the
+    ASIN must have exactly one row — two SKUs on one ASIN is a choice for a person."""
+    out = {"ok": False, "sku": "", "asin": "", "qty": "", "status": "", "note": ""}
+    asin, sku = str(asin or "").strip().upper(), str(sku or "").strip()
+    st = _inventory_rows(driver, sku or asin, login_profile)
     if st.get("signin"):
         out["note"] = "Seller Central is asking to sign in"
         return out
     rows = st.get("rows") or []
     hits = [r for r in rows if r.get("asin") == asin and (not sku or _norm(r.get("sku")) == _norm(sku))]
+    if not hits and sku:
+        # The order page's SKU reader stops at a space, so "HOA- G006569386" can arrive as "HOA-"
+        # (13 Nov 2026). Look the ASIN up instead and take its one listing whose SKU begins so.
+        by_asin = _inventory_rows(driver, asin, login_profile)
+        if not by_asin.get("signin"):
+            starts = [r for r in (by_asin.get("rows") or [])
+                      if r.get("asin") == asin and _norm(r.get("sku")).startswith(_norm(sku))]
+            hits = starts                         # two or more: a person's call (below)
     if not hits:
         seen = ", ".join(f"{r.get('sku')} → {r.get('asin')}" for r in rows[:3])
         out["note"] = (f"SKU {sku} is not a listing of {asin} in Manage Inventory" if sku else f"{asin} is not in Manage Inventory") \
@@ -283,17 +297,24 @@ def find_listing(driver, asin: str, sku: str = "", login_profile: Optional[str] 
 
 def set_offer_field(driver, asin: str, sku: str, field: str, value: int, login_profile: Optional[str] = None,
                     dry_run: bool = False, trace: Optional[List] = None, force: bool = False,
-                    submit: bool = True, lower_ok: bool = False, only_if: Optional[str] = None) -> Dict[str, Any]:
+                    submit: bool = True, lower_ok: bool = False, only_if: Optional[str] = None,
+                    skip_if_off_sale: bool = False, raise_from: Optional[List[str]] = None) -> Dict[str, Any]:
     """Set the quantity or the handling time of one offer. Returns
-    {'ok': bool, 'changed': bool, 'skipped': bool, 'previous': str, 'note': str}.
+    {'ok': bool, 'changed': bool, 'skipped': bool, 'kept': str, 'previous': str, 'sku': str, 'note': str}.
     ok=True/changed=False means the value was already there (or a dry run). force=True types and
     submits even then (a supervised check, or putting a longer handling time back). submit=False goes
     through everything up to the Submit button and stops there — nothing is saved.
     lower_ok=True lets a handling time go DOWN (putting a listing back after a restock); without it
     a handling time that is already as long or longer is left alone. only_if="7": change the field
     only while it still holds that value — otherwise a person has changed it since, and the result
-    is ok=False, skipped=True with nothing typed."""
-    out = {"ok": False, "changed": False, "skipped": False, "previous": "", "note": ""}
+    is ok=False, skipped=True with nothing typed.
+    The two below leave a listing as a person set it (owner, 13 Nov 2026, own-brand listings) —
+    ok=False, skipped=True, nothing typed, and 'kept' says why:
+      skip_if_off_sale=True  — Manage Inventory shows quantity 0: kept='off_sale';
+      raise_from=["", "1"]   — a handling time is only raised from one of these values (empty = the
+                               store default); any other shorter value was set by hand: kept='hand_set'.
+    'sku' is the listing's full SKU as Manage Inventory shows it."""
+    out = {"ok": False, "changed": False, "skipped": False, "kept": "", "previous": "", "sku": "", "note": ""}
     fid = FIELDS.get(field)
     if not fid:
         out["note"] = f"unknown field {field!r}"
@@ -312,6 +333,11 @@ def set_offer_field(driver, asin: str, sku: str, field: str, value: int, login_p
             out["note"] = found["note"]
             return out
         sku = found["sku"]
+        out["sku"] = sku
+        if skip_if_off_sale and found["qty"].strip() == "0":
+            out.update(skipped=True, kept="off_sale", previous="",
+                       note="the Amazon quantity is 0 (not on sale) — left alone")
+            return out
         if field == "quantity" and only_if is not None and found["qty"].strip() != str(only_if):
             out.update(skipped=True, previous=found["qty"],
                        note=f"the quantity is {found['qty'] or 'empty'}, not {only_if} — changed by hand since, left alone")
@@ -376,6 +402,11 @@ def set_offer_field(driver, asin: str, sku: str, field: str, value: int, login_p
         if field == "handling_days" and prev.isdigit() and not force and (
                 int(prev) == int(want) or (int(prev) > int(want) and not lower_ok)):
             out.update(ok=True, note=f"handling time was already {prev} days")
+            return out
+        if field == "handling_days" and raise_from is not None and not force \
+                and prev not in {str(v).strip() for v in raise_from}:
+            out.update(skipped=True, kept="hand_set",
+                       note=f"the handling time is {prev or 'empty'} days, set by hand — left alone")
             return out
 
         got = _type(driver, fid, want)
