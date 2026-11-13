@@ -115,7 +115,7 @@
         "worker_url": "https://dark-meadow-74d3.kamibaloch342.workers.dev"
     },
     "whatsapp": {
-        "enabled": true,
+        "enabled": false,
         "recipient_phone": "120363419946377042@g.us",
         "server_url": "http://127.0.0.1:3005",
         "groups": {
