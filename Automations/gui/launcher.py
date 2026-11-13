@@ -2657,7 +2657,261 @@ class App(tk.Tk):
                       "Results land in listing_health / listing_relist for the "
                       "dashboard — review there before acting on Amazon."
                   ).pack(anchor="w", padx=14, pady=(2, 10))
+        po.pack_configure(fill="x", expand=False)
+        self._build_listings_report_panel(page)
         return page
+
+    # ── Listings report (13 Nov 2026): every listing with the handling time Amazon really has ──
+    _LR_DIR = os.path.join(SCRIPT_DIR, "data", "listings_report")
+    _LR_XLSX = os.path.join(os.path.dirname(SCRIPT_DIR), "reports", "listings")
+    _LR_TREE = (("store", "Store", 80), ("sku", "SKU", 190), ("asin", "ASIN", 105), ("title", "Product", 330),
+                ("own", "PL/DS", 55), ("status", "Status", 75), ("qty", "Qty", 60), ("price", "Price", 75),
+                ("handling", "Handling time", 120), ("guard", "Listing guard", 300))
+
+    def _build_listings_report_panel(self, page):
+        po, pi = self._panel(page)
+        po.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self._heading(pi, "LISTINGS REPORT", self.AMBER,
+                      subtitle="fresh All Listings Report + every listing's handling time, read from Seller Central "
+                               "(never edits Amazon)")
+        ctrl = tk.Frame(pi, bg=self.CARD)
+        ctrl.pack(fill="x", padx=14, pady=(8, 6))
+        self.btn_lr_go = self._btn(ctrl, "▶ Get Fresh Report", self.GREEN, self._start_listings_report, small=True)
+        self.btn_lr_go.pack(side="left", padx=(0, 6))
+        self._tip(self.btn_lr_go,
+                  "For each ticked store, in its own Seller Central Chrome (HOANK 9331, Hathoro 9333,\n"
+                  "Wrenchly 9337, taking turns with closing): download a fresh All Listings Report, then read\n"
+                  "every listing's offer the way the Edit Listing page does — handling time, quantity, price,\n"
+                  "brand, active or not. About 1 s per listing (HOANK ≈ 15–20 min).\n"
+                  "Read-only: nothing is changed on Amazon. The list opens here when it is done,\n"
+                  "and an Excel copy lands in reports/listings/.")
+        self._lr_store_vars = {}
+        for s in STORES:
+            v = tk.BooleanVar(value=s in ("HOANK", "Wrenchly"))
+            self._lr_store_vars[s] = v
+            ttk.Checkbutton(ctrl, text=s, variable=v).pack(side="left", padx=(4, 4))
+        self._btn(ctrl, "👁 Show", self.CYAN, self._open_listings_report, small=True).pack(side="left", padx=(10, 6))
+        self._btn(ctrl, "📄 Excel", self.PURPLE, self._open_listings_excel, small=True).pack(side="left", padx=(0, 6))
+        self.btn_lr_stop = self._btn(ctrl, "■ Stop", self.RED, lambda: self._stop("listings_report"), small=True)
+        self.btn_lr_stop.pack(side="left", padx=(0, 6))
+        self.btn_lr_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+        self.lbl_lr = tk.Label(ctrl, text="Idle", font=(self.MONO, 9), bg=self.CARD, fg=self.MUTED)
+        self.lbl_lr.pack(side="right")
+        self.lbl_lr_sum = tk.Label(pi, text="", font=(self.MONO, 10), bg=self.CARD, fg=self.TEXT,
+                                   justify="left", anchor="w", wraplength=1100)
+        self.lbl_lr_sum.pack(anchor="w", fill="x", padx=14, pady=(4, 12))
+        self._refresh_listings_report_summary()
+
+    def _lr_reports(self):
+        """The saved reports (data/listings_report/<store>.json), HOANK first."""
+        out = []
+        for s in STORES:
+            p = os.path.join(self._LR_DIR, f"{s}.json")
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    out.append(json.load(f))
+            except (OSError, ValueError):
+                pass
+        return out
+
+    @staticmethod
+    def _lr_days(n):
+        return f"{n} day" + ("" if str(n) == "1" else "s")
+
+    def _lr_handling(self, l, default):
+        if l.get("error"):
+            return "? (not read)"
+        if l.get("handling") is None:
+            return f"{self._lr_days(default)} (default)" if default else "default"
+        return self._lr_days(l["handling"])
+
+    def _lr_summary(self, rep):
+        """'HOANK — 991 listings, 880 active · read 13 Nov 14:40\n   1 day (default) 940 · 7 days 25 · …'"""
+        from collections import Counter
+        ls = rep.get("listings") or []
+        active = sum(1 for l in ls if (l.get("status") or "").lower() == "active")
+        c = Counter(self._lr_handling(l, rep.get("default_days")) for l in ls)
+        order = sorted(c.items(), key=lambda kv: ("default" not in kv[0], kv[0].startswith("?"),
+                                                  int(kv[0].split()[0]) if kv[0].split()[0].isdigit() else 99))
+        return (f"{rep['store']} — {len(ls):,} listings, {active:,} active · read {rep.get('made_at', '?')}\n"
+                f"   handling time: " + " · ".join(f"{k} {v:,}" for k, v in order))
+
+    def _refresh_listings_report_summary(self):
+        reps = self._lr_reports()
+        if not hasattr(self, "lbl_lr_sum"):
+            return
+        self.lbl_lr_sum.config(text="\n".join(self._lr_summary(r) for r in reps) if reps else
+                               "No report yet — tick the stores and press ▶ Get Fresh Report.",
+                               fg=self.TEXT if reps else self.DIM)
+
+    def _start_listings_report(self):
+        name = "listings_report"
+        if name in self._procs:
+            messagebox.showinfo("Info", "The listings report is already running — it opens when ready.")
+            return
+        stores = [s for s, v in self._lr_store_vars.items() if v.get()]
+        if not stores:
+            messagebox.showinfo("Listings report", "Tick at least one store.")
+            return
+        cmd = [RUNNER_PYTHON, "-u", os.path.join(SCRIPT_DIR, "scripts", "listings_report.py")]
+        for s in stores:
+            cmd += ["--store", s]
+        self._filter.set("All")
+        self._launch(name, cmd)
+        self.btn_lr_go.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+        self.btn_lr_stop.config(state="normal", fg=self.RED, highlightbackground=self.RED)
+        self.lbl_lr.config(text="Running", fg=self.GREEN)
+        self._feed_line(f"Listings report started ({', '.join(stores)})", "ok")
+        self._update_hdr()
+
+    def _open_listings_excel(self):
+        files = sorted(glob.glob(os.path.join(self._LR_XLSX, "Listings_*.xlsx")), key=os.path.getmtime)
+        if not files:
+            messagebox.showinfo("Listings report", "No Excel file yet — run ▶ Get Fresh Report first.")
+            return
+        subprocess.Popen(["open", files[-1]])
+
+    def _open_listings_report(self):
+        """The list window: every listing of the saved reports, longest / non-default handling first."""
+        reps = self._lr_reports()
+        if not reps:
+            messagebox.showinfo("Listings report", "No report yet — run ▶ Get Fresh Report first.")
+            return
+        old = getattr(self, "_lr_win", None)
+        if old is not None:
+            try:
+                old.destroy()
+            except Exception:
+                pass
+        win = tk.Toplevel(self)
+        self._lr_win = win
+        win.title("Listings report — handling time of every listing")
+        win.configure(bg=self.BG)
+        try:
+            win.geometry(f"1400x760+{self.winfo_rootx() + 30}+{self.winfo_rooty() + 40}")
+        except Exception:
+            win.geometry("1400x760")
+        win.minsize(900, 420)
+        po, pi = self._panel(win)
+        po.pack(fill="both", expand=True, padx=8, pady=8)
+        h = self._heading(pi, "LISTINGS REPORT — handling time of every listing", self.AMBER)
+        self._btn(h, "📄 Excel", self.PURPLE, self._open_listings_excel, small=True).pack(side="right")
+        count = tk.Label(h, text="", font=(self.MONO, 10, "bold"), bg=self.CARD, fg=self.AMBER)
+        count.pack(side="right", padx=(0, 12))
+
+        tk.Label(pi, text="\n".join(self._lr_summary(r) for r in reps), font=(self.MONO, 10), bg=self.CARD,
+                 fg=self.TEXT, justify="left", anchor="w").pack(anchor="w", fill="x", padx=14, pady=(2, 6))
+
+        bar = tk.Frame(pi, bg=self.CARD)
+        bar.pack(fill="x", padx=14, pady=(0, 6))
+        tk.Label(bar, text="Store:", font=(self.MONO, 9), bg=self.CARD, fg=self.DIM).pack(side="left")
+        store = self._combo(bar, ["All"] + [r["store"] for r in reps], 10)
+        store.set("All")
+        store.pack(side="left", padx=(4, 12))
+        tk.Label(bar, text="Handling time:", font=(self.MONO, 9), bg=self.CARD, fg=self.DIM).pack(side="left")
+        hsel = self._combo(bar, ["All", "Not the default", "Over the default", "0 days"], 16)
+        hsel.set("All")
+        hsel.pack(side="left", padx=(4, 12))
+        tk.Label(bar, text="Show:", font=(self.MONO, 9), bg=self.CARD, fg=self.DIM).pack(side="left")
+        ssel = self._combo(bar, ["All", "Active only", "Own brand (PL) only", "Listing guard only"], 18)
+        ssel.set("All")
+        ssel.pack(side="left", padx=(4, 12))
+        tk.Label(bar, text="Search:", font=(self.MONO, 9), bg=self.CARD, fg=self.DIM).pack(side="left")
+        q = tk.StringVar()
+        self._entry(bar, q, 24).pack(side="left", padx=(4, 0))
+        tk.Label(bar, text="double-click a row: open it on Seller Central", font=(self.FONT, 9),
+                 bg=self.CARD, fg=self.MUTED).pack(side="right")
+
+        st = ttk.Style(self)
+        st.configure("Lr.Treeview", background=self.BORDER, foreground=self.TEXT, fieldbackground=self.BORDER,
+                     rowheight=24, font=(self.FONT, 10))
+        st.configure("Lr.Treeview.Heading", background=self.CARD, foreground=self.ACCENT,
+                     font=(self.FONT, 10, "bold"), relief="flat", borderwidth=1)
+        st.map("Lr.Treeview", background=[("selected", "#33467c")], foreground=[("selected", self.TEXT)])
+        tw = tk.Frame(pi, bg=self.CARD)
+        tw.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+        tw.rowconfigure(0, weight=1)
+        tw.columnconfigure(0, weight=1)
+        tree = ttk.Treeview(tw, columns=[k for k, _h, _w in self._LR_TREE], show="headings",
+                            selectmode="browse", style="Lr.Treeview")
+        for k, head, w in self._LR_TREE:
+            tree.heading(k, text=head)
+            tree.column(k, width=w, minwidth=40, anchor="e" if k in ("qty", "price") else "w",
+                        stretch=k in ("title", "guard"))
+        vsb = ttk.Scrollbar(tw, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        tree.tag_configure("even", background=self.INP_BG)
+        tree.tag_configure("odd", background="#11131a")
+        tree.tag_configure("odd_h", foreground=self.AMBER)       # handling time is not the store default
+        tree.tag_configure("off", foreground=self.DIM)           # not active / quantity 0
+        tree.tag_configure("err", foreground=self.RED)
+
+        rows = []
+        for rep in reps:
+            d = rep.get("default_days")
+            for l in rep.get("listings") or []:
+                rows.append((rep["store"], d, l))
+
+        def fill(*_):
+            tree.delete(*tree.get_children())
+            want_s, want_h, show = store.get(), hsel.get(), ssel.get()
+            needle = q.get().strip().lower()
+            picked = []
+            for s, d, l in rows:
+                if want_s != "All" and s != want_s:
+                    continue
+                h = l.get("handling")
+                if want_h == "Not the default" and (h is None or h == d) and not l.get("error"):
+                    continue
+                if want_h == "Over the default" and not (h is not None and d is not None and h > d):
+                    continue
+                if want_h == "0 days" and h != 0:
+                    continue
+                if show == "Active only" and (l.get("status") or "").lower() != "active":
+                    continue
+                if show == "Own brand (PL) only" and l.get("own") != "PL":
+                    continue
+                if show == "Listing guard only" and not l.get("guard"):
+                    continue
+                if needle and needle not in " ".join(str(l.get(k) or "") for k in ("sku", "asin", "title", "brand")).lower():
+                    continue
+                picked.append((s, d, l))
+            # non-default handling first (longest first), then active, then SKU
+            picked.sort(key=lambda t: (t[2].get("handling") is None or t[2].get("handling") == t[1],
+                                       -(t[2].get("handling") or 0),
+                                       (t[2].get("status") or "").lower() != "active", t[0], t[2]["sku"]))
+            for i, (s, d, l) in enumerate(picked):
+                tags = ["even" if i % 2 == 0 else "odd"]
+                if l.get("error"):
+                    tags.append("err")
+                elif (l.get("status") or "").lower() != "active" or l.get("qty") == 0:
+                    tags.append("off")
+                elif l.get("handling") is not None and l.get("handling") != d:
+                    tags.append("odd_h")
+                price = l.get("price")
+                tree.insert("", "end", iid=f"{s}|{l['sku']}|{i}", tags=tags, values=(
+                    s, l["sku"], l["asin"], (l.get("title") or "")[:90], l.get("own") or "",
+                    l.get("status") or "", "" if l.get("qty") is None else f"{l['qty']:,}",
+                    "" if price is None else f"${price:,.2f}", self._lr_handling(l, d),
+                    l.get("guard") or (f"not read: {l['error']}" if l.get("error") else "")))
+            count.config(text=f"{len(picked):,} of {len(rows):,} listings")
+
+        def open_row(_e=None):
+            sel = tree.selection()
+            if not sel:
+                return
+            v = tree.item(sel[0], "values")
+            import urllib.parse as _u
+            webbrowser.open("https://sellercentral.amazon.com/interactive/listing/workflow/edit/offer?"
+                            f"sku={_u.quote_plus(v[1])}&asin={_u.quote(v[2])}&marketplaceID=ATVPDKIKX0DER")
+
+        for w in (store, hsel, ssel):
+            w.bind("<<ComboboxSelected>>", fill)
+        q.trace_add("write", lambda *_: fill())
+        tree.bind("<Double-1>", open_row)
+        fill()
 
     def _start_listings(self, extra_args=()):
         """Daily growth-side refresh: S3 feed pull → catalog rebuild (only when
@@ -5351,7 +5605,7 @@ class App(tk.Tk):
         if filt == "Coupons":
             return source == "coupon"
         if filt == "Listings":
-            return source == "listings"
+            return source in ("listings", "listings_report")
         return source == f"orders_{filt}"
 
     def _console_tag(self, text):
@@ -5389,6 +5643,7 @@ class App(tk.Tk):
             "tracking_wrenchly":  ("TRK·WR", self.GREEN),
             "coupon":             ("COUPON", self.AMBER),
             "listings":           ("LIST  ", self.DIM),
+            "listings_report":    ("LSTRPT", self.AMBER),
             "walmart":            ("WMART ", self.PURPLE),
             "remote":             ("REMOTE", self.DIM),
         }
@@ -6250,6 +6505,13 @@ class App(tk.Tk):
             self.btn_lst_go.config(state="normal", fg=self.GREEN, highlightbackground=self.GREEN)
             self.btn_lst_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
             self.lbl_lst.config(text=status, fg=color)
+        elif name == "listings_report":
+            self.btn_lr_go.config(state="normal", fg=self.GREEN, highlightbackground=self.GREEN)
+            self.btn_lr_stop.config(state="disabled", fg=self.MUTED, highlightbackground=self.MUTED)
+            self.lbl_lr.config(text=status, fg=color)
+            self._refresh_listings_report_summary()
+            if code in (0, 1) and self._lr_reports():     # 1 = some store not read: show what there is
+                self._open_listings_report()
         elif name == "private_label":
             self.btn_pl_score.config(state="normal", fg=self.GREEN, highlightbackground=self.GREEN)
             self.btn_pl_build.config(state="normal", fg=self.CYAN, highlightbackground=self.CYAN)

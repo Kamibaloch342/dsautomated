@@ -861,7 +861,7 @@ Falls through tiers automatically. Batch size: 30 tracking IDs per call.
 1. **Orders** — Start/stop order placers (4 profiles), live bot_config editing
 2. **Closing** — Start HOANK/Hathoro closing pipelines, date range selection
 3. **Tracking** — Start tracking uploaders for both accounts
-4. **Listings** — Run listing health analysis
+4. **Listings** — Run listing health analysis; **Listings report** (13 Nov 2026): ▶ Get Fresh Report downloads each ticked store's All Listings Report in its closing Chrome (9331 / 9333 / 9337, under `sc_turn`), then reads every listing's offer through Seller Central's own Edit Listing request (`GET /abis/ajax/edit-v2?sku=…&asin=…`, four at a time, ~1 s a listing) — handling time (`fulfillment_availability#1.lead_time_to_ship_max_days`; absent = the store default from Shipping settings), quantity, price, brand, active. Read-only. `scripts/listings_report.py` → `data/listings_report/<store>.json` (the 👁 Show window: filters for store, non-default handling, active, own brand, listing-guard rows; double-click opens the listing) and `reports/listings/Listings_*.xlsx` (Summary + one sheet per store). The All Listings Report itself has no handling-time column.
 5. **Coupons** — Generate Zoro coupons via temp emails
 6. **Walmart** — Walmart → Zoro pipeline management
 7. **Console** — Live stdout from all child processes (filterable by process)
