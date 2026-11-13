@@ -104,6 +104,10 @@ agent and the dashboard run as macOS LaunchAgents.
   `order_placer_orders.tracking_id_uploaded` and `action_log` (`action_type='tracking_upload'`).
   An **OOS** order gets the out-of-stock buyer message only once its ship-by date is at most 1 day away
   (`messaging.oos_message_days_before_ship_by`, 12 Nov 2026) — Zoro may restock before then.
+  When such an order is restocked, placed and shipped, its buyer gets the **back-in-stock shipped**
+  message (with the tracking) instead of the normal one — once, under "Other", only if the buyer has
+  not written to us (the check-ins' guard, `post_delivery.buyer_wrote_to_us`, fail-closed) and has not
+  asked to cancel (13 Nov 2026, `message_log` type `restock_shipped`; normal cycle only, docs §5.2).
   **Fast mode** (whenever Skip messages is ticked, 3 Nov 2026): one finder thread and two upload windows
   run side by side (`engine/tracking_crew.py`); no buyer message, seller note or WhatsApp alert, no
   1,000-order cap. `TRACKING_FAST=0` keeps the normal cycle.

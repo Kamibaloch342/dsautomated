@@ -477,9 +477,11 @@ def buyer_other_orders(order: dict) -> Optional[List[dict]]:
 
 
 def buyer_wrote_on_other_order(gmail_services: Dict[str, object], order: dict,
-                               guards: Optional[dict] = None) -> Optional[str]:
+                               guards: Optional[dict] = None, strict: bool = False) -> Optional[str]:
     """The id of another order of this buyer that the buyer wrote to us about, "" when none,
-    None when it could not be told (the caller then sends nothing this run)."""
+    None when it could not be told (the caller then sends nothing this run).
+    strict: a Gmail search that keeps failing (e.g. 429 rate limit) also answers None instead of
+    "no mail" (buyer_wrote_to_us; the check-ins keep the old behaviour)."""
     sibs = buyer_other_orders(order)
     if sibs is None:
         return None
@@ -497,12 +499,33 @@ def buyer_wrote_on_other_order(gmail_services: Dict[str, object], order: dict,
         return None
     q = f'{INQUIRY_QUERY} (' + " OR ".join(f'"{i}"' for i in ask) + ")"
     for svc in gmail_services.values():
-        for m in _search_gmail(svc, q, max_results=5):
+        msgs = _search_gmail_strict(svc, q, max_results=5) if strict else _search_gmail(svc, q, max_results=5)
+        if msgs is None:
+            return None
+        for m in msgs:
             hit = _ids_in_message(svc, m["id"], ask)
             if hit is None:
                 return None
             return sorted(hit)[0]
     return ""
+
+
+def _search_gmail_strict(service, query: str, max_results: int = 1) -> Optional[List[dict]]:
+    """_search_gmail for a guard that must fail closed: any error (429 "Too many concurrent
+    requests" included — seen in the 13 Nov 2026 dry check) is retried twice, and a search that
+    still fails returns None, never [] ("no mail")."""
+    if not service:
+        return []
+    for attempt in range(3):
+        try:
+            resp = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
+            return resp.get("messages", []) or []
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(2.0 * (attempt + 1))
+                continue
+            logger.warning("Gmail search FAILED (%s): %s", query[:60], str(e)[:160])
+            return None
 
 
 def _skip_for_buyer_elsewhere(order: dict, gmail_services, guards, store_name: str, what: str,
@@ -521,6 +544,48 @@ def _skip_for_buyer_elsewhere(order: dict, gmail_services, guards, store_name: s
     order["customer_inquiry"] = note
     _persist(oid, {"customer_messaged": "Yes", "customer_inquiry": note}, closing_table, dry_run, existing=original)
     return True
+
+
+def buyer_wrote_to_us(gmail_services: Dict[str, object], order_id: str) -> Tuple[Optional[bool], str]:
+    """The check-ins' buyer-wrote guard for one order outside closing — used by the tracker before
+    the back-in-stock shipped message (engine/tracking.py, 13 Nov 2026). Did the buyer write to us
+    about this order (Gmail, every inquiry variant; closing's stored flags) or about another of
+    their orders (ship name + ZIP5, BUYER_SIBLING_DAYS)? Read-only: nothing is written.
+
+    Returns (True, what was found) | (False, "") | (None, why it could not be told) — on None the
+    caller sends nothing. Fails closed: a Gmail search that keeps failing is None, not "no mail"
+    (customer_inquiry_status would read it as "no mail")."""
+    oid = str(order_id or "").strip()
+    if not oid:
+        return None, "no order id"
+    if not gmail_services:
+        return None, "Gmail not reachable"
+    # The same mail customer_inquiry_status counts (INQUIRY_QUERY: every subject variant + the buyer
+    # proxy sender), searched strictly.
+    for name, svc in gmail_services.items():
+        msgs = _search_gmail_strict(svc, f'{INQUIRY_QUERY} "{oid}"', max_results=1)
+        if msgs is None:
+            return None, f"Gmail search failed in {name}"
+        if msgs:
+            return True, "Customer inquiry received"
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT amazon_order_id, ship_name, ship_postal_code, purchase_date, customer_messaged, "
+                "customer_inquiry, customer_inquiry_count FROM closing_orders WHERE amazon_order_id=?",
+                (oid,)).fetchone()
+    except Exception as e:
+        return None, f"closing_orders not readable: {str(e)[:80]}"
+    order = dict(row) if row else {"amazon_order_id": oid}
+    if (order.get("customer_messaged") or "") == "Yes" or (order.get("customer_inquiry") or "") \
+            or int(order.get("customer_inquiry_count") or 0) > 0:
+        return True, str(order.get("customer_inquiry") or "closing: customer messaged")
+    other = buyer_wrote_on_other_order(gmail_services, order, strict=True)
+    if other is None:
+        return None, "could not check the buyer's other orders"
+    if other:
+        return True, f"Buyer wrote on other order {other}"
+    return False, ""
 
 
 # ── Date helpers ─────────────────────────────────────────────────────────────

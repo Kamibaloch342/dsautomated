@@ -648,8 +648,27 @@ During order checkout and cart testing:
      (default 1) days away (US/Pacific; date from the "Sold, ship now" e-mail, `archive_earnings`): until
      then Zoro may restock and the order is placed in time (owner, 12 Nov 2026). No date known → messaged
      as before. SR / Discontinued / Loss / NS / Unfulfillable are messaged as before.
+   - **Back in stock, now shipped** (owner, 13 Nov 2026) — an order whose buyer got the stock delay
+     message and that was later restocked, placed and shipped gets THIS message instead of the
+     tracking confirmation [**Other** only]. Until then it got nothing ("Already messaged"). Text
+     (owner-approved): we wrote earlier that the item was not in stock, we have received the stock,
+     the order is fulfilled and shipped, tracking number(s). Sent once, and only when the buyer has
+     not written to us — `post_delivery.buyer_wrote_to_us`, the check-ins' guard (this order's mail in
+     every inbox, closing's flags, the same buyer's other orders) — and has not asked to cancel;
+     otherwise a person answers. Both checks fail closed: a Gmail search that keeps failing (429 …)
+     means no message and no upload that cycle, retried next cycle. Normal cycle only — fast mode
+     (Skip messages) sends nothing, this included; orders shipped before 13 Nov are not messaged.
+     The wording says "not in stock", never "out of stock", and avoids "arrived" / "delivery": the
+     archive's classifier (`gmail_fetch/gmail_archive.py`) would file our copy as `oos_notice` or
+     `delivery_checkin` instead of `tracking_sent`, and the real check-in would read as already sent.
+     `message_log.json`: `restock_shipped` (sent) with `earlier` = the stock delay record; when held or
+     failed the `stock_delay` record stays and gets `restock_shipped` = buyer wrote / cancel requested /
+     failed (never retried) + `restock_at`. Seller note "Tracking msg sent: Yes"; the WhatsApp
+     tracking alert reads "Yes (back in stock)" / "No (buyer wrote)" / "No (cancel request)".
    - **Cancel denial** — order already shipped [Other → Notify of a problem]
-8. Persist to `message_log.json` and `tracking_upload_log.json`
+8. Persist to `message_log.json` and `tracking_upload_log.json`. Every tracker process writes its
+   whole copy back under the lock; the newer record of an order wins (13 Nov 2026), so another
+   store's stale copy can no longer undo a `restock_shipped` (or any newer) record.
 
 #### Multi-Package Tracking Support
 
@@ -1584,6 +1603,10 @@ Customer messages (delivery check-in, review requests) go to real Amazon buyers.
   delay notice); the order gets `customer_inquiry = "Buyer wrote on other order <id>"`. If the
   lookup fails, nothing is sent that run. (112-4846567-6695469 got the "arrived safely?"
   check-in 17 s after the run skipped the same buyer's complaint order 112-2159451-7162619.)
+  The tracker's back-in-stock shipped message (13 Nov 2026) uses the same guard, fail-closed
+  (`post_delivery.buyer_wrote_to_us`, `_search_gmail_strict`), plus the cancellation request —
+  never send it to a buyer who wrote or asked to cancel, never twice, never with the normal
+  shipped message as well, never under "Unexpected problem"
 - Auto-send messages to customers outside the dashboard — alerts only
 
 ---

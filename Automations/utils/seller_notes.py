@@ -117,7 +117,8 @@ def _tracking_message_status(amazon_id):
         if not entry.get("sent"):
             return "No"
         mtype = entry.get("message_type")
-        if mtype == "tracking_confirmation":
+        # restock_shipped = "back in stock, now shipped" with the tracking (engine/tracking.py, 13 Nov 2026)
+        if mtype in ("tracking_confirmation", "restock_shipped"):
             return "Yes"
         if mtype == "cancellation_denial":
             return "Yes (cancellation denial)"

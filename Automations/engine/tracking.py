@@ -20,6 +20,10 @@ _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _AUTOMATIONS_DIR = os.path.dirname(_SCRIPT_DIR)
 if _AUTOMATIONS_DIR not in sys.path:
     sys.path.insert(0, _AUTOMATIONS_DIR)
+if __name__ == "__main__":
+    # The launcher runs this file as a script. engine.post_delivery (the buyer-wrote guard of the
+    # back-in-stock message) imports engine.tracking: let that be this module, not a second copy.
+    sys.modules.setdefault("engine.tracking", sys.modules[__name__])
 
 print = functools.partial(print, flush=True)
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -586,12 +590,22 @@ def save_message_log(log):
                 old = cur.get(k)
                 if isinstance(old, dict) and old.get("sent") and not (isinstance(v, dict) and v.get("sent")):
                     continue
+                # Every process writes back its WHOLE copy, so a store's process would put its stale
+                # 'stock_delay' record of another store's order back over that store's newer
+                # 'restock_shipped' record — and the back-in-stock message would be due again
+                # (13 Nov 2026). The newer record wins.
+                if isinstance(old, dict) and isinstance(v, dict) and _msg_rec_time(old) > _msg_rec_time(v):
+                    continue
                 cur[k] = v
             write_json_atomic(MESSAGE_LOG_FILE, cur, indent=2)
-        for k, v in cur.items():
-            log.setdefault(k, v)
+        log.update(cur)        # what is on file now, the other processes' newer records included
     except Exception as e:
         print(f"⚠️ Could not save message log: {e}")
+
+
+def _msg_rec_time(rec):
+    """When a message-log record was last written ('YYYY-MM-DD HH:MM:SS' sorts as text)."""
+    return max(str(rec.get("timestamp") or ""), str(rec.get("restock_at") or ""))
 
 
 def split_qty_across_packages(total_qty, n_packages):
@@ -1931,6 +1945,138 @@ The {store_name} Team"""
         print(f"     ❌  FAILED to send message for order {order_id}. Reason: {e}")
         return False
 
+
+# ── Back in stock, now shipped (owner, 13 Nov 2026) ─────────────────────────────────────────────
+# An order whose buyer got the stock delay message (message_log 'stock_delay', STEP 1) and that was
+# later restocked, placed and shipped used to get NO shipped message ("Already messaged"): the
+# buyer last heard "out of stock, 10–15 business days". Now it gets this message instead of the
+# normal tracking confirmation, under "Other" only, once, and only when the buyer has not written to
+# us (engine/post_delivery.buyer_wrote_to_us — the check-ins' guard: this order or the same buyer's
+# other orders) and has not asked to cancel; otherwise a person answers. Normal cycle only: fast
+# mode (Skip messages) sends no message at all, this one included (owner, 13 Nov 2026).
+# Wording approved by the owner on 13 Nov 2026. It says "not in stock", never "out of stock", and
+# avoids "arrived" / "delivery" / "delivered": the archive's classifier (gmail_fetch/gmail_archive.py)
+# would file our copy as an OOS notice or a delivery check-in — the dashboard would not count the
+# tracking message, and the real check-in would be taken as already sent.
+RESTOCK_MSG_TYPE = "restock_shipped"
+
+
+def _restock_message_due(entry):
+    """True when the buyer got the stock delay message and nothing has been decided yet about the
+    back-in-stock shipped message (sent, or held because the buyer wrote / asked to cancel)."""
+    return (isinstance(entry, dict) and entry.get("message_type") == "stock_delay" and bool(entry.get("sent"))
+            and not entry.get("restock_shipped"))
+
+
+def build_restock_shipped_message(customer_name, tracking_id_string, store_name):
+    tracking_list = [t for t in dict.fromkeys(t.strip() for t in str(tracking_id_string or "").split(',')) if t]
+    if len(tracking_list) == 1:
+        tracking_block = f"Tracking number: {tracking_list[0]}"
+    else:
+        tracking_block = "Tracking numbers:\n" + "\n".join(f"{i}) {t}" for i, t in enumerate(tracking_list, 1))
+    return f"""Hello {customer_name},
+
+Earlier we wrote to let you know that the item you ordered was not in stock and that your order would take longer to ship.
+
+We are writing again with good news: we have now received the stock, and your order has been fulfilled and shipped.
+
+{tracking_block}
+
+Thank you for your patience while we waited for the stock. If you need anything, just reply to this message.
+
+Kind regards,
+Customer Support Team
+{store_name}"""
+
+
+def send_restock_shipped_message(driver, wait, order_id, tracking_id_string, store_name):
+    """Sends the back-in-stock shipped message (see above) under "Other" only."""
+    CONTACT_URL = f"https://sellercentral.amazon.com/messaging/contact?orderID={order_id}&marketplaceID=ATVPDKIKX0DER"
+    print(f"     → Navigating to messaging page...")
+    driver.get(CONTACT_URL)
+    # Never type into a thread without proof the page belongs to THIS order (2026-08-19 incident).
+    from platforms.amazon import _confirm_on_order_page
+    if not _confirm_on_order_page(driver, order_id, label="[Msg] ", renav_url=CONTACT_URL):
+        return False
+    try:
+        customer_name = "Valued Customer"
+        try:
+            el = WebDriverWait(driver, 10).until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, "div.ayb-contact-buyer-header h2"))
+            )
+            name = el.text.split()[-1].capitalize()
+            if name: customer_name = name
+        except TimeoutException:
+            pass
+        message_text = build_restock_shipped_message(customer_name, tracking_id_string, store_name)
+        # "Other" ('contactBuyer') only, like the tracking confirmation: never "Unexpected problem".
+        success = _click_radio_and_type(driver, wait, order_id, message_text, radio_priority=['contactBuyer'])
+        if success:
+            print(f"     ✅  Back-in-stock shipped message sent for: {order_id}")
+        return success
+    except Exception as e:
+        print(f"     ❌  FAILED to send the back-in-stock message for {order_id}. Reason: {e}")
+        return False
+
+
+def _restock_guards(gmail_services, amazon_id):
+    """("cancel requested" | "buyer wrote" | "clear" | None, note) before the back-in-stock message.
+    Both checks fail closed (None = could not be told): the cancellation request (the same subject as
+    check_for_cancellation_request, which reads a Gmail error as "none") and the check-ins' buyer-wrote
+    guard (engine.post_delivery.buyer_wrote_to_us)."""
+    try:
+        from engine.post_delivery import buyer_wrote_to_us, _search_gmail_strict
+        for name, svc in gmail_services.items():
+            hits = _search_gmail_strict(svc, f'subject:"Order cancelation request for Order ID: {amazon_id}"')
+            if hits is None:
+                return None, f"Gmail cancellation search failed in {name}"
+            if hits:
+                return "cancel requested", ""
+        wrote, note = buyer_wrote_to_us(gmail_services, amazon_id)
+    except Exception as e:
+        if is_network_error(e):
+            raise
+        return None, f"guard failed: {type(e).__name__}: {str(e)[:80]}"
+    if wrote is None:
+        return None, note
+    return ("buyer wrote", note) if wrote else ("clear", "")
+
+
+def _send_restock_message(driver, wait, amazon_id, tracking_id_string, store_name, gmail_services, message_log):
+    """Decide and, when allowed, send the back-in-stock shipped message; record the outcome once.
+    Returns "sent" | "failed" | "buyer wrote" | "cancel requested", or None when the guards could not
+    be checked (nothing sent, nothing recorded: the caller retries next cycle)."""
+    earlier = dict(message_log.get(amazon_id) or {})
+    verdict, note = _restock_guards(gmail_services, amazon_id)
+    if verdict is None:
+        print(f"     ⏸️  Could not check the buyer's mail ({note}) — no message and no upload this cycle; "
+              f"retried next cycle.")
+        return None
+    if verdict == "cancel requested":
+        state = "cancel requested"
+        print(f"     ⚠️  Buyer asked to cancel — no back-in-stock message; a person answers.")
+    elif verdict == "buyer wrote":
+        state = "buyer wrote"
+        print(f"     ⏩  Buyer wrote to us ({note}) — no back-in-stock message; a person answers.")
+    else:
+        print(f"     💬  Back in stock (stock delay message sent {earlier.get('timestamp') or '?'}) — "
+              f"sending the back-in-stock shipped message...")
+        state = "sent" if send_restock_shipped_message(driver, wait, amazon_id, tracking_id_string,
+                                                       store_name) else "failed"
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
+    if state == "sent":
+        message_log[amazon_id] = {"message_type": RESTOCK_MSG_TYPE, "sent": True, "timestamp": now,
+                                  "earlier": {k: earlier.get(k) for k in ("message_type", "timestamp")}}
+    else:
+        # The stock delay record stays (sent) and says what happened, so it is decided only once:
+        # a failed attempt is not retried — it may have reached the buyer after all.
+        rec = dict(earlier, restock_shipped=state, restock_at=now)
+        if note:
+            rec["restock_note"] = note
+        message_log[amazon_id] = rec
+    save_message_log(message_log)
+    return state
+
 # --- Helper Functions (Report Download & Filtering) ---
 
 def _prune_reports(dl_dir, keep=None):
@@ -2871,10 +3017,31 @@ def main_workflow(account_config, passed_driver=None):
                             except Exception as _pre_err:
                                 print(f"     ⚠️  Could not pre-check shipment state ({str(_pre_err)[:80]}) — continuing")
 
+                            _restock_state = None
                             if should_send_messages:
                                 existing_msg = message_log.get(amazon_id, {})
-                                if existing_msg.get('sent') or existing_msg.get('message_type') == 'cancellation_denial':
+                                # Told "out of stock" earlier and now shipped: the back-in-stock
+                                # message instead of the normal one (13 Nov 2026, see RESTOCK_MSG_TYPE).
+                                _restock_due = _restock_message_due(existing_msg)
+                                if not _restock_due and (existing_msg.get('sent')
+                                                         or existing_msg.get('message_type') == 'cancellation_denial'):
                                     print(f"     ⏩  Already messaged ({existing_msg.get('message_type')}). Skipping.")
+                                elif _restock_due:
+                                    try:
+                                        _restock_state = _send_restock_message(
+                                            driver, wait, amazon_id, tracking_id_string, store_name,
+                                            gmail_services, message_log)
+                                    except Exception as _net_err:
+                                        if not is_network_error(_net_err):
+                                            raise
+                                        net_guard.skip(amazon_id, _net_err, "the Gmail checks before the back-in-stock message")
+                                        continue  # no message, no upload this cycle; retried next cycle
+                                    net_guard.ok()
+                                    if _restock_state is None:
+                                        continue  # buyer-wrote guard could not be checked: retried next cycle
+                                    _msg_sent = _restock_state == "sent"
+                                    _msg_type = RESTOCK_MSG_TYPE if _msg_sent else None
+                                    _need_seller_note = _msg_sent
                                 else:
                                     has_cancellation_request = False
                                     try:
@@ -3038,9 +3205,16 @@ def main_workflow(account_config, passed_driver=None):
                                                   list(_multi_ids) if _multi_ok else list(_all_tids[:1]),
                                                   "success", note="multi-package" if _multi_ok else "")
                                 if _msg_sent:
-                                    _mstate = "Yes" + (" (cancellation reply)" if _msg_type == "cancellation_denial" else "")
+                                    _mstate = "Yes" + {"cancellation_denial": " (cancellation reply)",
+                                                       RESTOCK_MSG_TYPE: " (back in stock)"}.get(_msg_type, "")
                                 elif LAST_MESSAGE_STATE["value"] == "No Permission":
                                     _mstate = "No Permission"
+                                elif _restock_state == "buyer wrote":
+                                    _mstate = "No (buyer wrote)"
+                                elif _restock_state == "cancel requested":
+                                    _mstate = "No (cancel request)"
+                                elif _restock_state == "failed":
+                                    _mstate = "No"
                                 elif (message_log.get(amazon_id) or {}).get("sent"):
                                     _mstate = "Already sent earlier"
                                 elif not should_send_messages:
